@@ -5108,6 +5108,53 @@ pub async fn apply_try_status(
     world: &WorldManager,
     lua: Option<&Arc<LuaEngine>>,
 ) -> bool {
+    // Status effects use ms-precision for tick accounting. Convert
+    // the seconds-precision `unix_timestamp()` helper into ms; this
+    // drifts by at most 999 ms vs a true ms clock, which is well
+    // below the finest granularity any ticking effect uses
+    // (typically 3 s).
+    let now_ms = (common::utils::unix_timestamp() as u64).saturating_mul(1000);
+    let effect = crate::status::StatusEffect::new(
+        target_actor_id,
+        status_id,
+        magnitude,
+        tick_ms,
+        duration_s,
+        tier,
+        now_ms,
+    );
+    install_status_effect(
+        source_actor_id,
+        target_actor_id,
+        effect,
+        crate::status::DEFAULT_GAIN_TEXT_ID,
+        registry,
+        db,
+        world,
+        lua,
+    )
+    .await
+}
+
+/// Insert a built [`crate::status::StatusEffect`] on the target and drain
+/// the resulting status events (gain text, icon slot, DB save, recalc)
+/// through the shared dispatcher. Shared by `TryStatus` (Lua, items) and
+/// the battle-command status riders in `dispatcher::resolve_action`.
+/// Returns `true` when the effect landed.
+#[allow(clippy::too_many_arguments)]
+pub async fn install_status_effect(
+    source_actor_id: u32,
+    target_actor_id: u32,
+    effect: crate::status::StatusEffect,
+    gain_text_id: u16,
+    registry: &ActorRegistry,
+    db: &Database,
+    world: &WorldManager,
+    lua: Option<&Arc<LuaEngine>>,
+) -> bool {
+    let status_id = effect.id;
+    let duration_s = effect.duration;
+    let magnitude = effect.magnitude;
     let Some(target) = registry.get(target_actor_id).await else {
         tracing::debug!(
             target = target_actor_id,
@@ -5116,29 +5163,15 @@ pub async fn apply_try_status(
         );
         return false;
     };
-    // Status effects use ms-precision for tick accounting. Convert
-    // the seconds-precision `unix_timestamp()` helper into ms; this
-    // drifts by at most 999 ms vs a true ms clock, which is well
-    // below the finest granularity any ticking effect uses
-    // (typically 3 s).
     let now_ms = (common::utils::unix_timestamp() as u64).saturating_mul(1000);
     let mut outbox = crate::status::StatusOutbox::new();
     let landed = {
         let mut c = target.character.write().await;
-        let effect = crate::status::StatusEffect::new(
-            target_actor_id,
-            status_id,
-            magnitude,
-            tick_ms,
-            duration_s,
-            tier,
-            now_ms,
-        );
         c.status_effects.add_status_effect(
             effect,
             source_actor_id,
             now_ms,
-            crate::status::DEFAULT_GAIN_TEXT_ID,
+            gain_text_id,
             &mut outbox,
         )
     };

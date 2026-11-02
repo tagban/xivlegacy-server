@@ -242,9 +242,13 @@ pub fn calculate_resist_damage(action: &mut CommandResult) {
         HitType::FullResist => 4,
         _ => 0,
     } as f64;
+    // `percent_resist` is the share the defender shrugs off: a single
+    // resist keeps 75% of the damage, a full resist none. (This used to
+    // keep `percent_resist` itself, so a single resist dealt 25% and a
+    // full resist 100%.)
     let percent_resist = 0.25 * tier;
-    action.amount_mitigated = clamp_damage(action.amount as f64 * (1.0 - percent_resist));
-    action.amount = clamp_damage(action.amount as f64 * percent_resist);
+    action.amount_mitigated = clamp_damage(action.amount as f64 * percent_resist);
+    action.amount = clamp_damage(action.amount as f64 * (1.0 - percent_resist));
 }
 
 /// Stoneskin absorbs damage from `action.amount` and subtracts the absorbed
@@ -441,10 +445,10 @@ pub fn set_hit_effect_physical(
         effect |= HitEffect::CRITICAL_HIT;
     } else {
         let percent_dealt = 100.0 * action.amount as f64 / defender.max_hp.max(1) as f64;
-        if percent_dealt > 5.0 {
-            effect |= HitEffect::RECOIL_LV2;
-        } else if percent_dealt > 10.0 {
+        if percent_dealt > 10.0 {
             effect |= HitEffect::RECOIL_LV3;
+        } else if percent_dealt > 5.0 {
+            effect |= HitEffect::RECOIL_LV2;
         }
     }
 
@@ -892,6 +896,19 @@ mod tests {
         // 50% resist -> 500 mitigated, 500 damage.
         assert_eq!(action.amount, 500);
         assert_eq!(action.amount_mitigated, 500);
+
+        // Single resist keeps 75%, full resist keeps nothing.
+        let mut single = CommandResult::for_target(1, 0, 0);
+        single.amount = 1000;
+        single.hit_type = HitType::SingleResist;
+        calculate_resist_damage(&mut single);
+        assert_eq!(single.amount, 750);
+        assert_eq!(single.amount_mitigated, 250);
+        let mut full = CommandResult::for_target(1, 0, 0);
+        full.amount = 1000;
+        full.hit_type = HitType::FullResist;
+        calculate_resist_damage(&mut full);
+        assert_eq!(full.amount, 0);
     }
 
     #[test]

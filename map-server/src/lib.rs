@@ -283,6 +283,21 @@ pub async fn run() -> Result<()> {
         }
     }
 
+    // Status-effect templates (`server_statuseffects`): battle commands
+    // build the effects they apply from these, so flags such as Stance
+    // and each status's overwrite rule come along. Non-fatal: without
+    // the catalog the effects fall back to bare defaults.
+    match db.load_global_status_effect_list().await {
+        Ok(effects) => {
+            let effect_count = effects.len();
+            lua.catalogs().install_status_effects(effects);
+            tracing::info!(effect_count, "server_statuseffects catalog loaded");
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "server_statuseffects load failed");
+        }
+    }
+
     // Populate the crafting recipe + passive-guildleve catalogs used by
     // `CraftCommand.lua`. Both are non-fatal: if either load fails the
     // CraftJudge Lua flow simply fails the first GetRecipeResolver() or

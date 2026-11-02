@@ -573,6 +573,34 @@ pub async fn dispatch_battle_event(
 //      existing `DoBattleAction` event uses.
 // ---------------------------------------------------------------------------
 
+/// Sleep breaks on damage (pmeteor `sleep.lua` `onDamageTaken`). Removes it
+/// from a defender that just took damage, into `outbox` for the caller to
+/// flush once the actor lock is released.
+fn wake_on_damage(c: &mut crate::actor::Character, outbox: &mut crate::status::StatusOutbox) {
+    if c.status_effects.has(crate::status::ids::STATUS_SLEEP) {
+        c.status_effects.remove_status_effect(
+            crate::status::ids::STATUS_SLEEP,
+            crate::status::DEFAULT_LOSS_TEXT_ID,
+            true,
+            outbox,
+        );
+    }
+}
+
+async fn flush_wake_outbox(
+    mut outbox: crate::status::StatusOutbox,
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    lua: Option<&Arc<crate::lua::LuaEngine>>,
+    db: Option<&Arc<crate::database::Database>>,
+) {
+    if let (Some(db), Some(l)) = (db, lua) {
+        for e in outbox.drain() {
+            dispatch_status_event(&e, registry, world, db, l.catalogs()).await;
+        }
+    }
+}
+
 async fn resolve_auto_attack(
     attacker_actor_id: u32,
     defender_actor_id: u32,
@@ -626,6 +654,7 @@ async fn resolve_auto_attack(
 
     let mut container = CommandResultContainer::new();
     let dmg_request;
+    let mut wake_outbox = crate::status::StatusOutbox::new();
     {
         let mut d = defender_handle.character.write().await;
         if !d.is_alive() {
@@ -672,6 +701,7 @@ async fn resolve_auto_attack(
         {
             d.add_hp(-(dr.amount as i32));
             d.hate.update_hate(attacker_actor_id, dr.enmity as i32);
+            wake_on_damage(&mut d, &mut wake_outbox);
             // #28 S3.3 — defender TP on damage taken (pmeteor
             // `Character.OnDamageTaken`, Character.cs:905-908):
             // ceil(5 · e^(−0.0667 · level) · damage). The dead bank
@@ -683,6 +713,8 @@ async fn resolve_auto_attack(
             }
         }
     }
+
+    flush_wake_outbox(wake_outbox, registry, world, lua, db).await;
 
     // #28 S3.3 — attacker TP per landed swing (pmeteor
     // `Character.OnAttack`, Character.cs:886-895): delay-seconds × 100.
@@ -775,6 +807,181 @@ async fn resolve_auto_attack(
     .await;
 }
 
+/// One target's share of a resolved command, gathered before any packet
+/// goes out so the whole command rides one CommandResult container.
+struct ActionHit {
+    target_actor_id: u32,
+    /// HP actually taken off the target (0 on a miss or for non-damage).
+    damage: u16,
+    /// HP restored (heals).
+    healed: bool,
+    /// The row connected (hit / crit / block / parry / status landed).
+    landed: bool,
+    /// Rolled the row's status rider / status effect.
+    status_roll: bool,
+}
+
+/// Every actor a command lands on: the main target plus, for AoE rows,
+/// everything the row's shape covers (pmeteor `TargetFind.FindWithinArea`).
+/// Views come from the live characters (position + facing) of the actors
+/// the zone grid says are in the same area. Parties aren't modelled in
+/// battle views, so the party-only bits are dropped: friendly AoE covers
+/// the caster and nearby players/allies.
+async fn action_targets(
+    attacker_actor_id: u32,
+    primary_actor_id: u32,
+    command: &BattleCommand,
+    registry: &ActorRegistry,
+    zone: &Arc<RwLock<Zone>>,
+) -> Vec<u32> {
+    use crate::battle::target_find::{ActorView, TargetFind, TargetFindAOEType, ValidTarget};
+    use crate::runtime::actor_registry::ActorKindTag as K;
+
+    if command.aoe_type == TargetFindAOEType::None || command.aoe_range <= 0.0 {
+        return vec![primary_actor_id];
+    }
+    let radius = command.aoe_range + command.range.max(0.0) + 5.0;
+    let candidates: Vec<u32> = {
+        let z = zone.read().await;
+        let mut ids: Vec<u32> = z
+            .core
+            .actors_around(attacker_actor_id, radius)
+            .into_iter()
+            .map(|a| a.actor_id)
+            .collect();
+        ids.push(attacker_actor_id);
+        ids.push(primary_actor_id);
+        ids.sort_unstable();
+        ids.dedup();
+        ids
+    };
+    let mut arena: std::collections::HashMap<u32, ActorView> = std::collections::HashMap::new();
+    for id in candidates {
+        let Some(h) = registry.get(id).await else {
+            continue;
+        };
+        let c = h.character.read().await;
+        arena.insert(
+            id,
+            ActorView {
+                actor_id: id,
+                position: common::Vector3::new(
+                    c.base.position_x,
+                    c.base.position_y,
+                    c.base.position_z,
+                ),
+                rotation: c.base.rotation,
+                is_alive: c.is_alive(),
+                is_static: h.kind == K::Npc,
+                allegiance: match h.kind {
+                    K::Player | K::Ally | K::Pet => 1,
+                    K::BattleNpc => 2,
+                    K::Npc => 0,
+                },
+                party_id: 0,
+                zone_id: h.zone_id,
+                is_updates_locked: false,
+                is_player: h.kind == K::Player,
+                is_battle_npc: h.kind == K::BattleNpc,
+            },
+        );
+    }
+    let (Some(owner), Some(main)) = (
+        arena.get(&attacker_actor_id).copied(),
+        arena.get(&primary_actor_id).copied(),
+    ) else {
+        return vec![primary_actor_id];
+    };
+    let flags = ValidTarget(
+        command.valid_target.bits()
+            & !(ValidTarget::PARTY_ONLY.bits() | ValidTarget::MAIN_TARGET_PARTY_ONLY.bits()),
+    );
+    let mut find = TargetFind::new(owner, Some(main));
+    if command.aoe_type == TargetFindAOEType::Box {
+        find.set_aoe_box(
+            flags,
+            command.aoe_target,
+            command.aoe_range,
+            command.range_width.max(1.0),
+            command.aoe_rotate_angle,
+        );
+        find.height = command.range_height.max(1.0);
+        find.min_distance = command.aoe_min_range;
+    } else {
+        // Seed cone angles are in units of pi (0.5 = a 90-degree cone),
+        // the same unit `find_within_area` applies to `aoeRotateAngle`.
+        find.set_aoe_type(
+            flags,
+            command.aoe_type,
+            command.aoe_target,
+            command.aoe_range,
+            command.aoe_min_range,
+            command.range_height.max(1.0),
+            command.aoe_rotate_angle,
+            command.aoe_cone_angle * std::f32::consts::PI,
+        );
+    }
+    find.find_within_area(main, flags, command.aoe_target, &arena);
+    let mut out: Vec<u32> = find.targets().iter().map(|v| v.actor_id).collect();
+    // Main target first (it carries the result row the client keys the
+    // animation on); an AoE centred on the caster may leave it out.
+    if let Some(pos) = out.iter().position(|id| *id == primary_actor_id) {
+        out.swap(0, pos);
+    }
+    out
+}
+
+/// The status effect a command applies, built from the
+/// `server_statuseffects` template when the catalog has one (flags such
+/// as Stance and the overwrite rule come from there) and from the row's
+/// own duration / magnitude / tier.
+fn command_status_effect(
+    command: &BattleCommand,
+    target_actor_id: u32,
+    lua: Option<&Arc<crate::lua::LuaEngine>>,
+    now_ms: u64,
+) -> crate::status::StatusEffect {
+    let template = lua.and_then(|l| {
+        l.catalogs()
+            .status_effects
+            .read()
+            .ok()
+            .and_then(|m| m.get(&command.status_id).cloned())
+    });
+    let mut effect = match template {
+        Some(t) => {
+            let mut e = crate::status::StatusEffect::from_template(
+                t.id,
+                t.name,
+                t.flags,
+                t.overwrite,
+                t.tick_ms,
+                t.hidden,
+                t.silent_on_gain,
+                t.silent_on_loss,
+                t.status_gain_text_id,
+                t.status_loss_text_id,
+            );
+            e.owner_actor_id = target_actor_id;
+            e.last_tick_ms = now_ms;
+            e
+        }
+        None => crate::status::StatusEffect::new(
+            target_actor_id,
+            command.status_id,
+            0.0,
+            0,
+            0,
+            1,
+            now_ms,
+        ),
+    };
+    effect.duration = command.status_duration;
+    effect.magnitude = command.status_magnitude;
+    effect.tier = command.status_tier.max(1);
+    effect
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn resolve_action(
     attacker_actor_id: u32,
@@ -789,9 +996,9 @@ async fn resolve_action(
     let Some(attacker_handle) = registry.get(attacker_actor_id).await else {
         return;
     };
-    let Some(defender_handle) = registry.get(defender_actor_id).await else {
+    if registry.get(defender_actor_id).await.is_none() {
         return;
-    };
+    }
 
     let (atk_level, atk_max_hp, atk_mods) = {
         let a = attacker_handle.character.read().await;
@@ -801,37 +1008,52 @@ async fn resolve_action(
         (a.chara.level, a.chara.max_hp, a.chara.mods.clone())
     };
 
-    let mut rng = ThreadRng;
-    let mut result = CommandResult::from_command(defender_actor_id, command, 1);
-    // Lua scripts normally drop the base potency into `action.amount`
-    // before calling `DoAction`. Until those bindings land, use the
-    // command's `base_potency` directly; zero falls back to a conservative
-    // placeholder so casts still produce a visible hit number.
-    // The old flat-100 placeholder one-shot the SEQ_005 tutorial wolves
-    // (100 HP fallback) on every Papalymo Thunder — each wolf died to a
-    // single cast ~8 s apart and the whole fight was over in 18 s. Scale
-    // the placeholder by attacker level so a lvl-1 tutorial caster lands
-    // ~20 while higher-level content still produces a visible number.
-    result.amount = if command.base_potency > 0 {
-        command.base_potency
-    } else {
-        (15 + 5 * i32::from(atk_level.max(1))).min(9999) as u16
-    };
-    result.enmity = result.amount;
-
-    let mut container = CommandResultContainer::new();
-    let dmg_request;
     let is_heal = command.action_type == ActionType::Heal;
+    let is_status_row = matches!(command.action_type, ActionType::Status | ActionType::None);
+    // Raise-style rows (mainTarget CorpseOnly) act on a KO'd target.
+    let revives = command
+        .main_target
+        .intersects(crate::battle::target_find::ValidTarget::CORPSE_ONLY);
 
-    {
+    let targets = action_targets(
+        attacker_actor_id,
+        defender_actor_id,
+        command,
+        registry,
+        zone,
+    )
+    .await;
+
+    let mut rng = ThreadRng;
+    let mut container = CommandResultContainer::new();
+    let mut hits: Vec<ActionHit> = Vec::new();
+    let mut wake_outbox = crate::status::StatusOutbox::new();
+    for target_id in targets {
+        let Some(defender_handle) = registry.get(target_id).await else {
+            continue;
+        };
+        let mut result = CommandResult::from_command(target_id, command, 1);
+        // Lua scripts normally drop the base potency into `action.amount`
+        // before calling `DoAction`. Until those bindings land, use the
+        // command's `base_potency` directly; zero falls back to a
+        // conservative placeholder so casts still produce a visible hit
+        // number. (The old flat-100 placeholder one-shot the SEQ_005
+        // tutorial wolves, hence the level scaling.)
+        result.amount = if command.base_potency > 0 {
+            command.base_potency
+        } else {
+            (15 + 5 * i32::from(atk_level.max(1))).min(9999) as u16
+        };
+        result.enmity = result.amount;
+
         let mut d_write = defender_handle.character.write().await;
-        if !d_write.is_alive() && !is_heal {
-            return;
+        let alive = d_write.is_alive();
+        if !alive && !revives {
+            continue;
         }
         let def_level = d_write.chara.level;
         let def_max_hp = d_write.chara.max_hp;
         let def_mods_snapshot = d_write.chara.mods.clone();
-
         let atk_view = battle_utils::CombatView {
             actor_id: attacker_actor_id,
             level: atk_level,
@@ -843,7 +1065,7 @@ async fn resolve_action(
             has_stoneskin: false,
         };
         let def_view = battle_utils::CombatView {
-            actor_id: defender_actor_id,
+            actor_id: target_id,
             level: def_level,
             max_hp: def_max_hp,
             mods: &def_mods_snapshot,
@@ -855,7 +1077,14 @@ async fn resolve_action(
 
         let mut skill = command.clone();
         battle_utils::calc_rates(&atk_view, &def_view, Some(&skill), &mut result);
-        dmg_request = match command.action_type {
+        let mut hit = ActionHit {
+            target_actor_id: target_id,
+            damage: 0,
+            healed: false,
+            landed: false,
+            status_roll: false,
+        };
+        let dmg_request = match command.action_type {
             ActionType::Physical => battle_utils::finish_action_physical(
                 &atk_view,
                 &def_view,
@@ -882,13 +1111,44 @@ async fn resolve_action(
                     &mut container,
                 );
                 d_write.add_hp(heal.amount as i32);
+                hit.healed = heal.amount > 0;
                 None
             }
             ActionType::Status | ActionType::None => {
-                battle_utils::finish_action_status(&skill, &mut result, &mut container);
+                // The row itself announces the status ("Your X grants you
+                // the effect of Y"), so roll first: a failed roll reads as
+                // a resist instead of claiming an effect that never lands.
+                result.amount = 0;
+                let rolled =
+                    command.status_id != 0 && battle_utils::try_status(&result, &skill, &mut rng);
+                if command.status_id == 0 || rolled {
+                    battle_utils::finish_action_status(&skill, &mut result, &mut container);
+                    if command.status_id == 0 {
+                        // No status: never point the text at status 0.
+                        container.main_results.last_mut().unwrap().effect_id = 0;
+                    }
+                } else {
+                    result.hit_type = crate::battle::effects::HitType::FullResist;
+                    result.world_master_text_id =
+                        battle_utils::magical_hit_text_id(result.hit_type);
+                    battle_utils::set_hit_effect_spell(&def_view, None, &mut result);
+                    container.add_action(result.clone());
+                }
+                hit.status_roll = rolled;
+                // Status commands on a monster (Provoke, Flash, Sleep) still
+                // draw its attention.
+                if defender_handle.kind == crate::runtime::actor_registry::ActorKindTag::BattleNpc {
+                    d_write
+                        .hate
+                        .update_hate(attacker_actor_id, i32::from(command.base_potency.max(1)));
+                }
                 None
             }
         };
+        hit.landed = result.action_landed();
+        if !is_status_row && command.status_id != 0 {
+            hit.status_roll = battle_utils::try_status(&result, &skill, &mut rng);
+        }
 
         if let Some(dr) = dmg_request
             && dr.amount > 0
@@ -897,6 +1157,8 @@ async fn resolve_action(
             d_write
                 .hate
                 .update_hate(attacker_actor_id, dr.enmity as i32);
+            wake_on_damage(&mut d_write, &mut wake_outbox);
+            hit.damage = dr.amount;
             // #28 S3.3 — defender TP on damage taken, same formula as
             // the auto-attack arm (pmeteor `OnDamageTaken` runs for any
             // landed damage, Character.cs:905-908).
@@ -906,6 +1168,115 @@ async fn resolve_action(
                 d_write.add_tp(gain);
             }
         }
+        drop(d_write);
+        hits.push(hit);
+    }
+    flush_wake_outbox(wake_outbox, registry, world, lua, db).await;
+
+    // Status effects (pmeteor `CommandResult.TryStatus`). The command's
+    // own row (status commands) or an extra row in the same container
+    // (damage riders: stun, heavy, bind…) carries the gain text, so the
+    // effect installs silently instead of sending its own "You are X."
+    if command.status_id != 0
+        && let Some(db) = db
+    {
+        let now_ms = (common::utils::unix_timestamp() as u64).saturating_mul(1000);
+        for hit in hits.iter().filter(|h| h.status_roll) {
+            let mut effect = command_status_effect(command, hit.target_actor_id, lua, now_ms);
+            effect.silent_on_gain = true;
+            let gain_text = effect.status_gain_text_id;
+            let landed = crate::runtime::quest_apply::install_status_effect(
+                attacker_actor_id,
+                hit.target_actor_id,
+                effect,
+                gain_text,
+                registry,
+                db,
+                world,
+                lua,
+            )
+            .await;
+            if landed && !is_status_row {
+                container.add_action(CommandResult {
+                    target_actor_id: hit.target_actor_id,
+                    world_master_text_id: if gain_text != 0 {
+                        gain_text
+                    } else {
+                        crate::status::DEFAULT_GAIN_TEXT_ID
+                    },
+                    effect_id: STATUS_EFFECT_HIT | command.status_id,
+                    hit_num: 1,
+                    ..Default::default()
+                });
+            }
+        }
+    }
+
+    // Row-specific effects the seed can't express (pmeteor per-skill
+    // scripts): Convert swaps HP and MP, Esuna strips one esuna-able
+    // effect, Chameleon / Elusive Jump shed the caster's enmity.
+    match command.name.as_str() {
+        "convert" => {
+            let mut a = attacker_handle.character.write().await;
+            let (hp, mp) = (i32::from(a.chara.hp), i32::from(a.chara.mp));
+            let (max_hp, max_mp) = (i32::from(a.chara.max_hp), i32::from(a.chara.max_mp));
+            a.set_hp(mp.min(max_hp).max(1));
+            a.set_mp(hp.min(max_mp));
+        }
+        "esuna" => {
+            for hit in &hits {
+                let Some(h) = registry.get(hit.target_actor_id).await else {
+                    continue;
+                };
+                let mut outbox = crate::status::StatusOutbox::new();
+                let removed = {
+                    let mut c = h.character.write().await;
+                    let id = c
+                        .status_effects
+                        .iter()
+                        .find(|e| {
+                            e.flags
+                                .contains(crate::status::StatusEffectFlags::LOSE_ON_ESUNA)
+                        })
+                        .map(|e| e.id);
+                    if let Some(id) = id {
+                        c.status_effects.remove_status_effect(
+                            id,
+                            crate::status::DEFAULT_LOSS_TEXT_ID,
+                            true,
+                            &mut outbox,
+                        );
+                    }
+                    id
+                };
+                if let Some(id) = removed {
+                    if let Some(row) = container
+                        .main_results
+                        .iter_mut()
+                        .find(|r| r.target_actor_id == hit.target_actor_id)
+                    {
+                        row.effect_id = STATUS_EFFECT_HIT | id;
+                    }
+                    if let (Some(db), Some(l)) = (db, lua) {
+                        for e in outbox.drain() {
+                            dispatch_status_event(&e, registry, world, db, l.catalogs()).await;
+                        }
+                    }
+                }
+            }
+        }
+        "chameleon" | "elusive_jump" => {
+            for h in registry.actors_in_zone(attacker_handle.zone_id).await {
+                if h.kind != crate::runtime::actor_registry::ActorKindTag::BattleNpc {
+                    continue;
+                }
+                let mut c = h.character.write().await;
+                if c.hate.has_hate_for(attacker_actor_id) {
+                    c.hate.clear_hate(Some(attacker_actor_id));
+                }
+            }
+        }
+        _ => {}
     }
 
     // #28 S3.3 — player completion bookkeeping: costs come off the
@@ -914,15 +1285,17 @@ async fn resolve_action(
     // `charaWork/commandDetailForSelf` pair reaches the owning client.
     // pmeteor splits this across `DoBattleCommand` (DelMP/DelTP,
     // Character.cs:1159-1160) and `Player.OnWeaponSkill/OnAbility/
-    // OnCast` (`UpdateHotbarTimer`, Player.cs:2901-2928).
-    let landed = dmg_request.map_or(0, |dr| dr.amount);
+    // OnCast` (`UpdateHotbarTimer`, Player.cs:2901-2928). MP costs are
+    // per-mille of the level curve (`CalculateMpCost`).
+    let landed: u32 = hits.iter().map(|h| u32::from(h.damage)).sum();
     if attacker_handle.is_player() {
         let now_unix = common::utils::unix_timestamp() as u32;
         let recast_end = now_unix.saturating_add(command.max_recast_time_seconds);
         let (class_id, slot0) = {
             let mut a = attacker_handle.character.write().await;
-            if command.mp_cost != 0 {
-                a.add_mp(-i32::from(command.mp_cost));
+            let mp_cost = command.calculate_mp_cost(a.chara.level, 0.0);
+            if mp_cost != 0 {
+                a.add_mp(-i32::from(mp_cost));
             }
             if command.tp_cost != 0 {
                 a.add_tp(-i32::from(command.tp_cost));
@@ -977,17 +1350,22 @@ async fn resolve_action(
     }
 
     // Combat-resolution log (companion to the auto-attack line).
-    {
-        let (def_hp, def_max) = {
-            let d = defender_handle.character.read().await;
-            (d.chara.hp, d.chara.max_hp)
+    for hit in &hits {
+        let (def_hp, def_max) = match registry.get(hit.target_actor_id).await {
+            Some(d) => {
+                let d = d.character.read().await;
+                (d.chara.hp, d.chara.max_hp)
+            }
+            None => (0, 0),
         };
         tracing::debug!(
             attacker = format!("0x{attacker_actor_id:08X}"),
-            defender = format!("0x{defender_actor_id:08X}"),
+            defender = format!("0x{:08X}", hit.target_actor_id),
             command = command.id,
-            amount = landed,
+            amount = hit.damage,
             heal = is_heal,
+            landed = hit.landed,
+            status = hit.status_roll,
             defender_hp = format!("{def_hp}/{def_max}"),
             "battle: action resolved",
         );
@@ -1018,25 +1396,43 @@ async fn resolve_action(
     )
     .await;
 
+    // Raise: back on their feet after the row lands.
+    if revives {
+        for hit in &hits {
+            apply_revive(hit.target_actor_id, registry, world, zone).await;
+        }
+    }
+
     // #28 S3.3 — HP/TP wire sync (see the auto-attack arm). The attacker
     // re-sync is unconditional for players: costs drain even on a miss.
-    if landed > 0 || is_heal {
-        broadcast_state_quickly(registry, world, zone, defender_actor_id).await;
+    for hit in &hits {
+        if hit.target_actor_id != attacker_actor_id && (hit.damage > 0 || hit.healed) {
+            broadcast_state_quickly(registry, world, zone, hit.target_actor_id).await;
+        }
     }
-    if attacker_handle.is_player() {
+    if attacker_handle.is_player()
+        || hits
+            .iter()
+            .any(|h| h.target_actor_id == attacker_actor_id && h.healed)
+    {
         broadcast_state_quickly(registry, world, zone, attacker_actor_id).await;
     }
 
-    die_if_defender_fell(
-        defender_actor_id,
-        Some(attacker_actor_id),
-        registry,
-        world,
-        zone,
-        lua,
-        db,
-    )
-    .await;
+    for hit in &hits {
+        if hit.target_actor_id == attacker_actor_id {
+            continue;
+        }
+        die_if_defender_fell(
+            hit.target_actor_id,
+            Some(attacker_actor_id),
+            registry,
+            world,
+            zone,
+            lua,
+            db,
+        )
+        .await;
+    }
 }
 
 /// pmeteor `CommandResultX01PacketCommand.Attack` — the synthetic
