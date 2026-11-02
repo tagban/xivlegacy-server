@@ -39,6 +39,9 @@ pub mod ticker;
 #[cfg(test)]
 mod integration_tests;
 
+#[cfg(test)]
+mod battle_audit_tests;
+
 pub use actor_registry::{ActorHandle, ActorKindTag, ActorRegistry};
 pub use broadcast::broadcast_around_actor;
 pub use dispatcher::{
