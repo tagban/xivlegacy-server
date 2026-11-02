@@ -70,6 +70,15 @@ DUNGEONS = {
 		entry = {0.0, 2.0, 1.5, 0.0},				-- the tower's south approach
 		exit = {190, -360.0, -15.5, -38.0, -1.57},	-- Jagged Crest Cave, Mor Dhona
 	},
+	-- Nael van Darnus's battle for the Grand Companies' To Kill a Raven
+	-- (Gc?107), reached aboard the Enterprise from the clearing before the
+	-- Lotus Stand, where it sets you down after.
+	rivenroad = {
+		zone = 257, name = "Rivenroad", content = "SimpleContentRivenroad",
+		director = "InstanceRaid/InstanceRaidLesserWhiteGeneral",
+		entry = {0.0, 0.0, -8.0, 0.0},				-- the Allagan dais's south side
+		exit = {206, -202.0, 22.4, -1608.5, 1.57},	-- the clearing before the Lotus Stand, Gridania
+	},
 }
 
 local function byZone(zoneId)
