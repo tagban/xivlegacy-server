@@ -4450,6 +4450,27 @@ impl Database {
             .await
     }
 
+    /// Everything the character carries, as (catalog id, total quantity)
+    /// summed over its packages: what a quest script's `HasItem` and
+    /// `GetItemQuantity` answer from.
+    pub async fn item_totals(&self, character_id: u32) -> Result<Vec<(u32, i32)>> {
+        self.conn
+            .call_db(move |c| {
+                let mut stmt = c.prepare(
+                    r"SELECT i.itemId, SUM(i.quantity) FROM characters_inventory ci
+                      JOIN server_items i ON i.id = ci.serverItemId
+                      WHERE ci.characterId = :c GROUP BY i.itemId",
+                )?;
+                let rows = stmt
+                    .query_map(named_params! { ":c": character_id }, |r| {
+                        Ok((r.get::<_, u32>(0)?, r.get::<_, i64>(1)? as i32))
+                    })?
+                    .collect::<rusqlite::Result<_>>()?;
+                Ok(rows)
+            })
+            .await
+    }
+
     /// A character's name by id.
     pub async fn character_name(&self, character_id: u32) -> Result<Option<String>> {
         self.conn

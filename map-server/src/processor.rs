@@ -6999,6 +6999,20 @@ impl PacketProcessor {
     ///
     /// A Lua-side error inside the hook is logged but not propagated —
     /// quest progression mustn't hard-fail on a scripting bug.
+    /// Give a quest hook's snapshot the player's items, so `HasItem` and
+    /// `GetItemQuantity` in quest scripts answer from what the character
+    /// really carries (the snapshot built from the Character alone has none).
+    async fn with_item_totals(
+        &self,
+        mut snapshot: crate::lua::userdata::PlayerSnapshot,
+    ) -> crate::lua::userdata::PlayerSnapshot {
+        match self.db.item_totals(snapshot.actor_id).await {
+            Ok(items) => snapshot.inventory = items,
+            Err(e) => tracing::warn!(player = snapshot.actor_id, err = %e, "quest hook: item totals failed"),
+        }
+        snapshot
+    }
+
     async fn fire_quest_hook(
         &self,
         handle: &ActorHandle,
@@ -7062,6 +7076,7 @@ impl PacketProcessor {
             };
             (snapshot, handle)
         };
+        let snapshot = self.with_item_totals(snapshot).await;
 
         let engine_clone = engine.clone();
         let script_path_clone = script_path.clone();
@@ -7197,6 +7212,7 @@ impl PacketProcessor {
             };
             (snap, qh)
         };
+        let snapshot = self.with_item_totals(snapshot).await;
 
         let engine_clone = engine.clone();
         let script_path_clone = script_path.clone();
