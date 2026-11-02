@@ -8798,6 +8798,12 @@ impl PacketProcessor {
         let target_id = match resolve_hotbar_target(command.main_target, actor_id, requested) {
             Ok(id) => id,
             Err(text_id) => {
+                tracing::debug!(
+                    player = actor_id,
+                    command = command.id,
+                    text_id,
+                    "hotbar command refused: target",
+                );
                 self.send_command_error_result(session_id, actor_id, command.id, text_id)
                     .await;
                 self.end_command_event(handle).await;
@@ -8852,6 +8858,14 @@ impl PacketProcessor {
             None
         };
         if let Some(text_id) = error_text {
+            tracing::debug!(
+                player = actor_id,
+                command = command.id,
+                text_id,
+                dist_xz,
+                dy = t_y - my_y,
+                "hotbar command refused",
+            );
             self.send_command_error_result(session_id, actor_id, command.id, text_id)
                 .await;
             self.end_command_event(handle).await;
