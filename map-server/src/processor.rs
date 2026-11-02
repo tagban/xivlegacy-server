@@ -8735,7 +8735,7 @@ impl PacketProcessor {
             _ => None,
         });
 
-        let (main_state, my_x, my_y, my_z, mp, tp, current_target, can_change, recast_end) = {
+        let (main_state, my_x, my_y, my_z, mp, tp, level, current_target, can_change, recast_end) = {
             let c = handle.character.read().await;
             (
                 c.base.current_main_state,
@@ -8744,6 +8744,7 @@ impl PacketProcessor {
                 c.base.position_z,
                 c.chara.mp,
                 c.chara.tp,
+                c.chara.level,
                 c.chara.current_target,
                 c.ai_container.can_change_state(),
                 c.chara
@@ -8772,22 +8773,51 @@ impl PacketProcessor {
             return;
         }
 
-        // Target resolution + the pmeteor `IsValidTarget` null arm
-        // (32511 "Target does not exist"). A dead target takes the same
-        // line — the lvl-1 kit is enemy-single-target only.
-        let target_id = param_target.unwrap_or(current_target);
-        let target_handle = if target_id != 0 && target_id != crate::actor::INVALID_ACTORID {
-            self.registry.get(target_id).await
+        // Target resolution against the row's `mainTarget` (pmeteor
+        // `IsValidMainTarget`): self-only commands land on the caster
+        // whatever is selected, friendly commands pressed with an enemy
+        // (or nothing) selected fall back to the caster, enemy commands
+        // refuse friendly targets, and KO'd targets are only valid for
+        // corpse commands (Raise). See `resolve_hotbar_target`.
+        let requested_id = param_target.unwrap_or(current_target);
+        let requested = if requested_id != 0 && requested_id != crate::actor::INVALID_ACTORID {
+            match self.registry.get(requested_id).await {
+                Some(t) => {
+                    let alive = t.character.read().await.is_alive();
+                    Some(HotbarTargetView {
+                        actor_id: requested_id,
+                        kind: t.kind,
+                        alive,
+                    })
+                }
+                None => None,
+            }
         } else {
             None
         };
-        let target_state = match &target_handle {
-            Some(t) => {
-                let c = t.character.read().await;
-                c.is_alive()
-                    .then_some((c.base.position_x, c.base.position_y, c.base.position_z))
+        let target_id = match resolve_hotbar_target(command.main_target, actor_id, requested) {
+            Ok(id) => id,
+            Err(text_id) => {
+                self.send_command_error_result(session_id, actor_id, command.id, text_id)
+                    .await;
+                self.end_command_event(handle).await;
+                return;
             }
-            None => None,
+        };
+        let target_is_enemy = requested.is_some_and(|r| {
+            r.actor_id == target_id
+                && r.kind == crate::runtime::actor_registry::ActorKindTag::BattleNpc
+        });
+        let target_state = if target_id == actor_id {
+            Some((my_x, my_y, my_z))
+        } else {
+            match self.registry.get(target_id).await {
+                Some(t) => {
+                    let c = t.character.read().await;
+                    Some((c.base.position_x, c.base.position_y, c.base.position_z))
+                }
+                None => None,
+            }
         };
         let Some((t_x, t_y, t_z)) = target_state else {
             self.send_command_error_result(session_id, actor_id, command.id, 32511)
@@ -8812,7 +8842,9 @@ impl PacketProcessor {
             Some(32540) // "The target is too far above you."
         } else if my_y - t_y > half_height {
             Some(32541) // "The target is too far below you."
-        } else if command.mp_cost as i32 > mp as i32 {
+        } else if i32::from(command.to_battle_command().calculate_mp_cost(level, 0.0))
+            > i32::from(mp)
+        {
             Some(32545) // "You do not have enough MP."
         } else if command.tp_cost as i32 > tp as i32 {
             Some(32546) // "You do not have enough TP."
@@ -8832,7 +8864,8 @@ impl PacketProcessor {
         let now_ms = crate::runtime::clock::server_now_ms();
         let pushed = {
             let mut c = handle.character.write().await;
-            if !c.ai_container.is_engaged() {
+            // Buffs and heals on yourself or a friend don't start a fight.
+            if target_is_enemy && !c.ai_container.is_engaged() {
                 let delay = c.get_attack_delay_ms();
                 c.ai_container.internal_engage(target_id, now_ms, delay);
                 // Hate seed — same rationale as `apply_actor_engage`:
@@ -9438,7 +9471,11 @@ impl PacketProcessor {
                 .filter(|q| q.state.current.contains_key(&npc_spec.actor_class_id))
                 .map(|q| q.quest_id())
                 .collect();
-            if owners.is_empty() { active_quest_ids } else { owners }
+            if owners.is_empty() {
+                active_quest_ids
+            } else {
+                owners
+            }
         } else {
             active_quest_ids
         };
@@ -10791,6 +10828,167 @@ pub(crate) fn build_player_snapshot_from_character(
         id => id,
     };
     snapshot
+}
+
+/// What the hotbar press selected, for [`resolve_hotbar_target`].
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct HotbarTargetView {
+    pub actor_id: u32,
+    pub kind: crate::runtime::actor_registry::ActorKindTag,
+    pub alive: bool,
+}
+
+/// Pick the actor a hotbar command lands on from the row's `mainTarget`
+/// bits and what the player has selected; `Err` is the error text id.
+///
+///   * `SelfOnly` (every self buff, the shared Limit Breaks) → the caster,
+///     whatever is selected. Before this the press resolved against the
+///     selected enemy: range-0 buffs failed "too far away", and the rest
+///     buffed or healed the monster.
+///   * an enemy selected: enemy commands take it; friendly commands that
+///     allow `Self` fall back to the caster (Cure with a mob selected).
+///   * a friend selected: friendly commands take it; enemy-only commands
+///     refuse ("cannot target an ally").
+///   * nothing selected: `Self` commands go to the caster.
+///   * KO'd targets only for corpse commands, and corpse-only commands
+///     need one.
+pub(crate) fn resolve_hotbar_target(
+    main_target: u16,
+    caster_id: u32,
+    requested: Option<HotbarTargetView>,
+) -> std::result::Result<u32, u16> {
+    use crate::battle::target_find::ValidTarget as V;
+    use crate::runtime::actor_registry::ActorKindTag as K;
+    let mt = V(main_target);
+    let can_self = mt.intersects(V::SELF);
+    let can_enemy = mt.intersects(V::ENEMY);
+    let can_friend = mt.intersects(V(V::ALLY.0 | V::PARTY.0));
+    let corpse_ok = mt.intersects(V::CORPSE);
+    let corpse_only = mt.intersects(V::CORPSE_ONLY);
+
+    if mt.intersects(V::SELF_ONLY) {
+        return Ok(caster_id);
+    }
+    let fallback_self = |err: u16| if can_self { Ok(caster_id) } else { Err(err) };
+    let Some(t) = requested else {
+        return fallback_self(32511); // "Target does not exist."
+    };
+    if t.actor_id == caster_id {
+        return fallback_self(32514); // "Cannot target yourself."
+    }
+    let is_enemy = t.kind == K::BattleNpc;
+    let is_friend = matches!(t.kind, K::Player | K::Ally | K::Pet);
+    if is_enemy {
+        if !can_enemy {
+            return fallback_self(32518); // "Cannot target an enemy."
+        }
+        if !t.alive {
+            return Err(32512); // "Cannot target a KO'd target."
+        }
+        return Ok(t.actor_id);
+    }
+    if is_friend {
+        if !can_friend {
+            return if can_enemy {
+                Err(32516) // "Cannot target an ally."
+            } else {
+                fallback_self(32516)
+            };
+        }
+        if !t.alive && !corpse_ok {
+            return fallback_self(32512);
+        }
+        if t.alive && corpse_only {
+            return Err(32513); // "Must target a KO'd target."
+        }
+        return Ok(t.actor_id);
+    }
+    // Static NPCs / objects are never battle targets.
+    fallback_self(32547)
+}
+
+#[cfg(test)]
+mod hotbar_target_tests {
+    use super::{HotbarTargetView, resolve_hotbar_target};
+    use crate::runtime::actor_registry::ActorKindTag as K;
+
+    const ME: u32 = 1;
+    fn t(actor_id: u32, kind: K, alive: bool) -> Option<HotbarTargetView> {
+        Some(HotbarTargetView {
+            actor_id,
+            kind,
+            alive,
+        })
+    }
+
+    #[test]
+    fn self_only_ignores_selected_enemy() {
+        // second_wind / rampart: mainTarget 31.
+        assert_eq!(
+            resolve_hotbar_target(31, ME, t(2, K::BattleNpc, true)),
+            Ok(ME)
+        );
+        assert_eq!(resolve_hotbar_target(31, ME, None), Ok(ME));
+    }
+
+    #[test]
+    fn enemy_commands_take_enemy_refuse_friend() {
+        assert_eq!(
+            resolve_hotbar_target(768, ME, t(2, K::BattleNpc, true)),
+            Ok(2)
+        );
+        assert_eq!(
+            resolve_hotbar_target(768, ME, t(4, K::Player, true)),
+            Err(32516)
+        );
+        assert_eq!(
+            resolve_hotbar_target(768, ME, t(2, K::BattleNpc, false)),
+            Err(32512)
+        );
+        assert_eq!(resolve_hotbar_target(768, ME, None), Err(32511));
+    }
+
+    #[test]
+    fn cure_falls_back_to_caster_on_enemy() {
+        // cure: mainTarget 53 (self | party | ally | allyOnly).
+        assert_eq!(
+            resolve_hotbar_target(53, ME, t(2, K::BattleNpc, true)),
+            Ok(ME)
+        );
+        assert_eq!(resolve_hotbar_target(53, ME, t(4, K::Player, true)), Ok(4));
+        assert_eq!(
+            resolve_hotbar_target(53, ME, t(4, K::Player, false)),
+            Ok(ME)
+        );
+    }
+
+    #[test]
+    fn raise_needs_a_corpse() {
+        // raise: mainTarget 12340 (party | ally | allyOnly | corpse | corpseOnly).
+        assert_eq!(
+            resolve_hotbar_target(12340, ME, t(4, K::Player, false)),
+            Ok(4)
+        );
+        assert_eq!(
+            resolve_hotbar_target(12340, ME, t(4, K::Player, true)),
+            Err(32513)
+        );
+        assert_eq!(resolve_hotbar_target(12340, ME, None), Err(32511));
+    }
+
+    #[test]
+    fn cover_needs_another_player() {
+        // cover / collusion: mainTarget 60 (party | partyOnly | ally | allyOnly).
+        assert_eq!(resolve_hotbar_target(60, ME, t(4, K::Player, true)), Ok(4));
+        assert_eq!(
+            resolve_hotbar_target(60, ME, t(2, K::BattleNpc, true)),
+            Err(32518)
+        );
+        assert_eq!(
+            resolve_hotbar_target(60, ME, t(ME, K::Player, true)),
+            Err(32514)
+        );
+    }
 }
 
 #[cfg(test)]
