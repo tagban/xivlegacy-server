@@ -249,6 +249,12 @@ impl AIContainer {
         self.states.clear();
     }
 
+    /// Stop auto-attacking: drop the Attack states and leave a cast,
+    /// ability or weaponskill in progress to finish.
+    pub fn stop_attacking(&mut self) {
+        self.states.retain(|s| s.kind != BattleStateKind::Attack);
+    }
+
     pub fn reset(&mut self) {
         self.clear_states();
         if let Some(pf) = &mut self.path_find {

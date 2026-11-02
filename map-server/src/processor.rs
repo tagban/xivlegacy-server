@@ -8734,6 +8734,55 @@ impl PacketProcessor {
         }
     }
 
+    /// "You are not in active mode" (32503) as the WorldMaster system line,
+    /// then the one EndEvent that answers the press.
+    async fn refuse_not_active(&self, handle: &ActorHandle, session_id: u32) {
+        if let Some(client) = self.world.client(session_id).await {
+            let mut pkt = crate::packets::send::misc::build_text_sheet_no_source_x28(
+                crate::packets::send::misc::WORLD_MASTER_ACTOR_ID,
+                crate::packets::send::misc::WORLD_MASTER_ACTOR_ID,
+                32503,
+                crate::packets::send::misc::MESSAGE_TYPE_SYSTEM,
+            );
+            pkt.set_target_id(session_id);
+            client.send_bytes(pkt.to_bytes()).await;
+        }
+        self.end_command_event(handle).await;
+    }
+
+    /// Draw the weapon for an attack on a monster made from passive mode (a
+    /// QoL change over retail, where the player had to press F first): the
+    /// same state trio and "playerActive" signal as the F press
+    /// (ActivateCommand.lua).
+    async fn draw_weapon_for_attack(&self, handle: &ActorHandle, target_id: u32) {
+        let actor_id = handle.actor_id;
+        let Some(zone_arc) = self.world.zone(handle.zone_id).await else {
+            return;
+        };
+        crate::runtime::dispatcher::emit_change_state_trio(
+            actor_id,
+            crate::actor::MAIN_STATE_ACTIVE,
+            &self.registry,
+            &self.world,
+            &zone_arc,
+        )
+        .await;
+        crate::runtime::dispatcher::fire_content_signal(
+            actor_id,
+            "playerActive",
+            &self.registry,
+            &self.world,
+            self.lua.as_ref(),
+            Some(&self.db),
+        )
+        .await;
+        tracing::debug!(
+            player = format!("0x{actor_id:08X}"),
+            target = format!("0x{target_id:08X}"),
+            "attack on a monster from passive mode — weapon drawn",
+        );
+    }
+
     /// Inline execution of a hotbar skill press (#28 S3.2) — the Rust port
     /// of pmeteor's 4-line command scripts (`AttackWeaponSkill.lua` /
     /// `Ability.lua` / `AttackMagic.lua`) + `Player.CanUse`
@@ -8785,18 +8834,23 @@ impl PacketProcessor {
 
         // Active-mode gate (commands/AttackWeaponSkill.lua:15-19):
         // "You are not in active mode" as the WorldMaster system line.
-        if main_state != crate::actor::MAIN_STATE_ACTIVE {
-            if let Some(client) = self.world.client(session_id).await {
-                let mut pkt = crate::packets::send::misc::build_text_sheet_no_source_x28(
-                    crate::packets::send::misc::WORLD_MASTER_ACTOR_ID,
-                    crate::packets::send::misc::WORLD_MASTER_ACTOR_ID,
-                    32503,
-                    crate::packets::send::misc::MESSAGE_TYPE_SYSTEM,
-                );
-                pkt.set_target_id(session_id);
-                client.send_bytes(pkt.to_bytes()).await;
-            }
-            self.end_command_event(handle).await;
+        // QoL over retail: an attack command (enemy main target) used on a
+        // monster from passive mode passes, and draws the weapon once the
+        // target is resolved below. Self actions, cures and the like are
+        // still refused in passive mode.
+        let requested_id = param_target.unwrap_or(current_target);
+        let attack_on_monster = command.main_target
+            & (crate::battle::target_find::ValidTarget::ENEMY.0
+                | crate::battle::target_find::ValidTarget::ENEMY_ONLY.0)
+            != 0
+            && requested_id != actor_id
+            && matches!(
+                self.registry.get(requested_id).await.map(|t| t.kind),
+                Some(crate::runtime::actor_registry::ActorKindTag::BattleNpc)
+            );
+        let draw_first = main_state == crate::actor::MAIN_STATE_PASSIVE && attack_on_monster;
+        if main_state != crate::actor::MAIN_STATE_ACTIVE && !draw_first {
+            self.refuse_not_active(handle, session_id).await;
             return;
         }
 
@@ -8806,7 +8860,6 @@ impl PacketProcessor {
         // (or nothing) selected fall back to the caster, enemy commands
         // refuse friendly targets, and KO'd targets are only valid for
         // corpse commands (Raise). See `resolve_hotbar_target`.
-        let requested_id = param_target.unwrap_or(current_target);
         let requested = if requested_id != 0 && requested_id != crate::actor::INVALID_ACTORID {
             match self.registry.get(requested_id).await {
                 Some(t) => {
@@ -8841,6 +8894,15 @@ impl PacketProcessor {
             r.actor_id == target_id
                 && r.kind == crate::runtime::actor_registry::ActorKindTag::BattleNpc
         });
+        if draw_first {
+            if !target_is_enemy {
+                // The command landed on someone other than the monster:
+                // refuse as passive mode always has.
+                self.refuse_not_active(handle, session_id).await;
+                return;
+            }
+            self.draw_weapon_for_attack(handle, target_id).await;
+        }
         let target_state = if target_id == actor_id {
             Some((my_x, my_y, my_z))
         } else {
@@ -9005,6 +9067,26 @@ impl PacketProcessor {
             false
         };
 
+        // Attacking a monster from passive mode draws the weapon first: the
+        // client asks to attack (attackTarget set) when the basic attack is
+        // used on a monster while sheathed. Only a BattleNpc target counts,
+        // so friendly and self targets never draw; the engage below then
+        // starts.
+        let target_is_monster = auto_attack
+            && selected_target != 0
+            && selected_target != Self::SET_TARGET_NONE
+            && selected_target != actor_id
+            && matches!(
+                self.registry.get(selected_target).await.map(|t| t.kind),
+                Some(crate::runtime::actor_registry::ActorKindTag::BattleNpc)
+            );
+        if target_is_monster
+            && handle.character.read().await.base.current_main_state
+                == crate::actor::MAIN_STATE_PASSIVE
+        {
+            self.draw_weapon_for_attack(&handle, selected_target).await;
+        }
+
         {
             let mut c = handle.character.write().await;
 
@@ -9019,11 +9101,12 @@ impl PacketProcessor {
             };
 
             // #46 sheathed-combat leak: the basic attack must not engage
-            // while the weapon is sheathed. The retail client only sets
-            // attackTarget when drawn, so a sheathed 0x00CD is a silent
-            // drop (pmeteor PacketProcessor.cs:266-295 trusts the client
-            // and sends no error on this path) — keep the soft target and
-            // the reticle broadcast below.
+            // while the weapon is sheathed. An attack on a monster was drawn
+            // above, so what still arrives sheathed (a friendly or self
+            // target, or a dead or mounted player) is a silent drop (pmeteor
+            // PacketProcessor.cs:266-295 trusts the client and sends no
+            // error on this path) — keep the soft target and the reticle
+            // broadcast below.
             let in_active_mode = c.base.current_main_state == crate::actor::MAIN_STATE_ACTIVE;
             let valid_combat_target = auto_attack
                 && !cleared
@@ -9061,8 +9144,11 @@ impl PacketProcessor {
                 }
             } else if !auto_attack {
                 // Auto-attack toggled off (attackTarget == 0xE0000000) — stop
-                // swinging but keep the soft target so the reticle stays.
-                c.ai_container.clear_states();
+                // swinging but keep the soft target so the reticle stays. A
+                // cast in progress is left alone: the client sends this as
+                // it leaves targeting right after a spell pressed from
+                // passive mode, which would otherwise cancel the spell.
+                c.ai_container.stop_attacking();
             } else if !in_active_mode {
                 tracing::debug!(
                     player = format!("0x{actor_id:08X}"),

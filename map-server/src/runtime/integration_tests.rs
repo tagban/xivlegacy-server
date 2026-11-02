@@ -14751,29 +14751,32 @@ async fn hotbar_press_executes_fast_blade_with_costs_and_recast() {
     let handle = registry.get(1).await.expect("player handle");
     let press = event_start_body(1, 0xA0F0_6A0E, "commandDefault", &[LuaParam::Actor(2)]);
 
-    // Phase 0 — passive mode: gated with the 32503 line, one EndEvent,
-    // no state pushed.
-    processor.handle_event_start(42, &press).await.unwrap();
+    // Phase 0 — passive mode, aimed at no monster (yourself): gated with
+    // the 32503 line, one EndEvent, no state pushed.
+    let self_press = event_start_body(1, 0xA0F0_6A0E, "commandDefault", &[LuaParam::Actor(1)]);
+    processor.handle_event_start(42, &self_press).await.unwrap();
     let subs = parse_all_subpackets(&mut rx);
     assert_eq!(count_end_events(&subs), 1, "exactly one EndEvent per press");
     {
         let c = handle.character.read().await;
         assert!(
             !c.ai_container.is_engaged(),
-            "passive-mode press must not engage",
+            "passive-mode press without a monster must not engage",
         );
     }
 
-    // Phase 1 — active mode: the press engages + pushes WeaponSkill.
-    {
-        let mut c = handle.character.write().await;
-        c.base.current_main_state = crate::actor::MAIN_STATE_ACTIVE;
-    }
+    // Phase 1 — still passive, aimed at the wolf: the press draws the
+    // weapon (active mode), engages + pushes WeaponSkill.
     processor.handle_event_start(42, &press).await.unwrap();
     let subs = parse_all_subpackets(&mut rx);
     assert_eq!(count_end_events(&subs), 1, "exactly one EndEvent per press");
     {
         let c = handle.character.read().await;
+        assert_eq!(
+            c.base.current_main_state,
+            crate::actor::MAIN_STATE_ACTIVE,
+            "an attack on a monster from passive mode draws the weapon",
+        );
         assert!(c.ai_container.is_engaged(), "press must engage-if-not");
         assert!(
             c.ai_container.is_current(BattleStateKind::WeaponSkill),
@@ -15077,49 +15080,31 @@ async fn sheathe_mid_combat_flushes_battle_states_and_stops_auto_attack() {
     }
 }
 
-/// #46 — the 0x00CD SetTarget auto-attack engage is stance-gated: while
-/// PASSIVE (weapon sheathed) the engage is a silent drop that keeps the
-/// soft target + reticle broadcast (pmeteor PacketProcessor.cs:266-295
-/// sends no error on this path); the same press engages once ACTIVE.
+/// The 0x00CD SetTarget auto-attack on a monster while PASSIVE (weapon
+/// sheathed) draws the weapon and engages, as the press would once ACTIVE
+/// (a QoL change from pmeteor, which dropped it: PacketProcessor.cs:266-295).
 #[tokio::test]
-async fn set_target_auto_attack_gated_on_active_mode() {
+async fn set_target_auto_attack_draws_weapon_from_passive() {
     let mut scene = sheathe_scene().await;
     let handle = scene.registry.get(1).await.expect("player handle");
 
-    // PASSIVE (default): no engage, soft target + reticle preserved.
     scene.processor.apply_player_set_target(42, 2, true).await;
     {
         let c = handle.character.read().await;
-        assert!(
-            !c.ai_container.is_engaged(),
-            "sheathed 0x00CD must not engage the swing loop",
+        assert_eq!(
+            c.base.current_main_state,
+            crate::actor::MAIN_STATE_ACTIVE,
+            "the attack draws the weapon",
         );
-        assert!(
-            c.ai_container.state_stack().is_empty(),
-            "sheathed 0x00CD must not push any battle state",
-        );
-        assert_eq!(c.chara.current_target, 2, "soft target survives the gate");
+        assert!(c.ai_container.is_engaged(), "and engages the swing loop");
+        assert_eq!(c.chara.current_target, 2, "soft target kept");
     }
     let subs = parse_all_subpackets(&mut scene.rx);
     assert!(
         subs.iter().any(|s| s.game_message.opcode
             == crate::packets::opcodes::OP_SET_ACTOR_TARGET_ANIMATED),
-        "reticle broadcast still goes out on the sheathed press",
+        "reticle broadcast goes out",
     );
-
-    // ACTIVE: the same press engages.
-    {
-        let mut c = handle.character.write().await;
-        c.base.current_main_state = crate::actor::MAIN_STATE_ACTIVE;
-    }
-    scene.processor.apply_player_set_target(42, 2, true).await;
-    {
-        let c = handle.character.read().await;
-        assert!(
-            c.ai_container.is_engaged(),
-            "active-mode 0x00CD must engage"
-        );
-    }
 }
 
 /// A townsperson or quest giver (`Npc`) is never an auto-attack target,
