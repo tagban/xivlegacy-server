@@ -4413,6 +4413,61 @@ impl Database {
         Ok(n > 0)
     }
 
+    /// A GM's `setpos` on a battle NPC: its spawn row's position. Returns
+    /// whether the row exists.
+    pub async fn set_battle_npc_spawn_position(
+        &self,
+        bnpc_id: u32,
+        x: f32,
+        y: f32,
+        z: f32,
+        rotation: f32,
+    ) -> Result<bool> {
+        let n = self
+            .conn
+            .call_db(move |c| {
+                c.execute(
+                    r"UPDATE server_battlenpc_spawn_locations
+                      SET positionX = :x, positionY = :y, positionZ = :z, rotation = :r
+                      WHERE bnpcId = :b",
+                    named_params! { ":b": bnpc_id, ":x": x, ":y": y, ":z": z, ":r": rotation },
+                )
+            })
+            .await?;
+        Ok(n > 0)
+    }
+
+    /// A GM's `setpos` on an NPC: its `server_spawn_locations` row(s), found
+    /// by zone, class and unique id (and private area, for a copy seeded in
+    /// one). Returns how many rows changed.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn set_npc_spawn_position(
+        &self,
+        zone_id: u32,
+        class_id: u32,
+        unique_id: String,
+        private_area: Option<String>,
+        x: f32,
+        y: f32,
+        z: f32,
+        rotation: f32,
+    ) -> Result<usize> {
+        self.conn
+            .call_db(move |c| {
+                c.execute(
+                    r"UPDATE server_spawn_locations
+                      SET positionX = :x, positionY = :y, positionZ = :z, rotation = :r
+                      WHERE zoneId = :zone AND actorClassId = :class AND uniqueId = :u
+                        AND COALESCE(privateAreaName, '') = COALESCE(:pa, '')",
+                    named_params! {
+                        ":zone": zone_id, ":class": class_id, ":u": unique_id, ":pa": private_area,
+                        ":x": x, ":y": y, ":z": z, ":r": rotation,
+                    },
+                )
+            })
+            .await
+    }
+
     /// The character's starting city (characters.initialTown: 1 Limsa
     /// Lominsa, 2 Gridania, 3 Ul'dah; 0 unknown).
     pub async fn initial_town_of_character(&self, character_id: u32) -> Result<u32> {

@@ -1854,7 +1854,7 @@ async fn apply_hate_container_add_base_hate(
 /// the registry or has no zone we just log and drop, matching the C#
 /// implicit silent-skip when CurrentArea is null.
 #[allow(clippy::too_many_arguments)]
-async fn apply_move_actor_to_position(
+pub(crate) async fn apply_move_actor_to_position(
     actor_id: u32,
     x: f32,
     y: f32,

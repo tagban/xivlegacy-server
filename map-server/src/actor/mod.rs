@@ -351,6 +351,9 @@ pub struct CharaState {
     pub current_job: u16,
     pub new_main_state: u16,
 
+    /// The `server_battlenpc_spawn_locations` row a battle NPC came from
+    /// (0 for every other actor), so a GM's `setpos` knows what to save.
+    pub bnpc_id: u32,
     pub spawn_x: f32,
     pub spawn_y: f32,
     pub spawn_z: f32,
@@ -426,6 +429,7 @@ impl Default for CharaState {
             current_actor_icon: 0,
             current_job: 0,
             new_main_state: 0,
+            bnpc_id: 0,
             spawn_x: 0.0,
             spawn_y: 0.0,
             spawn_z: 0.0,
