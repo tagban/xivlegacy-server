@@ -61,6 +61,15 @@ DUNGEONS = {
 		entry = {1508.0, 302.0, -274.0, -1.16},	-- the bowl's east rim
 		exit = {143, 1027.0, 290.8, -137.0, 0.0},	-- Feathergorge, Coerthas Central Highlands
 	},
+	-- The Grand Companies' assault on Castrum Novum's lunar transmitter
+	-- (United We Stand, Gc?106), entered through the aetherial gate in Jagged
+	-- Crest Cave, where you return after.
+	castrum = {
+		zone = 251, name = "CastrumNovum", content = "SimpleContentCastrumNovum",
+		director = "InstanceRaid/InstanceRaidBeaconBattle",
+		entry = {0.0, 2.0, 1.5, 0.0},				-- the tower's south approach
+		exit = {190, -360.0, -15.5, -38.0, -1.57},	-- Jagged Crest Cave, Mor Dhona
+	},
 }
 
 local function byZone(zoneId)
