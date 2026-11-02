@@ -67,6 +67,38 @@ fn prerequisites(quest_id: u32, prerequisite: u32) -> Vec<u32> {
 /// the test quest); `com5*` and `gc*` are for sworn members. Anyone sworn
 /// to another company is offered none of this one's, and the oath isn't
 /// offered twice.
+/// The class a guild quest belongs to (Thm200 -> thaumaturge), by script
+/// prefix. Each guild offers its quests only to players on that class.
+const CLASS_QUESTS: &[(&str, i16)] = &[
+    ("pgl", 2),
+    ("gla", 3),
+    ("exc", 4),
+    ("arc", 7),
+    ("lnc", 8),
+    ("thm", 22),
+    ("cnj", 23),
+    ("wdk", 29),
+    ("bsm", 30),
+    ("gld", 32),
+    ("tan", 33),
+    ("wvr", 34),
+    ("alc", 35),
+    ("cul", 36),
+    ("min", 39),
+    ("hrv", 40),
+    ("fsh", 41),
+];
+
+fn class_gate(script_name: &str, class: i16) -> bool {
+    match CLASS_QUESTS
+        .iter()
+        .find(|(prefix, _)| script_name.starts_with(prefix) && script_name.len() == 6)
+    {
+        Some((_, needed)) => *needed == class,
+        None => true,
+    }
+}
+
 fn company_gate(script_name: &str, chara: &crate::actor::CharaState) -> bool {
     use crate::actor::gc;
     let (nation, kind) = if let Some(rest) = script_name.strip_prefix("com") {
@@ -131,6 +163,7 @@ impl PacketProcessor {
                     let needs = prerequisites(m.id, m.prerequisite);
                     is_offerable(&name, !needs.is_empty())
                         && company_gate(&name, &c.chara)
+                        && class_gate(&name, c.chara.class)
                         && !journal.has(m.id)
                         && !journal.is_completed(m.id)
                         && level >= m.min_level
@@ -308,6 +341,16 @@ mod tests {
         assert!(!is_offerable("trl0l1", false));
         assert!(is_offerable("etc1l1", false));
         assert!(is_offerable("wld0l1", false));
+    }
+
+    #[test]
+    fn guild_quests_need_their_class() {
+        assert!(class_gate("thm200", 22));
+        assert!(!class_gate("thm200", 23));
+        assert!(!class_gate("exc306", 2));
+        assert!(class_gate("hrv200", 40));
+        assert!(class_gate("man200", 2));
+        assert!(class_gate("etc1l1", 22));
     }
 
     #[test]
