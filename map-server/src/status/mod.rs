@@ -338,10 +338,29 @@ impl StatusEffectContainer {
         passive: PassiveRegen,
         outbox: &mut StatusOutbox,
     ) {
-        if now_ms.saturating_sub(self.last_regen_ms) >= REGEN_TICK_MS {
+        self.update_with_clocks(now_ms, now_ms, mods, passive, outbox);
+    }
+
+    /// [`Self::update`] with the two clocks split: `regen_now_ms` paces
+    /// the 3 s regen tick (the game ticker's battle clock), while
+    /// `effect_now_ms` is wall-clock Unix ms — the domain every effect's
+    /// start/end time is stamped in (`add_status_effect` callers, the DB
+    /// rows, the client's `statusShownTime`). Feeding the ticker's
+    /// server-start-relative clock here meant `now_s >= end_time` never
+    /// held: applied effects never expired and never ticked.
+    pub fn update_with_clocks(
+        &mut self,
+        regen_now_ms: u64,
+        effect_now_ms: u64,
+        mods: &ModifierMap,
+        passive: PassiveRegen,
+        outbox: &mut StatusOutbox,
+    ) {
+        if regen_now_ms.saturating_sub(self.last_regen_ms) >= REGEN_TICK_MS {
             self.regen_tick(mods, passive, outbox);
-            self.last_regen_ms = now_ms;
+            self.last_regen_ms = regen_now_ms;
         }
+        let now_ms = effect_now_ms;
 
         // Collect expiries without holding an immutable borrow during mutation.
         let ids: Vec<u32> = self.effects.keys().copied().collect();

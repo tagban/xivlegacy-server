@@ -959,9 +959,12 @@ fn tick_status(chara: &mut Character, now_ms: u64, outbox: &mut StatusOutbox) {
     // underlying HashMap is small enough that this is essentially free.
     let mods_snapshot: ModifierMap = chara.chara.mods.clone();
     let passive = compute_passive_regen(chara);
+    // Effects are stamped in wall-clock Unix time; regen paces on the
+    // ticker's clock.
+    let wall_ms = (common::utils::unix_timestamp() as u64).saturating_mul(1000);
     chara
         .status_effects
-        .update(now_ms, &mods_snapshot, passive, outbox);
+        .update_with_clocks(now_ms, wall_ms, &mods_snapshot, passive, outbox);
 }
 
 /// Base out-of-combat pool deltas fed into the 3 s regen tick alongside
