@@ -103,43 +103,168 @@ impl CommandProcessor {
 
     // --- moving players ------------------------------------------------------------------------
 
-    /// `goto <name>`: to where someone is.
-    pub(super) async fn handle_goto(&self, args: &Args<'_>) -> String {
-        let Some(target) = Some(args.tokens.join(" ")).filter(|t| !t.is_empty()) else {
-            return "usage: goto <name>".into();
-        };
-        let me = match self.invoker_id(args).await {
-            Ok(id) => id,
-            Err(e) => return e,
-        };
-        let Ok(tid) = self.online_id(&target).await else {
-            return format!("{target} is not online");
-        };
-        let Some((zone, x, y, z, _)) = self.spot_of(tid).await else {
-            return format!("{target} is not online");
-        };
-        let my_name = args.invoker.unwrap_or_default().to_string();
-        let _ = me;
-        self.teleport(&my_name, Some(zone), None, 0, x, y, z).await;
-        format!("went to {target} (zone {zone})")
+    /// The invoker's current target, or an error line.
+    async fn my_target(&self, me: u32) -> Result<u32, String> {
+        let handle = self
+            .registry
+            .get(me)
+            .await
+            .ok_or("you are not in the world")?;
+        let target = handle.character.read().await.chara.current_target;
+        if target == 0 || target == crate::actor::INVALID_ACTORID || target == me {
+            return Err("nothing targeted".into());
+        }
+        Ok(target)
     }
 
-    /// `bring <name>`: someone to where you are.
-    pub(super) async fn handle_bring(&self, args: &Args<'_>) -> String {
-        if args.len() == 0 {
-            return "usage: bring <name>".into();
+    /// An NPC or monster in `me`'s zone by name (case-insensitive: the start
+    /// of its display name, or part of its spawn name or class path, such as
+    /// "dodo"), actor class id or actor id: the nearest match.
+    async fn find_npc(&self, me: u32, what: &str) -> Option<u32> {
+        let (zone, mx, mz) = {
+            let h = self.registry.get(me).await?;
+            let c = h.character.read().await;
+            (c.base.zone_id, c.base.position_x, c.base.position_z)
+        };
+        let number = what
+            .strip_prefix("0x")
+            .and_then(|h| u32::from_str_radix(h, 16).ok())
+            .or_else(|| what.parse::<u32>().ok());
+        let want = what.to_lowercase();
+        let mut best: Option<(f32, u32)> = None;
+        for h in self.registry.actors_in_zone(zone).await {
+            if h.session_id != 0 || h.actor_id == me {
+                continue;
+            }
+            let c = h.character.read().await;
+            let hit = match number {
+                Some(n) => n == h.actor_id || n == c.chara.actor_class_id,
+                // monster names are client text, so the class path
+                // (".../Monster/Dodo/...") and spawn name stand in for them
+                None => {
+                    c.base.display_name().to_lowercase().starts_with(&want)
+                        || c.base.unique_id.to_lowercase().contains(&want)
+                        || c.base.class_path.to_lowercase().contains(&want)
+                }
+            };
+            if !hit {
+                continue;
+            }
+            let d = (c.base.position_x - mx).powi(2) + (c.base.position_z - mz).powi(2);
+            if best.is_none_or(|(bd, _)| d < bd) {
+                best = Some((d, h.actor_id));
+            }
         }
-        let target = args.tokens.join(" ");
+        best.map(|(_, id)| id)
+    }
+
+    /// "name (actor 0x…)" for replies; a monster's class (its name is
+    /// client text).
+    async fn actor_label(&self, actor_id: u32) -> String {
+        let Some(h) = self.registry.get(actor_id).await else {
+            return format!("actor 0x{actor_id:08X}");
+        };
+        let c = h.character.read().await;
+        let name = match c.base.display_name() {
+            "" => c.base.class_name.as_str(),
+            n => n,
+        };
+        format!("{name} (actor 0x{actor_id:08X})")
+    }
+
+    /// `goto [name]`: to your target, a player, or an NPC or monster in your
+    /// zone (by name, class id or actor id).
+    pub(super) async fn handle_goto(&self, args: &Args<'_>) -> String {
         let me = match self.invoker_id(args).await {
             Ok(id) => id,
             Err(e) => return e,
         };
-        let Some((zone, x, y, z, _)) = self.spot_of(me).await else {
+        let what = args.tokens.join(" ");
+        let tid = if what.is_empty() {
+            match self.my_target(me).await {
+                Ok(t) => t,
+                Err(e) => return format!("{e} (usage: goto [name | npc name | class id])"),
+            }
+        } else if let Ok(id) = self.online_id(&what).await {
+            id
+        } else if let Some(id) = self.find_npc(me, &what).await {
+            id
+        } else {
+            return format!("no player online or NPC in your zone called {what}");
+        };
+        let Some((zone, x, y, z, _)) = self.spot_of(tid).await else {
+            return "that actor is gone".into();
+        };
+        let my_name = args.invoker.unwrap_or_default().to_string();
+        self.teleport(&my_name, Some(zone), None, 0, x, y, z).await;
+        format!("went to {} (zone {zone})", self.actor_label(tid).await)
+    }
+
+    /// `bring [name]`: someone to where you are; with no name, your target;
+    /// or an NPC or monster in your zone by name, class id or actor id (it
+    /// runs over and stays until a restart; `setpos` saves the spot).
+    pub(super) async fn handle_bring(&self, args: &Args<'_>) -> String {
+        let me = match self.invoker_id(args).await {
+            Ok(id) => id,
+            Err(e) => return e,
+        };
+        let Some((zone, x, y, z, rot)) = self.spot_of(me).await else {
             return "you are not in the world".into();
         };
-        let r = self.teleport(&target, Some(zone), None, 0, x, y, z).await;
+        let what = args.tokens.join(" ");
+        let npc = if what.is_empty() {
+            match self.my_target(me).await {
+                Ok(t) => Some(t),
+                Err(e) => return format!("{e} (usage: bring [name | npc name | class id])"),
+            }
+        } else if self.online_id(&what).await.is_err() {
+            match self.find_npc(me, &what).await {
+                Some(t) => Some(t),
+                None => return format!("no player online or NPC in your zone called {what}"),
+            }
+        } else {
+            None
+        };
+        if let Some(tid) = npc {
+            let Some(h) = self.registry.get(tid).await else {
+                return "that actor is gone".into();
+            };
+            if h.session_id != 0 {
+                let name = h.character.read().await.base.display_name().to_string();
+                return self.teleport(&name, Some(zone), None, 0, x, y, z).await;
+            }
+            if h.zone_id != zone {
+                return "your target is in another zone".into();
+            }
+            // a monster's AI and respawn go back to its spawn point, so move
+            // that too (until a restart; `setpos` saves it)
+            {
+                let mut c = h.character.write().await;
+                if c.chara.bnpc_id != 0 {
+                    c.chara.spawn_x = x;
+                    c.chara.spawn_y = y;
+                    c.chara.spawn_z = z;
+                }
+            }
+            crate::runtime::quest_apply::apply_move_actor_to_position(
+                tid,
+                x,
+                y,
+                z,
+                rot,
+                2,
+                &self.registry,
+                &self.world,
+            )
+            .await;
+            return format!(
+                "brought {} to {x:.2} {y:.2} {z:.2} (!setpos saves it)",
+                self.actor_label(tid).await
+            );
+        }
+        let r = self.teleport(&what, Some(zone), None, 0, x, y, z).await;
         if r.starts_with("warped") {
-            format!("brought {target} to you")
+            format!("brought {what} to you")
         } else {
             r
         }
@@ -462,6 +587,80 @@ impl CommandProcessor {
                 )
             }
             None => format!("target: actor {target} (0x{target:08X})"),
+        }
+    }
+
+    /// `setpos`: save where your target NPC or monster stands now (after a
+    /// `bring`, say) as its spawn point in the world database, and give the
+    /// seed SQL for the same change.
+    pub(super) async fn handle_setpos(&self, args: &Args<'_>) -> String {
+        let me = match self.invoker_id(args).await {
+            Ok(id) => id,
+            Err(e) => return e,
+        };
+        let tid = match self.my_target(me).await {
+            Ok(t) => t,
+            Err(e) => return e,
+        };
+        let Some(h) = self.registry.get(tid).await else {
+            return "that actor is gone".into();
+        };
+        if h.session_id != 0 {
+            return "setpos is for NPCs and monsters".into();
+        }
+        let (bnpc_id, class_id, unique_id, x, y, z, rot) = {
+            let c = h.character.read().await;
+            (
+                c.chara.bnpc_id,
+                c.chara.actor_class_id,
+                c.base.unique_id.clone(),
+                c.base.position_x,
+                c.base.position_y,
+                c.base.position_z,
+                c.base.rotation,
+            )
+        };
+        let label = self.actor_label(tid).await;
+        if bnpc_id != 0 {
+            {
+                let mut c = h.character.write().await;
+                c.chara.spawn_x = x;
+                c.chara.spawn_y = y;
+                c.chara.spawn_z = z;
+            }
+            return match self
+                .db
+                .set_battle_npc_spawn_position(bnpc_id, x, y, z, rot)
+                .await
+            {
+                Ok(true) => format!(
+                    "saved {label} spawn: UPDATE server_battlenpc_spawn_locations SET positionX = {x:.2}, \
+                     positionY = {y:.2}, positionZ = {z:.2}, rotation = {rot:.2} WHERE bnpcId = {bnpc_id};"
+                ),
+                Ok(false) => format!("{label}: bnpc {bnpc_id} has no spawn row"),
+                Err(e) => format!("setpos failed: {e}"),
+            };
+        }
+        if unique_id.is_empty() {
+            return format!("{label} has no spawn row (spawned by a script)");
+        }
+        let area = h.private_area.as_ref().map(|a| a.0.clone());
+        match self
+            .db
+            .set_npc_spawn_position(h.zone_id, class_id, unique_id.clone(), area, x, y, z, rot)
+            .await
+        {
+            Ok(0) => format!(
+                "{label}: no spawn row for {unique_id} in zone {}",
+                h.zone_id
+            ),
+            Ok(n) => format!(
+                "saved {label} ({n} row): UPDATE server_spawn_locations SET positionX = {x:.2}, \
+                 positionY = {y:.2}, positionZ = {z:.2}, rotation = {rot:.2} WHERE zoneId = {} \
+                 AND actorClassId = {class_id} AND uniqueId = '{unique_id}';",
+                h.zone_id
+            ),
+            Err(e) => format!("setpos failed: {e}"),
         }
     }
 

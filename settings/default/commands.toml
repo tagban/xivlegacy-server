@@ -43,6 +43,8 @@ up = 2
 down = 2
 posfix = 2
 getid = 2
+# saving a monster's or NPC's spot to the world database
+setpos = 3
 hasitem = 2
 haskeyitem = 2
 togglegm = 2
