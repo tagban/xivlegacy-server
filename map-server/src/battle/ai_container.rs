@@ -422,7 +422,10 @@ impl AIContainer {
                         });
                         let in_range =
                             distance_sq.is_some_and(|d2| d2 <= attack_range * attack_range);
-                        if target_actor_id != 0 && auto_attack_enabled && in_range {
+                        if owner_view.has_prevent_attack {
+                            // Asleep, stunned or petrified: the swing
+                            // window passes without an attack.
+                        } else if target_actor_id != 0 && auto_attack_enabled && in_range {
                             outbox.push(BattleEvent::ResolveAutoAttack {
                                 attacker_actor_id: owner_id,
                                 defender_actor_id: target_actor_id,
@@ -650,6 +653,7 @@ mod tests {
             most_hated_actor_id: None,
             current_target_actor_id: None,
             has_prevent_movement: false,
+            has_prevent_attack: false,
             max_hp: 1000,
             current_hp: 1000,
             target_hpp: None,
@@ -828,6 +832,41 @@ mod tests {
                 .iter()
                 .any(|e| matches!(e, BattleEvent::ResolveAutoAttack { .. })),
             "in-range ready swing must resolve",
+        );
+    }
+
+    /// Asleep, stunned or petrified (PREVENT_ATTACK + PREVENT_MOVEMENT):
+    /// point-blank and engaged, the monster neither swings nor moves.
+    #[test]
+    fn incapacitated_owner_never_swings_or_moves() {
+        use crate::battle::controller::BattleNpcController;
+        let mut ai = AIContainer::new(1, Some(BattleNpcController::new_for(1)), None);
+        ai.internal_engage(2, 0, 2000);
+        let arena: HashMap<u32, ActorView> =
+            [(1, arena_view(1, 0.0, 2)), (2, arena_view(2, 1.0, 1))]
+                .into_iter()
+                .collect();
+        let mut view = engaged_owner_view(2);
+        view.has_prevent_attack = true;
+        view.has_prevent_movement = true;
+        let mut ob = BattleOutbox::new();
+        for now in [2_000u64, 4_500, 7_000] {
+            ai.update(now, view, &arena, &mut ob);
+        }
+        assert!(
+            !ob.events
+                .iter()
+                .any(|e| matches!(e, BattleEvent::ResolveAutoAttack { .. })),
+            "a sleeping monster must not swing",
+        );
+        // Awake again: the next window swings.
+        let mut ob2 = BattleOutbox::new();
+        ai.update(9_500, engaged_owner_view(2), &arena, &mut ob2);
+        assert!(
+            ob2.events
+                .iter()
+                .any(|e| matches!(e, BattleEvent::ResolveAutoAttack { .. })),
+            "the swing resumes once the status is gone",
         );
     }
 

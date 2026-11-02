@@ -573,6 +573,34 @@ pub async fn dispatch_battle_event(
 //      existing `DoBattleAction` event uses.
 // ---------------------------------------------------------------------------
 
+/// Sleep breaks on damage (pmeteor `sleep.lua` `onDamageTaken`). Removes it
+/// from a defender that just took damage, into `outbox` for the caller to
+/// flush once the actor lock is released.
+fn wake_on_damage(c: &mut crate::actor::Character, outbox: &mut crate::status::StatusOutbox) {
+    if c.status_effects.has(crate::status::ids::STATUS_SLEEP) {
+        c.status_effects.remove_status_effect(
+            crate::status::ids::STATUS_SLEEP,
+            crate::status::DEFAULT_LOSS_TEXT_ID,
+            true,
+            outbox,
+        );
+    }
+}
+
+async fn flush_wake_outbox(
+    mut outbox: crate::status::StatusOutbox,
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    lua: Option<&Arc<crate::lua::LuaEngine>>,
+    db: Option<&Arc<crate::database::Database>>,
+) {
+    if let (Some(db), Some(l)) = (db, lua) {
+        for e in outbox.drain() {
+            dispatch_status_event(&e, registry, world, db, l.catalogs()).await;
+        }
+    }
+}
+
 async fn resolve_auto_attack(
     attacker_actor_id: u32,
     defender_actor_id: u32,
@@ -626,6 +654,7 @@ async fn resolve_auto_attack(
 
     let mut container = CommandResultContainer::new();
     let dmg_request;
+    let mut wake_outbox = crate::status::StatusOutbox::new();
     {
         let mut d = defender_handle.character.write().await;
         if !d.is_alive() {
@@ -672,6 +701,7 @@ async fn resolve_auto_attack(
         {
             d.add_hp(-(dr.amount as i32));
             d.hate.update_hate(attacker_actor_id, dr.enmity as i32);
+            wake_on_damage(&mut d, &mut wake_outbox);
             // #28 S3.3 — defender TP on damage taken (pmeteor
             // `Character.OnDamageTaken`, Character.cs:905-908):
             // ceil(5 · e^(−0.0667 · level) · damage). The dead bank
@@ -683,6 +713,8 @@ async fn resolve_auto_attack(
             }
         }
     }
+
+    flush_wake_outbox(wake_outbox, registry, world, lua, db).await;
 
     // #28 S3.3 — attacker TP per landed swing (pmeteor
     // `Character.OnAttack`, Character.cs:886-895): delay-seconds × 100.
@@ -995,6 +1027,7 @@ async fn resolve_action(
     let mut rng = ThreadRng;
     let mut container = CommandResultContainer::new();
     let mut hits: Vec<ActionHit> = Vec::new();
+    let mut wake_outbox = crate::status::StatusOutbox::new();
     for target_id in targets {
         let Some(defender_handle) = registry.get(target_id).await else {
             continue;
@@ -1124,6 +1157,7 @@ async fn resolve_action(
             d_write
                 .hate
                 .update_hate(attacker_actor_id, dr.enmity as i32);
+            wake_on_damage(&mut d_write, &mut wake_outbox);
             hit.damage = dr.amount;
             // #28 S3.3 — defender TP on damage taken, same formula as
             // the auto-attack arm (pmeteor `OnDamageTaken` runs for any
@@ -1137,6 +1171,7 @@ async fn resolve_action(
         drop(d_write);
         hits.push(hit);
     }
+    flush_wake_outbox(wake_outbox, registry, world, lua, db).await;
 
     // Status effects (pmeteor `CommandResult.TryStatus`). The command's
     // own row (status commands) or an extra row in the same container

@@ -616,6 +616,7 @@ mod tests {
             most_hated_actor_id: None,
             current_target_actor_id: None,
             has_prevent_movement: false,
+            has_prevent_attack: false,
             max_hp: 1000,
             current_hp: 1000,
             target_hpp: None,

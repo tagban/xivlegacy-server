@@ -1057,7 +1057,12 @@ pub(crate) fn build_owner_view(
             .is_none_or(|p| !p.is_following_path()),
         most_hated_actor_id: most_hated,
         current_target_actor_id: current_target,
-        has_prevent_movement: false,
+        has_prevent_movement: chara
+            .status_effects
+            .has_by_flag(crate::status::StatusEffectFlags::PREVENT_MOVEMENT),
+        has_prevent_attack: chara
+            .status_effects
+            .has_by_flag(crate::status::StatusEffectFlags::PREVENT_ATTACK),
         max_hp: chara.get_max_hp(),
         current_hp: chara.get_hp(),
         target_hpp: None,

@@ -195,6 +195,8 @@ pub struct ControllerOwnerView {
     pub most_hated_actor_id: Option<u32>,
     pub current_target_actor_id: Option<u32>,
     pub has_prevent_movement: bool,
+    /// Asleep, stunned or petrified: no auto-attack swings.
+    pub has_prevent_attack: bool,
     pub max_hp: i16,
     pub current_hp: i16,
     /// Current target's HPP 0..100, or None if no target.
@@ -292,6 +294,11 @@ impl Controller {
         arena: &dyn ActorArena,
     ) -> ControllerDecision {
         if !owner.actor.is_alive {
+            return ControllerDecision::Idle;
+        }
+        // Asleep, stunned or petrified: no moves, casts or new engages
+        // until the status wears off (Bind alone only stops movement).
+        if owner.has_prevent_attack && owner.has_prevent_movement {
             return ControllerDecision::Idle;
         }
 
@@ -642,6 +649,7 @@ mod tests {
             most_hated_actor_id: most_hated,
             current_target_actor_id: current,
             has_prevent_movement: false,
+            has_prevent_attack: false,
             max_hp: 1000,
             current_hp: 1000,
             target_hpp: Some(100),
