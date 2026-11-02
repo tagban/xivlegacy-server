@@ -136,6 +136,15 @@ pub enum LuaCommand {
         player_id: u32,
         params: Vec<LuaCommandArg>,
     },
+    /// `player:HideActor(actorId)` — `0x00CB RemoveActor` to this one
+    /// player only. Unlike `zone:DespawnActor` the actor stays live for
+    /// everyone else sharing the area (a private area is shared per
+    /// name + level), e.g. Pgl200's coins vanish for the player who
+    /// picks them up. A later zone-in streams it back.
+    HideActor {
+        player_id: u32,
+        actor_id: u32,
+    },
     PlayAnimation {
         actor_id: u32,
         animation_id: u32,

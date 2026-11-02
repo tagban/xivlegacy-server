@@ -2395,6 +2395,17 @@ impl PacketProcessor {
             // but the login drain had no arm, so the tutorial-mode exit
             // was silently dropped on the onNpcLS fan-out, leaving the
             // client masked. (Garlemald-Server #46 live test.)
+            // `player:HideActor(id)` from a quest talk (Pgl200's coins).
+            cmd @ LC::HideActor { .. } => {
+                crate::runtime::quest_apply::apply_runtime_lua_command(
+                    cmd,
+                    &self.registry,
+                    &self.db,
+                    &self.world,
+                    self.lua.as_ref(),
+                )
+                .await;
+            }
             cmd @ LC::SendDataPacket { .. } => {
                 crate::runtime::quest_apply::apply_runtime_lua_command(
                     cmd,

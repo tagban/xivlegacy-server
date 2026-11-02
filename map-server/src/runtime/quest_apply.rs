@@ -857,6 +857,13 @@ pub async fn apply_runtime_lua_command(
             apply_despawn_actor(zone_id, actor_id, registry, world).await;
             true
         }
+        LC::HideActor {
+            player_id,
+            actor_id,
+        } => {
+            apply_hide_actor(player_id, actor_id, registry, world).await;
+            true
+        }
         LC::HateContainerAddBaseHate {
             actor_id,
             target_actor_id,
@@ -1709,6 +1716,34 @@ async fn apply_send_data_packet(
         player = format!("0x{player_id:08X}"),
         params = params.len(),
         "SendDataPacket applied (0x0133 GenericData)",
+    );
+}
+
+/// `player:HideActor(actor_id)` — `0x00CB RemoveActor` to the one player,
+/// leaving the actor in the registry and the zone for everyone else.
+pub(crate) async fn apply_hide_actor(
+    player_id: u32,
+    actor_id: u32,
+    registry: &ActorRegistry,
+    world: &WorldManager,
+) {
+    let Some(handle) = registry.get(player_id).await else {
+        return;
+    };
+    let session_id = handle.session_id;
+    if session_id == 0 {
+        return;
+    }
+    let Some(client) = world.client(session_id).await else {
+        return;
+    };
+    let mut sub = crate::packets::send::actor::build_remove_actor(actor_id);
+    sub.set_target_id(session_id);
+    client.send_bytes(sub.to_bytes()).await;
+    tracing::debug!(
+        player = player_id,
+        actor = format!("0x{actor_id:08X}"),
+        "HideActor applied (RemoveActor to one player)",
     );
 }
 
