@@ -4418,14 +4418,13 @@ impl PacketProcessor {
         if session_id != 0
             && let Some(client) = self.world.client(session_id).await
         {
-            let pkt = crate::packets::send::player::build_set_player_dream(
+            let mut pkt = crate::packets::send::player::build_set_player_dream(
                 handle.actor_id,
                 dream_id,
                 inn_code,
             );
-            if let Ok(base) = common::BasePacket::create_from_subpacket(&pkt, true, false) {
-                client.send_bytes(base.to_bytes()).await;
-            }
+            pkt.set_target_id(handle.session_id);
+            client.send_bytes(pkt.to_bytes()).await;
         }
         tracing::info!(player = player_id, dream_id, inn_code, "StartDream applied");
     }
@@ -4457,10 +4456,11 @@ impl PacketProcessor {
             );
             return;
         };
-        let pkt = tx::handshake::build_logout(handle.actor_id);
-        if let Ok(base) = common::BasePacket::create_from_subpacket(&pkt, true, false) {
-            client.send_bytes(base.to_bytes()).await;
-        }
+        let mut pkt = tx::handshake::build_logout(handle.actor_id);
+        // Raw, with the session as target: the world server drops a packet
+        // with no target and frames packets itself (see quest_apply.rs).
+        pkt.set_target_id(session_id);
+        client.send_bytes(pkt.to_bytes()).await;
         tracing::info!(player = player_id, session = session_id, "Logout applied");
     }
 
@@ -4491,10 +4491,11 @@ impl PacketProcessor {
             );
             return;
         };
-        let pkt = tx::handshake::build_quit(handle.actor_id);
-        if let Ok(base) = common::BasePacket::create_from_subpacket(&pkt, true, false) {
-            client.send_bytes(base.to_bytes()).await;
-        }
+        let mut pkt = tx::handshake::build_quit(handle.actor_id);
+        // Raw, with the session as target: the world server drops a packet
+        // with no target and frames packets itself (see quest_apply.rs).
+        pkt.set_target_id(session_id);
+        client.send_bytes(pkt.to_bytes()).await;
         tracing::info!(player = player_id, session = session_id, "QuitGame applied");
     }
 
@@ -4570,11 +4571,10 @@ impl PacketProcessor {
         if session_id != 0
             && let Some(client) = self.world.client(session_id).await
         {
-            let pkt =
+            let mut pkt =
                 crate::packets::send::player::build_set_player_dream(handle.actor_id, 0, inn_code);
-            if let Ok(base) = common::BasePacket::create_from_subpacket(&pkt, true, false) {
-                client.send_bytes(base.to_bytes()).await;
-            }
+            pkt.set_target_id(handle.session_id);
+            client.send_bytes(pkt.to_bytes()).await;
         }
         tracing::info!(player = player_id, "EndDream applied");
     }
@@ -4609,16 +4609,14 @@ impl PacketProcessor {
         }
         // Client-visible updates: flag + name.
         if let Some(client) = self.world.client(handle.session_id).await {
-            let name_pkt =
+            let mut name_pkt =
                 crate::packets::send::player::build_set_chocobo_name(handle.actor_id, &name);
-            let has_pkt =
+            let mut has_pkt =
                 crate::packets::send::player::build_set_has_chocobo(handle.actor_id, true);
-            if let Ok(base) = common::BasePacket::create_from_subpacket(&name_pkt, true, false) {
-                client.send_bytes(base.to_bytes()).await;
-            }
-            if let Ok(base) = common::BasePacket::create_from_subpacket(&has_pkt, true, false) {
-                client.send_bytes(base.to_bytes()).await;
-            }
+            name_pkt.set_target_id(handle.session_id);
+            client.send_bytes(name_pkt.to_bytes()).await;
+            has_pkt.set_target_id(handle.session_id);
+            client.send_bytes(has_pkt.to_bytes()).await;
         }
         tracing::info!(
             player = player_id,
@@ -4734,10 +4732,10 @@ impl PacketProcessor {
             tracing::warn!(player = player_id, err = %e, "SetChocoboName: DB persist failed");
         }
         if let Some(client) = self.world.client(handle.session_id).await {
-            let pkt = crate::packets::send::player::build_set_chocobo_name(handle.actor_id, &name);
-            if let Ok(base) = common::BasePacket::create_from_subpacket(&pkt, true, false) {
-                client.send_bytes(base.to_bytes()).await;
-            }
+            let mut pkt =
+                crate::packets::send::player::build_set_chocobo_name(handle.actor_id, &name);
+            pkt.set_target_id(handle.session_id);
+            client.send_bytes(pkt.to_bytes()).await;
         }
         tracing::info!(player = player_id, name = %name, "SetChocoboName applied");
     }
