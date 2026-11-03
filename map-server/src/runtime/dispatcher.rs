@@ -3285,6 +3285,21 @@ pub(crate) async fn apply_revive(
     broadcast_around_actor(world, registry, zone, owner_actor_id, bytes).await;
 }
 
+/// GM `settp`: set the actor's TP and push the pool bundle so the client's
+/// gauge (and its weaponskill icons) follow at once.
+pub(crate) async fn apply_set_tp(
+    actor_id: u32,
+    tp: u16,
+    registry: &ActorRegistry,
+    world: &WorldManager,
+) {
+    let Some(handle) = registry.get(actor_id).await else {
+        return;
+    };
+    handle.character.write().await.chara.tp = tp;
+    sync_pools_after_tick(registry, world, actor_id).await;
+}
+
 /// Outcome of [`apply_home_point_revive`] — surfaced for callers that
 /// need to render a different message depending on whether the warp
 /// actually happened.

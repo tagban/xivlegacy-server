@@ -1112,14 +1112,20 @@ mod tests {
         thunder.main_stat = 4;
         thunder.main_stat_mod = 0.5;
         // 1.05 * (24 + 6) = 31.5 -> 32 at level 1
-        assert_eq!(skill_amount(&lv1, &thunder, &mut FixedRng::new(&[0.5])), Some(32));
+        assert_eq!(
+            skill_amount(&lv1, &thunder, &mut FixedRng::new(&[0.5])),
+            Some(32)
+        );
         let mut firaga = thunder.clone();
         firaga.magic_potency = 1600;
         firaga.main_stat_mod = 1.5;
         mods.set(Modifier::Intelligence, 110.0);
         let lv50 = stub_view(50, 3000, &mods, 1);
         // 1.6 * (220 + 165) = 616
-        assert_eq!(skill_amount(&lv50, &firaga, &mut FixedRng::new(&[0.5])), Some(616));
+        assert_eq!(
+            skill_amount(&lv50, &firaga, &mut FixedRng::new(&[0.5])),
+            Some(616)
+        );
     }
 
     #[test]
@@ -1144,6 +1150,9 @@ mod tests {
         let atk = stub_view(10, 1000, &mods, 1);
         let mut provoke = BattleCommand::new(27151, "provoke");
         provoke.action_type = ActionType::Status;
-        assert_eq!(skill_amount(&atk, &provoke, &mut FixedRng::new(&[0.5])), None);
+        assert_eq!(
+            skill_amount(&atk, &provoke, &mut FixedRng::new(&[0.5])),
+            None
+        );
     }
 }
