@@ -1087,6 +1087,9 @@ fn command_status_effect(
     effect
 }
 
+/// Fists of Fire, Earth and Wind.
+const PUGILIST_FISTS: [u32; 3] = [223209, 223210, 223211];
+
 /// The Lua script root, when scripts are loaded.
 fn script_root(lua: Option<&Arc<crate::lua::LuaEngine>>) -> Option<std::path::PathBuf> {
     lua.and_then(|l| l.catalogs().script_root.read().ok().map(|r| r.clone()))
@@ -1848,6 +1851,34 @@ async fn resolve_action(
     }
     flush_wake_outbox(wake_outbox, registry, world, lua, db).await;
     flush_wake_outbox(hook_outbox, registry, world, lua, db).await;
+
+    // Pugilist fists (1.23b: "Effect ends upon reuse. Cannot be used
+    // simultaneously with..."): using one ends whichever fists are up, and
+    // using the one that was up only ends it.
+    if PUGILIST_FISTS.contains(&command.status_id) {
+        let mut outbox = crate::status::StatusOutbox::new();
+        let had = {
+            let mut a = attacker_handle.character.write().await;
+            let had = a.status_effects.has(command.status_id);
+            for id in PUGILIST_FISTS {
+                if a.status_effects.has(id) {
+                    a.status_effects.remove_status_effect(
+                        id,
+                        crate::status::DEFAULT_LOSS_TEXT_ID,
+                        true,
+                        &mut outbox,
+                    );
+                }
+            }
+            had
+        };
+        flush_wake_outbox(outbox, registry, world, lua, db).await;
+        if had {
+            for hit in hits.iter_mut() {
+                hit.status_roll = false;
+            }
+        }
+    }
 
     // Status effects (pmeteor `CommandResult.TryStatus`). The command's
     // own row (status commands) or an extra row in the same container

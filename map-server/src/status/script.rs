@@ -1098,6 +1098,24 @@ mod tests {
     }
 
     #[test]
+    fn fists_of_earth_adds_defense_and_drains_mp() {
+        let out = run_on_gain(&root(), "fists_of_earth", &owner(), fx(0.0)).unwrap();
+        assert_eq!(
+            out.mod_deltas,
+            vec![
+                (Modifier::Defense.as_u32(), 20.0),
+                (Modifier::Refresh.as_u32(), -3.0)
+            ]
+        );
+        let mut tier2 = fx(0.0);
+        tier2.tier = 2;
+        let mut o = owner();
+        o.mods.set(Modifier::Attack, 300.0);
+        let out = run_on_gain(&root(), "fists_of_fire", &o, tier2).unwrap();
+        assert_eq!(out.mod_deltas[0], (Modifier::Attack.as_u32(), 45.0));
+    }
+
+    #[test]
     fn effects_without_on_gain_or_a_script_do_nothing() {
         assert_eq!(
             run_on_gain(&root(), "sleep", &owner(), fx(1.0)).unwrap(),
