@@ -5282,18 +5282,14 @@ async fn logout_command_emits_logout_packet_to_owner_session() {
         .apply_login_lua_command(&handle, LuaCommand::Logout { player_id: 33 })
         .await;
 
+    // One raw game-message subpacket aimed at the session; the connection
+    // writer frames it (#110).
     let bytes = rx.try_recv().expect("Logout should send one packet");
     let mut offset = 0;
-    let base = common::BasePacket::from_buffer(&bytes, &mut offset).expect("parse base packet");
-    let subs = base.get_subpackets().expect("parse subpackets");
-    assert_eq!(subs.len(), 1, "Logout sends one subpacket");
-    // Logout/Quit are non-game-message subpackets, so the opcode lives
-    // on `header.r#type` (see `SubPacket::new_with_flag`).
-    assert_eq!(
-        subs[0].header.r#type,
-        crate::packets::opcodes::OP_LOGOUT,
-        "subpacket type should be OP_LOGOUT (0x000E)",
-    );
+    let sub = common::SubPacket::parse(&bytes, &mut offset).expect("parse subpacket");
+    assert_eq!(offset, bytes.len(), "Logout sends one subpacket");
+    assert_eq!(sub.game_message.opcode, crate::packets::opcodes::OP_LOGOUT);
+    assert_eq!(sub.header.target_id, 33, "aimed at the owner's session");
 }
 
 #[tokio::test]
@@ -5644,14 +5640,10 @@ async fn quitgame_command_emits_quit_packet_to_owner_session() {
 
     let bytes = rx.try_recv().expect("QuitGame should send one packet");
     let mut offset = 0;
-    let base = common::BasePacket::from_buffer(&bytes, &mut offset).expect("parse base packet");
-    let subs = base.get_subpackets().expect("parse subpackets");
-    assert_eq!(subs.len(), 1, "QuitGame sends one subpacket");
-    assert_eq!(
-        subs[0].header.r#type,
-        crate::packets::opcodes::OP_QUIT,
-        "subpacket type should be OP_QUIT (0x0011)",
-    );
+    let sub = common::SubPacket::parse(&bytes, &mut offset).expect("parse subpacket");
+    assert_eq!(offset, bytes.len(), "QuitGame sends one subpacket");
+    assert_eq!(sub.game_message.opcode, crate::packets::opcodes::OP_QUIT);
+    assert_eq!(sub.header.target_id, 34, "aimed at the owner's session");
 }
 
 /// Drive `LogoutCommand.lua`'s `onEventStarted` against a real
