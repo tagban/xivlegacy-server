@@ -381,6 +381,8 @@ impl OpenerCombat {
                 content_script: cfg.content_script.to_string(),
                 warp_complete: true,
                 spawned_actor_ids: Vec::new(),
+                instance_id: 0,
+                party_member: false,
             }),
             ..MapSession::default()
         };
