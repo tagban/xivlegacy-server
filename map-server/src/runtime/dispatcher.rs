@@ -926,6 +926,8 @@ struct ActionHit {
     damage: u16,
     /// HP restored (heals).
     healed: bool,
+    /// The heal's size before the target's max HP caps it.
+    heal_amount: u16,
     /// The row connected (hit / crit / block / parry / status landed).
     landed: bool,
     /// Rolled the row's status rider / status effect.
@@ -1655,6 +1657,7 @@ async fn resolve_action(
             target_actor_id: target_id,
             damage: 0,
             healed: false,
+            heal_amount: 0,
             landed: false,
             status_roll: false,
         };
@@ -1726,6 +1729,7 @@ async fn resolve_action(
                 );
                 d_write.add_hp(heal.amount as i32);
                 hit.healed = heal.amount > 0;
+                hit.heal_amount = heal.amount;
                 None
             }
             ActionType::Status | ActionType::None => {
@@ -2199,6 +2203,7 @@ async fn resolve_action(
             command = command.id,
             amount = hit.damage,
             heal = is_heal,
+            heal_amount = hit.heal_amount,
             landed = hit.landed,
             status = hit.status_roll,
             defender_hp = format!("{def_hp}/{def_max}"),
