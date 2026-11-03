@@ -46,7 +46,7 @@ pub struct OwnerView {
 }
 
 /// The effect's own numbers, as the container holds them.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct EffectView {
     pub magnitude: f64,
     pub tier: u8,
@@ -88,9 +88,10 @@ fn numbers(args: &Variadic<Value>) -> Vec<Option<f64>> {
         .collect()
 }
 
-fn method<F>(lua: &Lua, t: &Table, name: &str, st: &Arc<Mutex<State>>, f: F) -> mlua::Result<()>
+fn method<T, F>(lua: &Lua, t: &Table, name: &str, st: &Arc<Mutex<T>>, f: F) -> mlua::Result<()>
 where
-    F: Fn(&mut State, &[Option<f64>]) -> Value + Send + 'static,
+    T: Send + 'static,
+    F: Fn(&mut T, &[Option<f64>]) -> Value + Send + 'static,
 {
     let st = st.clone();
     let func = lua.create_function(move |_, args: Variadic<Value>| {
@@ -233,31 +234,42 @@ fn new_lua(script_root: &Path) -> Result<Lua> {
     Ok(lua)
 }
 
-fn build_effect(lua: &Lua, st: &Arc<Mutex<State>>) -> mlua::Result<Table> {
+/// Script state that carries the effect's own numbers.
+trait HasEffect: Send + 'static {
+    fn effect(&mut self) -> &mut EffectView;
+}
+
+impl HasEffect for State {
+    fn effect(&mut self) -> &mut EffectView {
+        &mut self.effect
+    }
+}
+
+fn build_effect<T: HasEffect>(lua: &Lua, st: &Arc<Mutex<T>>) -> mlua::Result<Table> {
     let t = lua.create_table()?;
     method(lua, &t, "GetMagnitude", st, |s, _| {
-        Value::Number(s.effect.magnitude)
+        Value::Number(s.effect().magnitude)
     })?;
     method(lua, &t, "SetMagnitude", st, |s, n| {
-        s.effect.magnitude = arg(n, 0);
+        s.effect().magnitude = arg(n, 0);
         Value::Nil
     })?;
     method(lua, &t, "GetExtra", st, |s, _| {
-        Value::Number(s.effect.extra)
+        Value::Number(s.effect().extra)
     })?;
     method(lua, &t, "SetExtra", st, |s, n| {
-        s.effect.extra = arg(n, 0);
+        s.effect().extra = arg(n, 0);
         Value::Nil
     })?;
     method(lua, &t, "GetTier", st, |s, _| {
-        Value::Integer(s.effect.tier as i64)
+        Value::Integer(s.effect().tier as i64)
     })?;
     method(lua, &t, "SetTier", st, |s, n| {
-        s.effect.tier = arg(n, 0) as u8;
+        s.effect().tier = arg(n, 0) as u8;
         Value::Nil
     })?;
     method(lua, &t, "GetDuration", st, |s, _| {
-        Value::Integer(s.effect.duration as i64)
+        Value::Integer(s.effect().duration as i64)
     })?;
     method(lua, &t, "GetSource", st, |_, _| Value::Nil)?;
     method(lua, &t, "RefreshTime", st, |_, _| Value::Nil)?;
@@ -424,6 +436,524 @@ pub fn run_command_setup(
     }))
 }
 
+// ---------------------------------------------------------------------------
+// Combat hooks: onPreAction, onHit, onDamageTaken, onCommandStart...
+// ---------------------------------------------------------------------------
+
+/// One actor a combat hook can see: the effect's owner or the other side
+/// of the action.
+#[derive(Debug, Clone, Default)]
+pub struct HookActor {
+    pub actor_id: u32,
+    pub mods: ModifierMap,
+    pub level: i16,
+    pub hp: i32,
+    pub max_hp: i32,
+    pub mp: i32,
+    pub max_mp: i32,
+    pub tp: i32,
+    pub status_ids: Vec<u32>,
+}
+
+/// What a hook did to one actor.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct HookActorChange {
+    /// Net change per raw modifier id, non-zero entries only.
+    pub mod_deltas: Vec<(u32, f64)>,
+    pub hp: i32,
+    pub mp: i32,
+    pub tp: i32,
+    /// Other statuses the hook took off this actor, by id.
+    pub removed: Vec<u32>,
+}
+
+impl HookActorChange {
+    pub fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+/// The command fields hooks read and change (`skill.numHits`,
+/// `skill.mpCost`, `skill.bonusCritRate`...).
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct HookSkill {
+    pub id: u32,
+    pub command_type: u16,
+    pub action_type: u8,
+    pub num_hits: u8,
+    pub enmity_modifier: f64,
+    pub accuracy_modifier: f64,
+    pub bonus_crit_rate: f64,
+    pub mp_cost: f64,
+    pub tp_cost: f64,
+    pub cast_time_ms: f64,
+    pub recast_time_ms: f64,
+    pub range: f64,
+    pub is_ranged: bool,
+}
+
+/// The rolled action fields hooks read and change (`action.amount`,
+/// `action.critRate`...). `param` is the hit direction (`HitDirection`).
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct HookAction {
+    pub amount: f64,
+    pub amount_mitigated: f64,
+    pub enmity: f64,
+    pub hit_rate: f64,
+    pub crit_rate: f64,
+    pub block_rate: f64,
+    pub parry_rate: f64,
+    pub resist_rate: f64,
+    pub param: u8,
+    pub world_master_text_id: u16,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HookRowKind {
+    /// `AddHPAction`: HP restored to the target.
+    Hp,
+    /// `AddHPAbsorbAction`: HP drained back to the attacker.
+    HpAbsorb,
+    /// `AddMPAction`.
+    Mp,
+    /// `AddMPAbsorbAction`.
+    MpAbsorb,
+    /// `AddHitAction`: damage dealt back (Vengeance).
+    Hit,
+}
+
+/// An extra battle-log row a hook added to the action.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct HookRow {
+    pub kind: HookRowKind,
+    pub target_actor_id: u32,
+    pub text_id: u16,
+    pub amount: u16,
+}
+
+/// `owner.statusEffects.ReplaceEffect(effect, id, tier, magnitude, duration)`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct HookReplace {
+    pub status_id: u32,
+    pub tier: u8,
+    pub magnitude: f64,
+    pub duration: u32,
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct HookOutcome {
+    pub owner: HookActorChange,
+    pub other: HookActorChange,
+    /// The effect's numbers after the hook (`SetExtra`, `SetTier`...).
+    pub effect: EffectView,
+    /// The hook removed its own effect.
+    pub remove_self: bool,
+    pub replace: Option<HookReplace>,
+    pub skill: HookSkill,
+    pub action: Option<HookAction>,
+    pub rows: Vec<HookRow>,
+}
+
+/// One hook call on one effect.
+pub struct HookCall<'a> {
+    pub hook: &'a str,
+    pub effect_name: &'a str,
+    pub effect: EffectView,
+    pub owner: &'a HookActor,
+    pub other: Option<&'a HookActor>,
+    /// The owner is the one acting (attacker / caster); otherwise it is
+    /// on the receiving end. Picks the argument order for
+    /// `(effect, attacker, defender, ...)` hooks.
+    pub owner_acts: bool,
+    pub skill: HookSkill,
+    pub action: Option<HookAction>,
+}
+
+struct Side {
+    start: ModifierMap,
+    mods: ModifierMap,
+    actor: HookActor,
+    hp: i32,
+    mp: i32,
+    tp: i32,
+    removed: Vec<u32>,
+}
+
+impl Side {
+    fn new(actor: &HookActor) -> Self {
+        Self {
+            start: actor.mods.clone(),
+            mods: actor.mods.clone(),
+            actor: actor.clone(),
+            hp: 0,
+            mp: 0,
+            tp: 0,
+            removed: Vec::new(),
+        }
+    }
+
+    fn change(&self) -> HookActorChange {
+        let mut keys: Vec<u32> = self.mods.iter().map(|(k, _)| k).collect();
+        keys.extend(self.start.iter().map(|(k, _)| k));
+        keys.sort_unstable();
+        keys.dedup();
+        HookActorChange {
+            mod_deltas: keys
+                .into_iter()
+                .filter_map(|k| {
+                    let d = self.mods.get_raw(k) - self.start.get_raw(k);
+                    (d.abs() > 1e-9).then_some((k, d))
+                })
+                .collect(),
+            hp: self.hp,
+            mp: self.mp,
+            tp: self.tp,
+            removed: self.removed.clone(),
+        }
+    }
+}
+
+struct Fx {
+    effect: EffectView,
+    remove_self: bool,
+    replace: Option<HookReplace>,
+    rows: Vec<HookRow>,
+}
+
+impl HasEffect for Fx {
+    fn effect(&mut self) -> &mut EffectView {
+        &mut self.effect
+    }
+}
+
+fn clamp_u16(v: f64) -> u16 {
+    v.floor().clamp(0.0, f64::from(u16::MAX)) as u16
+}
+
+fn build_side(lua: &Lua, st: &Arc<Mutex<Side>>, fx: &Arc<Mutex<Fx>>) -> mlua::Result<Table> {
+    let t = lua.create_table()?;
+    let actor_id = st
+        .lock()
+        .map_err(|_| mlua::Error::runtime("status state poisoned"))?
+        .actor
+        .actor_id;
+    t.set("actorId", actor_id)?;
+    method(lua, &t, "AddMod", st, |s, n| {
+        if let Some(k) = key(n) {
+            s.mods.add_raw(k, arg(n, 1));
+        }
+        Value::Nil
+    })?;
+    method(lua, &t, "SubtractMod", st, |s, n| {
+        if let Some(k) = key(n) {
+            s.mods.subtract_raw(k, arg(n, 1));
+        }
+        Value::Nil
+    })?;
+    method(lua, &t, "SetMod", st, |s, n| {
+        if let Some(k) = key(n) {
+            s.mods.set_raw(k, arg(n, 1));
+        }
+        Value::Nil
+    })?;
+    method(lua, &t, "GetMod", st, |s, n| {
+        Value::Number(key(n).map_or(0.0, |k| s.mods.get_raw(k)))
+    })?;
+    method(lua, &t, "GetLevel", st, |s, _| {
+        Value::Integer(i64::from(s.actor.level))
+    })?;
+    method(lua, &t, "GetHP", st, |s, _| {
+        Value::Integer(i64::from((s.actor.hp + s.hp).clamp(0, s.actor.max_hp)))
+    })?;
+    method(lua, &t, "GetMaxHP", st, |s, _| {
+        Value::Integer(i64::from(s.actor.max_hp))
+    })?;
+    method(lua, &t, "GetMP", st, |s, _| {
+        Value::Integer(i64::from((s.actor.mp + s.mp).clamp(0, s.actor.max_mp)))
+    })?;
+    method(lua, &t, "GetMaxMP", st, |s, _| {
+        Value::Integer(i64::from(s.actor.max_mp))
+    })?;
+    method(lua, &t, "GetTP", st, |s, _| {
+        Value::Integer(i64::from(s.actor.tp + s.tp))
+    })?;
+    for (name, sign) in [("AddHP", 1), ("DelHP", -1)] {
+        method(lua, &t, name, st, move |s, n| {
+            s.hp += sign * arg(n, 0).floor() as i32;
+            Value::Nil
+        })?;
+    }
+    for (name, sign) in [("AddMP", 1), ("DelMP", -1)] {
+        method(lua, &t, name, st, move |s, n| {
+            s.mp += sign * arg(n, 0).floor() as i32;
+            Value::Nil
+        })?;
+    }
+    for (name, sign) in [("AddTP", 1), ("DelTP", -1)] {
+        method(lua, &t, name, st, move |s, n| {
+            s.tp += sign * arg(n, 0).floor() as i32;
+            Value::Nil
+        })?;
+    }
+    method(lua, &t, "HasTrait", st, |_, _| Value::Boolean(false))?;
+
+    let effects = lua.create_table()?;
+    {
+        let st = st.clone();
+        let fx = fx.clone();
+        // `RemoveStatusEffect(effect, actionContainer, textId, playEffect)`
+        // or `RemoveStatusEffect(statusId)`. The hook's own effect lives
+        // on its owner whichever side the script calls it through.
+        effects.set(
+            "RemoveStatusEffect",
+            lua.create_function(move |_, args: Variadic<Value>| {
+                let mut it = args.iter();
+                let mut first = it.next();
+                if let Some(Value::Table(t)) = first
+                    && !t.contains_key("__hookEffect")?
+                {
+                    first = it.next();
+                }
+                match first {
+                    Some(Value::Table(_)) => {
+                        fx.lock()
+                            .map_err(|_| mlua::Error::runtime("status state poisoned"))?
+                            .remove_self = true;
+                    }
+                    Some(Value::Integer(i)) => st
+                        .lock()
+                        .map_err(|_| mlua::Error::runtime("status state poisoned"))?
+                        .removed
+                        .push(*i as u32),
+                    Some(Value::Number(n)) => st
+                        .lock()
+                        .map_err(|_| mlua::Error::runtime("status state poisoned"))?
+                        .removed
+                        .push(*n as u32),
+                    _ => {}
+                }
+                Ok(Value::Nil)
+            })?,
+        )?;
+    }
+    method(lua, &effects, "ReplaceEffect", fx, |s, n| {
+        s.replace = Some(HookReplace {
+            status_id: arg(n, 0) as u32,
+            tier: arg(n, 1) as u8,
+            magnitude: arg(n, 2),
+            duration: arg(n, 3).clamp(0.0, f64::from(u32::MAX)) as u32,
+        });
+        Value::Nil
+    })?;
+    method(lua, &effects, "HasStatusEffect", st, |s, n| {
+        Value::Boolean(
+            n.first()
+                .copied()
+                .flatten()
+                .is_some_and(|id| s.actor.status_ids.contains(&(id as u32))),
+        )
+    })?;
+    effects.set_metatable(Some(stub_meta(lua)?))?;
+    t.set("statusEffects", effects)?;
+    t.set_metatable(Some(stub_meta(lua)?))?;
+    Ok(t)
+}
+
+fn build_container(lua: &Lua, fx: &Arc<Mutex<Fx>>) -> mlua::Result<Table> {
+    let t = lua.create_table()?;
+    for (name, kind) in [
+        ("AddHPAction", HookRowKind::Hp),
+        ("AddHPAbsorbAction", HookRowKind::HpAbsorb),
+        ("AddMPAction", HookRowKind::Mp),
+        ("AddMPAbsorbAction", HookRowKind::MpAbsorb),
+        ("AddHitAction", HookRowKind::Hit),
+    ] {
+        method(lua, &t, name, fx, move |s, n| {
+            s.rows.push(HookRow {
+                kind,
+                target_actor_id: arg(n, 0) as u32,
+                text_id: arg(n, 1) as u16,
+                amount: clamp_u16(arg(n, 2)),
+            });
+            Value::Nil
+        })?;
+    }
+    t.set_metatable(Some(stub_meta(lua)?))?;
+    Ok(t)
+}
+
+fn build_skill(lua: &Lua, s: &HookSkill) -> mlua::Result<Table> {
+    let t = lua.create_table()?;
+    t.set("id", s.id)?;
+    t.set("commandType", s.command_type)?;
+    t.set("actionType", s.action_type)?;
+    t.set("numHits", s.num_hits)?;
+    t.set("enmityModifier", s.enmity_modifier)?;
+    t.set("accuracyModifier", s.accuracy_modifier)?;
+    t.set("bonusCritRate", s.bonus_crit_rate)?;
+    t.set("mpCost", s.mp_cost)?;
+    t.set("tpCost", s.tp_cost)?;
+    t.set("castTimeMs", s.cast_time_ms)?;
+    t.set("recastTimeMs", s.recast_time_ms)?;
+    t.set("range", s.range)?;
+    t.set("isRanged", s.is_ranged)?;
+    for (getter, field) in [
+        ("GetCommandType", "commandType"),
+        ("GetActionType", "actionType"),
+    ] {
+        let me = t.clone();
+        t.set(
+            getter,
+            lua.create_function(move |_, _: Variadic<Value>| me.get::<Value>(field))?,
+        )?;
+    }
+    t.set_metatable(Some(stub_meta(lua)?))?;
+    Ok(t)
+}
+
+fn read_skill(t: &Table, start: HookSkill) -> HookSkill {
+    let num = |k: &str, d: f64| t.get::<Option<f64>>(k).ok().flatten().unwrap_or(d);
+    HookSkill {
+        num_hits: num("numHits", f64::from(start.num_hits)).clamp(0.0, 255.0) as u8,
+        enmity_modifier: num("enmityModifier", start.enmity_modifier),
+        accuracy_modifier: num("accuracyModifier", start.accuracy_modifier),
+        bonus_crit_rate: num("bonusCritRate", start.bonus_crit_rate),
+        mp_cost: num("mpCost", start.mp_cost),
+        tp_cost: num("tpCost", start.tp_cost),
+        cast_time_ms: num("castTimeMs", start.cast_time_ms),
+        recast_time_ms: num("recastTimeMs", start.recast_time_ms),
+        range: num("range", start.range),
+        ..start
+    }
+}
+
+fn build_action(lua: &Lua, a: &HookAction) -> mlua::Result<Table> {
+    let t = lua.create_table()?;
+    t.set("amount", a.amount)?;
+    t.set("amountMitigated", a.amount_mitigated)?;
+    t.set("enmity", a.enmity)?;
+    t.set("hitRate", a.hit_rate)?;
+    t.set("critRate", a.crit_rate)?;
+    t.set("blockRate", a.block_rate)?;
+    t.set("parryRate", a.parry_rate)?;
+    t.set("resistRate", a.resist_rate)?;
+    t.set("param", a.param)?;
+    t.set("worldMasterTextId", a.world_master_text_id)?;
+    t.set_metatable(Some(stub_meta(lua)?))?;
+    Ok(t)
+}
+
+fn read_action(t: &Table, start: HookAction) -> HookAction {
+    let num = |k: &str, d: f64| t.get::<Option<f64>>(k).ok().flatten().unwrap_or(d);
+    HookAction {
+        amount: num("amount", start.amount).max(0.0),
+        amount_mitigated: num("amountMitigated", start.amount_mitigated),
+        enmity: num("enmity", start.enmity).max(0.0),
+        hit_rate: num("hitRate", start.hit_rate),
+        crit_rate: num("critRate", start.crit_rate),
+        block_rate: num("blockRate", start.block_rate),
+        parry_rate: num("parryRate", start.parry_rate),
+        resist_rate: num("resistRate", start.resist_rate),
+        world_master_text_id: num("worldMasterTextId", f64::from(start.world_master_text_id))
+            as u16,
+        ..start
+    }
+}
+
+/// Run one combat hook of `<script_root>/effects/<effect_name>.lua`.
+/// `None` when the script or the hook isn't there. A hook that errors part
+/// way keeps what it did before the error.
+pub fn run_hook(script_root: &Path, call: &HookCall<'_>) -> Result<Option<HookOutcome>> {
+    let path = script_root
+        .join("effects")
+        .join(format!("{}.lua", call.effect_name));
+    if !path.exists() {
+        return Ok(None);
+    }
+    let source =
+        std::fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
+    let lua = new_lua(script_root)?;
+    // The effect scripts use these without requiring them; Sentinel spells
+    // the weaponskill command type `WeaponSkill`.
+    lua.load(
+        "pcall(require, \"battleutils\")
+        pcall(require, \"utils\")
+        if CommandType then CommandType.WeaponSkill = CommandType.Weaponskill end",
+    )
+    .exec()?;
+    lua.load(&source)
+        .set_name(path.display().to_string())
+        .exec()
+        .map_err(|e| anyhow::anyhow!("loading {}: {e}", call.effect_name))?;
+    let Ok(f) = lua.globals().get::<mlua::Function>(call.hook) else {
+        return Ok(None);
+    };
+
+    let fx = Arc::new(Mutex::new(Fx {
+        effect: call.effect,
+        remove_self: false,
+        replace: None,
+        rows: Vec::new(),
+    }));
+    let owner_st = Arc::new(Mutex::new(Side::new(call.owner)));
+    let other_actor = call.other.cloned().unwrap_or_default();
+    let other_st = Arc::new(Mutex::new(Side::new(&other_actor)));
+    let effect_t = build_effect(&lua, &fx)?;
+    effect_t.set("__hookEffect", true)?;
+    effect_t.set_metatable(Some(stub_meta(&lua)?))?;
+    let owner_t = build_side(&lua, &owner_st, &fx)?;
+    let other_t = build_side(&lua, &other_st, &fx)?;
+    let skill_t = build_skill(&lua, &call.skill)?;
+    let action_t = match &call.action {
+        Some(a) => Some(build_action(&lua, a)?),
+        None => None,
+    };
+    let container_t = build_container(&lua, &fx)?;
+    let action_v = action_t.clone().map_or(Value::Nil, Value::Table);
+
+    let r = match call.hook {
+        "onCommandStart" | "onCommandFinish" => {
+            f.call::<Value>((effect_t, owner_t, skill_t.clone(), container_t))
+        }
+        "onMagicCast" => f.call::<Value>((effect_t, owner_t, skill_t.clone())),
+        _ => {
+            let (a, d) = if call.owner_acts {
+                (owner_t, other_t)
+            } else {
+                (other_t, owner_t)
+            };
+            f.call::<Value>((effect_t, a, d, skill_t.clone(), action_v, container_t))
+        }
+    };
+    if let Err(e) = r {
+        tracing::debug!(effect = call.effect_name, hook = call.hook, error = %e, "status hook stopped early");
+    }
+
+    let lock = |m: &Arc<Mutex<Side>>| -> Result<HookActorChange> {
+        Ok(m.lock()
+            .map_err(|_| anyhow::anyhow!("status state poisoned"))?
+            .change())
+    };
+    let owner = lock(&owner_st)?;
+    let other = lock(&other_st)?;
+    let fx = fx
+        .lock()
+        .map_err(|_| anyhow::anyhow!("status state poisoned"))?;
+    Ok(Some(HookOutcome {
+        owner,
+        other,
+        effect: fx.effect,
+        remove_self: fx.remove_self,
+        replace: fx.replace,
+        skill: read_skill(&skill_t, call.skill),
+        action: match (&action_t, call.action) {
+            (Some(t), Some(a)) => Some(read_action(t, a)),
+            _ => None,
+        },
+        rows: fx.rows.clone(),
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -577,5 +1107,372 @@ mod tests {
             run_on_gain(&root(), "no_such_effect", &owner(), fx(1.0)).unwrap(),
             GainOutcome::default()
         );
+    }
+
+    fn actor(id: u32) -> HookActor {
+        HookActor {
+            actor_id: id,
+            mods: owner().mods,
+            level: 50,
+            hp: 1000,
+            max_hp: 1500,
+            mp: 200,
+            max_mp: 400,
+            tp: 0,
+            status_ids: Vec::new(),
+        }
+    }
+
+    fn skill(command_type: u16) -> HookSkill {
+        HookSkill {
+            id: 27150,
+            command_type,
+            action_type: 1,
+            num_hits: 1,
+            enmity_modifier: 1.0,
+            mp_cost: 40.0,
+            ..Default::default()
+        }
+    }
+
+    fn hit(amount: f64) -> HookAction {
+        HookAction {
+            amount,
+            enmity: amount,
+            crit_rate: 5.0,
+            ..Default::default()
+        }
+    }
+
+    fn call<'a>(
+        hook: &'a str,
+        name: &'a str,
+        owner: &'a HookActor,
+        other: &'a HookActor,
+        owner_acts: bool,
+        skill: HookSkill,
+        action: Option<HookAction>,
+    ) -> HookCall<'a> {
+        HookCall {
+            hook,
+            effect_name: name,
+            effect: fx(0.0),
+            owner,
+            other: Some(other),
+            owner_acts,
+            skill,
+            action,
+        }
+    }
+
+    #[test]
+    fn sentinel_adds_enmity_to_weaponskills() {
+        let (me, foe) = (actor(1), actor(2));
+        let out = run_hook(
+            &root(),
+            &call(
+                "onHit",
+                "sentinel",
+                &me,
+                &foe,
+                true,
+                skill(2),
+                Some(hit(300.0)),
+            ),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(out.action.unwrap().enmity, 400.0);
+        let out = run_hook(
+            &root(),
+            &call(
+                "onHit",
+                "sentinel",
+                &me,
+                &foe,
+                true,
+                skill(3),
+                Some(hit(300.0)),
+            ),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(out.action.unwrap().enmity, 300.0);
+    }
+
+    #[test]
+    fn life_surge_heals_the_attacker_on_auto_attacks() {
+        let (me, foe) = (actor(1), actor(2));
+        let out = run_hook(
+            &root(),
+            &call(
+                "onHit",
+                "life_surge_I",
+                &me,
+                &foe,
+                true,
+                skill(1),
+                Some(hit(200.0)),
+            ),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(out.owner.hp, 21);
+        assert_eq!(
+            out.rows,
+            vec![HookRow {
+                kind: HookRowKind::HpAbsorb,
+                target_actor_id: 2,
+                text_id: 30332,
+                amount: 21
+            }]
+        );
+        assert!(out.other.is_empty());
+    }
+
+    #[test]
+    fn dread_spike_soaks_a_physical_hit_and_goes() {
+        let (me, foe) = (actor(1), actor(2));
+        let out = run_hook(
+            &root(),
+            &call(
+                "onDamageTaken",
+                "dread_spike",
+                &me,
+                &foe,
+                false,
+                skill(2),
+                Some(hit(300.0)),
+            ),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(out.action.unwrap().amount, 0.0);
+        assert_eq!(out.owner.hp, 150);
+        assert!(out.remove_self);
+    }
+
+    #[test]
+    fn stoneskin_stays_until_its_absorb_is_spent() {
+        let (mut me, foe) = (actor(1), actor(2));
+        me.mods.set(Modifier::Stoneskin, 10.0);
+        let out = run_hook(
+            &root(),
+            &call(
+                "onDamageTaken",
+                "stoneskin",
+                &me,
+                &foe,
+                false,
+                skill(1),
+                Some(hit(30.0)),
+            ),
+        )
+        .unwrap()
+        .unwrap();
+        assert!(!out.remove_self);
+        me.mods.set(Modifier::Stoneskin, 0.0);
+        let out = run_hook(
+            &root(),
+            &call(
+                "onDamageTaken",
+                "stoneskin",
+                &me,
+                &foe,
+                false,
+                skill(1),
+                Some(hit(30.0)),
+            ),
+        )
+        .unwrap()
+        .unwrap();
+        assert!(out.remove_self);
+    }
+
+    #[test]
+    fn berserk_stacks_attack_on_hits() {
+        let (me, foe) = (actor(1), actor(2));
+        let out = run_hook(
+            &root(),
+            &call(
+                "onHit",
+                "berserk2",
+                &me,
+                &foe,
+                true,
+                skill(1),
+                Some(hit(100.0)),
+            ),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(out.effect.extra, 1.0);
+        assert!(
+            out.owner
+                .mod_deltas
+                .contains(&(Modifier::Attack.as_u32(), 20.0))
+        );
+        assert!(
+            out.owner
+                .mod_deltas
+                .contains(&(Modifier::Defense.as_u32(), -20.0))
+        );
+    }
+
+    #[test]
+    fn berserk_gives_its_stacks_back_when_hit() {
+        let (me, foe) = (actor(1), actor(2));
+        let mut c = call(
+            "onDamageTaken",
+            "berserk2",
+            &me,
+            &foe,
+            false,
+            skill(1),
+            Some(hit(50.0)),
+        );
+        c.effect.extra = 3.0;
+        let out = run_hook(&root(), &c).unwrap().unwrap();
+        assert_eq!(out.effect.extra, 0.0);
+        assert!(
+            out.owner
+                .mod_deltas
+                .contains(&(Modifier::Attack.as_u32(), -60.0))
+        );
+        assert!(
+            out.owner
+                .mod_deltas
+                .contains(&(Modifier::Defense.as_u32(), 60.0))
+        );
+    }
+
+    #[test]
+    fn blindside_crits_from_behind_and_is_spent() {
+        let (me, foe) = (actor(1), actor(2));
+        let mut a = hit(100.0);
+        a.param = 4;
+        let out = run_hook(
+            &root(),
+            &call(
+                "onPreAction",
+                "blindside2",
+                &me,
+                &foe,
+                true,
+                skill(2),
+                Some(a),
+            ),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(out.action.unwrap().crit_rate, 100.0);
+        assert!(out.remove_self);
+        a.param = 1;
+        let out = run_hook(
+            &root(),
+            &call(
+                "onPreAction",
+                "blindside2",
+                &me,
+                &foe,
+                true,
+                skill(2),
+                Some(a),
+            ),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(out.action.unwrap().crit_rate, 5.0);
+    }
+
+    #[test]
+    fn parsimony_halves_spell_mp() {
+        let me = actor(1);
+        let c = HookCall {
+            hook: "onMagicCast",
+            effect_name: "parsimony",
+            effect: fx(0.0),
+            owner: &me,
+            other: None,
+            owner_acts: true,
+            skill: skill(4),
+            action: None,
+        };
+        let out = run_hook(&root(), &c).unwrap().unwrap();
+        assert_eq!(out.skill.mp_cost, 20.0);
+    }
+
+    #[test]
+    fn power_surge_steps_up_on_a_weaponskill() {
+        let me = actor(1);
+        let mut c = HookCall {
+            hook: "onCommandStart",
+            effect_name: "power_surge_I",
+            effect: fx(0.0),
+            owner: &me,
+            other: None,
+            owner_acts: true,
+            skill: skill(2),
+            action: None,
+        };
+        c.effect.tier = 1;
+        let out = run_hook(&root(), &c).unwrap().unwrap();
+        assert_eq!(out.replace.map(|r| r.status_id), Some(223213));
+    }
+
+    #[test]
+    fn hooks_a_script_lacks_are_none() {
+        let (me, foe) = (actor(1), actor(2));
+        assert!(
+            run_hook(
+                &root(),
+                &call(
+                    "onHit",
+                    "protect",
+                    &me,
+                    &foe,
+                    true,
+                    skill(1),
+                    Some(hit(1.0))
+                )
+            )
+            .unwrap()
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn every_combat_hook_runs() {
+        let (me, foe) = (actor(1), actor(2));
+        let hooks = [
+            "onPreAction",
+            "onHit",
+            "onCrit",
+            "onMiss",
+            "onBlock",
+            "onParry",
+            "onEvade",
+            "onDamageTaken",
+            "onHealed",
+            "onCommandStart",
+            "onCommandFinish",
+            "onMagicCast",
+        ];
+        let mut ran = 0;
+        for entry in std::fs::read_dir(root().join("effects")).unwrap() {
+            let path = entry.unwrap().path();
+            let name = path.file_stem().unwrap().to_string_lossy().to_string();
+            for hook in hooks {
+                for ct in [1, 2, 3, 4] {
+                    let r = run_hook(
+                        &root(),
+                        &call(hook, &name, &me, &foe, true, skill(ct), Some(hit(100.0))),
+                    );
+                    ran += usize::from(matches!(r, Ok(Some(_))));
+                    assert!(r.is_ok(), "{name} {hook}: {:?}", r.err());
+                }
+            }
+        }
+        assert!(ran > 100, "{ran}");
     }
 }

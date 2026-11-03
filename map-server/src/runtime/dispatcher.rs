@@ -627,13 +627,25 @@ async fn resolve_auto_attack(
     };
 
     // Attacker snapshot — released before we lock the defender.
-    let (atk_level, atk_max_hp, atk_mods) = {
+    let root = script_root(lua);
+    let (atk_level, atk_max_hp, atk_mods, atk_pos, attacker_side) = {
         let a = attacker_handle.character.read().await;
         if !a.is_alive() {
             return;
         }
-        (a.chara.level, a.chara.max_hp, a.chara.mods.clone())
+        (
+            a.chara.level,
+            a.chara.max_hp,
+            a.chara.mods.clone(),
+            common::Vector3::new(a.base.position_x, a.base.position_y, a.base.position_z),
+            root.as_ref()
+                .map(|_| crate::status::hooks::HookSide::of(&a)),
+        )
     };
+    let hook_now_ms = (common::utils::unix_timestamp() as u64).saturating_mul(1000);
+    let mut hook_outbox = crate::status::StatusOutbox::new();
+    let mut hook_rows: Vec<crate::status::script::HookRow> = Vec::new();
+    let mut hook_queue = AttackerHookQueue::default();
 
     let mut rng = ThreadRng;
     // Compute base damage off an attacker-only CombatView — the defender
@@ -659,7 +671,7 @@ async fn resolve_auto_attack(
     result.enmity = result.amount;
 
     let mut container = CommandResultContainer::new();
-    let dmg_request;
+    let mut dmg_request;
     let mut wake_outbox = crate::status::StatusOutbox::new();
     {
         let mut d = defender_handle.character.write().await;
@@ -692,6 +704,55 @@ async fn resolve_auto_attack(
         };
 
         battle_utils::calc_rates(&atk_view, &def_view, None, &mut result);
+        let direction = crate::status::hooks::hit_direction(
+            common::Vector3::new(d.base.position_x, d.base.position_y, d.base.position_z),
+            d.base.rotation,
+            atk_pos,
+        );
+        if let (Some(root), Some(atk)) = (&root, &attacker_side) {
+            use crate::status::StatusEffectFlags as F;
+            use crate::status::hooks::{HookSide, run};
+            let def = HookSide::of(&d);
+            if atk.has(F::ACTIVATE_ON_PREACTION_CASTER) || def.has(F::ACTIVATE_ON_PREACTION_TARGET)
+            {
+                let mut hs = crate::status::script::HookSkill::auto_attack();
+                let mut act = Some(crate::status::script::HookAction::from_result(
+                    &result, direction,
+                ));
+                let r = run(
+                    root,
+                    "onPreAction",
+                    F::ACTIVATE_ON_PREACTION_CASTER,
+                    atk,
+                    Some(&def.actor),
+                    true,
+                    &mut hs,
+                    &mut act,
+                );
+                hook_queue.attacker_ran(r, &mut d, &mut hook_rows, &mut hook_outbox);
+                let r = run(
+                    root,
+                    "onPreAction",
+                    F::ACTIVATE_ON_PREACTION_TARGET,
+                    &def,
+                    Some(&atk.actor),
+                    false,
+                    &mut hs,
+                    &mut act,
+                );
+                hook_queue.defender_ran(
+                    r,
+                    &mut d,
+                    &mut hook_rows,
+                    lua,
+                    hook_now_ms,
+                    &mut hook_outbox,
+                );
+                if let Some(a) = act {
+                    a.apply_to(&mut result);
+                }
+            }
+        }
         dmg_request = battle_utils::finish_action_physical(
             &atk_view,
             &def_view,
@@ -701,6 +762,38 @@ async fn resolve_auto_attack(
             &mut container,
             &mut rng,
         );
+
+        if let (Some(root), Some(atk)) = (&root, &attacker_side) {
+            let (amount, enmity) = dmg_request.map_or((0, 0), |dr| (dr.amount, dr.enmity));
+            let (new_amount, new_enmity) = run_after_roll_hooks(
+                root,
+                atk,
+                &mut d,
+                crate::status::script::HookSkill::auto_attack(),
+                &result,
+                amount,
+                enmity,
+                direction,
+                &mut hook_queue,
+                &mut hook_rows,
+                lua,
+                hook_now_ms,
+                &mut hook_outbox,
+            );
+            if let Some(dr) = dmg_request.as_mut()
+                && (dr.amount, dr.enmity) != (new_amount, new_enmity)
+            {
+                dr.amount = new_amount;
+                dr.enmity = new_enmity;
+                if let Some(row) = container.main_results.last_mut() {
+                    row.amount = new_amount;
+                    row.enmity = new_enmity;
+                }
+            }
+            for row in hook_rows.drain(..) {
+                container.add_action(row.to_result(defender_actor_id));
+            }
+        }
 
         if let Some(dr) = dmg_request
             && dr.amount > 0
@@ -720,7 +813,13 @@ async fn resolve_auto_attack(
         }
     }
 
+    let mut attacker_pools_moved = false;
+    if !hook_queue.is_empty() {
+        let mut a = attacker_handle.character.write().await;
+        attacker_pools_moved = hook_queue.apply(&mut a, lua, hook_now_ms, &mut hook_outbox);
+    }
     flush_wake_outbox(wake_outbox, registry, world, lua, db).await;
+    flush_wake_outbox(hook_outbox, registry, world, lua, db).await;
 
     // #28 S3.3 — attacker TP per landed swing (pmeteor
     // `Character.OnAttack`, Character.cs:886-895): delay-seconds × 100.
@@ -796,7 +895,7 @@ async fn resolve_auto_attack(
     // and the attacker's TP gauge only move when a fresh
     // `charaWork/stateAtQuicklyForAll` lands; without it the init
     // bundle's values go stale on the first hit.
-    if landed > 0 {
+    if landed > 0 || attacker_pools_moved {
         broadcast_state_quickly(registry, world, zone, defender_actor_id).await;
         broadcast_state_quickly(registry, world, zone, attacker_actor_id).await;
     }
@@ -988,6 +1087,244 @@ fn command_status_effect(
     effect
 }
 
+/// The Lua script root, when scripts are loaded.
+fn script_root(lua: Option<&Arc<crate::lua::LuaEngine>>) -> Option<std::path::PathBuf> {
+    lua.and_then(|l| l.catalogs().script_root.read().ok().map(|r| r.clone()))
+        .filter(|r| !r.as_os_str().is_empty())
+}
+
+/// `owner.statusEffects.ReplaceEffect` from a combat hook (Power Surge
+/// stepping up a tier): the new effect comes from the status catalog.
+fn replace_status_from_hook(
+    c: &mut crate::actor::Character,
+    old_id: u32,
+    rep: crate::status::script::HookReplace,
+    lua: Option<&Arc<crate::lua::LuaEngine>>,
+    now_ms: u64,
+    outbox: &mut crate::status::StatusOutbox,
+) {
+    let mut cmd = BattleCommand::new(0, "");
+    cmd.status_id = rep.status_id;
+    cmd.status_duration = rep.duration;
+    cmd.status_magnitude = rep.magnitude;
+    cmd.status_tier = rep.tier;
+    let effect = command_status_effect(&cmd, c.base.actor_id, lua, now_ms);
+    c.status_effects
+        .replace_effect(old_id, effect, now_ms, outbox);
+}
+
+/// Combat-hook work for the attacker, held until no defender is locked.
+#[derive(Default)]
+struct AttackerHookQueue {
+    owner: Vec<crate::status::hooks::EffectResult>,
+    other: Vec<crate::status::script::HookActorChange>,
+}
+
+impl AttackerHookQueue {
+    /// The attacker's own effects ran: their share for the attacker
+    /// waits, the defender's lands now.
+    fn attacker_ran(
+        &mut self,
+        run: crate::status::hooks::HookRun,
+        d: &mut crate::actor::Character,
+        rows: &mut Vec<crate::status::script::HookRow>,
+        outbox: &mut crate::status::StatusOutbox,
+    ) {
+        crate::status::hooks::apply_other(d, &run.other, outbox);
+        self.owner.extend(run.owner);
+        rows.extend(run.rows);
+    }
+
+    /// The defender's effects ran: their share for the defender lands
+    /// now, the attacker's waits.
+    fn defender_ran(
+        &mut self,
+        run: crate::status::hooks::HookRun,
+        d: &mut crate::actor::Character,
+        rows: &mut Vec<crate::status::script::HookRow>,
+        lua: Option<&Arc<crate::lua::LuaEngine>>,
+        now_ms: u64,
+        outbox: &mut crate::status::StatusOutbox,
+    ) {
+        for r in &run.owner {
+            if let Some((old, rep)) = crate::status::hooks::apply_owner(d, r, outbox) {
+                replace_status_from_hook(d, old, rep, lua, now_ms, outbox);
+            }
+        }
+        if !run.other.is_empty() {
+            self.other.push(run.other);
+        }
+        rows.extend(run.rows);
+    }
+
+    fn is_empty(&self) -> bool {
+        self.owner.is_empty() && self.other.is_empty()
+    }
+
+    /// Apply what waited. True when the attacker's HP, MP or TP moved.
+    fn apply(
+        self,
+        a: &mut crate::actor::Character,
+        lua: Option<&Arc<crate::lua::LuaEngine>>,
+        now_ms: u64,
+        outbox: &mut crate::status::StatusOutbox,
+    ) -> bool {
+        let mut pools = false;
+        for r in &self.owner {
+            pools |= r.owner.hp != 0 || r.owner.mp != 0 || r.owner.tp != 0;
+            if let Some((old, rep)) = crate::status::hooks::apply_owner(a, r, outbox) {
+                replace_status_from_hook(a, old, rep, lua, now_ms, outbox);
+            }
+        }
+        for o in &self.other {
+            pools |= o.hp != 0 || o.mp != 0 || o.tp != 0;
+            crate::status::hooks::apply_other(a, o, outbox);
+        }
+        pools
+    }
+}
+
+/// Run the after-the-roll hooks of one attacker → defender exchange
+/// (pmeteor `BattleUtils.HandleHitType` / `Character.OnDamageTaken`):
+/// onHit / onCrit / onMiss on the attacker's effects, onBlock / onParry /
+/// onEvade / onDamageTaken on the defender's. `amount` is the damage about
+/// to be taken; returns it and the enmity after the hooks (Dread Spike
+/// soaks the hit, Sentinel adds enmity).
+#[allow(clippy::too_many_arguments)]
+fn run_after_roll_hooks(
+    root: &std::path::Path,
+    attacker: &crate::status::hooks::HookSide,
+    d: &mut crate::actor::Character,
+    skill: crate::status::script::HookSkill,
+    result: &CommandResult,
+    amount: u16,
+    enmity: u16,
+    direction: u8,
+    queue: &mut AttackerHookQueue,
+    rows: &mut Vec<crate::status::script::HookRow>,
+    lua: Option<&Arc<crate::lua::LuaEngine>>,
+    now_ms: u64,
+    outbox: &mut crate::status::StatusOutbox,
+) -> (u16, u16) {
+    use crate::battle::effects::HitType;
+    use crate::status::StatusEffectFlags as F;
+    use crate::status::hooks::{HookSide, run};
+    let defender = HookSide::of(d);
+    let wanted = F::ACTIVATE_ON_HIT | F::ACTIVATE_ON_CRIT | F::ACTIVATE_ON_MISS;
+    let wanted_def = F::ACTIVATE_ON_BLOCK
+        | F::ACTIVATE_ON_PARRY
+        | F::ACTIVATE_ON_EVADE
+        | F::ACTIVATE_ON_DAMAGE_TAKEN;
+    if !attacker.has(wanted) && !defender.has(wanted_def) {
+        return (amount, enmity);
+    }
+    let mut skill = skill;
+    let mut action = crate::status::script::HookAction::from_result(result, direction);
+    action.amount = f64::from(amount);
+    action.enmity = f64::from(enmity);
+    let mut action = Some(action);
+    let other = Some(&defender.actor);
+    let me = Some(&attacker.actor);
+    let mut attacker_hook = |hook: &str,
+                             flag,
+                             skill: &mut _,
+                             action: &mut _,
+                             d: &mut _,
+                             rows: &mut _,
+                             outbox: &mut _| {
+        let r = run(root, hook, flag, attacker, other, true, skill, action);
+        queue.attacker_ran(r, d, rows, outbox);
+    };
+    if result.action_landed() {
+        attacker_hook(
+            "onHit",
+            F::ACTIVATE_ON_HIT,
+            &mut skill,
+            &mut action,
+            d,
+            rows,
+            outbox,
+        );
+        if result.hit_type == HitType::Crit {
+            attacker_hook(
+                "onCrit",
+                F::ACTIVATE_ON_CRIT,
+                &mut skill,
+                &mut action,
+                d,
+                rows,
+                outbox,
+            );
+        }
+    } else {
+        attacker_hook(
+            "onMiss",
+            F::ACTIVATE_ON_MISS,
+            &mut skill,
+            &mut action,
+            d,
+            rows,
+            outbox,
+        );
+    }
+    let mut defender_hook = |hook: &str,
+                             flag,
+                             skill: &mut _,
+                             action: &mut _,
+                             d: &mut _,
+                             rows: &mut _,
+                             outbox: &mut _| {
+        let r = run(root, hook, flag, &defender, me, false, skill, action);
+        queue.defender_ran(r, d, rows, lua, now_ms, outbox);
+    };
+    match result.hit_type {
+        HitType::Block => defender_hook(
+            "onBlock",
+            F::ACTIVATE_ON_BLOCK,
+            &mut skill,
+            &mut action,
+            d,
+            rows,
+            outbox,
+        ),
+        HitType::Parry => defender_hook(
+            "onParry",
+            F::ACTIVATE_ON_PARRY,
+            &mut skill,
+            &mut action,
+            d,
+            rows,
+            outbox,
+        ),
+        HitType::Miss | HitType::Evade => defender_hook(
+            "onEvade",
+            F::ACTIVATE_ON_EVADE,
+            &mut skill,
+            &mut action,
+            d,
+            rows,
+            outbox,
+        ),
+        _ => {}
+    }
+    if action.is_some_and(|a| a.amount > 0.0) {
+        defender_hook(
+            "onDamageTaken",
+            F::ACTIVATE_ON_DAMAGE_TAKEN,
+            &mut skill,
+            &mut action,
+            d,
+            rows,
+            outbox,
+        );
+    }
+    let a = action.unwrap_or_default();
+    (
+        a.amount.floor().clamp(0.0, f64::from(u16::MAX)) as u16,
+        a.enmity.floor().clamp(0.0, f64::from(u16::MAX)) as u16,
+    )
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn resolve_action(
     attacker_actor_id: u32,
@@ -1006,12 +1343,17 @@ async fn resolve_action(
         return;
     }
 
-    let (atk_level, atk_max_hp, atk_mods) = {
+    let (atk_level, atk_max_hp, atk_mods, atk_pos) = {
         let a = attacker_handle.character.read().await;
         if !a.is_alive() {
             return;
         }
-        (a.chara.level, a.chara.max_hp, a.chara.mods.clone())
+        (
+            a.chara.level,
+            a.chara.max_hp,
+            a.chara.mods.clone(),
+            common::Vector3::new(a.base.position_x, a.base.position_y, a.base.position_z),
+        )
     };
 
     // The command's script settles the status it applies (Protect's size
@@ -1060,6 +1402,79 @@ async fn resolve_action(
             }
         }
         _ => command,
+    };
+
+    // Status effects' combat hooks (pmeteor `CallLuaFunctionByFlag`):
+    // onCommandStart / onMagicCast change the command before it rolls
+    // (Barrage's extra hits, Parsimony's MP), the rest run per target.
+    let root = script_root(lua);
+    let hook_now_ms = (common::utils::unix_timestamp() as u64).saturating_mul(1000);
+    let mut hook_outbox = crate::status::StatusOutbox::new();
+    let mut hook_rows: Vec<crate::status::script::HookRow> = Vec::new();
+    let mut hook_queue = AttackerHookQueue::default();
+    let mut attacker_side = None;
+    let hooked;
+    let command = match &root {
+        Some(root) => {
+            use crate::status::StatusEffectFlags as F;
+            use crate::status::hooks::{HookSide, apply_owner, run};
+            let mut a = attacker_handle.character.write().await;
+            let mut side = HookSide::of(&a);
+            let before = crate::status::script::HookSkill::from_command(command);
+            let mut skill = before;
+            if side.has(F::ACTIVATE_ON_COMMAND_START | F::ACTIVATE_ON_CAST_START) {
+                let mut none = None;
+                let mut runs = vec![run(
+                    root,
+                    "onCommandStart",
+                    F::ACTIVATE_ON_COMMAND_START,
+                    &side,
+                    None,
+                    true,
+                    &mut skill,
+                    &mut none,
+                )];
+                if command.command_type == CommandType::SPELL {
+                    runs.push(run(
+                        root,
+                        "onMagicCast",
+                        F::ACTIVATE_ON_CAST_START,
+                        &side,
+                        None,
+                        true,
+                        &mut skill,
+                        &mut none,
+                    ));
+                }
+                for r in runs {
+                    for e in &r.owner {
+                        if let Some((old, rep)) = apply_owner(&mut a, e, &mut hook_outbox) {
+                            replace_status_from_hook(
+                                &mut a,
+                                old,
+                                rep,
+                                lua,
+                                hook_now_ms,
+                                &mut hook_outbox,
+                            );
+                        }
+                    }
+                    hook_rows.extend(r.rows);
+                }
+                side = HookSide::of(&a);
+            }
+            attacker_side = Some(side);
+            drop(a);
+            if skill != before {
+                let mut c = command.clone();
+                skill.apply_to(&mut c);
+                hooked = c;
+                &hooked
+            } else {
+                command
+            }
+        }
+        None => command,
     };
 
     let is_heal = command.action_type == ActionType::Heal;
@@ -1132,6 +1547,62 @@ async fn resolve_action(
 
         let mut skill = command.clone();
         battle_utils::calc_rates(&atk_view, &def_view, Some(&skill), &mut result);
+        let direction = crate::status::hooks::hit_direction(
+            common::Vector3::new(
+                d_write.base.position_x,
+                d_write.base.position_y,
+                d_write.base.position_z,
+            ),
+            d_write.base.rotation,
+            atk_pos,
+        );
+        if let (Some(root), Some(atk)) = (&root, &attacker_side)
+            && target_id != attacker_actor_id
+        {
+            use crate::status::StatusEffectFlags as F;
+            use crate::status::hooks::{HookSide, run};
+            let def = HookSide::of(&d_write);
+            if atk.has(F::ACTIVATE_ON_PREACTION_CASTER) || def.has(F::ACTIVATE_ON_PREACTION_TARGET)
+            {
+                let mut hs = crate::status::script::HookSkill::from_command(&skill);
+                let mut act = Some(crate::status::script::HookAction::from_result(
+                    &result, direction,
+                ));
+                let r = run(
+                    root,
+                    "onPreAction",
+                    F::ACTIVATE_ON_PREACTION_CASTER,
+                    atk,
+                    Some(&def.actor),
+                    true,
+                    &mut hs,
+                    &mut act,
+                );
+                hook_queue.attacker_ran(r, &mut d_write, &mut hook_rows, &mut hook_outbox);
+                let r = run(
+                    root,
+                    "onPreAction",
+                    F::ACTIVATE_ON_PREACTION_TARGET,
+                    &def,
+                    Some(&atk.actor),
+                    false,
+                    &mut hs,
+                    &mut act,
+                );
+                hook_queue.defender_ran(
+                    r,
+                    &mut d_write,
+                    &mut hook_rows,
+                    lua,
+                    hook_now_ms,
+                    &mut hook_outbox,
+                );
+                if let Some(a) = act {
+                    a.apply_to(&mut result);
+                }
+                hs.apply_to(&mut skill);
+            }
+        }
         let mut hit = ActionHit {
             target_actor_id: target_id,
             damage: 0,
@@ -1243,6 +1714,79 @@ async fn resolve_action(
                 None
             }
         };
+        let mut dmg_request = dmg_request;
+        if let (Some(root), Some(atk)) = (&root, &attacker_side)
+            && target_id != attacker_actor_id
+            && matches!(
+                command.action_type,
+                ActionType::Physical | ActionType::Magic
+            )
+        {
+            let (amount, enmity) = dmg_request.map_or((0, 0), |dr| (dr.amount, dr.enmity));
+            let (new_amount, new_enmity) = run_after_roll_hooks(
+                root,
+                atk,
+                &mut d_write,
+                crate::status::script::HookSkill::from_command(&skill),
+                &result,
+                amount,
+                enmity,
+                direction,
+                &mut hook_queue,
+                &mut hook_rows,
+                lua,
+                hook_now_ms,
+                &mut hook_outbox,
+            );
+            if let Some(dr) = dmg_request.as_mut()
+                && (dr.amount, dr.enmity) != (new_amount, new_enmity)
+            {
+                dr.amount = new_amount;
+                dr.enmity = new_enmity;
+                if let Some(row) = container
+                    .main_results
+                    .iter_mut()
+                    .rev()
+                    .find(|r| r.target_actor_id == target_id)
+                {
+                    row.amount = new_amount;
+                    row.enmity = new_enmity;
+                }
+            }
+        }
+        if is_heal && let (Some(root), Some(atk)) = (&root, &attacker_side) {
+            use crate::status::StatusEffectFlags as F;
+            let def = crate::status::hooks::HookSide::of(&d_write);
+            if def.has(F::ACTIVATE_ON_HEALED) {
+                let mut hs = crate::status::script::HookSkill::from_command(&skill);
+                let mut act = Some(crate::status::script::HookAction::from_result(
+                    &result, direction,
+                ));
+                let r = crate::status::hooks::run(
+                    root,
+                    "onHealed",
+                    F::ACTIVATE_ON_HEALED,
+                    &def,
+                    Some(&atk.actor),
+                    false,
+                    &mut hs,
+                    &mut act,
+                );
+                hook_queue.defender_ran(
+                    r,
+                    &mut d_write,
+                    &mut hook_rows,
+                    lua,
+                    hook_now_ms,
+                    &mut hook_outbox,
+                );
+            }
+        }
+        // Rows the hooks added (Life Surge's drain, Dread Spike's soak)
+        // follow the target's own row.
+        for row in hook_rows.drain(..) {
+            container.add_action(row.to_result(target_id));
+        }
         hit.landed = result.action_landed();
         if !is_status_row && command.status_id != 0 {
             hit.status_roll = battle_utils::try_status(&result, &skill, &mut rng);
@@ -1269,7 +1813,41 @@ async fn resolve_action(
         drop(d_write);
         hits.push(hit);
     }
+    let mut attacker_pools_moved = false;
+    if let Some(root) = &root {
+        use crate::status::StatusEffectFlags as F;
+        let mut a = attacker_handle.character.write().await;
+        if !hook_queue.is_empty() {
+            attacker_pools_moved =
+                std::mem::take(&mut hook_queue).apply(&mut a, lua, hook_now_ms, &mut hook_outbox);
+        }
+        let side = crate::status::hooks::HookSide::of(&a);
+        if side.has(F::ACTIVATE_ON_COMMAND_FINISH) {
+            let mut hs = crate::status::script::HookSkill::from_command(command);
+            let r = crate::status::hooks::run(
+                root,
+                "onCommandFinish",
+                F::ACTIVATE_ON_COMMAND_FINISH,
+                &side,
+                None,
+                true,
+                &mut hs,
+                &mut None,
+            );
+            for e in &r.owner {
+                if let Some((old, rep)) =
+                    crate::status::hooks::apply_owner(&mut a, e, &mut hook_outbox)
+                {
+                    replace_status_from_hook(&mut a, old, rep, lua, hook_now_ms, &mut hook_outbox);
+                }
+            }
+        }
+    }
+    for row in hook_rows.drain(..) {
+        container.add_action(row.to_result(attacker_actor_id));
+    }
     flush_wake_outbox(wake_outbox, registry, world, lua, db).await;
+    flush_wake_outbox(hook_outbox, registry, world, lua, db).await;
 
     // Status effects (pmeteor `CommandResult.TryStatus`). The command's
     // own row (status commands) or an extra row in the same container
@@ -1509,6 +2087,7 @@ async fn resolve_action(
         }
     }
     if attacker_handle.is_player()
+        || attacker_pools_moved
         || hits
             .iter()
             .any(|h| h.target_actor_id == attacker_actor_id && h.healed)

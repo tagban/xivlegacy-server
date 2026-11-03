@@ -40,7 +40,8 @@ function onDamageTaken(effect, attacker, defender, skill, action, actionContaine
     end
 
     defender.SubtractMod(modifiersGlobal.Attack, effect.GetExtra() * apPerHit);
-    defender.SubtractMod(modifiersGlobal.Defense, effect.GetExtra() * defPerHit);
+    -- Taking a hit gives back the defense the stacks took.
+    defender.AddMod(modifiersGlobal.Defense, effect.GetExtra() * defPerHit);
     effect.SetExtra(0);
 end
 

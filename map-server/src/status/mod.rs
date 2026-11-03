@@ -24,6 +24,7 @@
 //! the pattern used by the inventory runtime.
 
 pub mod flags;
+pub mod hooks;
 pub mod ids;
 pub mod outbox;
 pub mod script;
