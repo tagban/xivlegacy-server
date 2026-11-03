@@ -295,7 +295,11 @@ impl TargetFind {
         self.aoe_target_position = origin;
         self.aoe_target_rotation = origin_rot;
 
-        if self.can_target(target, false) {
+        // The selected target is always hit (the command's own range check
+        // already passed); the area shape only decides who else is. A cone
+        // with the target at the caster's feet or just off its facing would
+        // otherwise find nobody and the command would vanish silently.
+        if self.can_target(target, true) {
             self.targets.push(target);
         }
 
@@ -581,7 +585,35 @@ mod tests {
             &a,
         );
         let ids: Vec<u32> = tf.targets().iter().map(|v| v.actor_id).collect();
-        // Target 4 is at z=15 which is outside the 10-yalm circle; shouldn't match.
         assert!(!ids.contains(&5)); // behind
+    }
+
+    #[test]
+    fn cone_always_hits_the_selected_target() {
+        let mut a = arena();
+        a.insert(5, view(5, 0.0, -5.0, 2)); // selected, behind the owner
+        a.insert(6, view(6, 1.0, -5.0, 2)); // also behind, not selected
+        a.insert(7, view(7, 0.0, 5.0, 2)); // in front
+        let mut tf = TargetFind::new(*a.get(&1).unwrap(), None);
+        tf.set_aoe_type(
+            ValidTarget::ENEMY,
+            TargetFindAOEType::Cone,
+            TargetFindAOETarget::Self_,
+            10.0,
+            0.0,
+            10.0,
+            0.0,
+            std::f32::consts::PI / 2.0,
+        );
+        tf.find_within_area(
+            *a.get(&5).unwrap(),
+            ValidTarget::ENEMY,
+            TargetFindAOETarget::Self_,
+            &a,
+        );
+        let ids: Vec<u32> = tf.targets().iter().map(|v| v.actor_id).collect();
+        assert!(ids.contains(&5));
+        assert!(ids.contains(&7));
+        assert!(!ids.contains(&6));
     }
 }
