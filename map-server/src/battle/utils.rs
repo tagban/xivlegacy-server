@@ -270,10 +270,16 @@ pub fn get_hit_rate(
     skill: Option<&BattleCommand>,
 ) -> f64 {
     let mut hit_rate = 80.0;
+    // pmeteor uses a flat 80% whatever the levels, so a level 50 missed a
+    // level 3 one swing in five and a level 10 hit a level 50 as often.
+    // Each level of difference moves it 2%, between 20% and 95%.
+    let dlvl = f64::from(attacker.level) - f64::from(defender.level);
+    hit_rate += (2.0 * dlvl).clamp(-60.0, 15.0);
     let hit_buff = attacker.get_mod(Modifier::RawHitRate);
     let evade_buff = defender.get_mod(Modifier::RawEvadeRate);
     let accuracy_modifier = skill.map(|s| s.accuracy_modifier).unwrap_or(0.0) as f64;
-    hit_rate += (hit_buff + accuracy_modifier).clamp(0.0, 100.0);
+    // Negative buffs (accuracy downs) count too.
+    hit_rate += (hit_buff + accuracy_modifier).clamp(-100.0, 100.0);
     hit_rate -= evade_buff;
     hit_rate.clamp(0.0, 100.0)
 }
@@ -886,6 +892,28 @@ mod tests {
             has_shell: false,
             has_stoneskin: false,
         }
+    }
+
+    #[test]
+    fn hit_rate_follows_the_level_gap() {
+        let m = zero_mods();
+        let rate = |a: i16, d: i16| {
+            get_hit_rate(&stub_view(a, 100, &m, 1), &stub_view(d, 100, &m, 2), None)
+        };
+        assert_eq!(rate(20, 20), 80.0);
+        assert_eq!(rate(22, 20), 84.0);
+        assert_eq!(rate(50, 3), 95.0);
+        assert_eq!(rate(10, 50), 20.0);
+        let mut blind = zero_mods();
+        blind.set(Modifier::RawHitRate, -30.0);
+        assert_eq!(
+            get_hit_rate(
+                &stub_view(20, 100, &blind, 1),
+                &stub_view(20, 100, &m, 2),
+                None
+            ),
+            50.0
+        );
     }
 
     #[test]
