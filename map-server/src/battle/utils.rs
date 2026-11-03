@@ -353,8 +353,11 @@ pub fn try_miss(
     action: &mut CommandResult,
     rng: &mut dyn Rng,
 ) -> bool {
+    // `calc_rates` filled the rate; status hooks may have moved it since
+    // (Paralysis, Presence of Mind), so roll against what's on the action.
+    let _ = (attacker, defender, skill);
     let roll = rng.next_f64() * 100.0;
-    if roll >= get_hit_rate(attacker, defender, skill) {
+    if roll >= action.hit_rate {
         action.hit_type = HitType::Miss;
         action.amount_mitigated = action.amount;
         action.amount = 0;
@@ -970,6 +973,7 @@ mod tests {
         let def = stub_view(10, 2000, &mods, 2);
         let mut action = CommandResult::for_target(2, 0, 0);
         action.amount = 100;
+        calc_rates(&atk, &def, None, &mut action);
 
         let mut rng = FixedRng::new(&[0.99]); // guaranteed miss (99 >= 80)
         let missed = try_miss(&atk, &def, None, &mut action, &mut rng);
@@ -983,6 +987,11 @@ mod tests {
         let missed = try_miss(&atk, &def, None, &mut action, &mut rng);
         assert!(!missed);
         assert_eq!(action.amount, 100);
+
+        // A hook that took the rate to 0 (Paralysis) makes it a miss.
+        action.hit_rate = 0.0;
+        let mut rng = FixedRng::new(&[0.0]);
+        assert!(try_miss(&atk, &def, None, &mut action, &mut rng));
     }
 
     #[test]

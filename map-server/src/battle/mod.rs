@@ -102,6 +102,7 @@ mod integration_tests {
             current_target_actor_id: target_id,
             has_prevent_movement: false,
             has_prevent_attack: false,
+            status_flags: 0,
             max_hp: 1000,
             current_hp: 1000,
             target_hpp: Some(100),

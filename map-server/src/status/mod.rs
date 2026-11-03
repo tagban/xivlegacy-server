@@ -162,6 +162,29 @@ impl StatusEffect {
         }
     }
 
+    /// Take the catalog row's name, flags, overwrite rule, tick and texts
+    /// (`server_statuseffects`), keeping this effect's own numbers. An
+    /// effect built from just an id would otherwise have no flags (a Bind
+    /// that doesn't bind), no overwrite rule (nothing ever refreshes it)
+    /// and no name (its script never runs). No row: left as it is.
+    pub fn apply_catalog(
+        &mut self,
+        catalog: &std::collections::HashMap<u32, crate::gamedata::StatusEffectDef>,
+    ) {
+        let Some(t) = catalog.get(&self.id) else {
+            return;
+        };
+        self.name = t.name.clone();
+        self.flags = StatusEffectFlags::from(t.flags);
+        self.overwrite = StatusEffectOverwrite::from_u8(t.overwrite);
+        self.tick_ms = t.tick_ms;
+        self.hidden = t.hidden;
+        self.silent_on_gain = t.silent_on_gain;
+        self.silent_on_loss = t.silent_on_loss;
+        self.status_gain_text_id = t.status_gain_text_id;
+        self.status_loss_text_id = t.status_loss_text_id;
+    }
+
     /// Clone a template onto a new owner. Equivalent to the copy-ctor in C#.
     pub fn cloned_for(&self, new_owner: u32) -> Self {
         let mut me = self.clone();
@@ -942,6 +965,42 @@ mod tests {
         assert!(restored.has(STATUS_STUN));
         // The client-visible short-id slot is recomputed from the full id.
         assert!(restored.status.contains(&status_id_of(STATUS_POISON)));
+    }
+
+    #[test]
+    fn catalog_row_gives_an_effect_its_rules() {
+        let mut catalog = std::collections::HashMap::new();
+        catalog.insert(
+            STATUS_POISON,
+            crate::gamedata::StatusEffectDef {
+                id: STATUS_POISON,
+                name: "poison".into(),
+                flags: StatusEffectFlags::LOSE_ON_ESUNA.bits(),
+                overwrite: StatusEffectOverwrite::GreaterOrEqualTo.as_u8(),
+                tick_ms: 0,
+                hidden: false,
+                silent_on_gain: false,
+                silent_on_loss: false,
+                status_gain_text_id: 30335,
+                status_loss_text_id: 30338,
+            },
+        );
+        let mut c = StatusEffectContainer::new(1);
+        let mut ob = StatusOutbox::new();
+        let mut weak = StatusEffect::new(1, STATUS_POISON, 60.0, 3000, 30, 0, 0);
+        weak.apply_catalog(&catalog);
+        assert_eq!(weak.name, "poison");
+        assert_eq!(weak.tick_ms, 0);
+        assert!(c.add_status_effect(weak, 1, 0, DEFAULT_GAIN_TEXT_ID, &mut ob));
+        // A stronger copy refreshes it, as the row's rule says.
+        let mut strong = StatusEffect::new(1, STATUS_POISON, 100.0, 3000, 20, 0, 0);
+        strong.apply_catalog(&catalog);
+        assert!(c.add_status_effect(strong, 1, 0, DEFAULT_GAIN_TEXT_ID, &mut ob));
+        assert_eq!(c.get(STATUS_POISON).unwrap().magnitude, 100.0);
+        // Ids with no row keep what they had.
+        let mut bare = StatusEffect::new(1, 999_999, 1.0, 3000, 5, 0, 0);
+        bare.apply_catalog(&catalog);
+        assert_eq!((bare.tick_ms, bare.name.as_str()), (3000, ""));
     }
 
     #[test]

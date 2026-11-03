@@ -1063,6 +1063,10 @@ pub(crate) fn build_owner_view(
         has_prevent_attack: chara
             .status_effects
             .has_by_flag(crate::status::StatusEffectFlags::PREVENT_ATTACK),
+        status_flags: chara
+            .status_effects
+            .iter()
+            .fold(0, |f, e| f | e.flags.bits()),
         max_hp: chara.get_max_hp(),
         current_hp: chara.get_hp(),
         target_hpp: None,

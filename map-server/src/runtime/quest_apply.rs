@@ -5149,7 +5149,7 @@ pub async fn apply_try_status(
     // below the finest granularity any ticking effect uses
     // (typically 3 s).
     let now_ms = (common::utils::unix_timestamp() as u64).saturating_mul(1000);
-    let effect = crate::status::StatusEffect::new(
+    let mut effect = crate::status::StatusEffect::new(
         target_actor_id,
         status_id,
         magnitude,
@@ -5158,6 +5158,9 @@ pub async fn apply_try_status(
         tier,
         now_ms,
     );
+    if let Some(m) = lua.and_then(|l| l.catalogs().status_effects.read().ok()) {
+        effect.apply_catalog(&m);
+    }
     install_status_effect(
         source_actor_id,
         target_actor_id,

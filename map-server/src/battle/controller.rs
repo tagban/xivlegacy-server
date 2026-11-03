@@ -197,6 +197,9 @@ pub struct ControllerOwnerView {
     pub has_prevent_movement: bool,
     /// Asleep, stunned or petrified: no auto-attack swings.
     pub has_prevent_attack: bool,
+    /// Every active status's flags OR'd together (`StatusEffectFlags`
+    /// bits): Silence's PREVENT_SPELL stops a cast in progress.
+    pub status_flags: u32,
     pub max_hp: i16,
     pub current_hp: i16,
     /// Current target's HPP 0..100, or None if no target.
@@ -650,6 +653,7 @@ mod tests {
             current_target_actor_id: current,
             has_prevent_movement: false,
             has_prevent_attack: false,
+            status_flags: 0,
             max_hp: 1000,
             current_hp: 1000,
             target_hpp: Some(100),

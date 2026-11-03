@@ -527,6 +527,9 @@ pub struct Character {
     /// Net modifier change each active status effect's `onGain` made,
     /// by effect id (`status/script.rs`). Taken back off when it goes.
     pub status_mods: std::collections::HashMap<u32, Vec<(u32, f64)>>,
+    /// Movement-speed multiplier the client last got in a 0x00D0 (1.0 =
+    /// the default bands every zone-in sends; 0 while bound).
+    pub speed_sent: f32,
 }
 
 impl Character {
@@ -559,6 +562,7 @@ impl Character {
             quest_offers: Default::default(),
             food: None,
             status_mods: Default::default(),
+            speed_sent: 1.0,
         }
     }
 }

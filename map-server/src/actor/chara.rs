@@ -183,28 +183,34 @@ impl Character {
     /// Scripts drive the modifier map via `player:SetMod(id, val)` when
     /// gear changes, so running this after equip/unequip gives the
     /// client the correct totals.
+    ///
+    /// A pool that was full (or had no max yet) stays full at the new max;
+    /// otherwise it keeps what the actor has, cut down to a lower max. The
+    /// recalc runs on every status gain and loss, and filling up there made
+    /// any buff landing or wearing off a full heal and MP refill, and stood
+    /// corpses' HP back up.
     pub fn calculate_base_stats(&mut self) {
         let hp_mod = self.chara.mods.get(Modifier::Hp) as i32;
         if hp_mod > 0 {
+            let full = self.chara.max_hp <= 0 || self.chara.hp >= self.chara.max_hp;
             self.set_max_hp(hp_mod);
             let hpp = self.chara.mods.get(Modifier::HpPercent);
-            let hp = if hpp > 0.0 {
-                ((hpp / 100.0) * hp_mod as f64).ceil() as i32
-            } else {
-                hp_mod
-            };
-            self.set_hp(hp);
+            if hpp > 0.0 {
+                self.set_hp(((hpp / 100.0) * hp_mod as f64).ceil() as i32);
+            } else if full {
+                self.set_hp(hp_mod);
+            }
         }
         let mp_mod = self.chara.mods.get(Modifier::Mp) as i32;
         if mp_mod > 0 {
+            let full = self.chara.max_mp <= 0 || self.chara.mp >= self.chara.max_mp;
             self.set_max_mp(mp_mod);
             let mpp = self.chara.mods.get(Modifier::MpPercent);
-            let mp = if mpp > 0.0 {
-                ((mpp / 100.0) * mp_mod as f64).ceil() as i32
-            } else {
-                mp_mod
-            };
-            self.set_mp(mp);
+            if mpp > 0.0 {
+                self.set_mp(((mpp / 100.0) * mp_mod as f64).ceil() as i32);
+            } else if full {
+                self.set_mp(mp_mod);
+            }
         }
         // HitCount defaults to 1 (single-hit h2h fists) but yields to
         // the equipped main-hand's `frequency` column — the weapon
@@ -1316,6 +1322,33 @@ mod minimum_hp_lock_tests {
 
     /// Without `MinimumHpLock`, `set_hp` clamps to `[0, max_hp]` —
     /// taking lethal damage zeros HP.
+    #[test]
+    fn recalc_keeps_spent_pools_and_tops_up_full_ones() {
+        let mut c = Character::new(1);
+        c.chara.mods.set(Modifier::Hp, 1000.0);
+        c.chara.mods.set(Modifier::Mp, 500.0);
+        c.calculate_base_stats();
+        assert_eq!((c.chara.hp, c.chara.mp), (1000, 500), "first calc fills");
+        c.chara.hp = 600;
+        c.chara.mp = 100;
+        c.calculate_base_stats();
+        assert_eq!(
+            (c.chara.hp, c.chara.mp),
+            (600, 100),
+            "a status change is no heal"
+        );
+        c.chara.mods.set(Modifier::Hp, 400.0);
+        c.calculate_base_stats();
+        assert_eq!(c.chara.hp, 400, "cut to a lower max");
+        // Full at the old max: full at the new one (login's DB max -> gear).
+        c.chara.mods.set(Modifier::Hp, 1750.0);
+        c.calculate_base_stats();
+        assert_eq!((c.chara.hp, c.chara.max_hp), (1750, 1750));
+        c.chara.hp = 0;
+        c.calculate_base_stats();
+        assert_eq!(c.chara.hp, 0, "a corpse stays down");
+    }
+
     #[test]
     fn set_hp_floor_is_zero_without_lock() {
         let mut c = Character::new(1);
