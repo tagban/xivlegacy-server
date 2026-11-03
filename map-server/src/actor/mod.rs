@@ -524,6 +524,9 @@ pub struct Character {
     /// The food or medicine buff riding the Well Fed status
     /// (`processor/items.rs`); the stat recalc applies it while it lasts.
     pub food: Option<FoodBuff>,
+    /// Net modifier change each active status effect's `onGain` made,
+    /// by effect id (`status/script.rs`). Taken back off when it goes.
+    pub status_mods: std::collections::HashMap<u32, Vec<(u32, f64)>>,
 }
 
 impl Character {
@@ -555,6 +558,7 @@ impl Character {
             quest_journal: crate::actor::quest::QuestJournal::default(),
             quest_offers: Default::default(),
             food: None,
+            status_mods: Default::default(),
         }
     }
 }

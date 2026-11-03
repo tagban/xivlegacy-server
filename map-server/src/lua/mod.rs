@@ -214,9 +214,14 @@ pub struct LuaEngine {
 
 impl LuaEngine {
     pub fn new(script_root: impl Into<std::path::PathBuf>) -> Self {
+        let script_root = script_root.into();
+        let catalogs = Catalogs::new();
+        if let Ok(mut w) = catalogs.script_root.write() {
+            *w = script_root.clone();
+        }
         Self {
             resolver: PathResolver::new(script_root),
-            catalogs: Arc::new(Catalogs::new()),
+            catalogs: Arc::new(catalogs),
             scheduler: CoroutineScheduler::shared(),
             vm_cache: Mutex::new(HashMap::new()),
         }
