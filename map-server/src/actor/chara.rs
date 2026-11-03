@@ -34,7 +34,7 @@ pub const MAX_TP: u16 = 3000;
 
 /// Modifiers the player stat rebuild recomputes from scratch (class
 /// baseline, gear, weapon, derivation, food).
-const PLAYER_PIPELINE_MODS: [Modifier; 22] = {
+const PLAYER_PIPELINE_MODS: [Modifier; 23] = {
     use Modifier::*;
     [
         Hp,
@@ -51,6 +51,7 @@ const PLAYER_PIPELINE_MODS: [Modifier; 22] = {
         Defense,
         AttackMagicPotency,
         HealingMagicPotency,
+        EnhancementMagicPotency,
         MagicAccuracy,
         MagicEvasion,
         EnfeeblingMagicPotency,
@@ -567,7 +568,7 @@ impl Character {
     /// Ratios from `Map Server/Actors/Chara/Player/Player.cs:2765-2779`:
     ///   STR → Attack (×0.667),  DEX → Accuracy,  VIT → Defense
     ///   INT → AttackMagicPotency (×0.25)
-    ///   MND → MagicAccuracy + HealingMagicPotency
+    ///   MND → MagicAccuracy + HealingMagicPotency + EnhancementMagicPotency
     ///   Piety → MagicEvasion + EnfeeblingMagicPotency
     ///
     /// We skip Meteor's `AddMod(Modifier.Hp, (float)Modifier.Vitality)` —
@@ -603,6 +604,11 @@ impl Character {
         self.chara
             .mods
             .add(HealingMagicPotency, (mnd_v * 0.25).floor());
+        // Protect and Stoneskin size themselves from this; without it a
+        // player's casts gave nothing.
+        self.chara
+            .mods
+            .add(EnhancementMagicPotency, (mnd_v * 0.25).floor());
         self.chara.mods.add(MagicEvasion, (pie_v * 0.25).floor());
         self.chara
             .mods
