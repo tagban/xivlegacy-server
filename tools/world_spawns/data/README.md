@@ -57,4 +57,9 @@ To refresh the ground heights (needs the 1.23b install; see `tools/terrain/READM
 python3 tools/world_spawns/generate.py --db <clean garlemald.db> --client "<install>" --points /tmp/planned.csv
 python3 tools/terrain/spawn_heights.py /tmp/planned.csv --client "<install>"
 python3 tools/world_spawns/generate.py --db <clean garlemald.db> --client "<install>"
+python3 tools/terrain/height_update.py
 ```
+
+Databases record seeds by file name, so one that already applied 101 never re-runs it.
+`height_update.py` writes `292_world_monster_spawn_heights.sql`: UPDATEs that move those
+spawns to the positions in the current 101 (a no-op on a fresh database).

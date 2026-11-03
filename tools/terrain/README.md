@@ -17,6 +17,7 @@ python3 tools/terrain/xivterrain.py zones                         # server zone 
 python3 tools/terrain/xivterrain.py batch in.csv out.csv          # zoneId,x,z[,near_y]
 python3 tools/terrain/validate.py --probe <old probe results.csv>
 python3 tools/terrain/spawn_heights.py planned.csv                # see world_spawns README
+python3 tools/terrain/height_update.py                            # seed 292 from the 101 diff
 ```
 
 ```python
