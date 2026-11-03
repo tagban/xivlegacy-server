@@ -3851,6 +3851,7 @@ async fn equipped_mainhand_weapon_populates_modifiers_and_damage() {
         level: 10,
         max_hp: 1000,
         mods: &mods_snapshot,
+        status: crate::battle::utils::no_status(),
         has_aegis_boon: false,
         has_protect: false,
         has_shell: false,
