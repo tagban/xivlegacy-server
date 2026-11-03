@@ -33,11 +33,10 @@ pub async fn emit_grand_company_packet(handle: &ActorHandle, world: &WorldManage
         )
     };
     if let Some(client) = world.client(handle.session_id).await {
-        let pkt =
+        let mut pkt =
             crate::packets::send::player::build_set_grand_company(handle.actor_id, gc, l, g, u);
-        if let Ok(base) = common::BasePacket::create_from_subpacket(&pkt, true, false) {
-            client.send_bytes(base.to_bytes()).await;
-        }
+        pkt.set_target_id(handle.session_id);
+        client.send_bytes(pkt.to_bytes()).await;
     }
 }
 
