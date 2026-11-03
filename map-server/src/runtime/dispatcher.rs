@@ -1174,11 +1174,14 @@ async fn resolve_action(
                 // the effect of Y"), so roll first: a failed roll reads as
                 // a resist instead of claiming an effect that never lands.
                 result.amount = 0;
-                let rolled =
-                    command.status_id != 0 && battle_utils::try_status(&result, &skill, &mut rng);
-                if command.status_id == 0 || rolled {
+                // A status with no chance is one a trait unlocks (Flash's
+                // Blind, Provoke's Attack Down): without it the command is
+                // plain enmity and lands, rather than reading as a resist.
+                let has_status = command.status_id != 0 && skill.status_chance > 0.0;
+                let rolled = has_status && battle_utils::try_status(&result, &skill, &mut rng);
+                if !has_status || rolled {
                     battle_utils::finish_action_status(&skill, &mut result, &mut container);
-                    if command.status_id == 0 {
+                    if !has_status {
                         // No status: never point the text at status 0.
                         container.main_results.last_mut().unwrap().effect_id = 0;
                     }
@@ -3283,6 +3286,21 @@ pub(crate) async fn apply_revive(
     let bytes = sub.to_bytes();
     send_to_self_if_player(registry, world, owner_actor_id, bytes.clone()).await;
     broadcast_around_actor(world, registry, zone, owner_actor_id, bytes).await;
+}
+
+/// GM `settp`: set the actor's TP and push the pool bundle so the client's
+/// gauge (and its weaponskill icons) follow at once.
+pub(crate) async fn apply_set_tp(
+    actor_id: u32,
+    tp: u16,
+    registry: &ActorRegistry,
+    world: &WorldManager,
+) {
+    let Some(handle) = registry.get(actor_id).await else {
+        return;
+    };
+    handle.character.write().await.chara.tp = tp;
+    sync_pools_after_tick(registry, world, actor_id).await;
 }
 
 /// Outcome of [`apply_home_point_revive`] — surfaced for callers that

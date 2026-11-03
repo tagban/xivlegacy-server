@@ -190,6 +190,7 @@ impl CommandProcessor {
             "home" => self.handle_home(&args).await,
             "sethome" => self.handle_set_home(&args).await,
             "die" => self.handle_die(&args).await,
+            "settp" => self.handle_settp(&args).await,
             "givegil" => self.handle_givegil(&args).await,
             "giveexp" => self.handle_giveexp(&args).await,
             "hireretainer" => self.handle_hire_retainer(&args).await,
@@ -285,6 +286,7 @@ impl CommandProcessor {
             "setsleeping [name]",
             "dream <id> [name]",
             "die [name]",
+            "settp <tp 0-3000> [name]",
             "setgm <level 0-4> <name>",
             "reload",
             "talkto <actor_class_id> [name]",
@@ -326,6 +328,27 @@ impl CommandProcessor {
                 )
                 .await;
                 format!("revived {name} (actor {actor_id})")
+            }
+            TargetLookup::Err(e) => e,
+        }
+    }
+
+    /// `settp <tp> [name]` — set a player's TP (0-3000) and refresh their
+    /// gauge, so weaponskills can be tried without fighting for TP first.
+    async fn handle_settp(&self, args: &Args<'_>) -> String {
+        let usage = "usage: settp <tp 0-3000> <name>";
+        let Some(tp) = args.rest().first().and_then(|t| t.parse::<u16>().ok()) else {
+            return usage.into();
+        };
+        let tp = tp.min(3000);
+        let Some(name) = args.rest_joined(1) else {
+            return usage.into();
+        };
+        match self.resolve_live_target(&name).await {
+            TargetLookup::Ok { actor_id, .. } => {
+                crate::runtime::dispatcher::apply_set_tp(actor_id, tp, &self.registry, &self.world)
+                    .await;
+                format!("set {name}'s TP to {tp}")
             }
             TargetLookup::Err(e) => e,
         }
@@ -1922,6 +1945,27 @@ mod tests {
         let (cmd, _db) = fixture().await;
         let out = cmd.run("givegil hello Somebody").await.unwrap();
         assert!(out.contains("not an integer"), "got {out}");
+    }
+
+    #[tokio::test]
+    async fn settp_checks_its_arguments() {
+        let (cmd, _db) = fixture().await;
+        assert_eq!(
+            cmd.run("settp").await.unwrap(),
+            "usage: settp <tp 0-3000> <name>"
+        );
+        assert_eq!(
+            cmd.run("settp lots Somebody").await.unwrap(),
+            "usage: settp <tp 0-3000> <name>"
+        );
+        assert_eq!(
+            cmd.run("settp 3000").await.unwrap(),
+            "usage: settp <tp 0-3000> <name>"
+        );
+        assert_eq!(
+            cmd.run("settp 3000 Nobody").await.unwrap(),
+            "unknown character: Nobody"
+        );
     }
 
     #[tokio::test]
