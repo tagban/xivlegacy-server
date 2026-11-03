@@ -1087,18 +1087,6 @@ async fn resolve_action(
             continue;
         };
         let mut result = CommandResult::from_command(target_id, command, 1);
-        // Lua scripts normally drop the base potency into `action.amount`
-        // before calling `DoAction`. Until those bindings land, use the
-        // command's `base_potency` directly; zero falls back to a
-        // conservative placeholder so casts still produce a visible hit
-        // number. (The old flat-100 placeholder one-shot the SEQ_005
-        // tutorial wolves, hence the level scaling.)
-        result.amount = if command.base_potency > 0 {
-            command.base_potency
-        } else {
-            (15 + 5 * i32::from(atk_level.max(1))).min(9999) as u16
-        };
-        result.enmity = result.amount;
 
         let mut d_write = defender_handle.character.write().await;
         let alive = d_write.is_alive();
@@ -1128,6 +1116,19 @@ async fn resolve_action(
             has_shell: false,
             has_stoneskin: false,
         };
+
+        // Skill power from seed 291 (`battle_utils::skill_amount`). A row
+        // with no power data keeps its `base_potency`; zero falls back to
+        // a conservative level-scaled placeholder so casts still produce
+        // a visible hit number.
+        result.amount = battle_utils::skill_amount(&atk_view, command, &mut rng).unwrap_or(
+            if command.base_potency > 0 {
+                command.base_potency
+            } else {
+                (15 + 5 * i32::from(atk_level.max(1))).min(9999) as u16
+            },
+        );
+        result.enmity = result.amount;
 
         let mut skill = command.clone();
         battle_utils::calc_rates(&atk_view, &def_view, Some(&skill), &mut result);

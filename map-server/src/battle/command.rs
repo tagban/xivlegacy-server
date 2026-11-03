@@ -213,6 +213,16 @@ pub struct BattleCommand {
     pub action_type: ActionType,
 
     pub base_potency: u16,
+    /// Stat-scaled power (seed 291): 1000 = 1.0x, 0 = not stat-scaled.
+    pub magic_potency: u16,
+    /// Stats it scales with (1 STR .. 6 PIE, -1 none) and their weights.
+    pub main_stat: i8,
+    pub main_stat_mod: f32,
+    pub second_stat: i8,
+    pub second_stat_mod: f32,
+    /// A physical skill's damage as a multiple of the user's auto-attack
+    /// (0 = the default for its kind).
+    pub damage_multiplier: f32,
     pub enmity_modifier: f32,
     pub accuracy_modifier: f32,
     pub bonus_crit_rate: f32,
@@ -270,6 +280,12 @@ impl BattleCommand {
             action_property: ActionProperty::None,
             action_type: ActionType::None,
             base_potency: 0,
+            magic_potency: 0,
+            main_stat: -1,
+            main_stat_mod: 0.0,
+            second_stat: -1,
+            second_stat_mod: 0.0,
+            damage_multiplier: 0.0,
             enmity_modifier: 1.0,
             accuracy_modifier: 0.0,
             bonus_crit_rate: 0.0,

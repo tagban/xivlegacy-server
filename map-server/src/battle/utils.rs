@@ -730,6 +730,75 @@ pub fn attack_calculate_damage(
 }
 
 // ---------------------------------------------------------------------------
+// Skill power (seed 291).
+//
+// Stat-scaled skills (spells, cures, a few abilities) carry a 1.x potency
+// (1000 = 1.0x) and up to two stats with weights:
+//
+//     amount = potency / 1000 * (4 * level + 20 + mod1 * stat1 + mod2 * stat2)
+//
+// The level term is fitted to retail captures: a level 26-27 Cure (1000,
+// MND x 0.2) healed 151-166 and Second Wind (1550, INT x 0.5) about 205.
+// Physical skills deal a multiple of the user's own auto-attack hit, fitted
+// per skill from the same captures (Fast Blade 3.1x for a gladiator, Heavy
+// Swing 1.8x for a marauder); skills with no capture use 2.5x. Both get the
+// usual +-4% swing and then the defender's mitigation.
+// ---------------------------------------------------------------------------
+
+/// Default weapon-skill multiplier for physical skills with no fitted value.
+pub const DEFAULT_PHYSICAL_SKILL_MULTIPLIER: f64 = 2.5;
+
+fn stat_modifier(stat: i8) -> Option<Modifier> {
+    Some(match stat {
+        1 => Modifier::Strength,
+        2 => Modifier::Vitality,
+        3 => Modifier::Dexterity,
+        4 => Modifier::Intelligence,
+        5 => Modifier::Mind,
+        6 => Modifier::Piety,
+        _ => return None,
+    })
+}
+
+/// The level part of a stat-scaled skill's power.
+pub fn skill_level_base(level: i16) -> f64 {
+    4.0 * f64::from(level.max(1)) + 20.0
+}
+
+/// The pre-mitigation amount of a damage or healing skill, or `None` when
+/// the skill has no power data (callers then keep `base_potency`).
+pub fn skill_amount(
+    attacker: &CombatView<'_>,
+    skill: &BattleCommand,
+    rng: &mut dyn Rng,
+) -> Option<u16> {
+    let dev = 0.96 + rng.next_f64() * 0.08;
+    if skill.magic_potency > 0 {
+        let mut base = skill_level_base(attacker.level);
+        for (stat, weight) in [
+            (skill.main_stat, skill.main_stat_mod),
+            (skill.second_stat, skill.second_stat_mod),
+        ] {
+            if let Some(m) = stat_modifier(stat) {
+                base += f64::from(weight) * attacker.get_mod(m);
+            }
+        }
+        let amount = f64::from(skill.magic_potency) / 1000.0 * base * dev;
+        return Some(amount.round().clamp(1.0, 9999.0) as u16);
+    }
+    if skill.action_type == ActionType::Physical {
+        let mult = if skill.damage_multiplier > 0.0 {
+            f64::from(skill.damage_multiplier)
+        } else {
+            DEFAULT_PHYSICAL_SKILL_MULTIPLIER
+        };
+        let hit = f64::from(attack_calculate_base_damage(attacker, rng));
+        return Some((hit * mult).round().clamp(1.0, 9999.0) as u16);
+    }
+    None
+}
+
+// ---------------------------------------------------------------------------
 // EXP helpers.
 // ---------------------------------------------------------------------------
 
@@ -1013,5 +1082,68 @@ mod tests {
         let atk = stub_view(10, 1000, &mods, 1);
         let mut rng = FixedRng::new(&[0.5]);
         assert_eq!(attack_calculate_base_damage(&atk, &mut rng), 9999);
+    }
+
+    #[test]
+    fn cure_heals_like_retail_at_level_27() {
+        // Retail: a level 26-27 conjurer's Cure healed 151-166. Potency
+        // 1000, MND x 0.2; MND 70 is the server baseline at 27 plus a
+        // little gear. dev 1.0 (rng 0.5): 1.0 * (128 + 14) = 142.
+        let mut mods = ModifierMap::default();
+        mods.set(Modifier::Mind, 70.0);
+        let caster = stub_view(27, 1000, &mods, 1);
+        let mut cure = BattleCommand::new(27346, "cure");
+        cure.action_type = ActionType::Heal;
+        cure.magic_potency = 1000;
+        cure.main_stat = 5;
+        cure.main_stat_mod = 0.2;
+        let mut rng = FixedRng::new(&[0.5]);
+        assert_eq!(skill_amount(&caster, &cure, &mut rng), Some(142));
+    }
+
+    #[test]
+    fn spells_scale_with_potency_and_level() {
+        let mut mods = ModifierMap::default();
+        mods.set(Modifier::Intelligence, 12.0);
+        let lv1 = stub_view(1, 300, &mods, 1);
+        let mut thunder = BattleCommand::new(27313, "thunder");
+        thunder.action_type = ActionType::Magic;
+        thunder.magic_potency = 1050;
+        thunder.main_stat = 4;
+        thunder.main_stat_mod = 0.5;
+        // 1.05 * (24 + 6) = 31.5 -> 32 at level 1
+        assert_eq!(skill_amount(&lv1, &thunder, &mut FixedRng::new(&[0.5])), Some(32));
+        let mut firaga = thunder.clone();
+        firaga.magic_potency = 1600;
+        firaga.main_stat_mod = 1.5;
+        mods.set(Modifier::Intelligence, 110.0);
+        let lv50 = stub_view(50, 3000, &mods, 1);
+        // 1.6 * (220 + 165) = 616
+        assert_eq!(skill_amount(&lv50, &firaga, &mut FixedRng::new(&[0.5])), Some(616));
+    }
+
+    #[test]
+    fn physical_skills_multiply_the_auto_attack_hit() {
+        let mut mods = ModifierMap::default();
+        mods.set(Modifier::Strength, 40.0);
+        let atk = stub_view(27, 1000, &mods, 1);
+        let mut fast_blade = BattleCommand::new(27150, "fast_blade");
+        fast_blade.action_type = ActionType::Physical;
+        fast_blade.damage_multiplier = 3.1;
+        // auto-attack hit at dev 1.0: 0.85 * 40 = 34; x 3.1 = 105.4
+        let mut rng = FixedRng::new(&[0.5, 0.5]);
+        assert_eq!(skill_amount(&atk, &fast_blade, &mut rng), Some(105));
+        fast_blade.damage_multiplier = 0.0;
+        let mut rng = FixedRng::new(&[0.5, 0.5]);
+        assert_eq!(skill_amount(&atk, &fast_blade, &mut rng), Some(85));
+    }
+
+    #[test]
+    fn skills_without_power_data_keep_base_potency() {
+        let mods = ModifierMap::default();
+        let atk = stub_view(10, 1000, &mods, 1);
+        let mut provoke = BattleCommand::new(27151, "provoke");
+        provoke.action_type = ActionType::Status;
+        assert_eq!(skill_amount(&atk, &provoke, &mut FixedRng::new(&[0.5])), None);
     }
 }

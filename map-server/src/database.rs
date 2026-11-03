@@ -1905,7 +1905,9 @@ impl Database {
                               tpCost, animationType, effectAnimation, modelAnimation,
                               animationDuration, battleAnimation, validUser, comboId1,
                               comboId2, comboStep, accuracyMod, worldMasterTextId,
-                              commandType, actionType, actionProperty
+                              commandType, actionType, actionProperty,
+                              magicPotency, mainStat, mainStatMod, secondStat,
+                              secondStatMod, damageMultiplier
                        FROM server_battle_commands"#,
                 )?;
                 let rows: Vec<BattleCommand> = stmt
@@ -1958,6 +1960,12 @@ impl Database {
                             command_type: r.get::<_, i16>(40).unwrap_or_default(),
                             action_type: r.get::<_, i16>(41).unwrap_or_default(),
                             action_property: r.get::<_, i16>(42).unwrap_or_default(),
+                            magic_potency: r.get::<_, u16>(43).unwrap_or_default(),
+                            main_stat: r.get::<_, i8>(44).unwrap_or(-1),
+                            main_stat_mod: r.get::<_, f32>(45).unwrap_or_default(),
+                            second_stat: r.get::<_, i8>(46).unwrap_or(-1),
+                            second_stat_mod: r.get::<_, f32>(47).unwrap_or_default(),
+                            damage_multiplier: r.get::<_, f32>(48).unwrap_or_default(),
                         })
                     })?
                     .collect::<rusqlite::Result<_>>()?;
