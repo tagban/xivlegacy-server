@@ -276,10 +276,13 @@ impl Character {
             c if c == crate::gamedata::CLASSID_THM as i16
                 || c == crate::gamedata::CLASSID_CNJ as i16
         );
+        // Physical classes still spend MP on abilities (Decoy, Swiftsong,
+        // Second Wind...), which the client prices at about 280 by L50, so
+        // their pool has to clear that.
         let mp = if is_caster {
             80.0 + level * 20.0
         } else {
-            20.0 + level * 5.0
+            50.0 + level * 12.0
         };
 
         // Closure captures `self.chara.mods` via `&mut`, but borrowck
