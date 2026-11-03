@@ -553,9 +553,10 @@ pub fn finish_action_physical(
 
     let multi_hit = matches!(skill.as_deref(), Some(s) if s.num_hits > 1);
     if multi_hit && action.hit_num == 1 {
-        // Add the "You use [command] on [target]" preamble.
+        // Add the "You use [command] on [target]" preamble. The row's
+        // target is the [target] in that text (the attacker read "on you").
         results.add_action(CommandResult {
-            target_actor_id: attacker.actor_id,
+            target_actor_id: defender.actor_id,
             world_master_text_id: 30441,
             effect_id: 0,
             hit_num: 1,

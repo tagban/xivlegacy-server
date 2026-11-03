@@ -1140,6 +1140,46 @@ async fn resolve_action(
             status_roll: false,
         };
         let dmg_request = match command.action_type {
+            // Multi-hit weaponskills (Rage of Halone, Simian Thrash...): the
+            // skill's power is split across its hits, and each hit rolls
+            // miss, crit, block and parry on its own row.
+            ActionType::Physical if command.num_hits > 1 => {
+                let n = command.num_hits;
+                let total = result.amount;
+                let mut sum: Option<battle_utils::DamageRequest> = None;
+                let mut last_landed: Option<CommandResult> = None;
+                let mut last = result.clone();
+                for h in 1..=n {
+                    let mut part = CommandResult::from_command(target_id, command, h);
+                    part.amount =
+                        total / u16::from(n) + if h == 1 { total % u16::from(n) } else { 0 };
+                    part.enmity = part.amount;
+                    battle_utils::calc_rates(&atk_view, &def_view, Some(&skill), &mut part);
+                    if let Some(dr) = battle_utils::finish_action_physical(
+                        &atk_view,
+                        &def_view,
+                        &mut d_write.chara.mods,
+                        Some(&mut skill),
+                        &mut part,
+                        &mut container,
+                        &mut rng,
+                    ) {
+                        let s = sum.get_or_insert(battle_utils::DamageRequest {
+                            target_actor_id: dr.target_actor_id,
+                            amount: 0,
+                            enmity: 0,
+                        });
+                        s.amount = s.amount.saturating_add(dr.amount);
+                        s.enmity = s.enmity.saturating_add(dr.enmity);
+                    }
+                    if part.action_landed() {
+                        last_landed = Some(part.clone());
+                    }
+                    last = part;
+                }
+                result = last_landed.unwrap_or(last);
+                sum
+            }
             ActionType::Physical => battle_utils::finish_action_physical(
                 &atk_view,
                 &def_view,
