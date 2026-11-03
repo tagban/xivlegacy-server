@@ -557,6 +557,16 @@ pub struct BattleCommand {
     pub action_type: i16,
     pub accuracy_modifier: f32,
     pub world_master_text_id: u16,
+    /// Stat-scaled power (seed 291): 1000 = 1.0x, 0 = not stat-scaled.
+    pub magic_potency: u16,
+    /// Stats it scales with (1 STR .. 6 PIE, -1 none) and their weights.
+    pub main_stat: i8,
+    pub main_stat_mod: f32,
+    pub second_stat: i8,
+    pub second_stat_mod: f32,
+    /// A physical skill's damage as a multiple of the user's auto-attack
+    /// (0 = the default for its kind).
+    pub damage_multiplier: f32,
 }
 
 impl BattleCommand {
@@ -633,6 +643,12 @@ impl BattleCommand {
         out.action_type = crate::battle::effects::ActionType::from_u16(self.action_type as u16);
         out.base_potency = self.base_potency;
         out.accuracy_modifier = self.accuracy_modifier;
+        out.magic_potency = self.magic_potency;
+        out.main_stat = self.main_stat;
+        out.main_stat_mod = self.main_stat_mod;
+        out.second_stat = self.second_stat;
+        out.second_stat_mod = self.second_stat_mod;
+        out.damage_multiplier = self.damage_multiplier;
         out.valid_user = match self.valid_user {
             1 => bc::BattleCommandValidUser::Player,
             2 => bc::BattleCommandValidUser::Monster,
