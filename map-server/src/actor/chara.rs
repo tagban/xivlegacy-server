@@ -32,6 +32,39 @@ pub const STAT_COUNT: usize = 36;
 /// Max stack size for TP.
 pub const MAX_TP: u16 = 3000;
 
+/// Modifiers the player stat rebuild recomputes from scratch (class
+/// baseline, gear, weapon, derivation, food).
+const PLAYER_PIPELINE_MODS: [Modifier; 22] = {
+    use Modifier::*;
+    [
+        Hp,
+        Mp,
+        Tp,
+        Strength,
+        Vitality,
+        Dexterity,
+        Intelligence,
+        Mind,
+        Piety,
+        Attack,
+        Accuracy,
+        Defense,
+        AttackMagicPotency,
+        HealingMagicPotency,
+        MagicAccuracy,
+        MagicEvasion,
+        EnfeeblingMagicPotency,
+        // Weapon-scoped — reset so unequipping a weapon doesn't
+        // leave the prior Delay / HitCount / damage-power lingering
+        // on a now-bare-fisted character.
+        Delay,
+        AttackType,
+        HitCount,
+        Parry,
+        WeaponDamagePower,
+    ]
+};
+
 impl Character {
     // ----- HP / MP / TP ------------------------------------------------------
 
@@ -340,35 +373,42 @@ impl Character {
     /// `server_battlenpc_*_mods` seeds at spawn and never want them
     /// zeroed. The dispatcher guards this call with `is_player`.
     pub fn reset_player_bonus_stats(&mut self) {
-        use Modifier::*;
-        for m in [
-            Hp,
-            Mp,
-            Tp,
-            Strength,
-            Vitality,
-            Dexterity,
-            Intelligence,
-            Mind,
-            Piety,
-            Attack,
-            Accuracy,
-            Defense,
-            AttackMagicPotency,
-            HealingMagicPotency,
-            MagicAccuracy,
-            MagicEvasion,
-            EnfeeblingMagicPotency,
-            // Weapon-scoped — reset so unequipping a weapon doesn't
-            // leave the prior Delay / HitCount / damage-power lingering
-            // on a now-bare-fisted character.
-            Delay,
-            AttackType,
-            HitCount,
-            Parry,
-            WeaponDamagePower,
-        ] {
+        for m in PLAYER_PIPELINE_MODS {
             self.chara.mods.set(m, 0.0);
+        }
+    }
+
+    /// Put a status effect's `onGain` modifier changes on (replacing any it
+    /// already had, for a refreshed effect) and remember them.
+    pub fn apply_status_mods(&mut self, effect_id: u32, deltas: Vec<(u32, f64)>) {
+        self.remove_status_mods(effect_id);
+        for &(k, d) in &deltas {
+            self.chara.mods.add_raw(k, d);
+        }
+        if !deltas.is_empty() {
+            self.status_mods.insert(effect_id, deltas);
+        }
+    }
+
+    /// Take a status effect's modifier changes back off.
+    pub fn remove_status_mods(&mut self, effect_id: u32) {
+        if let Some(deltas) = self.status_mods.remove(&effect_id) {
+            for (k, d) in deltas {
+                self.chara.mods.subtract_raw(k, d);
+            }
+        }
+    }
+
+    /// The player stat rebuild zeroes [`PLAYER_PIPELINE_MODS`]; put the
+    /// active effects' share of those back. Other modifiers keep theirs.
+    pub fn apply_status_pipeline_mods(&mut self) {
+        let pipeline: Vec<u32> = PLAYER_PIPELINE_MODS.iter().map(|m| m.as_u32()).collect();
+        for deltas in self.status_mods.values() {
+            for &(k, d) in deltas {
+                if pipeline.contains(&k) {
+                    self.chara.mods.add_raw(k, d);
+                }
+            }
         }
     }
 
@@ -919,6 +959,36 @@ mod recalc_tests {
         assert!(c.chara.mods.get(Modifier::Attack) > 0.0);
         assert!(c.chara.mods.get(Modifier::Accuracy) > 0.0);
         assert!(c.chara.mods.get(Modifier::Defense) > 0.0);
+    }
+
+    #[test]
+    fn status_mods_come_off_and_survive_the_player_rebuild() {
+        use crate::actor::modifier::Modifier;
+        let mut c = Character::new(1);
+        c.chara.mods.set(Modifier::Defense, 100.0);
+        c.chara.mods.set(Modifier::Regen, 0.0);
+        let protect = vec![(Modifier::Defense.as_u32(), 40.0)];
+        let regen = vec![(Modifier::Regen.as_u32(), 5.0)];
+        c.apply_status_mods(7, protect.clone());
+        c.apply_status_mods(8, regen);
+        // Refreshing an effect replaces its share rather than stacking.
+        c.apply_status_mods(7, protect);
+        assert_eq!(c.chara.mods.get(Modifier::Defense), 140.0);
+        assert_eq!(c.chara.mods.get(Modifier::Regen), 5.0);
+
+        // The rebuild zeroes Defense and rebuilds it (here: back to 100),
+        // then the effect's share goes back on; Regen is left alone.
+        c.reset_player_bonus_stats();
+        c.chara.mods.set(Modifier::Defense, 100.0);
+        c.apply_status_pipeline_mods();
+        assert_eq!(c.chara.mods.get(Modifier::Defense), 140.0);
+        assert_eq!(c.chara.mods.get(Modifier::Regen), 5.0);
+
+        c.remove_status_mods(7);
+        c.remove_status_mods(8);
+        c.remove_status_mods(8);
+        assert_eq!(c.chara.mods.get(Modifier::Defense), 100.0);
+        assert_eq!(c.chara.mods.get(Modifier::Regen), 0.0);
     }
 
     #[test]

@@ -73,6 +73,9 @@ pub struct Catalogs {
     /// installs the same rows the world manager loads from
     /// `server_gather_node_spawns`.
     pub gather_node_metadata: RwLock<HashMap<(u32, String), GatherNodeMetadata>>,
+    /// `scripts/lua`, for code that runs one script on its own (status
+    /// effect `onGain`, `status/script.rs`) without a full LuaEngine.
+    pub script_root: RwLock<std::path::PathBuf>,
 }
 
 impl Catalogs {
