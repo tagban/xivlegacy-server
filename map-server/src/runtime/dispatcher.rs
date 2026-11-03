@@ -176,13 +176,19 @@ pub async fn dispatch_status_event(
             owner_actor_id,
             status_effect_id,
             function_name,
+            effect,
         } => {
-            tracing::debug!(
-                owner = owner_actor_id,
-                effect = status_effect_id,
-                fn_name = function_name,
-                "status: LuaCall (TODO)"
-            );
+            apply_status_script(
+                registry,
+                world,
+                db,
+                catalogs,
+                *owner_actor_id,
+                *status_effect_id,
+                function_name,
+                *effect,
+            )
+            .await;
         }
         StatusEvent::WorldMasterText {
             owner_actor_id,
@@ -1006,6 +1012,54 @@ async fn resolve_action(
             return;
         }
         (a.chara.level, a.chara.max_hp, a.chara.mods.clone())
+    };
+
+    // The command's script settles the status it applies (Protect's size
+    // comes from the caster's enhancing potency, Invigorate's from gear…).
+    let scripted;
+    let command = match (command.status_id, lua) {
+        (status_id, Some(l)) if status_id != 0 => {
+            let root = l
+                .catalogs()
+                .script_root
+                .read()
+                .map(|r| r.clone())
+                .unwrap_or_default();
+            let caster = crate::status::script::OwnerView {
+                mods: atk_mods.clone(),
+                level: atk_level,
+                max_hp: atk_max_hp as i32,
+                max_mp: 0,
+            };
+            let start = crate::status::script::CommandStatus {
+                status_id: command.status_id,
+                duration: command.status_duration,
+                magnitude: command.status_magnitude,
+                tier: command.status_tier,
+                chance: f64::from(command.status_chance),
+            };
+            match crate::status::script::run_command_setup(&root, &command.name, &caster, start) {
+                Ok(Some(set)) => {
+                    let mut c = command.clone();
+                    c.status_id = set.status_id;
+                    c.status_duration = set.duration;
+                    // Formulas tuned for endgame potency go negative at low
+                    // level (Regen: 0.625 × potency − 109); no effect then,
+                    // rather than a buff that drains.
+                    c.status_magnitude = set.magnitude.max(0.0);
+                    c.status_tier = set.tier;
+                    c.status_chance = set.chance as f32;
+                    scripted = c;
+                    &scripted
+                }
+                Ok(None) => command,
+                Err(e) => {
+                    tracing::debug!(command = %command.name, error = %e, "command setup failed");
+                    command
+                }
+            }
+        }
+        _ => command,
     };
 
     let is_heal = command.action_type == ActionType::Heal;
@@ -2159,6 +2213,92 @@ pub(crate) async fn sync_pools_after_tick(
 /// nameplate HP bars and the self-HUD stay in sync with the new gear
 /// pool. Unchanged recalcs (status-effect tick routed through
 /// `StatusEvent::RecalcStats`, for example) produce no wire traffic.
+/// A status effect's script hook. `onGain` runs the effect's Lua and puts
+/// the modifier changes it makes on the owner; `onLose` takes them back off
+/// (the scripts' own `onLose` only mirrors `onGain`). The `RecalcStats` the
+/// container queues next refreshes the derived numbers. `onTick` scripts
+/// aren't run yet; Regen/Refresh/Regain/DoT ticks come from the modifiers.
+#[allow(clippy::too_many_arguments)]
+async fn apply_status_script(
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    db: &Database,
+    catalogs: &std::sync::Arc<crate::lua::Catalogs>,
+    owner_actor_id: u32,
+    status_effect_id: u32,
+    function_name: &str,
+    effect: crate::status::script::EffectView,
+) {
+    let Some(handle) = registry.get(owner_actor_id).await else {
+        return;
+    };
+    match function_name {
+        "onGain" => {
+            let Some(name) = catalogs
+                .status_effects
+                .read()
+                .ok()
+                .and_then(|m| m.get(&status_effect_id).map(|d| d.name.clone()))
+            else {
+                return;
+            };
+            let root = catalogs
+                .script_root
+                .read()
+                .map(|r| r.clone())
+                .unwrap_or_default();
+            let owner = {
+                let c = handle.character.read().await;
+                crate::status::script::OwnerView {
+                    mods: c.chara.mods.clone(),
+                    level: c.chara.level,
+                    max_hp: c.chara.max_hp as i32,
+                    max_mp: c.chara.max_mp as i32,
+                }
+            };
+            let outcome = match crate::status::script::run_on_gain(&root, &name, &owner, effect) {
+                Ok(o) => o,
+                Err(e) => {
+                    tracing::warn!(owner = owner_actor_id, effect = %name, error = %e, "status onGain failed");
+                    return;
+                }
+            };
+            tracing::debug!(
+                owner = owner_actor_id,
+                effect = %name,
+                mods = ?outcome.mod_deltas,
+                hp = outcome.hp,
+                "status onGain"
+            );
+            handle
+                .character
+                .write()
+                .await
+                .apply_status_mods(status_effect_id, outcome.mod_deltas);
+            if outcome.hp != 0 {
+                // A raised max HP has to land before the heal or the heal
+                // clamps to the old max.
+                apply_recalc_stats(registry, world, catalogs, db, owner_actor_id).await;
+                if apply_hp_delta(registry, owner_actor_id, outcome.hp).await {
+                    sync_pools_after_tick(registry, world, owner_actor_id).await;
+                }
+            }
+        }
+        "onLose" => {
+            let mut c = handle.character.write().await;
+            if c.status_mods.contains_key(&status_effect_id) {
+                tracing::debug!(
+                    owner = owner_actor_id,
+                    effect = status_effect_id,
+                    "status onLose: mods off"
+                );
+            }
+            c.remove_status_mods(status_effect_id);
+        }
+        _ => {}
+    }
+}
+
 async fn apply_recalc_stats(
     registry: &ActorRegistry,
     world: &WorldManager,
@@ -2226,6 +2366,7 @@ async fn apply_recalc_stats(
             }
             c.apply_player_stat_derivation();
             c.apply_food_bonuses();
+            c.apply_status_pipeline_mods();
         }
         c.recalculate_stats();
         let post = if is_player {

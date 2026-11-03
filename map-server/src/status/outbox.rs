@@ -54,6 +54,9 @@ pub enum StatusEvent {
         owner_actor_id: u32,
         status_effect_id: u32,
         function_name: &'static str,
+        /// The effect's numbers at the time of the call (`onGain` reads
+        /// them; the effect may already be gone from the container).
+        effect: crate::status::script::EffectView,
     },
 
     /// Client message: `worldmasterTextId` with the effect id packed into the

@@ -26,6 +26,7 @@
 pub mod flags;
 pub mod ids;
 pub mod outbox;
+pub mod script;
 
 pub use flags::{StatusEffectFlags, StatusEffectOverwrite};
 pub use ids::status_id_of;
@@ -212,6 +213,16 @@ impl StatusEffect {
         }
     }
 
+    /// The numbers a status script reads.
+    pub fn view(&self) -> script::EffectView {
+        script::EffectView {
+            magnitude: self.magnitude,
+            tier: self.tier,
+            extra: self.extra,
+            duration: self.duration,
+        }
+    }
+
     /// Value the client expects in `statusShownTime[i]`. Stances send u32::MAX.
     pub fn wire_end_time(&self) -> u32 {
         if self.is_stance() {
@@ -232,6 +243,7 @@ impl StatusEffect {
                 owner_actor_id: self.owner_actor_id,
                 status_effect_id: self.id,
                 function_name: "onTick",
+                effect: self.view(),
             });
         }
 
@@ -502,6 +514,7 @@ impl StatusEffectContainer {
             owner_actor_id: self.owner_actor_id,
             status_effect_id: effect_id,
             function_name: "onGain",
+            effect: effect.view(),
         });
 
         if !effect.hidden {
@@ -554,6 +567,7 @@ impl StatusEffectContainer {
 
         let short_id = effect.status_id();
         let hidden = effect.hidden;
+        let view = effect.view();
         if !hidden
             && let Some(idx) = self
                 .status
@@ -570,6 +584,7 @@ impl StatusEffectContainer {
             owner_actor_id: self.owner_actor_id,
             status_effect_id: effect_id,
             function_name: "onLose",
+            effect: view,
         });
         outbox.push(StatusEvent::RecalcStats {
             owner_actor_id: self.owner_actor_id,
@@ -611,11 +626,13 @@ impl StatusEffectContainer {
             owner_actor_id: self.owner_actor_id,
             status_effect_id: old_effect_id,
             function_name: "onLose",
+            effect: old.view(),
         });
         outbox.push(StatusEvent::LuaCall {
             owner_actor_id: self.owner_actor_id,
             status_effect_id: new_effect.id,
             function_name: "onGain",
+            effect: new_effect.view(),
         });
 
         let mut new_effect = new_effect;
