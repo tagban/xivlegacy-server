@@ -394,6 +394,19 @@ impl Character {
         }
     }
 
+    /// Add to a status effect's tracked modifier changes (a combat hook
+    /// stacking Berserk's attack per hit), so they come off with it.
+    pub fn add_status_mods(&mut self, effect_id: u32, deltas: &[(u32, f64)]) {
+        let tracked = self.status_mods.entry(effect_id).or_default();
+        for &(k, d) in deltas {
+            self.chara.mods.add_raw(k, d);
+            match tracked.iter_mut().find(|(t, _)| *t == k) {
+                Some(t) => t.1 += d,
+                None => tracked.push((k, d)),
+            }
+        }
+    }
+
     /// Take a status effect's modifier changes back off.
     pub fn remove_status_mods(&mut self, effect_id: u32) {
         if let Some(deltas) = self.status_mods.remove(&effect_id) {
