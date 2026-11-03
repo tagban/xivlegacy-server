@@ -117,6 +117,11 @@ pub struct CombatView<'a> {
     pub level: i16,
     pub max_hp: i16,
     pub mods: &'a ModifierMap,
+    /// The share of `mods` the actor's status effects put there
+    /// ([`crate::actor::Character::status_mod_totals`]). Accuracy, evasion
+    /// and potency count only this share, so gear and stat baselines (which
+    /// monsters don't have) keep the tuned rates.
+    pub status: &'a ModifierMap,
     pub has_aegis_boon: bool,
     pub has_protect: bool,
     pub has_shell: bool,
@@ -127,6 +132,75 @@ impl CombatView<'_> {
     pub fn get_mod(&self, m: Modifier) -> f64 {
         self.mods.get(m)
     }
+
+    /// How much the actor's status effects moved `m`.
+    pub fn status_delta(&self, m: Modifier) -> f64 {
+        self.status.get(m)
+    }
+}
+
+/// An empty status share, for views of actors with no effects.
+pub fn no_status() -> &'static ModifierMap {
+    static EMPTY: std::sync::LazyLock<ModifierMap> = std::sync::LazyLock::new(ModifierMap::new);
+    &EMPTY
+}
+
+/// Hit rate per point of Accuracy (attacker) or Evasion (defender) a status
+/// adds or takes away: Blind's 50 at level 50 costs 25%, Minuet's 35 adds
+/// 17.5%.
+pub const HIT_RATE_PER_ACCURACY: f64 = 0.5;
+
+/// Resist rate per point of MagicEvasion (defender) or MagicAccuracy
+/// (caster) a status moves: Stone's Magic Evasion Down (50) takes 12.5% off
+/// the 15% base.
+pub const RESIST_RATE_PER_MAGIC_ACCURACY: f64 = 0.25;
+
+/// How much a potency modifier's status share scales a spell. Cleric Stance
+/// multiplies AttackMagicPotency by 1.2 and HealingMagicPotency by 0.8, so
+/// the ratio to the unbuffed value is exactly that. Actors with no potency
+/// of their own (monsters) take a flat 1% per point instead.
+pub fn potency_scale(view: &CombatView<'_>, m: Modifier) -> f64 {
+    let delta = view.status_delta(m);
+    if delta == 0.0 {
+        return 1.0;
+    }
+    let now = view.get_mod(m);
+    let base = now - delta;
+    let scale = if base > 0.0 {
+        now / base
+    } else {
+        1.0 + delta / 100.0
+    };
+    scale.clamp(0.25, 4.0)
+}
+
+/// Scale a damage spell by AttackMagicPotency or a heal by
+/// HealingMagicPotency (their status share; see [`potency_scale`]).
+pub fn apply_magic_potency(caster: &CombatView<'_>, action_type: ActionType, amount: u16) -> u16 {
+    let m = match action_type {
+        ActionType::Magic => Modifier::AttackMagicPotency,
+        ActionType::Heal => Modifier::HealingMagicPotency,
+        _ => return amount,
+    };
+    let scale = potency_scale(caster, m);
+    if scale == 1.0 {
+        return amount;
+    }
+    (f64::from(amount) * scale).round().clamp(1.0, 9999.0) as u16
+}
+
+/// The defender's resistance to an elemental action, if it has an element.
+pub fn elemental_resistance(defender: &CombatView<'_>, property: ActionProperty) -> f64 {
+    let m = match property {
+        ActionProperty::Fire => Modifier::FireResistance,
+        ActionProperty::Ice => Modifier::IceResistance,
+        ActionProperty::Wind => Modifier::WindResistance,
+        ActionProperty::Earth => Modifier::EarthResistance,
+        ActionProperty::Lightning => Modifier::LightningResistance,
+        ActionProperty::Water => Modifier::WaterResistance,
+        _ => return 0.0,
+    };
+    defender.get_mod(m)
 }
 
 /// Random source abstraction. The real game loop uses `rand::thread_rng`
@@ -198,8 +272,14 @@ pub fn calculate_spell_damage_taken(
 ) {
     let dlvl = defender.level - attacker.level;
     let dmg_down = 1.0 - defender.get_mod(Modifier::DamageTakenDown) / 100.0;
+    // An element's resistance is magic defense against that element
+    // (Protect II adds 6.67 per point of potency to all six), mitigated
+    // like Defense. Negative resistance adds damage.
+    let resistance = elemental_resistance(defender, action.action_property);
     let mitigation = calculate_dlvl_modifier(dlvl)
-        * (defender.get_mod(Modifier::Defense) + 0.67 * defender.get_mod(Modifier::Vitality));
+        * (defender.get_mod(Modifier::Defense)
+            + 0.67 * defender.get_mod(Modifier::Vitality)
+            + resistance);
     let pre = (action.amount as f64 - mitigation).max(0.0);
     action.amount = clamp_damage(pre);
     action.amount = clamp_damage(action.amount as f64 * dmg_down);
@@ -281,6 +361,10 @@ pub fn get_hit_rate(
     // Negative buffs (accuracy downs) count too.
     hit_rate += (hit_buff + accuracy_modifier).clamp(-100.0, 100.0);
     hit_rate -= evade_buff;
+    // Statuses that move Accuracy or Evasion (Blind, Glare, Hawk's Eye,
+    // Minuet of Rigor) shift the rate on top of the level gap.
+    hit_rate += HIT_RATE_PER_ACCURACY
+        * (attacker.status_delta(Modifier::Accuracy) - defender.status_delta(Modifier::Evasion));
     hit_rate.clamp(0.0, 100.0)
 }
 
@@ -307,7 +391,19 @@ pub fn get_crit_rate(
     crit + attacker.get_mod(Modifier::RawCritRate)
 }
 
-pub fn get_resist_rate(defender: &CombatView<'_>, action: &CommandResult) -> f64 {
+/// How far statuses move a spell's resist chance, in percent: up with the
+/// target's MagicEvasion, down with the caster's MagicAccuracy.
+pub fn magic_resist_shift(attacker: &CombatView<'_>, defender: &CombatView<'_>) -> f64 {
+    RESIST_RATE_PER_MAGIC_ACCURACY
+        * (defender.status_delta(Modifier::MagicEvasion)
+            - attacker.status_delta(Modifier::MagicAccuracy))
+}
+
+pub fn get_resist_rate(
+    attacker: &CombatView<'_>,
+    defender: &CombatView<'_>,
+    action: &CommandResult,
+) -> f64 {
     let is_spell = action.command_type == CommandType::SPELL;
     let is_ele = matches!(
         action.action_property,
@@ -323,7 +419,8 @@ pub fn get_resist_rate(defender: &CombatView<'_>, action: &CommandResult) -> f64
     if !is_spell && !is_ele {
         return 0.0;
     }
-    15.0 + defender.get_mod(Modifier::RawResistRate)
+    (15.0 + defender.get_mod(Modifier::RawResistRate) + magic_resist_shift(attacker, defender))
+        .clamp(0.0, 100.0)
 }
 
 pub fn get_block_rate(
@@ -436,7 +533,7 @@ pub fn calc_rates(
     action.crit_rate = get_crit_rate(attacker, action, skill);
     action.block_rate = get_block_rate(attacker, defender, action);
     action.parry_rate = get_parry_rate(defender, action);
-    action.resist_rate = get_resist_rate(defender, action);
+    action.resist_rate = get_resist_rate(attacker, defender, action);
 }
 
 // ---------------------------------------------------------------------------
@@ -651,7 +748,13 @@ pub fn finish_action_heal(
 
 /// Try to apply a status as a side effect of a command. Returns `true` if
 /// the status should be added by the caller — we just report the roll.
-pub fn try_status(action: &CommandResult, skill: &BattleCommand, rng: &mut dyn Rng) -> bool {
+pub fn try_status(
+    attacker: &CombatView<'_>,
+    defender: &CombatView<'_>,
+    action: &CommandResult,
+    skill: &BattleCommand,
+    rng: &mut dyn Rng,
+) -> bool {
     if skill.status_id == 0 {
         return false;
     }
@@ -660,7 +763,14 @@ pub fn try_status(action: &CommandResult, skill: &BattleCommand, rng: &mut dyn R
     }
     // C# compares NextDouble() (0..1) to statusChance directly — values above
     // 1.0 are effectively "always lands". Match that.
-    rng.next_f64() < skill.status_chance as f64
+    let mut chance = skill.status_chance as f64;
+    // A spell's ailment lands more often on a target with its magic evasion
+    // lowered (Stone) and from a caster with Minuet. Only chances below
+    // "always" move, so trait-unlocked statuses (chance 0) stay off.
+    if skill.command_type == CommandType::SPELL && chance > 0.0 && chance < 1.0 {
+        chance = (chance - magic_resist_shift(attacker, defender) / 100.0).clamp(0.0, 1.0);
+    }
+    rng.next_f64() < chance
 }
 
 pub fn finish_action_status(
@@ -890,6 +1000,7 @@ mod tests {
             level,
             max_hp,
             mods,
+            status: no_status(),
             has_aegis_boon: false,
             has_protect: false,
             has_shell: false,
@@ -1191,6 +1302,210 @@ mod tests {
         assert_eq!(
             skill_amount(&atk, &provoke, &mut FixedRng::new(&[0.5])),
             None
+        );
+    }
+
+    /// `stub_view` with a status share: `mods` already includes it, as on a
+    /// live Character.
+    fn status_view<'a>(
+        level: i16,
+        mods: &'a ModifierMap,
+        status: &'a ModifierMap,
+        actor_id: u32,
+    ) -> CombatView<'a> {
+        CombatView {
+            status,
+            ..stub_view(level, 1000, mods, actor_id)
+        }
+    }
+
+    fn with(pairs: &[(Modifier, f64)]) -> ModifierMap {
+        let mut m = ModifierMap::default();
+        for &(k, v) in pairs {
+            m.set(k, v);
+        }
+        m
+    }
+
+    #[test]
+    fn accuracy_and_evasion_statuses_move_the_hit_rate() {
+        let none = zero_mods();
+        // A level 50 with 66 accuracy from DEX: gear and stat accuracy don't
+        // move the tuned rate, only what statuses add.
+        let base = with(&[(Modifier::Accuracy, 66.0)]);
+        let plain = get_hit_rate(
+            &status_view(50, &base, &none, 1),
+            &stub_view(50, 100, &none, 2),
+            None,
+        );
+        assert_eq!(plain, 80.0);
+        // Minuet of Rigor at 50: +35 accuracy, +17.5%.
+        let minuet = with(&[(Modifier::Accuracy, 35.0)]);
+        let buffed = with(&[(Modifier::Accuracy, 101.0)]);
+        assert_eq!(
+            get_hit_rate(
+                &status_view(50, &buffed, &minuet, 1),
+                &stub_view(50, 100, &none, 2),
+                None
+            ),
+            97.5
+        );
+        // Blind on a monster with no accuracy of its own: -50, 25% less.
+        let blind = with(&[(Modifier::Accuracy, -50.0)]);
+        assert_eq!(
+            get_hit_rate(
+                &status_view(50, &blind, &blind, 1),
+                &stub_view(50, 100, &none, 2),
+                None
+            ),
+            55.0
+        );
+        // An evasion buff on the defender works the other way.
+        let eva = with(&[(Modifier::Evasion, 20.0)]);
+        assert_eq!(
+            get_hit_rate(
+                &stub_view(50, 100, &none, 1),
+                &status_view(50, &eva, &eva, 2),
+                None
+            ),
+            70.0
+        );
+        // The level gap still caps first and the total stays in 0..=100.
+        assert_eq!(
+            get_hit_rate(
+                &status_view(10, &blind, &blind, 1),
+                &stub_view(50, 100, &none, 2),
+                None
+            ),
+            0.0
+        );
+    }
+
+    #[test]
+    fn magic_accuracy_and_evasion_move_the_resist_rate() {
+        let none = zero_mods();
+        let mut fire = CommandResult::for_target(2, 0, 0);
+        fire.command_type = CommandType::SPELL;
+        fire.action_property = ActionProperty::Fire;
+        let rate = |a: &CombatView<'_>, d: &CombatView<'_>| get_resist_rate(a, d, &fire);
+        let caster = stub_view(50, 100, &none, 1);
+        assert_eq!(rate(&caster, &stub_view(50, 100, &none, 2)), 15.0);
+        // Stone's Magic Evasion Down (50).
+        let med = with(&[(Modifier::MagicEvasion, -50.0)]);
+        assert_eq!(rate(&caster, &status_view(50, &med, &med, 2)), 2.5);
+        // Minuet's +35 magic accuracy on the caster.
+        let minuet = with(&[(Modifier::MagicAccuracy, 35.0)]);
+        assert_eq!(
+            rate(
+                &status_view(50, &minuet, &minuet, 1),
+                &stub_view(50, 100, &none, 2)
+            ),
+            6.25
+        );
+        // Both together floor at 0.
+        assert_eq!(
+            rate(
+                &status_view(50, &minuet, &minuet, 1),
+                &status_view(50, &med, &med, 2)
+            ),
+            0.0
+        );
+        // Base magic stats (MND/PIE) alone don't move it.
+        let piety = with(&[(Modifier::MagicEvasion, 40.0)]);
+        assert_eq!(rate(&caster, &status_view(50, &piety, &none, 2)), 15.0);
+    }
+
+    #[test]
+    fn spell_ailments_land_more_through_lowered_magic_evasion() {
+        let none = zero_mods();
+        let mut sleep = BattleCommand::new(27306, "sleep");
+        sleep.status_id = 228001;
+        sleep.status_chance = 0.9;
+        sleep.command_type = CommandType::SPELL;
+        let action = CommandResult::for_target(2, 0, 0);
+        let caster = stub_view(50, 100, &none, 1);
+        // 0.95 misses the plain 0.9 chance...
+        assert!(!try_status(
+            &caster,
+            &stub_view(50, 100, &none, 2),
+            &action,
+            &sleep,
+            &mut FixedRng::new(&[0.95])
+        ));
+        // ...but lands once the target's magic evasion is down 50 (+12.5%).
+        let med = with(&[(Modifier::MagicEvasion, -50.0)]);
+        assert!(try_status(
+            &caster,
+            &status_view(50, &med, &med, 2),
+            &action,
+            &sleep,
+            &mut FixedRng::new(&[0.95])
+        ));
+        // A trait-gated status (chance 0) stays off whatever the target has.
+        sleep.status_chance = 0.0;
+        assert!(!try_status(
+            &caster,
+            &status_view(50, &med, &med, 2),
+            &action,
+            &sleep,
+            &mut FixedRng::new(&[0.0])
+        ));
+    }
+
+    #[test]
+    fn cleric_stance_swaps_attack_and_healing_potency() {
+        // A conjurer with 25 of each potency under Cleric Stance: x1.2 and
+        // x0.8, kept as status deltas of +5 and -5.
+        let mods = with(&[
+            (Modifier::AttackMagicPotency, 30.0),
+            (Modifier::HealingMagicPotency, 20.0),
+        ]);
+        let status = with(&[
+            (Modifier::AttackMagicPotency, 5.0),
+            (Modifier::HealingMagicPotency, -5.0),
+        ]);
+        let caster = status_view(50, &mods, &status, 1);
+        assert_eq!(apply_magic_potency(&caster, ActionType::Magic, 278), 334);
+        assert_eq!(apply_magic_potency(&caster, ActionType::Heal, 160), 128);
+        // Physical skills don't read magic potency.
+        assert_eq!(apply_magic_potency(&caster, ActionType::Physical, 200), 200);
+        // Without statuses the tuned amounts are untouched.
+        let plain = status_view(50, &mods, no_status(), 1);
+        assert_eq!(apply_magic_potency(&plain, ActionType::Magic, 278), 278);
+        // A monster with no potency of its own takes 1% per point.
+        let up = with(&[(Modifier::AttackMagicPotency, 20.0)]);
+        let mob = status_view(30, &up, &up, 3);
+        assert_eq!(apply_magic_potency(&mob, ActionType::Magic, 100), 120);
+    }
+
+    #[test]
+    fn elemental_resistance_mitigates_matching_spells() {
+        let none = zero_mods();
+        let atk = stub_view(50, 1000, &none, 1);
+        // Protect II at potency 25: 6.67 * 25 = 166.75 to every element.
+        let res = with(&[
+            (Modifier::FireResistance, 166.75),
+            (Modifier::IceResistance, 166.75),
+        ]);
+        let def = stub_view(50, 1000, &res, 2);
+        let cast = |prop: ActionProperty, def: &CombatView<'_>| {
+            let mut a = CommandResult::for_target(2, 0, 0);
+            a.amount = 300;
+            a.action_property = prop;
+            calculate_spell_damage_taken(&atk, def, &mut a);
+            a.amount
+        };
+        // Equal level: 0.225 x 166.75 = 37.5 off.
+        assert_eq!(cast(ActionProperty::Fire, &def), 262);
+        assert_eq!(cast(ActionProperty::Ice, &def), 262);
+        // Other elements and non-elemental spells ignore it.
+        assert_eq!(cast(ActionProperty::Lightning, &def), 300);
+        assert_eq!(cast(ActionProperty::Astral, &def), 300);
+        // Lowered resistance adds damage.
+        let weak = with(&[(Modifier::FireResistance, -100.0)]);
+        assert_eq!(
+            cast(ActionProperty::Fire, &stub_view(50, 1000, &weak, 2)),
+            322
         );
     }
 }

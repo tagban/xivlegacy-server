@@ -426,6 +426,18 @@ impl Character {
         }
     }
 
+    /// The active effects' modifier changes summed, for the combat formulas
+    /// that count only what statuses add (accuracy, evasion, potency).
+    pub fn status_mod_totals(&self) -> crate::actor::modifier::ModifierMap {
+        let mut totals = crate::actor::modifier::ModifierMap::new();
+        for deltas in self.status_mods.values() {
+            for &(k, d) in deltas {
+                totals.add_raw(k, d);
+            }
+        }
+        totals
+    }
+
     /// The player stat rebuild zeroes [`PLAYER_PIPELINE_MODS`]; put the
     /// active effects' share of those back. Other modifiers keep theirs.
     pub fn apply_status_pipeline_mods(&mut self) {

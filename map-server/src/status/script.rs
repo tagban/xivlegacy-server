@@ -1134,6 +1134,36 @@ mod tests {
     }
 
     #[test]
+    fn blind_and_glare_without_a_size_take_the_owner_level() {
+        // Flash and Gloom Arrow leave the magnitude at 0.
+        for name in ["blind", "glare"] {
+            let out = run_on_gain(&root(), name, &owner(), fx(0.0)).unwrap();
+            assert_eq!(
+                out.mod_deltas,
+                vec![(Modifier::Accuracy.as_u32(), -20.0)],
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn cleric_stance_records_potency_deltas() {
+        let mut o = owner();
+        o.mods.set(Modifier::AttackMagicPotency, 25.0);
+        o.mods.set(Modifier::HealingMagicPotency, 25.0);
+        let out = run_on_gain(&root(), "cleric_stance", &o, fx(0.0)).unwrap();
+        let get = |m: Modifier| {
+            out.mod_deltas
+                .iter()
+                .find(|(k, _)| *k == m.as_u32())
+                .map(|d| d.1)
+                .unwrap()
+        };
+        assert!((get(Modifier::AttackMagicPotency) - 5.0).abs() < 1e-9);
+        assert!((get(Modifier::HealingMagicPotency) + 5.0).abs() < 1e-9);
+    }
+
+    #[test]
     fn haste_multiplies_attack_delay() {
         let out = run_on_gain(&root(), "haste", &owner(), fx(0.8)).unwrap();
         let (k, d) = out.mod_deltas[0];

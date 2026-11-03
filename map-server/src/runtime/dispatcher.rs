@@ -629,7 +629,7 @@ async fn resolve_auto_attack(
 
     // Attacker snapshot — released before we lock the defender.
     let root = script_root(lua);
-    let (atk_level, atk_max_hp, atk_mods, atk_pos, attacker_side) = {
+    let (atk_level, atk_max_hp, atk_mods, atk_status, atk_pos, attacker_side) = {
         let a = attacker_handle.character.read().await;
         if !a.is_alive() {
             return;
@@ -638,6 +638,7 @@ async fn resolve_auto_attack(
             a.chara.level,
             a.chara.max_hp,
             a.chara.mods.clone(),
+            a.status_mod_totals(),
             common::Vector3::new(a.base.position_x, a.base.position_y, a.base.position_z),
             root.as_ref()
                 .map(|_| crate::status::hooks::HookSide::of(&a)),
@@ -657,6 +658,7 @@ async fn resolve_auto_attack(
         level: atk_level,
         max_hp: atk_max_hp,
         mods: &atk_mods,
+        status: &atk_status,
         has_aegis_boon: false,
         has_protect: false,
         has_shell: false,
@@ -682,12 +684,14 @@ async fn resolve_auto_attack(
         let def_level = d.chara.level;
         let def_max_hp = d.chara.max_hp;
         let def_mods_snapshot = d.chara.mods.clone();
+        let def_status = d.status_mod_totals();
 
         let atk_view = battle_utils::CombatView {
             actor_id: attacker_actor_id,
             level: atk_level,
             max_hp: atk_max_hp,
             mods: &atk_mods,
+            status: &atk_status,
             has_aegis_boon: false,
             has_protect: false,
             has_shell: false,
@@ -698,6 +702,7 @@ async fn resolve_auto_attack(
             level: def_level,
             max_hp: def_max_hp,
             mods: &def_mods_snapshot,
+            status: &def_status,
             has_aegis_boon: false,
             has_protect: false,
             has_shell: false,
@@ -921,6 +926,8 @@ struct ActionHit {
     damage: u16,
     /// HP restored (heals).
     healed: bool,
+    /// The heal's size before the target's max HP caps it.
+    heal_amount: u16,
     /// The row connected (hit / crit / block / parry / status landed).
     landed: bool,
     /// Rolled the row's status rider / status effect.
@@ -1365,7 +1372,7 @@ async fn resolve_action(
         return;
     }
 
-    let (atk_level, atk_max_hp, atk_mods, atk_pos, atk_status_ids) = {
+    let (atk_level, atk_max_hp, atk_mods, atk_status, atk_pos, atk_status_ids) = {
         let a = attacker_handle.character.read().await;
         if !a.is_alive() {
             return;
@@ -1374,6 +1381,7 @@ async fn resolve_action(
             a.chara.level,
             a.chara.max_hp,
             a.chara.mods.clone(),
+            a.status_mod_totals(),
             common::Vector3::new(a.base.position_x, a.base.position_y, a.base.position_z),
             a.status_effects.iter().map(|e| e.id).collect::<Vec<u32>>(),
         )
@@ -1547,11 +1555,13 @@ async fn resolve_action(
         let def_level = d_write.chara.level;
         let def_max_hp = d_write.chara.max_hp;
         let def_mods_snapshot = d_write.chara.mods.clone();
+        let def_status = d_write.status_mod_totals();
         let atk_view = battle_utils::CombatView {
             actor_id: attacker_actor_id,
             level: atk_level,
             max_hp: atk_max_hp,
             mods: &atk_mods,
+            status: &atk_status,
             has_aegis_boon: false,
             has_protect: false,
             has_shell: false,
@@ -1562,6 +1572,7 @@ async fn resolve_action(
             level: def_level,
             max_hp: def_max_hp,
             mods: &def_mods_snapshot,
+            status: &def_status,
             has_aegis_boon: false,
             has_protect: false,
             has_shell: false,
@@ -1579,6 +1590,9 @@ async fn resolve_action(
                 (15 + 5 * i32::from(atk_level.max(1))).min(9999) as u16
             },
         );
+        // Cleric Stance and other potency statuses scale spells and heals.
+        result.amount =
+            battle_utils::apply_magic_potency(&atk_view, command.action_type, result.amount);
         result.enmity = result.amount;
 
         let mut skill = command.clone();
@@ -1643,6 +1657,7 @@ async fn resolve_action(
             target_actor_id: target_id,
             damage: 0,
             healed: false,
+            heal_amount: 0,
             landed: false,
             status_roll: false,
         };
@@ -1714,6 +1729,7 @@ async fn resolve_action(
                 );
                 d_write.add_hp(heal.amount as i32);
                 hit.healed = heal.amount > 0;
+                hit.heal_amount = heal.amount;
                 None
             }
             ActionType::Status | ActionType::None => {
@@ -1725,7 +1741,8 @@ async fn resolve_action(
                 // Blind, Provoke's Attack Down): without it the command is
                 // plain enmity and lands, rather than reading as a resist.
                 let has_status = command.status_id != 0 && skill.status_chance > 0.0;
-                let rolled = has_status && battle_utils::try_status(&result, &skill, &mut rng);
+                let rolled = has_status
+                    && battle_utils::try_status(&atk_view, &def_view, &result, &skill, &mut rng);
                 if !has_status || rolled {
                     battle_utils::finish_action_status(&skill, &mut result, &mut container);
                     if !has_status {
@@ -1825,7 +1842,8 @@ async fn resolve_action(
         }
         hit.landed = result.action_landed();
         if !is_status_row && command.status_id != 0 {
-            hit.status_roll = battle_utils::try_status(&result, &skill, &mut rng);
+            hit.status_roll =
+                battle_utils::try_status(&atk_view, &def_view, &result, &skill, &mut rng);
         }
 
         if let Some(dr) = dmg_request
@@ -2185,6 +2203,7 @@ async fn resolve_action(
             command = command.id,
             amount = hit.damage,
             heal = is_heal,
+            heal_amount = hit.heal_amount,
             landed = hit.landed,
             status = hit.status_roll,
             defender_hp = format!("{def_hp}/{def_max}"),
