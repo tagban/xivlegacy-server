@@ -32,6 +32,10 @@ pub const STAT_COUNT: usize = 36;
 /// Max stack size for TP.
 pub const MAX_TP: u16 = 3000;
 
+/// The Archer class id (`chara.class`) and how far its bow reaches.
+const ARCHER_CLASS: i16 = 7;
+const ARCHER_ATTACK_RANGE: f32 = 20.0;
+
 /// Modifiers the player stat rebuild recomputes from scratch (class
 /// baseline, gear, weapon, derivation, food).
 const PLAYER_PIPELINE_MODS: [Modifier; 23] = {
@@ -702,11 +706,20 @@ impl Character {
             && self.chara.mods.get(Modifier::CanBlock) >= 0.0
     }
 
-    /// Attack range in yalms. The C# default is 3.0 for h2h; non-default is
-    /// stored under the AttackRange modifier.
+    /// Attack range in yalms: the AttackRange modifier when something set
+    /// it, else the class's reach. Archers shoot from as far as their
+    /// weaponskills reach (Heavy Shot and Leaden Arrow are 20 yalms);
+    /// everyone else swings from 3.0, the C# default. The C# never set the
+    /// modifier for archers, so they had to walk into melee to auto-attack.
     pub fn get_attack_range(&self) -> f32 {
         let raw = self.chara.mods.get(Modifier::AttackRange);
-        if raw > 0.0 { raw as f32 } else { 3.0 }
+        if raw > 0.0 {
+            raw as f32
+        } else if self.chara.class == ARCHER_CLASS {
+            ARCHER_ATTACK_RANGE
+        } else {
+            3.0
+        }
     }
 
     /// Attack delay in milliseconds, derived from the `Delay` modifier.
@@ -1353,6 +1366,19 @@ mod minimum_hp_lock_tests {
         c.chara.mods.set(Modifier::MinimumHpLock, 0.0);
         c.set_hp(-50);
         assert_eq!(c.chara.hp, 0, "cleared lock → death allowed again");
+    }
+
+    /// Archers shoot from range; other classes swing from 3 yalms; an
+    /// AttackRange modifier wins over both.
+    #[test]
+    fn attack_range_follows_class_unless_modded() {
+        let mut c = Character::new(1);
+        c.chara.class = 3; // Gladiator
+        assert_eq!(c.get_attack_range(), 3.0);
+        c.chara.class = ARCHER_CLASS;
+        assert_eq!(c.get_attack_range(), ARCHER_ATTACK_RANGE);
+        c.chara.mods.set(Modifier::AttackRange, 5.0);
+        assert_eq!(c.get_attack_range(), 5.0);
     }
 }
 
