@@ -39,6 +39,7 @@ use super::outbox::{BattleEvent, BattleOutbox};
 use super::path_find::PathFind;
 use super::state::{BattleState, BattleStateKind, MAX_STATE_STACK, StateTickResult};
 use super::target_find::ActorArena;
+use crate::status::StatusEffectFlags;
 
 /// One tick's worth of movement intent, produced by `apply_decision` from
 /// the controller's `MoveTo` / `FaceTarget` decisions and consumed by the
@@ -415,7 +416,22 @@ impl AIContainer {
         while let Some(top) = self.states.last_mut() {
             let kind = top.kind;
             let target_actor_id = top.target_actor_id;
-            let tick_result = top.update(now_ms);
+            // pmeteor `MagicState/AbilityState/WeaponSkillState.TryInterrupt`:
+            // Silence, Stun, Sleep or Pacification landing mid-command
+            // stops it.
+            let prevent = match kind {
+                BattleStateKind::Magic => StatusEffectFlags::PREVENT_SPELL,
+                BattleStateKind::Ability => StatusEffectFlags::PREVENT_ABILITY,
+                BattleStateKind::WeaponSkill => StatusEffectFlags::PREVENT_WEAPON_SKILL,
+                _ => StatusEffectFlags::NONE,
+            };
+            let tick_result = if prevent != StatusEffectFlags::NONE
+                && StatusEffectFlags::from(owner_view.status_flags).intersects(prevent)
+            {
+                StateTickResult::Interrupted
+            } else {
+                top.update(now_ms)
+            };
             match tick_result {
                 StateTickResult::Continue => {
                     if kind == BattleStateKind::Attack && top.is_attack_ready(now_ms) {
@@ -660,6 +676,7 @@ mod tests {
             current_target_actor_id: None,
             has_prevent_movement: false,
             has_prevent_attack: false,
+            status_flags: 0,
             max_hp: 1000,
             current_hp: 1000,
             target_hpp: None,
@@ -712,6 +729,39 @@ mod tests {
         let mut ob = BattleOutbox::new();
         ai.update(1500, owner_view(), &arena, &mut ob);
         assert!(ai.state_stack().is_empty());
+    }
+
+    /// Silence landing mid-cast stops the spell (pmeteor
+    /// `MagicState.TryInterrupt`); a weaponskill under Silence goes on.
+    #[test]
+    fn silence_interrupts_a_cast_in_progress() {
+        let mut ai = AIContainer::new(1, None, None);
+        let mut cmd = BattleCommand::new(100, "stone");
+        cmd.cast_time_ms = 3000;
+        ai.internal_cast(2, cmd, 0);
+        let arena: HashMap<u32, ActorView> = HashMap::new();
+        let mut view = owner_view();
+        view.status_flags = StatusEffectFlags::PREVENT_SPELL.bits();
+        let mut ob = BattleOutbox::new();
+        ai.update(500, view, &arena, &mut ob);
+        assert!(ai.state_stack().is_empty());
+        assert!(
+            ob.events
+                .iter()
+                .any(|e| matches!(e, BattleEvent::CastInterrupted { .. }))
+        );
+        assert!(
+            !ob.events
+                .iter()
+                .any(|e| matches!(e, BattleEvent::ResolveAction { .. }))
+        );
+
+        let mut ws = BattleCommand::new(101, "fast_blade");
+        ws.cast_time_ms = 1000;
+        ai.internal_weapon_skill(2, ws, 0);
+        let mut ob = BattleOutbox::new();
+        ai.update(500, view, &arena, &mut ob);
+        assert_eq!(ai.state_stack().len(), 1, "Silence leaves weaponskills be");
     }
 
     #[test]

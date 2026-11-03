@@ -258,7 +258,7 @@ impl CommandProcessor {
             "completequest <quest id> [name]",
             "delquest <quest id> [name]",
             "addtitle <title id> [name]",
-            "addeffect <status id> [seconds] [name]",
+            "addeffect <status id> [seconds] [magnitude] [name]",
             "addallaetherytes [name]",
             "setmusic <music id> [name]",
             "setweather <weather id>",

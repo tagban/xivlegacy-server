@@ -900,17 +900,22 @@ impl CommandProcessor {
     /// `addeffect <status id> [seconds] [name]`.
     pub(super) async fn handle_addeffect(&self, args: &Args<'_>) -> String {
         let Some(status) = args.tokens.first().and_then(|t| t.parse::<u32>().ok()) else {
-            return "usage: addeffect <status id> [seconds] [name]".into();
+            return "usage: addeffect <status id> [seconds] [magnitude] [name]".into();
         };
         let (secs, from) = match args.tokens.get(1).and_then(|t| t.parse::<u32>().ok()) {
             Some(s) => (s, 2),
             None => (60, 1),
         };
+        // Poison, Regen and the like do nothing at magnitude 0.
+        let (magnitude, from) = match args.tokens.get(from).and_then(|t| t.parse::<f64>().ok()) {
+            Some(m) if from == 2 => (m, 3),
+            _ => (0.0, from),
+        };
         let Some(name) = args.rest_joined(from) else {
             return if args.was_refused() {
                 String::new()
             } else {
-                "usage: addeffect <status id> [seconds] <name>".into()
+                "usage: addeffect <status id> [seconds] [magnitude] <name>".into()
             };
         };
         let id = match self.online_id(&name).await {
@@ -922,7 +927,7 @@ impl CommandProcessor {
             target_actor_id: id,
             status_id: status,
             duration_s: secs,
-            magnitude: 0.0,
+            magnitude,
             tick_ms: 3000,
             tier: 0,
         }])

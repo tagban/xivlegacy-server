@@ -716,14 +716,6 @@ const KNOWN_GAPS: &[(u16, &str)] = &[
         23464,
         "the_scorpions_sting: cone rotated 1.0 pi (behind the caster); the dummies are in front",
     ),
-    (
-        27354,
-        "aerora: aoeType circle but seed aoeRange 0, so it is single-target",
-    ),
-    (
-        27356,
-        "stonera: aoeType circle but seed aoeRange 0, so it is single-target",
-    ),
 ];
 
 #[tokio::test]

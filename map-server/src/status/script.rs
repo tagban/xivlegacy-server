@@ -43,6 +43,8 @@ pub struct OwnerView {
     pub level: i16,
     pub max_hp: i32,
     pub max_mp: i32,
+    /// The statuses the owner holds, by id (command setup reads them).
+    pub status_ids: Vec<u32>,
 }
 
 /// The effect's own numbers, as the container holds them.
@@ -231,6 +233,18 @@ fn new_lua(script_root: &Path) -> Result<Lua> {
         pcall(require, \"modifiers\")",
     )
     .exec()?;
+    // Every hook gets a fresh state, and Lua seeds from the clock's
+    // seconds: within one second every state would draw the same rolls
+    // (Paralysis firing on every swing or none).
+    static CALLS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos() as u64);
+    let n = CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let seed = (nanos ^ n.wrapping_mul(0x9E37_79B9_7F4A_7C15)) as i64;
+    let math: Table = lua.globals().get("math")?;
+    math.get::<mlua::Function>("randomseed")?
+        .call::<()>((seed, n as i64))?;
     Ok(lua)
 }
 
@@ -339,13 +353,106 @@ pub fn run_on_gain(
 
 /// The status numbers a battle command's script settles on before the
 /// action lands (`skill.statusMagnitude = ...` and friends).
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct CommandStatus {
     pub status_id: u32,
     pub duration: u32,
     pub magnitude: f64,
     pub tier: u8,
     pub chance: f64,
+    /// Statuses the script took off the caster
+    /// (`caster.statusEffects.RemoveStatusEffect`), with the loss text it
+    /// asked for (0: none given).
+    pub removed: Vec<(u32, u16)>,
+    /// The script ended a buff instead of calling `action.DoAction`: a
+    /// toggle used with its buff up (Rampage, Berserk, Cleric Stance…), so
+    /// the command lands no status.
+    pub toggled_off: bool,
+}
+
+/// The `statusEffects` a command script sees on its caster: what the
+/// caster holds, and a record of what the script removes.
+#[derive(Default)]
+struct SetupStatus {
+    held: Vec<u32>,
+    removed: Vec<(u32, u16)>,
+    did_action: bool,
+}
+
+/// The status id a `RemoveStatusEffect` / `GetStatusEffectById` call names:
+/// a number, or a buff table from `GetStatusEffectById`. Skips the
+/// `statusEffects` table itself (colon form).
+fn status_arg(args: &Variadic<Value>) -> Option<u32> {
+    args.iter().find_map(|v| match v {
+        Value::Integer(i) => Some(*i as u32),
+        Value::Number(n) => Some(*n as u32),
+        Value::Table(t) => t.get::<Option<u32>>("id").ok().flatten(),
+        _ => None,
+    })
+}
+
+fn build_setup_status(lua: &Lua, st: &Arc<Mutex<SetupStatus>>) -> mlua::Result<Table> {
+    let t = lua.create_table()?;
+    let s = st.clone();
+    t.set(
+        "GetStatusEffectById",
+        lua.create_function(move |lua, args: Variadic<Value>| {
+            let held = status_arg(&args).filter(|id| {
+                s.lock()
+                    .is_ok_and(|s| s.held.contains(id) && !s.removed.iter().any(|r| r.0 == *id))
+            });
+            match held {
+                Some(id) => {
+                    let buff = lua.create_table()?;
+                    buff.set("id", id)?;
+                    buff.set_metatable(Some(stub_meta(lua)?))?;
+                    Ok(Value::Table(buff))
+                }
+                None => Ok(Value::Nil),
+            }
+        })?,
+    )?;
+    let s = st.clone();
+    t.set(
+        "HasStatusEffect",
+        lua.create_function(move |_, args: Variadic<Value>| {
+            Ok(status_arg(&args).is_some_and(|id| {
+                s.lock()
+                    .is_ok_and(|s| s.held.contains(&id) && !s.removed.iter().any(|r| r.0 == id))
+            }))
+        })?,
+    )?;
+    let s = st.clone();
+    t.set(
+        "RemoveStatusEffect",
+        lua.create_function(move |_, args: Variadic<Value>| {
+            let one = |v: &Value| status_arg(&Variadic::from_iter([v.clone()]));
+            let Some(at) = args.iter().position(|v| one(v).is_some()) else {
+                return Ok(Value::Nil);
+            };
+            let id = one(&args[at]).unwrap_or_default();
+            // The loss text is the last number after the status.
+            let text = args
+                .iter()
+                .skip(at + 1)
+                .rev()
+                .find_map(|v| match v {
+                    Value::Integer(i) => Some(*i as u16),
+                    Value::Number(n) => Some(*n as u16),
+                    _ => None,
+                })
+                .unwrap_or(0);
+            let mut s = s
+                .lock()
+                .map_err(|_| mlua::Error::runtime("status state poisoned"))?;
+            if s.held.contains(&id) && !s.removed.iter().any(|r| r.0 == id) {
+                s.removed.push((id, text));
+            }
+            Ok(Value::Nil)
+        })?,
+    )?;
+    t.set_metatable(Some(stub_meta(lua)?))?;
+    Ok(t)
 }
 
 /// Run the setup half of `commands/{ability,magic,weaponskill}/<name>.lua`
@@ -390,6 +497,11 @@ pub fn run_command_setup(
         effect: EffectView::default(),
     }));
     let caster_t = build_owner(&lua, &st)?;
+    let setup = Arc::new(Mutex::new(SetupStatus {
+        held: caster.status_ids.clone(),
+        ..Default::default()
+    }));
+    caster_t.set("statusEffects", build_setup_status(&lua, &setup)?)?;
     let skill = lua.create_table()?;
     skill.set("statusId", start.status_id)?;
     skill.set("statusDuration", start.duration)?;
@@ -397,12 +509,23 @@ pub fn run_command_setup(
     skill.set("statusTier", start.tier)?;
     skill.set("statusChance", start.chance)?;
     let action = lua.create_table()?;
+    let s = setup.clone();
+    action.set(
+        "DoAction",
+        lua.create_function(move |_, _: Variadic<Value>| {
+            if let Ok(mut s) = s.lock() {
+                s.did_action = true;
+            }
+            Ok(Value::Nil)
+        })?,
+    )?;
     action.set_metatable(Some(stub_meta(&lua)?))?;
     let container = lua.create_table()?;
     container.set_metatable(Some(stub_meta(&lua)?))?;
 
     let g = lua.globals();
     let mut failed = None;
+    let has_finish = g.get::<mlua::Function>("onSkillFinish").is_ok();
     for hook in ["onAbilityStart", "onMagicStart", "onSkillStart"] {
         if let Ok(f) = g.get::<mlua::Function>(hook) {
             if let Err(e) = f.call::<Value>((caster_t.clone(), caster_t.clone(), skill.clone())) {
@@ -423,11 +546,17 @@ pub fn run_command_setup(
     {
         failed = Some(format!("onSkillFinish: {e}"));
     }
-    if let Some(e) = failed {
+    if let Some(e) = &failed {
         tracing::debug!(command = command_name, error = %e, "command setup stopped early");
     }
     let num = |k: &str, d: f64| skill.get::<Option<f64>>(k).ok().flatten().unwrap_or(d);
+    let (removed, did_action) = setup
+        .lock()
+        .map(|s| (s.removed.clone(), s.did_action))
+        .unwrap_or_default();
     Ok(Some(CommandStatus {
+        toggled_off: has_finish && failed.is_none() && !did_action && !removed.is_empty(),
+        removed,
         status_id: num("statusId", start.status_id as f64) as u32,
         duration: num("statusDuration", start.duration as f64) as u32,
         magnitude: num("statusMagnitude", start.magnitude),
@@ -872,6 +1001,10 @@ pub fn run_hook(script_root: &Path, call: &HookCall<'_>) -> Result<Option<HookOu
     }
     let source =
         std::fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
+    // Most effects tick every 3 s and have no onTick; skip the Lua state.
+    if !source.contains(call.hook) {
+        return Ok(None);
+    }
     let lua = new_lua(script_root)?;
     // The effect scripts use these without requiring them; Sentinel spells
     // the weaponskill command type `WeaponSkill`.
@@ -916,6 +1049,7 @@ pub fn run_hook(script_root: &Path, call: &HookCall<'_>) -> Result<Option<HookOu
             f.call::<Value>((effect_t, owner_t, skill_t.clone(), container_t))
         }
         "onMagicCast" => f.call::<Value>((effect_t, owner_t, skill_t.clone())),
+        "onTick" => f.call::<Value>((owner_t, effect_t, container_t)),
         _ => {
             let (a, d) = if call.owner_acts {
                 (owner_t, other_t)
@@ -974,6 +1108,7 @@ mod tests {
             level: 20,
             max_hp: 400,
             max_mp: 100,
+            status_ids: Vec::new(),
         }
     }
 
@@ -1040,7 +1175,41 @@ mod tests {
             magnitude: 0.0,
             tier: 1,
             chance: 1.0,
+            ..Default::default()
         }
+    }
+
+    #[test]
+    fn toggles_end_their_buff_instead_of_reapplying() {
+        // Rampage with Rampage up: it ends, and Berserk goes too.
+        let mut caster = owner();
+        caster.status_ids = vec![223207, 223208];
+        let out = run_command_setup(&root(), "rampage", &caster, start(223208))
+            .unwrap()
+            .unwrap();
+        assert!(out.toggled_off);
+        assert_eq!(out.removed, vec![(223207, 0), (223208, 30329)]);
+        // Without it: Berserk would still go, and Rampage lands.
+        caster.status_ids = vec![];
+        let out = run_command_setup(&root(), "rampage", &caster, start(223208))
+            .unwrap()
+            .unwrap();
+        assert!(!out.toggled_off);
+        assert!(out.removed.is_empty());
+        // Cleric Stance only ends itself.
+        caster.status_ids = vec![223227];
+        let out = run_command_setup(&root(), "cleric_stance", &caster, start(223227))
+            .unwrap()
+            .unwrap();
+        assert!(out.toggled_off);
+        assert_eq!(out.removed, vec![(223227, 30329)]);
+        // Dread Spike eats a Power Surge for tier 2 and still lands.
+        caster.status_ids = vec![223213];
+        let out = run_command_setup(&root(), "dread_spike", &caster, start(223218))
+            .unwrap()
+            .unwrap();
+        assert!(!out.toggled_off);
+        assert_eq!((out.removed.clone(), out.tier), (vec![(223213, 30329)], 2));
     }
 
     #[test]
@@ -1052,6 +1221,23 @@ mod tests {
             .unwrap();
         assert_eq!(out.magnitude, 120.0);
         assert_eq!(out.status_id, 223128);
+    }
+
+    #[test]
+    fn regen_keeps_a_floor_below_endgame_potency() {
+        let mut caster = owner();
+        caster.level = 50;
+        caster.mods.set(Modifier::EnhancementMagicPotency, 40.0);
+        let out = run_command_setup(&root(), "regen", &caster, start(223180))
+            .unwrap()
+            .unwrap();
+        assert_eq!(out.magnitude, 11.0);
+        // With the potency the formula was written for, the formula wins.
+        caster.mods.set(Modifier::EnhancementMagicPotency, 400.0);
+        let out = run_command_setup(&root(), "regen", &caster, start(223180))
+            .unwrap()
+            .unwrap();
+        assert_eq!(out.magnitude, 141.0);
     }
 
     #[test]
@@ -1475,6 +1661,7 @@ mod tests {
             "onCommandStart",
             "onCommandFinish",
             "onMagicCast",
+            "onTick",
         ];
         let mut ran = 0;
         for entry in std::fs::read_dir(root().join("effects")).unwrap() {
@@ -1492,5 +1679,181 @@ mod tests {
             }
         }
         assert!(ran > 100, "{ran}");
+    }
+
+    fn tick<'a>(name: &'a str, me: &'a HookActor, effect: EffectView) -> HookCall<'a> {
+        HookCall {
+            hook: "onTick",
+            effect_name: name,
+            effect,
+            owner: me,
+            other: None,
+            owner_acts: true,
+            skill: HookSkill::default(),
+            action: None,
+        }
+    }
+
+    #[test]
+    fn excruciate_climbs_each_tick() {
+        let me = actor(1);
+        let mut e = fx(0.0);
+        e.tier = 1;
+        let out = run_hook(&root(), &tick("excruciate", &me, e))
+            .unwrap()
+            .unwrap();
+        assert_eq!(out.effect.magnitude, 25.0);
+        e.tier = 2;
+        let out = run_hook(&root(), &tick("excruciate", &me, e))
+            .unwrap()
+            .unwrap();
+        assert_eq!(out.effect.magnitude, 50.0);
+    }
+
+    #[test]
+    fn blissful_mind_banks_mp_then_becomes_fully_blissful() {
+        let me = actor(1);
+        let mut e = fx(10.0);
+        e.tier = 1;
+        let out = run_hook(&root(), &tick("blissful_mind", &me, e))
+            .unwrap()
+            .unwrap();
+        // 0.3% of 400 max MP + 0.25 a tick.
+        assert!(
+            (out.effect.extra - 1.45).abs() < 1e-9,
+            "{}",
+            out.effect.extra
+        );
+        assert!(out.replace.is_none());
+        e.extra = 9.0;
+        let out = run_hook(&root(), &tick("blissful_mind", &me, e))
+            .unwrap()
+            .unwrap();
+        assert_eq!(out.replace.map(|r| r.status_id), Some(223242));
+    }
+
+    #[test]
+    fn rampage_sheds_a_stack_a_tick() {
+        let me = actor(1);
+        let mut e = fx(0.0);
+        e.extra = 3.0;
+        let out = run_hook(&root(), &tick("rampage2", &me, e))
+            .unwrap()
+            .unwrap();
+        assert_eq!(out.effect.extra, 2.0);
+        assert!(
+            out.owner
+                .mod_deltas
+                .contains(&(Modifier::Parry.as_u32(), -20.0))
+        );
+        // Enduring March holds the stacks.
+        let mut marching = actor(1);
+        marching.status_ids.push(223078);
+        let out = run_hook(&root(), &tick("rampage2", &marching, e))
+            .unwrap()
+            .unwrap();
+        assert_eq!(out.effect.extra, 3.0);
+    }
+
+    #[test]
+    fn effects_without_on_tick_are_none() {
+        let me = actor(1);
+        assert!(
+            run_hook(&root(), &tick("protect", &me, fx(1.0)))
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            run_hook(&root(), &tick("no_such_effect", &me, fx(1.0)))
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn paralysis_sometimes_fouls_the_attack() {
+        let (me, foe) = (actor(1), actor(2));
+        let mut fouled = 0;
+        for _ in 0..200 {
+            let mut a = hit(100.0);
+            a.hit_rate = 80.0;
+            let out = run_hook(
+                &root(),
+                &call(
+                    "onPreAction",
+                    "paralysis",
+                    &me,
+                    &foe,
+                    true,
+                    skill(1),
+                    Some(a),
+                ),
+            )
+            .unwrap()
+            .unwrap();
+            let rate = out.action.unwrap().hit_rate;
+            assert!(rate == 0.0 || rate == 80.0, "{rate}");
+            fouled += usize::from(rate == 0.0);
+        }
+        assert!((10..120).contains(&fouled), "{fouled}");
+    }
+
+    #[test]
+    fn presence_of_mind_dodges_attacks_from_behind() {
+        let (me, foe) = (actor(1), actor(2));
+        for (param, want) in [(1, 80.0), (4, 60.0), (2, 60.0)] {
+            let mut a = hit(100.0);
+            a.hit_rate = 80.0;
+            a.param = param;
+            let out = run_hook(
+                &root(),
+                &call(
+                    "onPreAction",
+                    "presence_of_mind",
+                    &me,
+                    &foe,
+                    false,
+                    skill(1),
+                    Some(a),
+                ),
+            )
+            .unwrap()
+            .unwrap();
+            assert_eq!(out.action.unwrap().hit_rate, want, "direction {param}");
+        }
+    }
+
+    #[test]
+    fn shroud_of_saints_halves_enmity_and_refreshes() {
+        let me = actor(1);
+        let c = HookCall {
+            hook: "onCommandStart",
+            effect_name: "shroud_of_saints",
+            effect: fx(0.0),
+            owner: &me,
+            other: None,
+            owner_acts: true,
+            skill: skill(4),
+            action: None,
+        };
+        let out = run_hook(&root(), &c).unwrap().unwrap();
+        assert_eq!(out.skill.enmity_modifier, 0.5);
+        let gain = run_on_gain(&root(), "shroud_of_saints", &owner(), fx(0.0)).unwrap();
+        assert_eq!(gain.mod_deltas, vec![(Modifier::Refresh.as_u32(), 2.0)]);
+    }
+
+    #[test]
+    fn speed_effects_scale_the_run_speed() {
+        let mut o = owner();
+        o.mods.set(Modifier::MovementSpeed, 5.0);
+        for (name, delta) in [("heavy", -1.0), ("quick", 1.25), ("swiftsong", 1.25)] {
+            let out = run_on_gain(&root(), name, &o, fx(0.0)).unwrap();
+            let d = out
+                .mod_deltas
+                .iter()
+                .find(|(k, _)| *k == Modifier::MovementSpeed.as_u32())
+                .map(|(_, d)| *d);
+            assert!(d.is_some_and(|d| (d - delta).abs() < 1e-9), "{name}: {d:?}");
+        }
     }
 }

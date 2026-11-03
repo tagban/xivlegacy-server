@@ -58,8 +58,8 @@ use crate::social::{
 };
 use crate::world_manager::WorldManager;
 
-mod equip;
 mod dungeon;
+mod equip;
 pub(crate) mod gm_spawn;
 mod items;
 mod quest_offers;
@@ -588,6 +588,13 @@ impl PacketProcessor {
                     now_ms,
                 );
                 effect.extra = entry.extra as f64;
+                if let Some(m) = self
+                    .lua
+                    .as_ref()
+                    .and_then(|l| l.catalogs().status_effects.read().ok())
+                {
+                    effect.apply_catalog(&m);
+                }
                 // No login "you gain the effect of X" spam — the effects are
                 // being restored, not freshly applied.
                 effect.silent_on_gain = true;
@@ -601,6 +608,22 @@ impl PacketProcessor {
             }
         }
 
+        // The restored effects' `onGain` stat changes (a relogged Protect's
+        // Defense). Only those: the client isn't in yet, so no packets.
+        let restore_gains: Vec<crate::status::StatusEvent> = if loaded.status_effects.is_empty() {
+            Vec::new()
+        } else {
+            character
+                .status_effects
+                .iter()
+                .map(|e| crate::status::StatusEvent::LuaCall {
+                    owner_actor_id: actor_id,
+                    status_effect_id: e.id,
+                    function_name: "onRestore",
+                    effect: e.view(),
+                })
+                .collect()
+        };
         self.registry
             .insert(ActorHandle::new(
                 actor_id,
@@ -610,6 +633,18 @@ impl PacketProcessor {
                 character,
             ))
             .await;
+        if let Some(l) = self.lua.as_ref() {
+            for e in &restore_gains {
+                crate::runtime::dispatcher::dispatch_status_event(
+                    e,
+                    &self.registry,
+                    &self.world,
+                    &self.db,
+                    l.catalogs(),
+                )
+                .await;
+            }
+        }
 
         // 4. Fire the zone-change that places the player in their zone —
         //    but only for non-login transfers. Initial login defers this
@@ -7006,7 +7041,9 @@ impl PacketProcessor {
     ) -> crate::lua::userdata::PlayerSnapshot {
         match self.db.item_totals(snapshot.actor_id).await {
             Ok(items) => snapshot.inventory = items,
-            Err(e) => tracing::warn!(player = snapshot.actor_id, err = %e, "quest hook: item totals failed"),
+            Err(e) => {
+                tracing::warn!(player = snapshot.actor_id, err = %e, "quest hook: item totals failed")
+            }
         }
         snapshot
     }
@@ -8809,7 +8846,19 @@ impl PacketProcessor {
             _ => None,
         });
 
-        let (main_state, my_x, my_y, my_z, mp, tp, level, current_target, can_change, recast_end) = {
+        let (
+            main_state,
+            my_x,
+            my_y,
+            my_z,
+            mp,
+            tp,
+            level,
+            current_target,
+            can_change,
+            recast_end,
+            status_flags,
+        ) = {
             let c = handle.character.read().await;
             (
                 c.base.current_main_state,
@@ -8827,6 +8876,9 @@ impl PacketProcessor {
                     .find(|e| (e.command_id & 0xFFFF) as u16 == command.id)
                     .map(|e| e.recast_time)
                     .unwrap_or(0),
+                c.status_effects
+                    .iter()
+                    .fold(crate::status::StatusEffectFlags::NONE, |f, e| f | e.flags),
             )
         };
 
@@ -8925,7 +8977,24 @@ impl PacketProcessor {
         let now_unix = common::utils::unix_timestamp() as u32;
         let dist_xz = ((t_x - my_x).powi(2) + (t_z - my_z).powi(2)).sqrt();
         let half_height = command.range_height as f32 / 2.0;
-        let error_text = if !can_change || recast_end > now_unix {
+        // Your own Sleep, Stun, Silence or Pacification (pmeteor's
+        // `TryInterrupt` PREVENT_* checks) refuse the command up front.
+        let prevent = {
+            use crate::status::StatusEffectFlags as F;
+            match command.command_type {
+                t if t == crate::battle::CommandType::WEAPON_SKILL.bits() as i16 => {
+                    F::PREVENT_WEAPON_SKILL
+                }
+                t if t == crate::battle::CommandType::ABILITY.bits() as i16 => F::PREVENT_ABILITY,
+                t if t == crate::battle::CommandType::SPELL.bits() as i16 => F::PREVENT_SPELL,
+                _ => F::NONE,
+            }
+        };
+        let error_text = if !can_change
+            || recast_end > now_unix
+            || (prevent != crate::status::StatusEffectFlags::NONE
+                && status_flags.intersects(prevent))
+        {
             Some(32535) // "Please wait a moment and try again."
         } else if dist_xz > command.range {
             Some(32539) // "The target is too far away."

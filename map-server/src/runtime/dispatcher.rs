@@ -149,6 +149,7 @@ pub async fn dispatch_status_event(
             owner_actor_id,
             delta,
         } => {
+            tracing::debug!(owner = owner_actor_id, delta, "status: hp tick");
             if apply_hp_delta(registry, *owner_actor_id, *delta).await {
                 sync_pools_after_tick(registry, world, *owner_actor_id).await;
             }
@@ -1046,9 +1047,24 @@ fn command_status_effect(
     lua: Option<&Arc<crate::lua::LuaEngine>>,
     now_ms: u64,
 ) -> crate::status::StatusEffect {
-    let template = lua.and_then(|l| {
-        l.catalogs()
-            .status_effects
+    catalog_status_effect(
+        command,
+        target_actor_id,
+        lua.map(|l| l.catalogs().as_ref()),
+        now_ms,
+    )
+}
+
+/// [`command_status_effect`] from the catalogs alone (status-event paths
+/// have no Lua engine handle).
+fn catalog_status_effect(
+    command: &BattleCommand,
+    target_actor_id: u32,
+    catalogs: Option<&crate::lua::Catalogs>,
+    now_ms: u64,
+) -> crate::status::StatusEffect {
+    let template = catalogs.and_then(|c| {
+        c.status_effects
             .read()
             .ok()
             .and_then(|m| m.get(&command.status_id).cloned())
@@ -1115,6 +1131,9 @@ fn replace_status_from_hook(
     c.status_effects
         .replace_effect(old_id, effect, now_ms, outbox);
 }
+
+const STATUS_BLISSFUL_MIND: u32 = 223228;
+const STATUS_FULLY_BLISSFUL_MIND: u32 = 223242;
 
 /// Combat-hook work for the attacker, held until no defender is locked.
 #[derive(Default)]
@@ -1346,7 +1365,7 @@ async fn resolve_action(
         return;
     }
 
-    let (atk_level, atk_max_hp, atk_mods, atk_pos) = {
+    let (atk_level, atk_max_hp, atk_mods, atk_pos, atk_status_ids) = {
         let a = attacker_handle.character.read().await;
         if !a.is_alive() {
             return;
@@ -1356,12 +1375,15 @@ async fn resolve_action(
             a.chara.max_hp,
             a.chara.mods.clone(),
             common::Vector3::new(a.base.position_x, a.base.position_y, a.base.position_z),
+            a.status_effects.iter().map(|e| e.id).collect::<Vec<u32>>(),
         )
     };
 
     // The command's script settles the status it applies (Protect's size
     // comes from the caster's enhancing potency, Invigorate's from gear…).
     let scripted;
+    let mut setup_removed: Vec<(u32, u16)> = Vec::new();
+    let mut setup_toggled_off = false;
     let command = match (command.status_id, lua) {
         (status_id, Some(l)) if status_id != 0 => {
             let root = l
@@ -1375,6 +1397,7 @@ async fn resolve_action(
                 level: atk_level,
                 max_hp: atk_max_hp as i32,
                 max_mp: 0,
+                status_ids: atk_status_ids.clone(),
             };
             let start = crate::status::script::CommandStatus {
                 status_id: command.status_id,
@@ -1382,6 +1405,7 @@ async fn resolve_action(
                 magnitude: command.status_magnitude,
                 tier: command.status_tier,
                 chance: f64::from(command.status_chance),
+                ..Default::default()
             };
             match crate::status::script::run_command_setup(&root, &command.name, &caster, start) {
                 Ok(Some(set)) => {
@@ -1394,6 +1418,15 @@ async fn resolve_action(
                     c.status_magnitude = set.magnitude.max(0.0);
                     c.status_tier = set.tier;
                     c.status_chance = set.chance as f32;
+                    tracing::debug!(
+                        command = %command.name,
+                        held = ?atk_status_ids,
+                        removed = ?set.removed,
+                        toggled_off = set.toggled_off,
+                        "command setup"
+                    );
+                    setup_removed = set.removed;
+                    setup_toggled_off = set.toggled_off;
                     scripted = c;
                     &scripted
                 }
@@ -1879,6 +1912,87 @@ async fn resolve_action(
             }
         }
     }
+
+    // What the command's script took off the caster (Rampage ends
+    // Berserk, Dread Spike eats a Power Surge), and toggles used with
+    // their buff up (Rampage, Cleric Stance…): they end it and land none.
+    if !setup_removed.is_empty() && command.name != "blissful_mind" {
+        let mut outbox = crate::status::StatusOutbox::new();
+        {
+            let mut a = attacker_handle.character.write().await;
+            for &(id, text) in &setup_removed {
+                let text = if text == 0 {
+                    crate::status::DEFAULT_LOSS_TEXT_ID
+                } else {
+                    text
+                };
+                a.status_effects
+                    .remove_status_effect(id, text, true, &mut outbox);
+            }
+        }
+        flush_wake_outbox(outbox, registry, world, lua, db).await;
+        if setup_toggled_off {
+            for hit in hits.iter_mut() {
+                hit.status_roll = false;
+            }
+        }
+    }
+
+    // Blissful Mind (pmeteor commands/ability/blissful_mind.lua
+    // `onSkillFinish`): used with the buff up, it pays out the MP banked so
+    // far and ends; otherwise it costs a quarter of current HP, and that
+    // amount is the MP the buff banks up to.
+    let blissful;
+    let command = if command.name == "blissful_mind" {
+        let mut a = attacker_handle.character.write().await;
+        let held = [STATUS_BLISSFUL_MIND, STATUS_FULLY_BLISSFUL_MIND]
+            .into_iter()
+            .find_map(|id| {
+                a.status_effects.get(id).map(|e| {
+                    // Fully Blissful Mind is a full bank: its magnitude.
+                    let banked = if id == STATUS_FULLY_BLISSFUL_MIND {
+                        e.magnitude
+                    } else {
+                        e.extra
+                    };
+                    (id, banked.max(0.0).floor() as i32)
+                })
+            });
+        attacker_pools_moved = true;
+        match held {
+            Some((id, banked)) => {
+                a.add_mp(banked);
+                let mut outbox = crate::status::StatusOutbox::new();
+                a.status_effects
+                    .remove_status_effect(id, 30329, true, &mut outbox);
+                drop(a);
+                flush_wake_outbox(outbox, registry, world, lua, db).await;
+                for hit in hits.iter_mut() {
+                    hit.status_roll = false;
+                }
+                container.add_action(
+                    crate::status::script::HookRow {
+                        kind: crate::status::script::HookRowKind::Mp,
+                        target_actor_id: attacker_actor_id,
+                        text_id: 33007,
+                        amount: banked.clamp(0, i32::from(u16::MAX)) as u16,
+                    }
+                    .to_result(attacker_actor_id),
+                );
+                command
+            }
+            None => {
+                let cost = (f64::from(a.chara.hp) * 0.25).floor();
+                a.add_hp(-(cost as i32));
+                let mut c = command.clone();
+                c.status_magnitude = cost;
+                blissful = c;
+                &blissful
+            }
+        }
+    } else {
+        command
+    };
 
     // Status effects (pmeteor `CommandResult.TryStatus`). The command's
     // own row (status commands) or an extra row in the same container
@@ -2886,7 +3000,9 @@ async fn apply_status_script(
         return;
     };
     match function_name {
-        "onGain" => {
+        // "onRestore": an effect brought back at login runs its onGain for
+        // the stat changes, before the client is in to hear about speed.
+        "onGain" | "onRestore" => {
             let Some(name) = catalogs
                 .status_effects
                 .read()
@@ -2901,12 +3017,26 @@ async fn apply_status_script(
                 .map(|r| r.clone())
                 .unwrap_or_default();
             let owner = {
-                let c = handle.character.read().await;
+                let mut c = handle.character.write().await;
+                // Speed effects multiply MovementSpeed (Heavy 0.8x, Quick
+                // 1.25x); an unset mod means the default run speed, so give
+                // them that to multiply.
+                if c.chara
+                    .mods
+                    .get(crate::actor::modifier::Modifier::MovementSpeed)
+                    <= 0.0
+                {
+                    c.chara.mods.set(
+                        crate::actor::modifier::Modifier::MovementSpeed,
+                        f64::from(tx::actor::SPEED_DEFAULT_RUN),
+                    );
+                }
                 crate::status::script::OwnerView {
                     mods: c.chara.mods.clone(),
                     level: c.chara.level,
                     max_hp: c.chara.max_hp as i32,
                     max_mp: c.chara.max_mp as i32,
+                    status_ids: Vec::new(),
                 }
             };
             let outcome = match crate::status::script::run_on_gain(&root, &name, &owner, effect) {
@@ -2928,6 +3058,13 @@ async fn apply_status_script(
                 .write()
                 .await
                 .apply_status_mods(status_effect_id, outcome.mod_deltas);
+            if function_name == "onRestore" {
+                // Zone-in sends the bands from the live MovementSpeed mod.
+                let mut c = handle.character.write().await;
+                c.speed_sent = c.get_speed() / tx::actor::SPEED_DEFAULT_RUN;
+                return;
+            }
+            sync_status_speed(registry, world, owner_actor_id).await;
             if outcome.hp != 0 {
                 // A raised max HP has to land before the heal or the heal
                 // clamps to the old max.
@@ -2936,6 +3073,17 @@ async fn apply_status_script(
                     sync_pools_after_tick(registry, world, owner_actor_id).await;
                 }
             }
+        }
+        "onTick" => {
+            run_status_tick(
+                registry,
+                world,
+                db,
+                catalogs,
+                owner_actor_id,
+                status_effect_id,
+            )
+            .await;
         }
         "onLose" => {
             let mut c = handle.character.write().await;
@@ -2947,8 +3095,131 @@ async fn apply_status_script(
                 );
             }
             c.remove_status_mods(status_effect_id);
+            drop(c);
+            sync_status_speed(registry, world, owner_actor_id).await;
         }
         _ => {}
+    }
+}
+
+/// Tell the client how fast its actor may move: 0 while Bind, Sleep, Stun
+/// or Petrification hold it (pmeteor gates movement on PREVENT_MOVEMENT;
+/// the player's own client drives its movement, so the bands have to say
+/// so), else the MovementSpeed mod against the default run speed. Sent
+/// only when it changes.
+async fn sync_status_speed(registry: &ActorRegistry, world: &WorldManager, actor_id: u32) {
+    let Some(handle) = registry.get(actor_id).await else {
+        return;
+    };
+    let multiplier = {
+        let mut c = handle.character.write().await;
+        let m = if c
+            .status_effects
+            .has_by_flag(crate::status::StatusEffectFlags::PREVENT_MOVEMENT)
+        {
+            0.0
+        } else {
+            c.get_speed() / tx::actor::SPEED_DEFAULT_RUN
+        };
+        if (m - c.speed_sent).abs() < 1e-4 {
+            return;
+        }
+        c.speed_sent = m;
+        m
+    };
+    tracing::debug!(actor = actor_id, multiplier, "status: movement speed");
+    let bytes = tx::actor::build_set_actor_speed_scaled(actor_id, multiplier).to_bytes();
+    send_to_self_if_player(registry, world, actor_id, bytes.clone()).await;
+    broadcast_to_neighbours(world, registry, actor_id, bytes).await;
+}
+
+/// An effect's `onTick` (pmeteor `StatusEffect.Update` → `CallLuaFunction
+/// (owner, this, "onTick")`): Blissful Mind banking MP, Excruciate's crit
+/// rate climbing, Rampage's stacks wearing off. Pool and modifier changes
+/// land on the owner and stay with the effect; a `ReplaceEffect` swaps it.
+async fn run_status_tick(
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    db: &Database,
+    catalogs: &std::sync::Arc<crate::lua::Catalogs>,
+    owner_actor_id: u32,
+    status_effect_id: u32,
+) {
+    let Some(handle) = registry.get(owner_actor_id).await else {
+        return;
+    };
+    let root = catalogs
+        .script_root
+        .read()
+        .map(|r| r.clone())
+        .unwrap_or_default();
+    let now_ms = (common::utils::unix_timestamp() as u64).saturating_mul(1000);
+    let mut outbox = crate::status::StatusOutbox::new();
+    let pools_moved = {
+        let mut c = handle.character.write().await;
+        if !c.is_alive() {
+            return;
+        }
+        let side = crate::status::hooks::HookSide::of(&c);
+        let Some(e) = side.effects.iter().find(|e| e.id == status_effect_id) else {
+            return;
+        };
+        let call = crate::status::script::HookCall {
+            hook: "onTick",
+            effect_name: &e.name,
+            effect: e.view,
+            owner: &side.actor,
+            other: None,
+            owner_acts: true,
+            skill: crate::status::script::HookSkill::default(),
+            action: None,
+        };
+        let o = match crate::status::script::run_hook(&root, &call) {
+            Ok(Some(o)) => o,
+            Ok(None) => return,
+            Err(err) => {
+                tracing::debug!(owner = owner_actor_id, effect = %e.name, error = %err, "status onTick failed");
+                return;
+            }
+        };
+        tracing::debug!(
+            owner = owner_actor_id,
+            effect = %e.name,
+            mods = ?o.owner.mod_deltas,
+            hp = o.owner.hp,
+            mp = o.owner.mp,
+            magnitude = o.effect.magnitude,
+            extra = o.effect.extra,
+            replace = ?o.replace.map(|r| r.status_id),
+            "status onTick"
+        );
+        let r = crate::status::hooks::EffectResult {
+            effect_id: status_effect_id,
+            owner: o.owner,
+            effect: o.effect,
+            remove_self: o.remove_self,
+            replace: o.replace,
+        };
+        let pools = r.owner.hp != 0 || r.owner.mp != 0 || r.owner.tp != 0;
+        if let Some((old, rep)) = crate::status::hooks::apply_owner(&mut c, &r, &mut outbox) {
+            let mut cmd = BattleCommand::new(0, "");
+            cmd.status_id = rep.status_id;
+            cmd.status_duration = rep.duration;
+            cmd.status_magnitude = rep.magnitude;
+            cmd.status_tier = rep.tier;
+            let effect =
+                catalog_status_effect(&cmd, owner_actor_id, Some(catalogs.as_ref()), now_ms);
+            c.status_effects
+                .replace_effect(old, effect, now_ms, &mut outbox);
+            outbox.push(crate::status::StatusEvent::RecalcStats { owner_actor_id });
+        }
+        pools
+    };
+    if pools_moved {
+        sync_pools_after_tick(registry, world, owner_actor_id).await;
+    }
+    for e in outbox.drain() {
+        Box::pin(dispatch_status_event(&e, registry, world, db, catalogs)).await;
     }
 }
 
@@ -4089,6 +4360,7 @@ pub(crate) async fn apply_movement_speed(
             crate::actor::modifier::Modifier::MovementSpeed,
             (tx::actor::SPEED_DEFAULT_RUN * multiplier) as f64,
         );
+        c.speed_sent = multiplier;
     }
     let bytes = tx::actor::build_set_actor_speed_scaled(player_id, multiplier).to_bytes();
     send_to_self_if_player(registry, world, player_id, bytes.clone()).await;
