@@ -20,8 +20,8 @@
 //!
 //! `open_or_create` is the entry point. It creates the database if the
 //! server account may, lays down the baseline schema on an empty database,
-//! reloads every game-data file whose contents changed, applies new
-//! numbered migrations, then the enabled modules' SQL. The whole pass runs
+//! applies new numbered migrations, reloads every game-data file whose
+//! contents changed, then the enabled modules' SQL. The whole pass runs
 //! under a MariaDB named lock, so four servers booting together take turns
 //! instead of racing.
 //!
@@ -141,8 +141,10 @@ async fn setup_locked(conn: &Connection) -> Result<()> {
     conn.call(|c| c.execute_batch(BOOKKEEPING_DDL))
         .await
         .context("creating schema_migrations and static_data_versions")?;
-    reload_data(conn).await?;
+    // Schema changes first, so a data file may fill a table (or column) a
+    // new migration adds.
     apply_migrations(conn).await?;
+    reload_data(conn).await?;
 
     let modules = crate::modules::enabled()?;
     if modules.iter().any(|m| !m.sql.is_empty()) {
@@ -310,6 +312,35 @@ mod tests {
         // A second boot finds nothing to do.
         assert_eq!(reload_data(&conn).await.unwrap(), 0);
         assert_eq!(apply_migrations(&conn).await.unwrap(), 0);
+    }
+
+    /// The monster skill data hangs together: every listed or described
+    /// move is a command row, and every pool's list has moves in it.
+    #[tokio::test]
+    async fn monster_skill_data_is_consistent() {
+        let conn = crate::test_db::open_fresh().await.unwrap();
+        let orphans = [
+            "SELECT COUNT(*) FROM server_battlenpc_skill_list l \
+             LEFT JOIN server_battle_commands c ON c.id = l.skillId WHERE c.id IS NULL",
+            "SELECT COUNT(*) FROM server_battlenpc_skill_list l \
+             LEFT JOIN server_battlenpc_skill_info i ON i.skillId = l.skillId WHERE i.skillId IS NULL",
+            "SELECT COUNT(*) FROM server_battlenpc_skill_info i \
+             LEFT JOIN server_battle_commands c ON c.id = i.skillId WHERE c.id IS NULL",
+            "SELECT COUNT(*) FROM server_battlenpc_pools p WHERE p.skillListId <> 0 AND NOT EXISTS \
+             (SELECT 1 FROM server_battlenpc_skill_list l WHERE l.skillListId = p.skillListId)",
+        ];
+        for q in orphans {
+            assert_eq!(count(&conn, q).await, 0, "{q}");
+        }
+        assert!(count(&conn, "SELECT COUNT(*) FROM server_battlenpc_skill_list").await > 100);
+        assert!(
+            count(
+                &conn,
+                "SELECT COUNT(*) FROM server_battlenpc_pools WHERE skillListId <> 0"
+            )
+            .await
+                > 100
+        );
     }
 
     #[tokio::test]

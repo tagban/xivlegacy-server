@@ -754,7 +754,11 @@ async fn battle_command_audit() {
         let c = &catalog[id];
         (c.job, c.level, *id)
     });
-    assert_eq!(ids.len(), 151, "server_battle_commands row count");
+    assert_eq!(
+        ids.len(),
+        618,
+        "server_battle_commands row count (151 player/Chimera + 467 generated monster moves)"
+    );
 
     let mut rows = Vec::new();
     for id in &ids {
