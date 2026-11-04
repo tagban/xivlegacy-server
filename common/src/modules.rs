@@ -235,4 +235,46 @@ mod tests {
         assert!(load(&root, "../etc").is_err());
         std::fs::remove_dir_all(&root).unwrap();
     }
+
+    /// Every module shipped in modules/ applies on the MariaDB baseline. The
+    /// bug report table also takes the held-back i64::MAX in nextTryAt.
+    #[tokio::test]
+    async fn shipped_module_sql_applies_on_mariadb() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../modules");
+        let mut modules = Vec::new();
+        for e in std::fs::read_dir(&root).unwrap() {
+            let e = e.unwrap();
+            if e.path().join("module.toml").is_file() {
+                modules.push(load(&root, &e.file_name().to_string_lossy()).unwrap());
+            }
+        }
+        assert!(
+            modules
+                .iter()
+                .any(|m| m.name == "bugreport" && !m.sql.is_empty())
+        );
+        let conn = crate::sql::Connection::open(&crate::test_db::fresh().await.unwrap())
+            .await
+            .unwrap();
+        let count = modules.iter().map(|m| m.sql.len()).sum::<usize>();
+        let applied = conn
+            .call(move |c| Ok(apply_sql(c, &modules).unwrap()))
+            .await
+            .unwrap();
+        assert_eq!(applied, count);
+        let held: i64 = conn
+            .call(|c| {
+                c.execute(
+                    "INSERT INTO module_bugreport_reports(userId, characterId, characterName, \
+                     zoneId, createdAt, nextTryAt) VALUES(1, 9, 'God Washere', 128, 1, ?1)",
+                    [i64::MAX],
+                )?;
+                c.query_row("SELECT nextTryAt FROM module_bugreport_reports", [], |r| {
+                    r.get(0)
+                })
+            })
+            .await
+            .unwrap();
+        assert_eq!(held, i64::MAX);
+    }
 }
