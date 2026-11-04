@@ -124,6 +124,29 @@ pub fn quest(c: &Conn, chara_id: u32, kind: &str, quest_id: u32, event: &str, se
     );
 }
 
+/// `kind` is `kill` (target: the monster's class id, amount: its level)
+/// or `death` (target: what killed them, a monster class or a player).
+pub fn combat(
+    c: &Conn,
+    chara_id: u32,
+    kind: &str,
+    target_id: u32,
+    action_id: u32,
+    amount: i64,
+    zone_id: u32,
+) {
+    write(
+        c,
+        "log_combat",
+        "INSERT INTO log_combat (at, characterId, targetId, actionId, kind, amount, zoneId) \
+         VALUES (:at, :c, :t, :a, :k, :n, :z)",
+        named_params! {
+            ":at": now(), ":c": chara_id, ":t": target_id, ":a": action_id,
+            ":k": truncate(kind, 16), ":n": amount, ":z": zone_id,
+        },
+    );
+}
+
 pub fn gm(c: &Conn, chara_id: u32, command: &str, args: &str) {
     write(
         c,
