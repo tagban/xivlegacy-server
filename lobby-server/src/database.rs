@@ -621,6 +621,44 @@ mod tests {
         assert!(found.is_none(), "state=2 row must NOT be returned");
     }
 
+    /// Making a reserved character writes every row character creation needs.
+    /// Its queries use camelCase parameter names (`:zoneId`, `:skinColor`),
+    /// which the MariaDB shim didn't bind until names were matched whole.
+    #[tokio::test]
+    async fn make_character_fills_a_reservation() {
+        let db = fresh_db().await;
+        let user_id = 5;
+        let cid = insert_character(&db, user_id, "Fresh Face", 0).await;
+        let info = crate::data::CharaInfo {
+            current_class: 22,
+            ..Default::default()
+        };
+        db.make_character(user_id, cid, &info)
+            .await
+            .expect("make_character");
+        assert_eq!(character_state(&db, cid).await, 2);
+        let (main_skill, hotbar): (u32, i64) = db
+            .conn
+            .call_db(move |c| {
+                Ok((
+                    c.query_row(
+                        "SELECT mainSkill FROM characters_parametersave WHERE characterId = :cid",
+                        named_params! { ":cid": cid },
+                        |r| r.get(0),
+                    )?,
+                    c.query_row(
+                        "SELECT COUNT(*) FROM characters_hotbar WHERE characterId = :cid",
+                        named_params! { ":cid": cid },
+                        |r| r.get(0),
+                    )?,
+                ))
+            })
+            .await
+            .unwrap();
+        assert_eq!(main_skill, 22);
+        assert!(hotbar >= 0);
+    }
+
     /// Read a character's raw `state` column by id (test-only helper).
     async fn character_state(db: &Database, cid: u32) -> u32 {
         db.conn

@@ -18023,3 +18023,190 @@ async fn send_instance_update_removes_far_monsters_only() {
         "populace stays add-only"
     );
 }
+
+/// A relog keeps the player's spot and HP/MP, and their status icons come
+/// back with the zone-in. Live 2026-11-03: a walk then logout came back at
+/// the last warp spot, HP/MP were never saved, and restored effects ran with
+/// no icons on the client.
+#[tokio::test]
+async fn leaving_saves_spot_and_pools_and_zone_in_resends_status_icons() {
+    use crate::data::Session as MapSession;
+    use crate::lua::LuaEngine;
+    use crate::status::{StatusEffect, StatusOutbox};
+    use common::db::ConnCallExt;
+
+    const PLAYER_ID: u32 = 9;
+    const ZONE: u32 = 206;
+    const PROTECT: u32 = 223129;
+
+    let world = Arc::new(WorldManager::new());
+    let registry = Arc::new(ActorRegistry::new());
+    let db = Arc::new(crate::database::Database::open(tempdb()).await.expect("db"));
+    db.conn_for_test()
+        .call_db(|c| {
+            c.execute_batch(
+                "INSERT INTO users (id, username, passwordHash) VALUES (2, 'gm', 'x');
+                 INSERT INTO characters (id, userId, slot, serverId, name, currentZoneId,
+                     positionX, positionY, positionZ)
+                     VALUES (9, 2, 0, 1, 'God Washere', 206, 51.93, 10.83, -1262.74);
+                 INSERT INTO characters_parametersave
+                     (characterId, hp, hpMax, mp, mpMax, mainSkill, mainSkillLevel)
+                     VALUES (9, 1900, 1000, 115, 115, 22, 5);",
+            )
+        })
+        .await
+        .unwrap();
+    world
+        .register_zone(Zone::new(
+            ZONE,
+            "fst0Town01".to_string(),
+            102,
+            String::new(),
+            0,
+            0,
+            0,
+            false,
+            false,
+            false,
+            false,
+            false,
+            None,
+        ))
+        .await;
+
+    // In Gridania, walked to a new spot, hurt, with Protect on.
+    let mut player = Character::new(PLAYER_ID);
+    player.base.zone_id = ZONE;
+    player.base.position_x = 43.94;
+    player.base.position_y = 10.51;
+    player.base.position_z = -1272.0;
+    player.base.rotation = -2.43;
+    player.chara.hp = 300;
+    player.chara.max_hp = 428;
+    player.chara.mp = 150;
+    player.chara.max_mp = 180;
+    let mut ob = StatusOutbox::new();
+    player.status_effects.add_status_effect(
+        StatusEffect::new(PLAYER_ID, PROTECT, 0.0, 0, 600, 0, 1_000),
+        PLAYER_ID,
+        1_000,
+        30328,
+        &mut ob,
+    );
+    registry
+        .insert(ActorHandle::new(
+            PLAYER_ID,
+            ActorKindTag::Player,
+            ZONE,
+            PLAYER_ID,
+            player,
+        ))
+        .await;
+    let (tx, mut rx) = mpsc::channel::<Vec<u8>>(256);
+    world
+        .register_client(PLAYER_ID, ClientHandle::new(PLAYER_ID, tx))
+        .await;
+    let mut session = MapSession::new(PLAYER_ID);
+    session.current_zone_id = ZONE;
+    world.upsert_session(session).await;
+
+    let processor = crate::processor::PacketProcessor {
+        db: db.clone(),
+        world: world.clone(),
+        registry: registry.clone(),
+        lua: Some(Arc::new(LuaEngine::new("/nonexistent"))),
+        cmd: None,
+    };
+
+    // Zone-in complete: Protect's icon goes to the player's own client.
+    processor.handle_zone_in_complete(PLAYER_ID).await;
+    let mut icons = Vec::new();
+    while let Ok(bytes) = rx.try_recv() {
+        let mut offset = 0;
+        while offset < bytes.len() {
+            let Ok(sub) = common::subpacket::SubPacket::parse(&bytes, &mut offset) else {
+                break;
+            };
+            if sub.game_message.opcode == crate::packets::opcodes::OP_SET_ACTOR_STATUS {
+                icons.push(u16::from_le_bytes([sub.data[2], sub.data[3]]));
+            }
+        }
+    }
+    let short_id = registry
+        .get(PLAYER_ID)
+        .await
+        .unwrap()
+        .character
+        .read()
+        .await
+        .status_effects
+        .status[0];
+    assert!(short_id != 0);
+    assert_eq!(icons, vec![short_id], "zone-in must resend the status icon");
+
+    // Leaving saves the spot and HP/MP.
+    let handle = registry.get(PLAYER_ID).await.unwrap();
+    processor.save_on_leave(&handle, PLAYER_ID).await;
+    let saved = db
+        .conn_for_test()
+        .call_db(|c| {
+            c.query_row(
+                "SELECT c.positionX, c.positionZ, c.currentZoneId, p.hp, p.hpMax, p.mp, p.mpMax
+                 FROM characters c JOIN characters_parametersave p ON p.characterId = c.id
+                 WHERE c.id = 9",
+                [],
+                |r| {
+                    Ok((
+                        r.get::<_, f64>(0)?,
+                        r.get::<_, f64>(1)?,
+                        r.get::<_, u32>(2)?,
+                        r.get::<_, i16>(3)?,
+                        r.get::<_, i16>(4)?,
+                        r.get::<_, i16>(5)?,
+                        r.get::<_, i16>(6)?,
+                    ))
+                },
+            )
+        })
+        .await
+        .unwrap();
+    assert!(
+        (saved.0 - 43.94).abs() < 0.01 && (saved.1 + 1272.0).abs() < 0.01,
+        "{saved:?}"
+    );
+    assert_eq!(
+        (saved.2, saved.3, saved.4, saved.5, saved.6),
+        (ZONE, 300, 428, 150, 180)
+    );
+
+    // Mid-warp the warp's own save stands: HP/MP still save, the spot doesn't.
+    {
+        let mut s = world.session(PLAYER_ID).await.unwrap();
+        s.reload_in_flight = true;
+        world.upsert_session(s).await;
+    }
+    {
+        let mut c = handle.character.write().await;
+        c.base.position_x = 0.0;
+        c.base.position_z = 0.0;
+        c.chara.hp = 200;
+    }
+    processor.save_on_leave(&handle, PLAYER_ID).await;
+    let (x, hp) = db
+        .conn_for_test()
+        .call_db(|c| {
+            c.query_row(
+                "SELECT c.positionX, p.hp FROM characters c
+                 JOIN characters_parametersave p ON p.characterId = c.id WHERE c.id = 9",
+                [],
+                |r| Ok((r.get::<_, f64>(0)?, r.get::<_, i16>(1)?)),
+            )
+        })
+        .await
+        .unwrap();
+    assert!(
+        (x - 43.94).abs() < 0.01,
+        "mid-warp must keep the saved spot, got x={x}"
+    );
+    assert_eq!(hp, 200);
+}

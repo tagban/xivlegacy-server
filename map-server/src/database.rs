@@ -2593,6 +2593,33 @@ impl Database {
         Ok(())
     }
 
+    /// HP and MP at logout. Login caps them at the maxima it works out, so a
+    /// stale or changed max here can't give a player more than they have.
+    pub async fn save_player_pools(
+        &self,
+        chara_id: u32,
+        hp: i16,
+        hp_max: i16,
+        mp: i16,
+        mp_max: i16,
+    ) -> Result<()> {
+        self.conn
+            .call_db(move |c| {
+                c.execute(
+                    r"UPDATE characters_parametersave
+                      SET hp = :hp, hpMax = :hpMax, mp = :mp, mpMax = :mpMax
+                      WHERE characterId = :cid",
+                    named_params! {
+                        ":hp": hp, ":hpMax": hp_max, ":mp": mp, ":mpMax": mp_max,
+                        ":cid": chara_id,
+                    },
+                )?;
+                Ok(())
+            })
+            .await?;
+        Ok(())
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub async fn save_player_position(
         &self,
