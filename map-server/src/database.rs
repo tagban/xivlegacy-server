@@ -1960,7 +1960,9 @@ impl Database {
                               comboId2, comboStep, accuracyMod, worldMasterTextId,
                               commandType, actionType, actionProperty,
                               magicPotency, mainStat, mainStatMod, secondStat,
-                              secondStatMod, damageMultiplier
+                              secondStatMod, damageMultiplier,
+                              COALESCE((SELECT i.knockback FROM server_battlenpc_skill_info i
+                                        WHERE i.skillId = server_battle_commands.id), 0)
                        FROM server_battle_commands"#,
                 )?;
                 let rows: Vec<BattleCommand> = stmt
@@ -2019,6 +2021,7 @@ impl Database {
                             second_stat: r.get::<_, i8>(46).unwrap_or(-1),
                             second_stat_mod: r.get::<_, f32>(47).unwrap_or_default(),
                             damage_multiplier: r.get::<_, f32>(48).unwrap_or_default(),
+                            knockback: r.get::<_, i64>(49).unwrap_or_default().clamp(0, 5) as u8,
                         })
                     })?
                     .collect::<common::sql::Result<_>>()?;
