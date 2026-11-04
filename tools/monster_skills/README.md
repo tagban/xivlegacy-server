@@ -32,7 +32,14 @@ wolves. List id = the genus id where the kind is a genus, 101+ for kinds
 with no genus (Snurble, Elemental, Golem, Moogle, Treant...), and the pool
 id for a named boss's own list (Ifrit 30100, Garuda 30109, Nael 30115).
 A pool takes a named boss's list first, then a kind whose name pattern
-matches it, then a kind that covers its genus.
+matches it, then a class move list, then a kind that covers its genus.
+
+Human and beastman enemies: `JOB_LISTS` holds the client's monster copies
+of player class actions (pugilist 122, marauder 123, lancer 124), matched
+by the pool's `currentJob` or name, for pools with no kind list.
+`SPELL_LISTS` holds the "II" tier spells of the monster spell block
+(thaumaturge 120, conjurer 121); they go in the pool's `spellListId`
+(same table), so a caster keeps its kind's moves too.
 
 Evidence per move: `zam` (a ZAM page shows that family using it), `ge` (an
 archived 1.0 Gamer Escape page names the family), `modern` (only an
@@ -47,6 +54,9 @@ No 1.0 level data survives, so:
 - `modern`: lowest level of an open-world ARR monster using the move;
 - `spawn`: the kind's moves in client order, spread from its lowest spawn
   level here up to at most 40 levels higher (an estimate);
+- `class`: class move and spell lists: the 1.0 learn level of the same
+  action (1.23b player row, else an archived 1.0 page's "Level Learned");
+  a "II" spell takes its base spell's level;
 - `boss`: a named boss's own list, every move at level 1;
 - empty: no pool uses the list yet (level 1).
 

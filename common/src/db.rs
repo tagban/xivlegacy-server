@@ -328,6 +328,9 @@ mod tests {
              LEFT JOIN server_battle_commands c ON c.id = i.skillId WHERE c.id IS NULL",
             "SELECT COUNT(*) FROM server_battlenpc_pools p WHERE p.skillListId <> 0 AND NOT EXISTS \
              (SELECT 1 FROM server_battlenpc_skill_list l WHERE l.skillListId = p.skillListId)",
+            "SELECT COUNT(*) FROM server_battlenpc_pools p WHERE p.spellListId <> 0 AND NOT EXISTS \
+             (SELECT 1 FROM server_battlenpc_skill_list l WHERE l.skillListId = p.spellListId)",
+            "SELECT COUNT(*) FROM server_battlenpc_skill_list WHERE minLevel < 1",
         ];
         for q in orphans {
             assert_eq!(count(&conn, q).await, 0, "{q}");
