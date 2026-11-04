@@ -198,6 +198,8 @@ pull request:
   servers talk to each other, and the client wire protocol.
 - **[Lua runtime](docs/lua-runtime.md)** — the `map-server` content engine:
   scripts, the coroutine scheduler, the hook surface, and the command pipeline.
+- **[Combat formulas](docs/combat.md)** — every hit, damage, stat and tick
+  formula, where it lives in the code and where its numbers came from.
 - **[Developer environment](docs/dev-environment.md)** — build/run, ports,
   `RUST_LOG` and packet-log toggles, and resetting save state.
 - **[Working an issue with an AI agent](docs/agents.md)** — Claude / OpenAI setup;
