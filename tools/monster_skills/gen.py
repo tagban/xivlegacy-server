@@ -99,11 +99,31 @@ KINDS = [
     (109, 'Treant', [], r'treant', [], [(23438, 23450, 'ge', []), (23642, 23643, 'modern', [])], ['Treant']),
     (110, 'Chimera', [], r'chimera', [], [(23456, 23464, 'modern', [])], ['Chimera', 'Chimera Genus']),
     (111, 'Bahamut', [], '', [], [(23596, 23596, 'name', []), (23617, 23626, 'name', [])], []),
+    (112, 'Cyclops', [], r'cyclops', [], [(23476, 23482, 'modern', []), (23629, 23630, 'name', [])], ['Cyclops']),
     (30100, 'Ifrit', [], '', [30100], [(23361, 23376, 'modern', []), (23408, 23409, 'name', []), (23577, 23583, 'modern', []), (23592, 23595, 'modern', [])], ['Primal']),
     (30109, 'Garuda', [], '', [30109], [(23537, 23559, 'modern', []), (23568, 23573, 'modern', [])], ['Primal']),
     (30115, 'Nael van Darnus', [], '', [30115], [(23603, 23615, 'name', []), (23627, 23627, 'name', []), (23631, 23631, 'name', [])], []),
 ]
 BOSS_LISTS = {k[0] for k in KINDS if k[4]}
+# Class move lists for human and beastman enemies with no kind list,
+# matched by the pool's currentJob or its name: (list id, family, jobs,
+# pool-name regex, blocks). The client keeps these copies of player class
+# actions with the monster moves.
+JOB_LISTS = [
+    (122, 'Enemy pugilist', {2, 15}, r'brawler|pugilist', [(23486, 23488, 'name', [])]),
+    (123, 'Enemy marauder', {4, 17}, r'cleaver|marauder|axeman', [(23484, 23485, 'name', []), (23489, 23491, 'name', [])]),
+    (124, 'Enemy lancer', {8, 19}, r'spearman|pikeman|lancer', [(23492, 23496, 'name', [])]),
+]
+# Spell lists (pool spellListId) for casters, matched the same way. The
+# client's monster spell block 23508-23534 holds the "II" tier of the 1.0
+# thaumaturge and conjurer spells.
+THM_SPELLS = [23508, 23509, 23510, 23511, 23512, 23513, 23520, 23521, 23522, 23526, 23527, 23530, 23531, 23532, 23534]
+CNJ_SPELLS = [23514, 23515, 23516, 23517, 23518, 23519, 23523, 23524, 23525, 23528, 23529, 23533]
+SPELL_LISTS = [
+    (120, 'Enemy thaumaturge', {22, 26}, r'divinator|stargazer|signifer|thunder_mage|zombie mage|transfigurator', THM_SPELLS),
+    (121, 'Enemy conjurer', {23, 24}, r'medicus|soilseer|bedesman|shaman', CNJ_SPELLS),
+]
+
 # Inside a block but known to belong elsewhere (a stray copy of another
 # family's move): left out of the block's kind.
 SKIP = {23560}  # Formic Pheromones inside Garuda's block
@@ -144,6 +164,21 @@ for lid, fam, genera, rx, named, blocks, aliases in KINDS:
                 continue
             assert i not in fam_of, (i, fam, fam_of[i])
             fam_of[i] = (lid, fam, ev, anchors, slot, aliases)
+
+for lid, fam, jobs, rx, blocks in JOB_LISTS:
+    for a, b, ev, anchors in blocks:
+        slot = 0
+        for i in range(a, b + 1):
+            n = sheet.get(str(i), [''])[0]
+            if blank(n):
+                continue
+            slot += 1
+            assert i not in fam_of, (i, fam)
+            fam_of[i] = (lid, fam, ev, anchors, slot, [])
+for lid, fam, jobs, rx, ids in SPELL_LISTS:
+    for i in ids:
+        assert i not in fam_of, (i, fam)
+        fam_of[i] = (lid, fam, 'name', [], i - 23507, [])
 
 def genus_of(lid):
     return lid if lid in GENUS else 0
@@ -247,14 +282,18 @@ def table_file(name, cols, rows, note):
 # pools -> lists: a named boss's own list first, then a kind whose name
 # pattern matches the pool, then a kind that covers the pool's genus
 ppath = f'{REPO}/common/sql/data/server_battlenpc_pools.sql'
-POOL_RE = re.compile(r"^(\((\d+), (\d+), '((?:[^']|'')*)', (\d+), .*, )(\d+)\)([,;])$", re.M)
+POOL_RE = re.compile(r"^(\((\d+), (\d+), '((?:[^']|'')*)', (\d+), (\d+), .*, )(\d+), (\d+)\)([,;])$", re.M)
 listed = {r[0] for r in list_rows}
-def list_for(pool, name, genus):
+def list_for(pool, name, genus, job):
+    name = name.replace("''", "'")
     for lid, fam, genera, rx, named, blocks, aliases in KINDS:
         if pool in named:
             return lid
     for lid, fam, genera, rx, named, blocks, aliases in KINDS:
-        if rx and re.search(rx, name.replace("''", "'"), re.I):
+        if rx and re.search(rx, name, re.I):
+            return lid
+    for lid, fam, jobs, rx, blocks in JOB_LISTS:
+        if job in jobs or re.search(rx, name, re.I):
             return lid
     for lid, fam, genera, rx, named, blocks, aliases in KINDS:
         if genus in genera and not rx:
@@ -263,19 +302,30 @@ def list_for(pool, name, genus):
         if genus in genera:  # genus covered, but the name pattern is the gate
             return 0
     return 0
-pool_list = {}
+def spell_list_for(name, job):
+    name = name.replace("''", "'")
+    for lid, fam, jobs, rx, ids in SPELL_LISTS:
+        if job in jobs or re.search(rx, name, re.I):
+            return lid
+    return 0
+pool_list, pool_spells = {}, {}
 for mo in POOL_RE.finditer(open(ppath).read()):
-    lid = list_for(int(mo.group(2)), mo.group(4), int(mo.group(5)))
-    pool_list[int(mo.group(2))] = lid if lid in listed else 0
+    pid, job = int(mo.group(2)), int(mo.group(6))
+    lid = list_for(pid, mo.group(4), int(mo.group(5)), job)
+    pool_list[pid] = lid if lid in listed else 0
+    pool_spells[pid] = spell_list_for(mo.group(4), job)
 
 # levels: spawn level range of the pools using each list
 span = collections.defaultdict(lambda: [999, 0])
 for l in open(f'{REPO}/common/sql/data/server_battlenpc_groups.sql'):
     mo = re.match(r"\((\d+), (\d+), '(?:[^']|'')*', (\d+), (\d+),", l)
-    if mo and pool_list.get(int(mo.group(2))):
-        sp = span[pool_list[int(mo.group(2))]]
-        sp[0] = min(sp[0], int(mo.group(3)))
-        sp[1] = max(sp[1], int(mo.group(4)))
+    if not mo:
+        continue
+    for lid in (pool_list.get(int(mo.group(2))), pool_spells.get(int(mo.group(2)))):
+        if lid:
+            sp = span[lid]
+            sp[0] = min(sp[0], int(mo.group(3)))
+            sp[1] = max(sp[1], int(mo.group(4)))
 SPREAD = 40  # at most this many levels from a kind's first move to its last
 
 def modern_level(n):
@@ -303,6 +353,30 @@ for lid, rows in by_list.items():
         mlv = modern_level(sheet[str(r[1])][0].strip())
         if mlv:
             r[2], r[3] = max(lo, min(hi, mlv)), 'modern'
+# Class move and spell lists: the 1.0 class learn level of the same
+# action (the 1.23b player row, else an archived 1.0 page's "Level
+# Learned"); a "II" spell takes its base spell's level.
+ge_levels = json.load(open('ge_levels.json')) if os.path.exists('ge_levels.json') else {}
+player_lvl = {}
+for l in open(f'{REPO}/common/sql/data/server_battle_commands.sql'):
+    mo = re.match(r"\((\d+), '([a-z0-9_]+)', (\d+), (\d+),", l)
+    if mo and mo.group(3) != '0':
+        player_lvl.setdefault(mo.group(2), int(mo.group(4)))
+def class_level(n):
+    if snake(n) in player_lvl:
+        return player_lvl[snake(n)]
+    if n in ge_levels:
+        return ge_levels[n]
+    base = re.sub(r' II$', '', n)
+    if base != n and snake(base) in player_lvl:
+        return player_lvl[snake(base)]
+    return 0
+CLASS_LISTS = {j[0] for j in JOB_LISTS} | {j[0] for j in SPELL_LISTS}
+for r in list_rows:
+    if r[0] in CLASS_LISTS:
+        clv = class_level(sheet[str(r[1])][0].strip())
+        if clv:
+            r[2], r[3] = clv, 'class'
 level_of = {r[1]: (r[2], r[3]) for r in list_rows}
 for r in info_rows:
     if r[0] in level_of and level_of[r[0]][1]:
@@ -334,11 +408,13 @@ p = open(ppath).read()
 changed = 0
 def fix(mo):
     global changed
-    want = str(pool_list.get(int(mo.group(2)), 0))
-    if mo.group(6) != want:
+    pid = int(mo.group(2))
+    spell, skill = str(pool_spells.get(pid, 0)), str(pool_list.get(pid, 0))
+    if (mo.group(7), mo.group(8)) != (spell, skill):
         changed += 1
-    return mo.group(1) + want + ')' + mo.group(7)
+    return mo.group(1) + spell + ', ' + skill + ')' + mo.group(9)
 p = POOL_RE.sub(fix, p)
 open(ppath, 'w').write(p)
 print(dict(stats), 'commands', len(cmd_rows), 'lists', len(listed),
-      'pools with a list', sum(1 for v in pool_list.values() if v), 'pools changed', changed)
+      'pools with a list', sum(1 for v in pool_list.values() if v),
+      'pools with spells', sum(1 for v in pool_spells.values() if v), 'pools changed', changed)

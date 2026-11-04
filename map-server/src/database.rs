@@ -221,6 +221,8 @@ pub struct BattleNpcSpawn {
     pub combat_delay: u32,
     /// `pool.skillListId`: the family's monster move list (0 = none).
     pub skill_list_id: u32,
+    /// `pool.spellListId`: a caster's spell list (0 = none); same table.
+    pub spell_list_id: u32,
     pub aggro_type: u8,
     pub speed: u8,
     /// `genus.detection` — bitfield of `DetectionType` flags (Sight=1,
@@ -812,7 +814,7 @@ impl Database {
                         bpo.genusId, bpo.actorClassId, bpo.currentJob,
                         bpo.combatSkill, bpo.combatDelay, bpo.aggroType,
                         bge.speed, bge.detection, bge.kindredId, bge.kindredName,
-                        bpo.skillListId
+                        bpo.skillListId, bpo.spellListId
                       FROM server_battlenpc_spawn_locations bsl
                       INNER JOIN server_battlenpc_groups bgr ON bsl.groupId = bgr.groupId
                       INNER JOIN server_battlenpc_pools  bpo ON bgr.poolId  = bpo.poolId
@@ -855,6 +857,7 @@ impl Database {
                             kindred_id: r.get::<_, u8>(29)?,
                             kindred_name: r.get::<_, String>(30).unwrap_or_default(),
                             skill_list_id: r.get(31)?,
+                            spell_list_id: r.get(32)?,
                         })
                     })
                     .optional()?;
@@ -6923,5 +6926,8 @@ mod monster_skill_tests {
         assert!(usable_monster_skills(goat, 99).count() == goat.len());
         // a named boss's list: every move usable at any level
         assert!(lists[&30100].iter().all(|s| s.min_level == 1));
+        // caster spell lists share the table: thaumaturge (120) and conjurer (121)
+        assert!(lists[&120].iter().any(|s| s.skill_id == 23508), "Fire II");
+        assert!(lists[&121].iter().any(|s| s.skill_id == 23517), "Stone II");
     }
 }
