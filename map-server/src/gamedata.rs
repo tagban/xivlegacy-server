@@ -574,6 +574,8 @@ pub struct BattleCommand {
     /// A physical skill's damage as a multiple of the user's auto-attack
     /// (0 = the default for its kind).
     pub damage_multiplier: f32,
+    /// Knockback level 0-5 (`server_battlenpc_skill_info.knockback`).
+    pub knockback: u8,
 }
 
 impl BattleCommand {
@@ -656,6 +658,7 @@ impl BattleCommand {
         out.second_stat = self.second_stat;
         out.second_stat_mod = self.second_stat_mod;
         out.damage_multiplier = self.damage_multiplier;
+        out.knockback = self.knockback;
         out.valid_user = match self.valid_user {
             1 => bc::BattleCommandValidUser::Player,
             2 => bc::BattleCommandValidUser::Monster,

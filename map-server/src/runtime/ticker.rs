@@ -2183,6 +2183,75 @@ mod tests {
         }
     }
 
+    /// Drop Kick (23074, knockback 1 from its 1.0 page): a landed hit
+    /// carries the client's knockback hit-effect bits; a target with
+    /// KnockbackImmune gets the damage without them.
+    #[tokio::test]
+    async fn knockback_move_sets_hit_effect_unless_immune() {
+        for immune in [false, true] {
+            let (ticker, _zone, mut rx) = setup_engaged_npc_vs_player(2.0, |_| {}).await;
+            let (catalog, _) = ticker.db.load_global_battle_command_list().await.unwrap();
+            let kick = catalog.get(&23074).unwrap().to_battle_command();
+            assert_eq!(
+                kick.knockback, 1,
+                "Drop Kick knockback level from skill_info"
+            );
+            if immune {
+                let handle = ticker.registry.get(1).await.unwrap();
+                handle
+                    .character
+                    .write()
+                    .await
+                    .chara
+                    .mods
+                    .set(crate::actor::modifier::Modifier::KnockbackImmune, 1.0);
+            }
+            let mut landed: Option<u32> = None;
+            for attempt in 0..10u64 {
+                {
+                    let handle = ticker.registry.get(2).await.unwrap();
+                    let mut c = handle.character.write().await;
+                    c.chara.tp = 1000;
+                    let ctrl = c.ai_container.controller.as_mut().unwrap();
+                    ctrl.battle.skills = vec![kick.clone()];
+                    ctrl.battle.next_skill_ms = 0;
+                    ctrl.auto_attack_enabled = false;
+                }
+                for i in 1..=40u64 {
+                    ticker.tick_once(attempt * 4_000 + i * 100).await;
+                }
+                landed = drain_subpackets(&mut rx)
+                    .iter()
+                    .filter(|s| {
+                        s.game_message.opcode == crate::packets::opcodes::OP_COMMAND_RESULT_X01
+                            && s.header.source_id == 2
+                    })
+                    .filter(|s| u16::from_le_bytes(s.data[0x24..0x26].try_into().unwrap()) == 23074)
+                    .filter(|s| u16::from_le_bytes(s.data[0x2C..0x2E].try_into().unwrap()) > 0)
+                    .map(|s| u32::from_le_bytes(s.data[0x30..0x34].try_into().unwrap()))
+                    .next();
+                if landed.is_some() {
+                    break;
+                }
+            }
+            let effect = landed.expect("Drop Kick must land within ten tries");
+            let kb = crate::runtime::dispatcher::knockback_hit_effect(1);
+            if immune {
+                assert_ne!(
+                    effect & kb,
+                    kb,
+                    "immune target: no knockback bits, effect {effect:#x}"
+                );
+            } else {
+                assert_eq!(
+                    effect & kb,
+                    kb,
+                    "knockback bits on the hit, effect {effect:#x}"
+                );
+            }
+        }
+    }
+
     /// Below 1000 TP a monster never uses a move.
     #[tokio::test]
     async fn monster_without_tp_uses_no_move() {

@@ -64,6 +64,15 @@ No 1.0 level data survives, so:
 - `boss`: a named boss's own list, every move at level 1;
 - empty: no pool uses the list yet (level 1).
 
+## Knockback
+
+`KNOCKBACK` in gen.py lists the moves whose archived 1.0 Gamer Escape page
+says they knock back (Drop Kick, Tender Thrust, Dream Bubble, Bone
+Breaker, Iron Chariot, Vulcan Burst), with a guessed strength 1-5 written
+to `server_battlenpc_skill_info.knockback`. A landed hit adds the client's
+knockback hit-effect bits for that level, unless the target has the
+KnockbackImmune modifier.
+
 Animations are a guess to be checked in the client: animation type 19 with
 the move's slot in its block as the model animation, the same encoding the
 Chimera rows (23456-23464) use.

@@ -603,6 +603,19 @@ pub async fn dispatch_battle_event(
     }
 }
 
+/// Client hit-effect bits for knockback level 1-5 (0 = none).
+pub(crate) fn knockback_hit_effect(level: u8) -> u32 {
+    use crate::battle::effects::HitEffect as H;
+    match level {
+        0 => 0,
+        1 => H::KNOCKBACK_LV1.0,
+        2 => H::KNOCKBACK_LV2.0,
+        3 => H::KNOCKBACK_LV3.0,
+        4 => H::KNOCKBACK_LV4.0,
+        _ => H::KNOCKBACK_LV5.0,
+    }
+}
+
 /// Client battle text "<name> readies <command>." (sheet 03/A2/00/BC).
 pub(crate) const MONSTER_READIES_TEXT_ID: u16 = 30126;
 
@@ -2375,6 +2388,24 @@ async fn resolve_action(
                     row.enmity = new_enmity;
                 }
             }
+        }
+        // Knockback: a landed hit from a knockback move pushes the target
+        // (client hit-effect bits; the player's client moves itself).
+        if command.knockback > 0
+            && target_id != attacker_actor_id
+            && dmg_request.is_some_and(|dr| dr.amount > 0)
+            && d_write
+                .chara
+                .mods
+                .get(crate::actor::modifier::Modifier::KnockbackImmune)
+                <= 0.0
+            && let Some(row) = container
+                .main_results
+                .iter_mut()
+                .rev()
+                .find(|r| r.target_actor_id == target_id)
+        {
+            row.effect_id |= knockback_hit_effect(command.knockback);
         }
         if is_heal && let (Some(root), Some(atk)) = (&root, &attacker_side) {
             use crate::status::StatusEffectFlags as F;
