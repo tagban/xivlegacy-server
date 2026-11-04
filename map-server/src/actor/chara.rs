@@ -475,7 +475,9 @@ impl Character {
         let level = self.chara.level;
         let mut held: Vec<&crate::gamedata::BattleTrait> = traits
             .values()
-            .filter(|t| (t.job == class || (job != 0 && t.job == job)) && i16::from(t.level) <= level)
+            .filter(|t| {
+                (t.job == class || (job != 0 && t.job == job)) && i16::from(t.level) <= level
+            })
             .collect();
         held.sort_by_key(|t| t.id);
         self.traits = held.iter().map(|t| u32::from(t.id)).collect();

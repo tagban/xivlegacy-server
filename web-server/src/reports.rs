@@ -671,7 +671,10 @@ mod tests {
         let texts: Vec<_> = events.iter().map(|e| e.text.clone()).collect();
         assert_eq!(texts.len(), 2, "{texts:?}");
         assert!(texts[0].starts_with("killed by "), "{texts:?}");
-        assert!(texts[1].starts_with("defeated ") && texts[1].ends_with("(level 12)"), "{texts:?}");
+        assert!(
+            texts[1].starts_with("defeated ") && texts[1].ends_with("(level 12)"),
+            "{texts:?}"
+        );
     }
 
     #[test]

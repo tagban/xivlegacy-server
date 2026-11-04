@@ -1484,7 +1484,9 @@ mod tests {
         assert_eq!(out.chance, 1.0);
         assert_eq!(out.aoe_type, 0.0);
         gla.traits.push(27162);
-        let out = run_command_setup(&root(), "flash", &gla, no_trait).unwrap().unwrap();
+        let out = run_command_setup(&root(), "flash", &gla, no_trait)
+            .unwrap()
+            .unwrap();
         assert_eq!(out.aoe_type, 1.0, "Enhanced Flash II makes it a circle");
     }
 

@@ -1075,12 +1075,19 @@ async fn action_targets(
     // The finder has no party ids, so party-only AoEs (Enhanced Rampart)
     // keep to the party here: other players are left out, duty allies
     // (who fight beside the party without joining it) stay in.
-    let npc_ally = |id: &u32| arena.get(id).is_some_and(|v| !v.is_player && v.allegiance == 1);
+    let npc_ally = |id: &u32| {
+        arena
+            .get(id)
+            .is_some_and(|v| !v.is_player && v.allegiance == 1)
+    };
     if command.valid_target.intersects(ValidTarget::PARTY_ONLY) {
         let party = crate::parties::members_of(attacker_actor_id);
         out.retain(|id| party.contains(id) || npc_ally(id));
     }
-    if command.valid_target.intersects(ValidTarget::MAIN_TARGET_PARTY_ONLY) {
+    if command
+        .valid_target
+        .intersects(ValidTarget::MAIN_TARGET_PARTY_ONLY)
+    {
         let party = crate::parties::members_of(primary_actor_id);
         out.retain(|id| party.contains(id) || npc_ally(id));
     }
@@ -1903,7 +1910,7 @@ async fn resolve_action(
             max_hp: atk_max_hp as i32,
             max_mp: 0,
             status_ids: atk_status_ids.clone(),
-                traits: atk_traits.clone(),
+            traits: atk_traits.clone(),
         };
         apply_skill_hook(&root, "onPositional", &mut c, &caster);
         positioned = c;
@@ -2780,6 +2787,13 @@ async fn resolve_action(
                 send_to_self_if_player(registry, world, attacker_actor_id, sub.to_bytes()).await;
             }
         }
+    }
+
+    // A monster's TP move spends all its TP (1.0 and pmeteor
+    // `BattleNpc` TP moves fire at 1000 and reset the gauge; the move
+    // rows carry no tpCost).
+    if !attacker_handle.is_player() && command.command_type == CommandType::WEAPON_SKILL {
+        attacker_handle.character.write().await.chara.tp = 0;
     }
 
     // pmeteor `Character.DoBattleCommand`: a combo link that hit moves
@@ -4160,7 +4174,10 @@ pub(crate) async fn die_if_defender_fell(
     // log_combat: a player's death, and what killed them (a monster by
     // class id, a player by id).
     if let Some(db) = db
-        && matches!(handle.kind, crate::runtime::actor_registry::ActorKindTag::Player)
+        && matches!(
+            handle.kind,
+            crate::runtime::actor_registry::ActorKindTag::Player
+        )
     {
         let killer = match attacker_actor_id {
             Some(id) => match registry.get(id).await {

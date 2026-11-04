@@ -297,6 +297,20 @@ pub async fn run() -> Result<()> {
         }
     }
 
+    // Monster move and spell lists (`server_battlenpc_skill_list`): a
+    // spawning BattleNpc takes the moves its level allows. Non-fatal:
+    // without them monsters only swing.
+    match db.load_monster_skill_lists().await {
+        Ok(lists) => {
+            let list_count = lists.len();
+            lua.catalogs().install_monster_skill_lists(lists);
+            tracing::info!(list_count, "server_battlenpc_skill_list catalog loaded");
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "server_battlenpc_skill_list load failed");
+        }
+    }
+
     // Status-effect templates (`server_statuseffects`): battle commands
     // build the effects they apply from these, so flags such as Stance
     // and each status's overwrite rule come along. Non-fatal: without

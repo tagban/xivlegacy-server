@@ -220,6 +220,23 @@ pub(crate) async fn spawn_battle_npc_as(
     }
     bnpc.apply_spawn_metadata(&spawn, bnpc_id, actor_id, caster_spell);
 
+    // Monster moves and spells (`server_battlenpc_skill_list`): what
+    // the pool's lists allow at this spawn's level. A pool with a spell
+    // list fights as a caster (stands back, casts, no swings).
+    if let Some(l) = lua.as_ref() {
+        let level = bnpc.npc.character.chara.level;
+        let skills = l.catalogs().monster_commands(spawn.skill_list_id, level);
+        let spells = l.catalogs().monster_commands(spawn.spell_list_id, level);
+        if let Some(ctrl) = bnpc.npc.character.ai_container.controller.as_mut() {
+            if !spells.is_empty() {
+                ctrl.battle.is_caster = true;
+                ctrl.auto_attack_enabled = false;
+            }
+            ctrl.battle.skills = skills;
+            ctrl.battle.spells = spells;
+        }
+    }
+
     // 5. Insert the spatial projection into the parent zone's grid.
     let Some(zone_arc) = world.zone(parent_zone_id).await else {
         tracing::warn!(

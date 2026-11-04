@@ -78,6 +78,9 @@ pub struct Catalogs {
     /// `scripts/lua`, for code that runs one script on its own (status
     /// effect `onGain`, `status/script.rs`) without a full LuaEngine.
     pub script_root: RwLock<std::path::PathBuf>,
+    /// `server_battlenpc_skill_list`: monster move and spell lists by
+    /// list id, each entry with the level a monster needs to use it.
+    pub monster_skill_lists: RwLock<HashMap<u32, Vec<crate::database::MonsterSkill>>>,
 }
 
 impl Catalogs {
@@ -107,6 +110,34 @@ impl Catalogs {
         if let Ok(mut w) = self.battle_traits.write() {
             *w = traits;
         }
+    }
+
+    pub fn install_monster_skill_lists(
+        &self,
+        lists: HashMap<u32, Vec<crate::database::MonsterSkill>>,
+    ) {
+        if let Ok(mut w) = self.monster_skill_lists.write() {
+            *w = lists;
+        }
+    }
+
+    /// The battle commands of list `list_id` that a level-`level`
+    /// monster may use, in list order. Empty for list 0, an unknown
+    /// list, or ids missing from the command catalog.
+    pub fn monster_commands(&self, list_id: u32, level: i16) -> Vec<crate::battle::BattleCommand> {
+        if list_id == 0 {
+            return Vec::new();
+        }
+        let (Ok(lists), Ok(cmds)) = (self.monster_skill_lists.read(), self.battle_commands.read())
+        else {
+            return Vec::new();
+        };
+        let Some(list) = lists.get(&list_id) else {
+            return Vec::new();
+        };
+        crate::database::usable_monster_skills(list, level)
+            .filter_map(|id| cmds.get(&id).map(|gd| gd.to_battle_command()))
+            .collect()
     }
 
     pub fn install_battle_commands(&self, commands: HashMap<u16, BattleCommand>) {

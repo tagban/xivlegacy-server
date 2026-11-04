@@ -18702,7 +18702,18 @@ async fn enhanced_rampart_covers_the_party() {
         let world = Arc::new(WorldManager::new());
         let registry = Arc::new(ActorRegistry::new());
         let zone = Zone::new(
-            100, "test", 1, "/Area/Zone/Test", 0, 0, 0, false, false, false, false, false,
+            100,
+            "test",
+            1,
+            "/Area/Zone/Test",
+            0,
+            0,
+            0,
+            false,
+            false,
+            false,
+            false,
+            false,
             Some(&StubNavmeshLoader),
         );
         world.register_zone(zone).await;
@@ -18778,8 +18789,13 @@ async fn a_bards_new_song_replaces_their_old_one() {
     lua.catalogs().install_status_effects(statuses);
     put_status(&registry, 1, 223256, "minuet_of_rigor", 0, 3).await;
     let cast = |id: u16| {
-        let (registry, world, zone, lua, db) =
-            (registry.clone(), world.clone(), zone.clone(), lua.clone(), db.clone());
+        let (registry, world, zone, lua, db) = (
+            registry.clone(),
+            world.clone(),
+            zone.clone(),
+            lua.clone(),
+            db.clone(),
+        );
         let command = catalog[&id].to_battle_command();
         async move {
             dispatch_battle_event(
@@ -18812,7 +18828,10 @@ async fn a_bards_new_song_replaces_their_old_one() {
     };
     cast(27238).await;
     let (paeon, ballad, minuet, regain) = state().await;
-    assert!(paeon && !ballad && minuet, "Paeon lands beside the other bard's Minuet");
+    assert!(
+        paeon && !ballad && minuet,
+        "Paeon lands beside the other bard's Minuet"
+    );
     assert!(regain > 0.0, "Paeon gives Regain");
     cast(27237).await;
     let (paeon, ballad, minuet, regain) = state().await;
@@ -18835,7 +18854,15 @@ async fn kills_and_deaths_are_logged() {
         c.chara.level = 12;
     }
     for (dead, killer) in [(2u32, 1u32), (3, 2)] {
-        registry.get(dead).await.unwrap().character.write().await.chara.hp = 0;
+        registry
+            .get(dead)
+            .await
+            .unwrap()
+            .character
+            .write()
+            .await
+            .chara
+            .hp = 0;
         crate::runtime::dispatcher::die_if_defender_fell(
             dead,
             Some(killer),
@@ -18850,8 +18877,9 @@ async fn kills_and_deaths_are_logged() {
     let rows: Vec<(String, i64, i64, i64)> = db
         .conn_for_test()
         .call_db(|c| {
-            let mut st =
-                c.prepare("SELECT kind, characterId, targetId, amount FROM log_combat ORDER BY id")?;
+            let mut st = c.prepare(
+                "SELECT kind, characterId, targetId, amount FROM log_combat ORDER BY id",
+            )?;
             st.query_map((), |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
                 .collect::<common::sql::Result<_>>()
         })
