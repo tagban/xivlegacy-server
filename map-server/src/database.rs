@@ -2287,7 +2287,7 @@ impl Database {
             .conn
             .call_db(move |c| {
                 let mut stmt = c.prepare(
-                    r"SELECT statusId, duration, magnitude, tick, tier, extra
+                    r"SELECT statusId, duration, magnitude, tick, tier, extra, startTime, savedAt
                       FROM characters_statuseffect WHERE characterId = :cid",
                 )?;
                 let rows: Vec<StatusEffectEntry> = stmt
@@ -2299,6 +2299,8 @@ impl Database {
                             tick: r.get::<_, u32>(3).unwrap_or_default(),
                             tier: r.get::<_, u8>(4).unwrap_or_default(),
                             extra: r.get::<_, u64>(5).unwrap_or_default(),
+                            start_time: r.get::<_, u32>(6).unwrap_or_default(),
+                            saved_at: r.get::<_, u32>(7).unwrap_or_default(),
                         })
                     })?
                     .collect::<rusqlite::Result<_>>()?;
@@ -5018,14 +5020,21 @@ impl Database {
         effects: &[StatusEffectEntry],
     ) -> Result<()> {
         let effects = effects.to_vec();
+        let saved_at = common::utils::unix_timestamp() as u32;
         self.conn
             .call_db(move |c| {
                 let tx = c.transaction()?;
                 {
+                    // The rows are the effects active now: ones that ended
+                    // since the last save go too.
+                    tx.execute(
+                        "DELETE FROM characters_statuseffect WHERE characterId = :cid",
+                        named_params! { ":cid": chara_id },
+                    )?;
                     let mut stmt = tx.prepare(
-                        r"REPLACE INTO characters_statuseffect
-                            (characterId, statusId, magnitude, duration, tick, tier, extra)
-                          VALUES (:cid, :sid, :mag, :dur, :tick, :tier, :extra)",
+                        r"INSERT INTO characters_statuseffect
+                            (characterId, statusId, magnitude, duration, tick, tier, extra, startTime, savedAt)
+                          VALUES (:cid, :sid, :mag, :dur, :tick, :tier, :extra, :start, :saved)",
                     )?;
                     for eff in effects {
                         stmt.execute(named_params! {
@@ -5036,6 +5045,8 @@ impl Database {
                             ":tick": eff.tick,
                             ":tier": eff.tier,
                             ":extra": eff.extra as i64,
+                            ":start": eff.start_time,
+                            ":saved": saved_at,
                         })?;
                     }
                 }
@@ -5873,6 +5884,38 @@ mod battle_npc_spawn_tests {
     /// corrects pool 3's actorClassId to 2290006 —
     /// FighterAllyOpeningAttacker, the class whose displayNameId
     /// renders "Yda" (#28 S0.4; the seed shipped pools 3/4 crossed).
+    #[tokio::test]
+    async fn saved_status_effects_round_trip_and_drop_ended_ones() {
+        let path = tempdb("status_save");
+        let db = Database::open(&path).await.expect("open db");
+        let entry = |status_id| StatusEffectEntry {
+            status_id,
+            start_time: 1_000,
+            saved_at: 0,
+            duration: 600,
+            magnitude: 10,
+            tick: 3_000,
+            tier: 1,
+            extra: 2,
+        };
+        db.save_player_status_effects(9, &[entry(223129), entry(228021)])
+            .await
+            .expect("save");
+        // Heavy ended: the next save leaves only Protect.
+        db.save_player_status_effects(9, &[entry(223129)])
+            .await
+            .expect("save");
+        let rows = db.load_character_status_effects(9).await.expect("load");
+        assert_eq!(rows.len(), 1);
+        let r = &rows[0];
+        assert_eq!(
+            (r.status_id, r.start_time, r.duration, r.magnitude, r.extra),
+            (223129, 1_000, 600, 10, 2)
+        );
+        assert!(r.saved_at > 1_000, "saved_at is stamped by the save");
+        let _ = std::fs::remove_file(&path);
+    }
+
     #[tokio::test]
     async fn load_battle_npc_spawn_yda() {
         let path = tempdb("yda");

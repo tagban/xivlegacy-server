@@ -83,7 +83,9 @@ pub async fn dispatch_status_event(
             // sets `actor_id = session_id`), so it feeds
             // `save_player_status_effects` directly. Mirrors C#
             // `Database.SavePlayerStatusEffects`.
-            if let Some(handle) = registry.get(*owner_actor_id).await {
+            if let Some(handle) = registry.get(*owner_actor_id).await
+                && handle.is_player()
+            {
                 let entries = {
                     let c = handle.character.read().await;
                     c.status_effects.to_db_entries()
@@ -3018,6 +3020,18 @@ async fn apply_status_script(
     let Some(handle) = registry.get(owner_actor_id).await else {
         return;
     };
+    // A player's saved effects follow every gain and loss (the container
+    // already has the change when its Lua call goes out), so a crash or a
+    // dropped connection doesn't lose them or bring back ended ones.
+    if handle.is_player() && matches!(function_name, "onGain" | "onLose") {
+        let entries = handle.character.read().await.status_effects.to_db_entries();
+        if let Err(e) = db
+            .save_player_status_effects(owner_actor_id, &entries)
+            .await
+        {
+            tracing::warn!(owner = owner_actor_id, err = %e, "status: save_player_status_effects failed");
+        }
+    }
     match function_name {
         // "onRestore": an effect brought back at login runs its onGain for
         // the stat changes, before the client is in to hear about speed.

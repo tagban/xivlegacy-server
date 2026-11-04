@@ -577,6 +577,7 @@ impl PacketProcessor {
         if !loaded.status_effects.is_empty() {
             let now_ms = common::utils::unix_timestamp() as u64 * 1000;
             let mut hydrate_outbox = crate::status::StatusOutbox::new();
+            let now_s = (now_ms / 1000) as u32;
             for entry in &loaded.status_effects {
                 let mut effect = crate::status::StatusEffect::new(
                     actor_id,
@@ -595,6 +596,32 @@ impl PacketProcessor {
                 {
                     effect.apply_catalog(&m);
                 }
+                // An effect resumes with the time it had left when it was
+                // saved; one that ticks offline ran on and may be gone.
+                let Some(left) = crate::status::StatusEffectContainer::time_left_at_login(
+                    entry.start_time,
+                    entry.duration,
+                    entry.saved_at,
+                    now_s,
+                    effect
+                        .flags
+                        .contains(crate::status::StatusEffectFlags::TICK_OFFLINE),
+                ) else {
+                    tracing::debug!(
+                        player = actor_id,
+                        status = entry.status_id,
+                        "status ran out while offline; not restored"
+                    );
+                    continue;
+                };
+                tracing::debug!(
+                    player = actor_id,
+                    status = entry.status_id,
+                    left_s = left,
+                    of_s = entry.duration,
+                    "status restored"
+                );
+                effect.duration = left;
                 // No login "you gain the effect of X" spam — the effects are
                 // being restored, not freshly applied.
                 effect.silent_on_gain = true;
@@ -605,6 +632,14 @@ impl PacketProcessor {
                     crate::status::DEFAULT_GAIN_TEXT_ID,
                     &mut hydrate_outbox,
                 );
+                // Keep its full length, with the start moved to match the time
+                // it has left, so the next save stores the same end.
+                if left != entry.duration
+                    && let Some(e) = character.status_effects.get_mut(entry.status_id)
+                {
+                    e.duration = entry.duration;
+                    e.start_time = e.end_time.saturating_sub(entry.duration);
+                }
             }
         }
 
