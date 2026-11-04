@@ -148,6 +148,8 @@ pub struct Overview {
     pub items_out: i64,
     pub quests_done: i64,
     pub leves_done: i64,
+    pub kills: i64,
+    pub deaths: i64,
     pub gm_commands: i64,
     pub zones: Vec<(String, i64)>,
     pub sessions: Vec<(i64, String, String, String)>,
@@ -179,7 +181,7 @@ pub async fn overview(
     b.push_str(SEARCH_FORM);
     b.push_str("</header>");
 
-    let tiles: [(&str, String); 8] = [
+    let tiles: [(&str, String); 10] = [
         ("Logins", num(o.logins)),
         ("Characters", num(o.characters)),
         ("Gil earned", num(o.gil_in)),
@@ -188,6 +190,8 @@ pub async fn overview(
         ("Items lost", num(o.items_out)),
         ("Quests done", num(o.quests_done)),
         ("Leves done", num(o.leves_done)),
+        ("Monsters defeated", num(o.kills)),
+        ("Deaths", num(o.deaths)),
     ];
     b.push_str(r#"<section class="tiles">"#);
     for (label, value) in tiles {
@@ -272,12 +276,13 @@ pub struct CharacterQuery {
 }
 
 /// The kinds the timeline can be narrowed to, as (query value, label).
-const KINDS: [(&str, &str); 6] = [
+const KINDS: [(&str, &str); 7] = [
     ("session", "Sessions"),
     ("item", "Items"),
     ("gil", "Gil"),
     ("progress", "Classes and levels"),
     ("quest", "Quests and leves"),
+    ("combat", "Kills and deaths"),
     ("gm", "GM commands"),
 ];
 
@@ -400,6 +405,8 @@ impl crate::database::Database {
                     quests_done: one("SELECT COUNT(*) FROM log_quests WHERE at >= :s AND kind = 'quest' AND event = 'complete'")?,
                     leves_done: one("SELECT COUNT(*) FROM log_quests WHERE at >= :s AND kind = 'leve' AND event = 'complete'")?,
                     gm_commands: one("SELECT COUNT(*) FROM log_gm WHERE at >= :s")?,
+                    kills: one("SELECT COUNT(*) FROM log_combat WHERE at >= :s AND kind = 'kill'")?,
+                    deaths: one("SELECT COUNT(*) FROM log_combat WHERE at >= :s AND kind = 'death'")?,
                     ..Overview::default()
                 };
                 let mut st = c.prepare(
@@ -464,7 +471,7 @@ impl crate::database::Database {
                     )?;
                 // One SELECT per log table, each already shaped as
                 // (at, id, kind, text), so the page is one sorted list.
-                let parts: [(&str, &str); 6] = [
+                let parts: [(&str, &str); 7] = [
                     ("session", r"SELECT l.at, l.id, 'session',
                         CONCAT(l.event, CASE WHEN z.id IS NULL THEN '' ELSE CONCAT(' · ', COALESCE(NULLIF(z.placeName, ''), z.zoneName)) END)
                         FROM log_sessions l LEFT JOIN server_zones z ON z.id = l.zoneId AND l.zoneId > 0 WHERE l.characterId = :c"),
@@ -482,6 +489,14 @@ impl crate::database::Database {
                     ("quest", r"SELECT at, id, 'quest',
                         CONCAT(kind, ' ', questId, ' ', event, CASE WHEN sequence > 0 THEN CONCAT(' (step ', sequence, ')') ELSE '' END)
                         FROM log_quests WHERE characterId = :c"),
+                    ("combat", r"SELECT l.at, l.id, 'combat',
+                        CONCAT(CASE WHEN l.kind = 'kill' THEN 'defeated ' ELSE 'killed by ' END,
+                               COALESCE((SELECT p.name FROM server_battlenpc_pools p WHERE p.actorClassId = l.targetId LIMIT 1),
+                                        (SELECT c.name FROM characters c WHERE c.id = l.targetId),
+                                        CONCAT('actor ', l.targetId)),
+                               CASE WHEN l.kind = 'kill' THEN CONCAT(' (level ', l.amount, ')') ELSE '' END,
+                               CASE WHEN z.id IS NULL THEN '' ELSE CONCAT(' · ', COALESCE(NULLIF(z.placeName, ''), z.zoneName)) END)
+                        FROM log_combat l LEFT JOIN server_zones z ON z.id = l.zoneId AND l.zoneId > 0 WHERE l.characterId = :c"),
                     ("gm", r"SELECT at, id, 'gm', CONCAT('!', command, ' ', args) FROM log_gm WHERE characterId = :c"),
                 ];
                 let sql = parts
@@ -625,6 +640,39 @@ footer form { margin:0; }
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn kills_and_deaths_show_in_the_reports() {
+        use common::db::ConnCallExt;
+        let db = crate::database::Database::open(common::test_db::fresh().await.unwrap())
+            .await
+            .unwrap();
+        db.conn()
+            .call_db(|c| {
+                c.execute(
+                    "INSERT INTO characters (id, userId, slot, serverId, name) VALUES (7101, 0, 0, 0, 'Hunter')",
+                    (),
+                )?;
+                c.execute(
+                    "INSERT INTO log_combat (at, characterId, targetId, kind, amount, zoneId) VALUES \
+                     (100, 7101, 2104001, 'kill', 12, 0), (200, 7101, 2104001, 'death', 0, 0)",
+                    (),
+                )
+            })
+            .await
+            .unwrap();
+        let o = db.report_overview(0).await.unwrap();
+        assert_eq!((o.kills, o.deaths), (1, 1));
+        let (_, _, events) = db
+            .report_character("Hunter", Some("combat".into()))
+            .await
+            .unwrap()
+            .unwrap();
+        let texts: Vec<_> = events.iter().map(|e| e.text.clone()).collect();
+        assert_eq!(texts.len(), 2, "{texts:?}");
+        assert!(texts[0].starts_with("killed by "), "{texts:?}");
+        assert!(texts[1].starts_with("defeated ") && texts[1].ends_with("(level 12)"), "{texts:?}");
+    }
 
     #[test]
     fn numbers_get_thousands_separators() {

@@ -18820,3 +18820,48 @@ async fn a_bards_new_song_replaces_their_old_one() {
     assert!(minuet, "the other bard's Minuet stays");
     assert_eq!(regain, 0.0, "Paeon's Regain went with it");
 }
+
+/// Kills and deaths go to log_combat: the player's kill by the monster's
+/// class id and level, a death by what killed them.
+#[tokio::test]
+async fn kills_and_deaths_are_logged() {
+    use common::db::ConnCallExt;
+    let (world, registry, zone) = party_hook_zone().await;
+    let db = Arc::new(crate::database::Database::open(tempdb()).await.expect("db"));
+    {
+        let h = registry.get(2).await.unwrap();
+        let mut c = h.character.write().await;
+        c.chara.actor_class_id = 2104001;
+        c.chara.level = 12;
+    }
+    for (dead, killer) in [(2u32, 1u32), (3, 2)] {
+        registry.get(dead).await.unwrap().character.write().await.chara.hp = 0;
+        crate::runtime::dispatcher::die_if_defender_fell(
+            dead,
+            Some(killer),
+            &registry,
+            &world,
+            &zone,
+            None,
+            Some(&db),
+        )
+        .await;
+    }
+    let rows: Vec<(String, i64, i64, i64)> = db
+        .conn_for_test()
+        .call_db(|c| {
+            let mut st =
+                c.prepare("SELECT kind, characterId, targetId, amount FROM log_combat ORDER BY id")?;
+            st.query_map((), |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
+                .collect::<common::sql::Result<_>>()
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        rows,
+        vec![
+            ("kill".into(), 1, 2104001, 12),
+            ("death".into(), 3, 2104001, 0),
+        ]
+    );
+}

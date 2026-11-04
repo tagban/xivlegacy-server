@@ -4339,6 +4339,23 @@ impl Database {
             .await
     }
 
+    /// Record a kill or a death in `log_combat`.
+    pub async fn log_combat(
+        &self,
+        chara_id: u32,
+        kind: &'static str,
+        target_id: u32,
+        amount: i64,
+        zone_id: u32,
+    ) -> Result<()> {
+        self.conn
+            .call_db(move |c| {
+                activity::combat(c, chara_id, kind, target_id, 0, amount, zone_id);
+                Ok(())
+            })
+            .await
+    }
+
     pub async fn character_id_by_name(&self, name: &str) -> Result<Option<u32>> {
         let name = name.to_owned();
         let id = self

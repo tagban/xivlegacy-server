@@ -4157,6 +4157,29 @@ pub(crate) async fn die_if_defender_fell(
 
     apply_die(defender_actor_id, registry, world, zone, lua, db).await;
 
+    // log_combat: a player's death, and what killed them (a monster by
+    // class id, a player by id).
+    if let Some(db) = db
+        && matches!(handle.kind, crate::runtime::actor_registry::ActorKindTag::Player)
+    {
+        let killer = match attacker_actor_id {
+            Some(id) => match registry.get(id).await {
+                Some(a) if a.kind == crate::runtime::actor_registry::ActorKindTag::BattleNpc => {
+                    a.character.read().await.chara.actor_class_id
+                }
+                Some(_) => id,
+                None => 0,
+            },
+            None => 0,
+        };
+        if let Err(e) = db
+            .log_combat(defender_actor_id, "death", killer, 0, handle.zone_id)
+            .await
+        {
+            tracing::debug!(error = %e, "log_combat death");
+        }
+    }
+
     if !is_bnpc {
         return;
     }
@@ -4195,6 +4218,19 @@ pub(crate) async fn die_if_defender_fell(
         // hook rather than emitting packets without persistence.
         return;
     };
+    // log_combat: the kill, by the monster's class id and level.
+    if let Err(e) = db_arc
+        .log_combat(
+            attacker_id,
+            "kill",
+            bnpc_class_id,
+            i64::from(mob_level),
+            handle.zone_id,
+        )
+        .await
+    {
+        tracing::debug!(error = %e, "log_combat kill");
+    }
 
     // Grand Company seal reward — port of Meteor's "kill grants
     // seals" payout. Hook fires before the quest-hook chain so a
