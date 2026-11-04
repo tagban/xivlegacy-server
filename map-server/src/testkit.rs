@@ -627,13 +627,6 @@ impl OpenerCombat {
 }
 
 /// A unique temp-db path per call (mirrors the integration-suite helper).
-fn tempdb() -> std::path::PathBuf {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static SEQ: AtomicU64 = AtomicU64::new(0);
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-    common::test_tmp::dir().join(format!("garlemald-testkit-{nanos}-{seq}.db"))
+fn tempdb() -> String {
+    common::test_db::fresh_blocking()
 }

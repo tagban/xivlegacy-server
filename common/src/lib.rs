@@ -41,6 +41,8 @@ pub mod packet_log;
 pub mod server_list;
 pub mod settings;
 pub mod smoke;
+pub mod sql;
+pub mod test_db;
 pub mod subpacket;
 pub mod test_tmp;
 pub mod utils;

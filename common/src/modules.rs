@@ -147,8 +147,8 @@ fn load(folder: &Path, name: &str) -> Result<Module> {
 /// Apply the enabled modules' SQL files that haven't been, recording each in
 /// `schema_migrations` as `module/<name>/<file>`, the same way as the core
 /// migrations. Run by `db::open_or_create` after the core migrations.
-pub fn apply_sql(c: &mut rusqlite::Connection, modules: &[Module]) -> Result<usize> {
-    let tx = c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+pub fn apply_sql(c: &mut crate::sql::Conn, modules: &[Module]) -> Result<usize> {
+    let tx = c.transaction_with_behavior(crate::sql::TransactionBehavior::Immediate)?;
     let mut applied = 0;
     for m in modules {
         for path in &m.sql {
@@ -189,8 +189,8 @@ mod tests {
         dir
     }
 
-    #[test]
-    fn loads_a_module_and_applies_its_sql_once() {
+    #[tokio::test]
+    async fn loads_a_module_and_applies_its_sql_once() {
         let root = crate::test_tmp::dir().join(format!("xivl-modules-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let dir = module_dir(
@@ -207,11 +207,21 @@ mod tests {
         let m = load(&root, "greet").unwrap();
         assert!(m.has_hook("on_login") && m.lua.is_some() && m.sql.len() == 1);
 
-        let mut c = rusqlite::Connection::open_in_memory().unwrap();
-        c.execute_batch("CREATE TABLE schema_migrations (name TEXT PRIMARY KEY, applied_at TEXT)")
+        let conn = crate::sql::Connection::open(&crate::test_db::empty().await.unwrap())
+            .await
             .unwrap();
-        assert_eq!(apply_sql(&mut c, std::slice::from_ref(&m)).unwrap(), 1);
-        assert_eq!(apply_sql(&mut c, &[m]).unwrap(), 0);
+        conn.call(|c| {
+            c.execute_batch(
+                "CREATE TABLE schema_migrations (name VARCHAR(255) PRIMARY KEY, \
+                 checksum VARCHAR(32) NOT NULL DEFAULT '', applied_at TEXT)",
+            )
+        })
+        .await
+        .unwrap();
+        let (m1, m2) = (m.clone(), m);
+        let first = conn.call(move |c| Ok(apply_sql(c, std::slice::from_ref(&m1)).unwrap())).await.unwrap();
+        let again = conn.call(move |c| Ok(apply_sql(c, &[m2]).unwrap())).await.unwrap();
+        assert_eq!((first, again), (1, 0));
 
         module_dir(&root, "bad", "name = \"other\"\nversion = \"1\"\n");
         assert!(load(&root, "bad").is_err());

@@ -16,161 +16,238 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-//! SQLite connection helper shared by every Garlemald server.
+//! MariaDB setup shared by every server.
 //!
-//! `open_or_create` is the canonical entry point: it creates the parent
-//! directory, opens a `tokio_rusqlite::Connection`, applies the bundled
-//! schema when the file is fresh, applies any new seed migrations, and
-//! sets WAL + foreign-key pragmas.
+//! `open_or_create` is the entry point. It creates the database if the
+//! server account may, lays down the baseline schema on an empty database,
+//! reloads every game-data file whose contents changed, applies new
+//! numbered migrations, then the enabled modules' SQL. The whole pass runs
+//! under a MariaDB named lock, so four servers booting together take turns
+//! instead of racing.
 //!
-//! `ConnCallExt::call_db` is the shape every `database.rs` queue uses to
-//! dispatch blocking rusqlite work — it pins `E = rusqlite::Error` so the
-//! inline closures don't have to annotate the error type on every `Ok(..)`.
+//! `ConnCallExt::call_db` is the shape every `database.rs` uses to run its
+//! queries on the connection's worker thread.
 
 use std::future::Future;
-use std::path::Path;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
-use anyhow::{Context, Result};
-use rusqlite::{TransactionBehavior, named_params};
-use tokio_rusqlite::Connection;
+use anyhow::{Context, Result, bail};
 
+pub use crate::sql::Connection;
+use crate::sql::{self, Conn, OptionalExtension, named_params};
 use crate::migrations;
 
-/// Embedded schema (the `CREATE TABLE IF NOT EXISTS` set needed by all
-/// servers). Applied once when the database file is first created.
-pub const SCHEMA_SQL: &str = include_str!("../sql/schema.sql");
-
-/// Ported MySQL -> SQLite data dumps from `project-meteor-mirror` are
-/// tracked here. Each migration is keyed by filename; the runner records
-/// applied names in `schema_migrations` so upgrading existing databases
-/// picks up only the new files on next boot.
-const SCHEMA_MIGRATIONS_DDL: &str = r#"
-    CREATE TABLE IF NOT EXISTS schema_migrations (
-        name       TEXT PRIMARY KEY,
-        applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    );
+const BOOKKEEPING_DDL: &str = r#"
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    name       VARCHAR(255) NOT NULL PRIMARY KEY,
+    checksum   VARCHAR(32)  NOT NULL DEFAULT '',
+    applied_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS static_data_versions (
+    name      VARCHAR(255) NOT NULL PRIMARY KEY,
+    checksum  VARCHAR(32)  NOT NULL,
+    loaded_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 "#;
 
-/// Open (and initialise, if fresh) the SQLite database at `path`.
-///
-/// Steps:
-/// 1. Ensure the parent directory exists.
-/// 2. Open an async rusqlite connection and set WAL + foreign keys.
-/// 3. If the file was just created, execute `SCHEMA_SQL` to lay down
-///    every table the server code expects.
-/// 4. Apply any bundled seed migrations that haven't run yet (tracked
-///    in `schema_migrations`).
-pub async fn open_or_create(path: impl AsRef<Path>) -> Result<Connection> {
-    let path = path.as_ref().to_path_buf();
-    if let Some(parent) = path.parent()
-        && !parent.as_os_str().is_empty()
-    {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("creating db dir {}", parent.display()))?;
-    }
+/// Seconds a booting server waits for another one's setup pass.
+const SETUP_LOCK_WAIT_SECS: u32 = 300;
 
-    let fresh = !path.exists();
-    let conn = Connection::open(path.clone())
+/// The server part of a database URL (everything before the database name),
+/// for creating the database itself.
+fn server_url(url: &str) -> (String, String) {
+    let (base, query) = match url.split_once('?') {
+        Some((b, q)) => (b, format!("?{q}")),
+        None => (url, String::new()),
+    };
+    let (scheme, rest) = base.split_once("://").unwrap_or(("mysql", base));
+    let (authority, db) = rest.split_once('/').unwrap_or((rest, ""));
+    (format!("{scheme}://{authority}/{query}"), db.to_string())
+}
+
+/// Create the database named in `url` when it doesn't exist and the account
+/// is allowed to. A missing grant is fine when the database already exists.
+pub async fn ensure_database(url: &str) -> Result<()> {
+    let (server, name) = server_url(url);
+    if name.is_empty() {
+        bail!("the database url names no database");
+    }
+    if !name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_') {
+        bail!("database name {name:?} may only use letters, digits and _");
+    }
+    let admin = Connection::open(&server)
         .await
-        .with_context(|| format!("opening sqlite {}", path.display()))?;
+        .with_context(|| format!("connecting to the MariaDB server for database {name}"))?;
+    let create = format!(
+        "CREATE DATABASE IF NOT EXISTS `{name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+    );
+    if let Err(e) = admin.call(move |c| c.execute_batch(&create)).await {
+        tracing::debug!(error = %e, database = %name, "could not create the database; assuming it exists");
+    }
+    Ok(())
+}
 
-    conn.call(|c| {
-        c.pragma_update(None, "journal_mode", "WAL")?;
-        c.pragma_update(None, "foreign_keys", "ON")?;
-        c.pragma_update(None, "synchronous", "NORMAL")?;
-        // 60s busy window lets concurrent server processes wait on each
-        // other during the startup migration pass instead of failing fast.
-        c.busy_timeout(Duration::from_secs(60))?;
-        Ok::<(), rusqlite::Error>(())
-    })
-    .await
-    .context("setting sqlite pragmas")?;
-
-    if fresh {
-        tracing::info!(path = %path.display(), "initialising fresh sqlite database");
-        conn.call(|c| {
-            c.execute_batch(SCHEMA_SQL)?;
-            Ok::<(), rusqlite::Error>(())
-        })
+/// Open the database at `url`, creating and bringing it up to date first.
+pub async fn open_or_create(url: impl AsRef<str>) -> Result<Connection> {
+    let url = url.as_ref();
+    ensure_database(url).await?;
+    let conn = Connection::open(url)
         .await
-        .context("applying schema.sql")?;
-    }
-
-    apply_migrations(&conn).await?;
-
-    // the enabled modules' own tables (common::modules)
-    let modules = crate::modules::enabled()?;
-    if modules.iter().any(|m| !m.sql.is_empty()) {
-        conn.call(move |c| Ok::<_, rusqlite::Error>(crate::modules::apply_sql(c, &modules)))
-            .await
-            .context("applying module migrations")??;
-    }
-
+        .with_context(|| format!("opening database {}", sql::database_name(url)))?;
+    setup(&conn).await?;
     Ok(conn)
 }
 
-/// Apply every bundled migration that isn't already recorded in
-/// `schema_migrations`. The whole pass runs under one `BEGIN IMMEDIATE`
-/// transaction so that the 4 Garlemald servers racing on the same SQLite
-/// file at boot serialise on the writer lock instead of double-applying a
-/// migration (which produced `UNIQUE constraint failed` on
-/// `schema_migrations.name`) or failing fast with `database is locked`.
-/// The applied-set is re-read *inside* the lock, so once one process
-/// finishes the others observe the new rows and no-op the pass.
-pub async fn apply_migrations(conn: &Connection) -> Result<()> {
-    conn.call(|c| {
-        c.execute_batch(SCHEMA_MIGRATIONS_DDL)?;
-        Ok::<(), rusqlite::Error>(())
-    })
-    .await
-    .context("creating schema_migrations table")?;
+/// Bring an open database up to date (see the module docs).
+pub async fn setup(conn: &Connection) -> Result<()> {
+    let got: Option<i64> = conn
+        .call(|c| c.query_row(
+                &format!("SELECT GET_LOCK(CONCAT('xivlegacy_setup_', DATABASE()), {SETUP_LOCK_WAIT_SECS})"),
+                (),
+                |r| r.get(0),
+            ))
+        .await
+        .context("taking the database setup lock")?;
+    if got != Some(1) {
+        bail!("another server held the database setup lock for {SETUP_LOCK_WAIT_SECS}s");
+    }
+    let result = setup_locked(conn).await;
+    let _ = conn
+        .call(|c| c.execute_batch("DO RELEASE_LOCK(CONCAT('xivlegacy_setup_', DATABASE()))"))
+        .await;
+    result
+}
 
-    let total = migrations::count();
-    let migrations: Vec<(String, String)> = migrations::iter()
-        .map(|m| (m.name.to_string(), m.sql))
+async fn setup_locked(conn: &Connection) -> Result<()> {
+    let fresh: bool = conn
+        .call(|c| {
+            c.query_row(
+                "SELECT COUNT(*) = 0 FROM information_schema.tables \
+                 WHERE table_schema = DATABASE() AND table_name = 'schema_migrations'",
+                (),
+                |r| r.get(0),
+            )
+        })
+        .await
+        .context("checking for an empty database")?;
+
+    if fresh {
+        tracing::info!("empty database: laying down the baseline schema");
+        let schema = migrations::schema();
+        conn.call(move |c| c.execute_batch(&schema))
+            .await
+            .context("applying the baseline schema (sql/schema.sql)")?;
+    }
+    conn.call(|c| c.execute_batch(BOOKKEEPING_DDL))
+        .await
+        .context("creating schema_migrations and static_data_versions")?;
+    if fresh {
+        // The baseline already holds every change up to now, so the
+        // numbered migrations bundled with it count as applied.
+        let names: Vec<(String, String)> = migrations::iter()
+            .map(|m| (m.name.to_string(), migrations::checksum(&m.sql)))
+            .collect();
+        conn.call(move |c| {
+            for (n, sum) in &names {
+                c.execute(
+                    "INSERT INTO schema_migrations (name, checksum) VALUES (:n, :c)",
+                    named_params! { ":n": n, ":c": sum },
+                )?;
+            }
+            Ok(())
+        })
+        .await?;
+    }
+
+    reload_data(conn).await?;
+    apply_migrations(conn).await?;
+
+    let modules = crate::modules::enabled()?;
+    if modules.iter().any(|m| !m.sql.is_empty()) {
+        conn.call(move |c| Ok(crate::modules::apply_sql(c, &modules)))
+            .await
+            .context("applying module migrations")??;
+    }
+    Ok(())
+}
+
+/// Reload every game-data file whose text changed since it was last loaded.
+pub async fn reload_data(conn: &Connection) -> Result<usize> {
+    let files: Vec<(String, String, String)> = migrations::data()
+        .map(|f| (f.name.to_string(), migrations::checksum(&f.sql), f.sql))
         .collect();
-
-    let applied_now = conn
+    let reloaded = conn
         .call(move |c| {
-            let tx = c.transaction_with_behavior(TransactionBehavior::Immediate)?;
-
-            let applied: std::collections::HashSet<String> = {
-                let mut stmt = tx.prepare("SELECT name FROM schema_migrations")?;
-                stmt.query_map([], |r| r.get::<_, String>(0))?
-                    .collect::<rusqlite::Result<_>>()?
-            };
-
-            let mut count = 0usize;
-            for (name, sql) in &migrations {
-                if applied.contains(name) {
+            let mut n = 0;
+            for (name, sum, body) in &files {
+                let have: Option<String> = c
+                    .query_row(
+                        "SELECT checksum FROM static_data_versions WHERE name = :n",
+                        named_params! { ":n": name },
+                        |r| r.get(0),
+                    )
+                    .optional()?;
+                if have.as_deref() == Some(sum.as_str()) {
                     continue;
                 }
                 let started = Instant::now();
-                match tx.execute_batch(sql) {
-                    Ok(()) => {}
-                    // The migration's schema change is already present — e.g. an
-                    // `ALTER TABLE ... ADD COLUMN` whose column exists because a
-                    // prior run applied it but the process died (or it was added
-                    // out-of-band) before the name was recorded in
-                    // `schema_migrations`. SQLite `ALTER` has no `IF NOT EXISTS`,
-                    // so a naive re-run aborts the whole batch and bricks startup
-                    // (every server that opens the shared DB dies ~1s in). Treat
-                    // "duplicate column name" as success: record the migration
-                    // and continue so a partially-migrated DB self-heals. Any
-                    // OTHER error still propagates and fails the boot loudly.
-                    Err(e) if is_already_satisfied(&e) => {
-                        tracing::warn!(
-                            migration = %name,
-                            error = %e,
-                            "migration's schema change already present; recording as applied and continuing",
-                        );
-                    }
-                    Err(e) => return Err(e),
-                }
+                let tx = c.unchecked_transaction()?;
+                tx.execute_batch(body)
+                    .map_err(|e| sql::Error::Other(format!("loading sql/data/{name}: {e}")))?;
                 tx.execute(
-                    "INSERT INTO schema_migrations(name) VALUES(:n)",
-                    named_params! { ":n": name },
+                    "INSERT INTO static_data_versions (name, checksum) VALUES (:n, :c) \
+                     ON DUPLICATE KEY UPDATE checksum = VALUES(checksum), loaded_at = CURRENT_TIMESTAMP",
+                    named_params! { ":n": name, ":c": sum },
+                )?;
+                tx.commit()?;
+                tracing::info!(file = %name, took_ms = started.elapsed().as_millis() as u64, "game data loaded");
+                n += 1;
+            }
+            Ok(n)
+        })
+        .await
+        .context("reloading game data")?;
+    if reloaded > 0 {
+        tracing::info!(files = reloaded, "game data reloaded");
+    }
+    Ok(reloaded)
+}
+
+/// Apply each bundled migration not yet recorded in `schema_migrations`.
+/// A recorded migration whose text has since changed stops the boot: edit
+/// a released migration by adding a new one.
+pub async fn apply_migrations(conn: &Connection) -> Result<usize> {
+    let files: Vec<(String, String, String)> = migrations::iter()
+        .map(|m| (m.name.to_string(), migrations::checksum(&m.sql), m.sql))
+        .collect();
+    let total = files.len();
+    let applied_now = conn
+        .call(move |c| {
+            let mut count = 0usize;
+            for (name, sum, body) in &files {
+                let have: Option<String> = c
+                    .query_row(
+                        "SELECT checksum FROM schema_migrations WHERE name = :n",
+                        named_params! { ":n": name },
+                        |r| r.get(0),
+                    )
+                    .optional()?;
+                match have {
+                    Some(h) if h == *sum || h.is_empty() => continue,
+                    Some(h) => {
+                        return Err(sql::Error::Other(format!(
+                            "migration {name} was changed after it was applied \
+                             (recorded {h}, bundled {sum}); add a new migration instead"
+                        )));
+                    }
+                    None => {}
+                }
+                let started = Instant::now();
+                c.execute_batch(body)
+                    .map_err(|e| sql::Error::Other(format!("migration {name} failed: {e}")))?;
+                c.execute(
+                    "INSERT INTO schema_migrations (name, checksum) VALUES (:n, :c)",
+                    named_params! { ":n": name, ":c": sum },
                 )?;
                 tracing::info!(
                     migration = %name,
@@ -179,51 +256,28 @@ pub async fn apply_migrations(conn: &Connection) -> Result<()> {
                 );
                 count += 1;
             }
-
-            tx.commit()?;
-            Ok::<usize, rusqlite::Error>(count)
+            Ok(count)
         })
         .await
-        .context("applying migration batch")?;
-
-    tracing::info!(
-        total_bundled = total,
-        newly_applied = applied_now,
-        "migration pass complete",
-    );
-    Ok(())
+        .context("applying migrations")?;
+    tracing::info!(total_bundled = total, newly_applied = applied_now, "migration pass complete");
+    Ok(applied_now)
 }
 
-/// True when a migration error means the change it makes is *already present*,
-/// so re-running it is a safe no-op rather than a failure. Currently this is
-/// SQLite's "duplicate column name" from an `ALTER TABLE ADD COLUMN` whose
-/// column already exists (ALTER has no `IF NOT EXISTS`). Scoped narrowly: any
-/// other error still aborts the migration pass.
-fn is_already_satisfied(e: &rusqlite::Error) -> bool {
-    e.to_string()
-        .to_ascii_lowercase()
-        .contains("duplicate column name")
-}
-
-/// Extension trait that pins `E = rusqlite::Error` on the async `.call()`
-/// helper provided by `tokio_rusqlite::Connection`. Without it every closure
-/// body needs `Ok::<_, rusqlite::Error>(..)` annotations to satisfy the
-/// generic error parameter.
+/// Pins the closure's error type to [`sql::Error`] and the result to
+/// `anyhow`, so query closures don't need type annotations.
 pub trait ConnCallExt {
     fn call_db<F, R>(&self, f: F) -> impl Future<Output = Result<R>> + Send
     where
-        F: FnOnce(&mut rusqlite::Connection) -> rusqlite::Result<R> + Send + 'static,
+        F: FnOnce(&mut Conn) -> sql::Result<R> + Send + 'static,
         R: Send + 'static;
 }
 
 impl ConnCallExt for Connection {
-    // The explicit `-> impl Future + Send` return (rather than `async fn`) is
-    // deliberate: it pins the `Send` bound the trait promises, which `async fn`
-    // in a trait impl cannot express. Hence the `manual_async_fn` allow.
     #[allow(clippy::manual_async_fn)]
     fn call_db<F, R>(&self, f: F) -> impl Future<Output = Result<R>> + Send
     where
-        F: FnOnce(&mut rusqlite::Connection) -> rusqlite::Result<R> + Send + 'static,
+        F: FnOnce(&mut Conn) -> sql::Result<R> + Send + 'static,
         R: Send + 'static,
     {
         async move { self.call(f).await.map_err(anyhow::Error::from) }
@@ -234,36 +288,15 @@ impl ConnCallExt for Connection {
 mod tests {
     use super::*;
 
-    /// Re-applying an `ALTER TABLE ADD COLUMN` whose column already exists must
-    /// be tolerated (this is the exact failure a re-run of an already-applied
-    /// migration hits — SQLite ALTER has no `IF NOT EXISTS`). Guards the boot
-    /// self-heal in `apply_migrations`. (Garlemald-Server #46.)
     #[test]
-    fn duplicate_column_error_is_treated_as_already_satisfied() {
-        let c = rusqlite::Connection::open_in_memory().unwrap();
-        c.execute_batch("CREATE TABLE t (a INTEGER);").unwrap();
-        c.execute_batch("ALTER TABLE t ADD COLUMN b INTEGER;")
-            .unwrap();
-        let err = c
-            .execute_batch("ALTER TABLE t ADD COLUMN b INTEGER;")
-            .unwrap_err();
-        assert!(
-            is_already_satisfied(&err),
-            "duplicate column must be tolerated; got: {err}"
+    fn server_url_splits_off_the_database() {
+        assert_eq!(
+            server_url("mysql://u:p@127.0.0.1:3306/xivlegacy"),
+            ("mysql://u:p@127.0.0.1:3306/".to_string(), "xivlegacy".to_string())
         );
-    }
-
-    /// A genuine error (not a benign already-applied one) must NOT be swallowed
-    /// — the migration pass should still fail loudly.
-    #[test]
-    fn other_errors_are_not_tolerated() {
-        let c = rusqlite::Connection::open_in_memory().unwrap();
-        let err = c
-            .execute_batch("SELECT * FROM nonexistent_table;")
-            .unwrap_err();
-        assert!(
-            !is_already_satisfied(&err),
-            "a real error must not be swallowed; got: {err}"
+        assert_eq!(
+            server_url("mysql://u:p@h/db?socket=/tmp/m.sock"),
+            ("mysql://u:p@h/?socket=/tmp/m.sock".to_string(), "db".to_string())
         );
     }
 }

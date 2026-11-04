@@ -41,15 +41,8 @@ use crate::zone::outbox::AreaOutbox;
 use crate::zone::zone::Zone;
 use common::Vector3;
 
-fn tempdb() -> std::path::PathBuf {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static SEQ: AtomicU64 = AtomicU64::new(0);
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-    common::test_tmp::dir().join(format!("garlemald-integration-{nanos}-{seq}.db"))
+fn tempdb() -> String {
+    common::test_db::fresh_blocking()
 }
 
 #[tokio::test]
@@ -857,7 +850,7 @@ async fn equip_event_triggers_stat_recalc() {
 async fn linkshell_chat_fans_to_online_members_only() {
     use crate::social::dispatcher::dispatch_social_event;
     use crate::social::outbox::SocialEvent;
-    use rusqlite::named_params;
+    use common::sql::named_params;
 
     let world = Arc::new(WorldManager::new());
     let registry = Arc::new(ActorRegistry::new());
@@ -943,7 +936,7 @@ async fn linkshell_chat_fans_to_online_members_only() {
 #[tokio::test]
 async fn add_gil_creates_stack_then_increments() {
     use common::db::ConnCallExt;
-    use rusqlite::named_params;
+    use common::sql::named_params;
 
     let db = crate::database::Database::open(tempdb()).await.unwrap();
     // Seed a character row so foreign-key-like semantics hold.
@@ -2376,7 +2369,7 @@ async fn save_quest_roundtrips_all_columns_through_load_quest_scenario() {
                         r.get::<_, u16>(6)?,
                     ))
                 })?
-                .collect::<rusqlite::Result<_>>()?;
+                .collect::<common::sql::Result<_>>()?;
             Ok(out)
         })
         .await
@@ -3392,7 +3385,7 @@ async fn equipped_item_param_bonus_lifts_derived_secondary() {
     use crate::runtime::dispatcher::dispatch_status_event;
     use crate::status::outbox::StatusEvent;
     use common::db::ConnCallExt;
-    use rusqlite::named_params;
+    use common::sql::named_params;
     use std::sync::Arc;
 
     let world = Arc::new(WorldManager::new());
@@ -3491,7 +3484,7 @@ async fn hp_change_on_equip_emits_state_bundle_to_self() {
     use crate::runtime::dispatcher::dispatch_status_event;
     use crate::status::outbox::StatusEvent;
     use common::db::ConnCallExt;
-    use rusqlite::named_params;
+    use common::sql::named_params;
     use std::sync::Arc;
 
     let world = Arc::new(WorldManager::new());
@@ -3621,7 +3614,7 @@ async fn hp_change_on_equip_emits_state_bundle_to_self() {
 #[tokio::test]
 async fn addexp_past_threshold_levels_up_and_persists() {
     use common::db::ConnCallExt;
-    use rusqlite::named_params;
+    use common::sql::named_params;
     use std::sync::Arc;
 
     let registry = Arc::new(ActorRegistry::new());
@@ -3750,7 +3743,7 @@ async fn equipped_mainhand_weapon_populates_modifiers_and_damage() {
     use crate::runtime::dispatcher::dispatch_status_event;
     use crate::status::outbox::StatusEvent;
     use common::db::ConnCallExt;
-    use rusqlite::named_params;
+    use common::sql::named_params;
     use std::sync::Arc;
 
     let world = Arc::new(WorldManager::new());
@@ -8903,15 +8896,15 @@ async fn setup_level_up_equip_scene(
             c.execute(
                 r"INSERT INTO characters (id, userId, slot, serverId, name, restBonus)
                   VALUES (:cid, 0, 0, 0, 'SkillLearner', 0)",
-                rusqlite::named_params! { ":cid": chara_id },
+                common::sql::named_params! { ":cid": chara_id },
             )?;
             c.execute(
                 r"INSERT INTO characters_class_levels (characterId) VALUES (:cid)",
-                rusqlite::named_params! { ":cid": chara_id },
+                common::sql::named_params! { ":cid": chara_id },
             )?;
             c.execute(
                 r"INSERT INTO characters_class_exp (characterId) VALUES (:cid)",
-                rusqlite::named_params! { ":cid": chara_id },
+                common::sql::named_params! { ":cid": chara_id },
             )?;
             Ok(())
         })
@@ -8950,11 +8943,11 @@ async fn hotbar_row(
     use common::db::ConnCallExt;
     db.conn_for_test()
         .call_db(move |c| {
-            use rusqlite::OptionalExtension;
+            use common::sql::OptionalExtension;
             c.query_row(
                 r"SELECT commandId, recastTime FROM characters_hotbar
                   WHERE characterId = :cid AND classId = :class AND hotbarSlot = :slot",
-                rusqlite::named_params! { ":cid": chara_id, ":class": class_id, ":slot": slot0 },
+                common::sql::named_params! { ":cid": chara_id, ":class": class_id, ":slot": slot0 },
                 |r| Ok((r.get::<_, u32>(0)?, r.get::<_, u32>(1)?)),
             )
             .optional()
@@ -11518,7 +11511,7 @@ async fn spawn_my_retainer_records_meeting_group_id_on_snapshot() {
                 [],
             )?;
             c.execute(
-                r"INSERT OR IGNORE INTO characters_retainers (characterId, retainerId, doRename)
+                r"INSERT IGNORE INTO characters_retainers (characterId, retainerId, doRename)
                   VALUES (90, 1001, 0)",
                 [],
             )?;
@@ -11611,7 +11604,7 @@ async fn rename_retainer_persists_and_load_returns_custom_name() {
                 [],
             )?;
             c.execute(
-                r"INSERT OR IGNORE INTO characters_retainers
+                r"INSERT IGNORE INTO characters_retainers
                     (characterId, retainerId, doRename)
                   VALUES (91, 1001, 1)",
                 [],
@@ -11705,7 +11698,7 @@ async fn rename_retainer_is_per_character() {
                 [],
             )?;
             c.execute(
-                r"INSERT OR IGNORE INTO characters_retainers
+                r"INSERT IGNORE INTO characters_retainers
                     (characterId, retainerId, doRename)
                   VALUES (93, 1001, 1), (94, 1001, 1)",
                 [],
@@ -11759,7 +11752,7 @@ async fn processor_rename_retainer_persists() {
                 [],
             )?;
             c.execute(
-                r"INSERT OR IGNORE INTO characters_retainers
+                r"INSERT IGNORE INTO characters_retainers
                     (characterId, retainerId, doRename)
                   VALUES (95, 1002, 1)",
                 [],
@@ -11848,7 +11841,7 @@ async fn setup_completed_leve(
             c.execute(
                 r"INSERT INTO characters (id, userId, slot, serverId, name)
                   VALUES (:cid, 0, 0, 0, :nm)",
-                rusqlite::named_params! { ":cid": chara_id, ":nm": name },
+                common::sql::named_params! { ":cid": chara_id, ":nm": name },
             )?;
             Ok(())
         })
@@ -12777,11 +12770,11 @@ async fn setup_bazaar_listing(
         .call_db(move |c| {
             c.execute(
                 r"INSERT INTO characters (id, userId, slot, serverId, name) VALUES (:cid, 0, 0, 0, :nm)",
-                rusqlite::named_params! { ":cid": owner_id, ":nm": owner_name },
+                common::sql::named_params! { ":cid": owner_id, ":nm": owner_name },
             )?;
             c.execute(
                 r"INSERT INTO characters (id, userId, slot, serverId, name) VALUES (:cid, 0, 0, 0, :nm)",
-                rusqlite::named_params! { ":cid": buyer_id, ":nm": buyer_name },
+                common::sql::named_params! { ":cid": buyer_id, ":nm": buyer_name },
             )?;
             Ok(())
         })
@@ -13416,13 +13409,7 @@ async fn ticker_survives_tutorial_state_and_drains_time_parks() {
     let world = Arc::new(WorldManager::new());
     let registry = Arc::new(ActorRegistry::new());
     let db = Arc::new(
-        crate::database::Database::open(common::test_tmp::dir().join(format!(
-                "garlemald-ticker-liveness-{}.db",
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_nanos()
-            )))
+        crate::database::Database::open(common::test_db::fresh_blocking())
         .await
         .expect("db"),
     );

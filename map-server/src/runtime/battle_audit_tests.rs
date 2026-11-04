@@ -62,15 +62,8 @@ const ZONE: u32 = 100;
 const ENEMY_HP: i16 = 5000;
 const PLAYER_HP: i16 = 2000;
 
-fn tempdb() -> PathBuf {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static SEQ: AtomicU64 = AtomicU64::new(0);
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-    common::test_tmp::dir().join(format!("garlemald-battle-audit-{nanos}-{seq}.db"))
+fn tempdb() -> String {
+    common::test_db::fresh_blocking()
 }
 
 fn script_root() -> PathBuf {

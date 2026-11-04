@@ -1508,16 +1508,9 @@ mod tests {
     /// Per-test SQLite path — one file per test run so WAL files don't
     /// collide. The `AtomicU64` guarantees uniqueness even when two
     /// parallel tests hit `SystemTime::now` within the same nanosecond.
-    fn tempdb() -> std::path::PathBuf {
-        use std::sync::atomic::{AtomicU64, Ordering};
-        static SEQ: AtomicU64 = AtomicU64::new(0);
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-        common::test_tmp::dir().join(format!("garlemald-event-dispatch-{nanos}-{seq}.db"))
-    }
+    fn tempdb() -> String {
+    common::test_db::fresh_blocking()
+}
 
     #[tokio::test]
     async fn quest_completion_fires_lua_hook() {

@@ -46,7 +46,9 @@ pub struct ServerSection {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct DatabaseSection {
-    pub path: PathBuf,
+    /// The MariaDB database, as `mysql://user:password@host:port/database`.
+    /// `XIVLEGACY_DB_URL` in the environment takes its place when set.
+    pub url: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -71,7 +73,7 @@ impl Default for ServerSection {
 impl Default for DatabaseSection {
     fn default() -> Self {
         Self {
-            path: PathBuf::from("./data/garlemald.db"),
+            url: common::sql::DEFAULT_URL.to_string(),
         }
     }
 }
@@ -89,8 +91,9 @@ impl Config {
     pub fn port(&self) -> u16 {
         self.server.port
     }
-    pub fn db_path(&self) -> &Path {
-        &self.database.path
+    /// The database URL to connect to (see `DatabaseSection::url`).
+    pub fn db_url(&self) -> String {
+        common::sql::configured_url(&self.database.url)
     }
     pub fn session_hours(&self) -> u32 {
         self.session.hours
@@ -113,8 +116,8 @@ impl Config {
         if let Some(port) = args.port {
             self.server.port = port;
         }
-        if let Some(db) = args.db_path {
-            self.database.path = db;
+        if let Some(db) = args.db_url {
+            self.database.url = db;
         }
         if let Some(hours) = args.session_hours {
             self.session.hours = hours;
@@ -131,9 +134,9 @@ pub struct LaunchArgs {
     /// Override bind port
     #[arg(long)]
     pub port: Option<u16>,
-    /// Override SQLite file path
-    #[arg(long = "db-path")]
-    pub db_path: Option<PathBuf>,
+    /// Override the database URL (mysql://user:password@host:port/database)
+    #[arg(long = "db-url")]
+    pub db_url: Option<String>,
     /// Override the session lifetime in hours
     #[arg(long)]
     pub session_hours: Option<u32>,

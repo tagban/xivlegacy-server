@@ -20,12 +20,11 @@
 //! and session-row insertion. Shares the same on-disk file as every other
 //! Garlemald binary (see `common::db::open_or_create`).
 
-use std::path::Path;
 
 use anyhow::{Context, Result};
 use common::db::ConnCallExt;
-use rusqlite::{OptionalExtension, named_params};
-use tokio_rusqlite::Connection;
+use common::sql::{OptionalExtension, named_params};
+use common::sql::Connection;
 
 /// A filed bug report (modules/bugreport), as the publisher sees it.
 #[derive(Debug, Clone, Default)]
@@ -58,8 +57,8 @@ pub struct StoredUser {
 }
 
 impl Database {
-    pub async fn open(path: impl AsRef<Path>) -> Result<Self> {
-        let conn = common::db::open_or_create(path).await?;
+    pub async fn open(url: impl AsRef<str>) -> Result<Self> {
+        let conn = common::db::open_or_create(url).await?;
         Ok(Self { conn })
     }
 
@@ -92,9 +91,7 @@ impl Database {
                 );
                 match res {
                     Ok(_) => Ok(Some(c.last_insert_rowid())),
-                    Err(rusqlite::Error::SqliteFailure(err, _))
-                        if err.code == rusqlite::ErrorCode::ConstraintViolation =>
-                    {
+                    Err(e) if e.is_constraint_violation() => {
                         Ok(None)
                     }
                     Err(e) => Err(e),
@@ -111,7 +108,7 @@ impl Database {
             .call_db(move |c| {
                 let v = c
                     .query_row(
-                        "SELECT id, passwordHash FROM users WHERE username = :u COLLATE NOCASE",
+                        "SELECT id, passwordHash FROM users WHERE username = :u",
                         named_params! { ":u": username },
                         |r| {
                             Ok(StoredUser {
@@ -133,7 +130,7 @@ impl Database {
         self.conn
             .call_db(move |c| {
                 c.query_row(
-                    "SELECT userId FROM sessions WHERE id = :sid AND expiration > datetime('now')",
+                    "SELECT userId FROM sessions WHERE id = :sid AND expiration > UTC_TIMESTAMP()",
                     named_params! { ":sid": session_id },
                     |r| r.get(0),
                 )
@@ -217,16 +214,16 @@ impl Database {
     /// produce one so collisions are vanishingly rare.
     pub async fn insert_session(&self, session_id: &str, user_id: i64, hours: u32) -> Result<()> {
         let session_id = session_id.to_owned();
-        let offset = format!("+{hours} hours");
+
         self.conn
             .call_db(move |c| {
                 c.execute(
                     r"INSERT INTO sessions(id, userId, expiration)
-                      VALUES(:sid, :uid, datetime('now', :offset))",
+                      VALUES(:sid, :uid, DATE_ADD(UTC_TIMESTAMP(), INTERVAL :hours HOUR))",
                     named_params! {
                         ":sid": session_id,
                         ":uid": user_id,
-                        ":offset": offset,
+                        ":hours": hours,
                     },
                 )?;
                 Ok(())
@@ -267,7 +264,7 @@ impl Database {
                         named_params! { ":since": since, ":limit": limit as i64 },
                         |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
                     )?
-                    .collect::<rusqlite::Result<Vec<_>>>()?;
+                    .collect::<common::sql::Result<Vec<_>>>()?;
                 Ok((online, rows))
             })
             .await

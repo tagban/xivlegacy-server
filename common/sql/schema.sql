@@ -1,870 +1,1151 @@
--- Garlemald SQLite schema. Applied once by `common::db::open_or_create` when
--- the database file does not yet exist. Columns mirror the Project Meteor
--- MySQL dumps (see ../../../project-meteor-mirror/Data/sql/*.sql) with
--- MySQL-specific types collapsed to SQLite's affinity-based types
--- (INTEGER / TEXT / REAL / BLOB). All column names preserve the original
--- camelCase so the existing Rust `SELECT`s match without aliasing.
-
-CREATE TABLE IF NOT EXISTS characters (
-    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
-    userId                  INTEGER NOT NULL,
-    slot                    INTEGER NOT NULL,
-    serverId                INTEGER NOT NULL,
-    name                    TEXT NOT NULL,
-    state                   INTEGER NOT NULL DEFAULT 0,
-    creationDate            TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    isLegacy                INTEGER DEFAULT 0,
-    doRename                INTEGER DEFAULT 0,
-    playTime                INTEGER NOT NULL DEFAULT 0,
-    positionX               REAL NOT NULL DEFAULT 0,
-    positionY               REAL NOT NULL DEFAULT 0,
-    positionZ               REAL NOT NULL DEFAULT 0,
-    rotation                REAL NOT NULL DEFAULT 0,
-    actorState              INTEGER DEFAULT 0,
-    currentZoneId           INTEGER DEFAULT 0,
-    currentPrivateArea      TEXT DEFAULT NULL,
-    currentPrivateAreaType  INTEGER DEFAULT 0,
-    destinationZoneId       INTEGER DEFAULT 0,
-    destinationSpawnType    INTEGER DEFAULT 0,
-    guardian                INTEGER DEFAULT 0,
-    birthDay                INTEGER DEFAULT 0,
-    birthMonth              INTEGER DEFAULT 0,
-    initialTown             INTEGER DEFAULT 0,
-    tribe                   INTEGER DEFAULT 0,
-    gcCurrent               INTEGER DEFAULT 0,
-    gcLimsaRank             INTEGER DEFAULT 127,
-    gcGridaniaRank          INTEGER DEFAULT 127,
-    gcUldahRank             INTEGER DEFAULT 127,
-    currentTitle            INTEGER DEFAULT 0,
-    restBonus               INTEGER DEFAULT 0,
-    achievementPoints       INTEGER DEFAULT 0,
-    currentActiveLinkshell  TEXT NOT NULL DEFAULT '',
-    homepoint               INTEGER NOT NULL DEFAULT 0,
-    homepointInn            INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS characters_appearance (
-    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
-    characterId          INTEGER NOT NULL,
-    baseId               INTEGER NOT NULL,
-    size                 INTEGER NOT NULL DEFAULT 0,
-    voice                INTEGER NOT NULL DEFAULT 0,
-    skinColor            INTEGER NOT NULL DEFAULT 0,
-    hairStyle            INTEGER NOT NULL DEFAULT 0,
-    hairColor            INTEGER NOT NULL DEFAULT 0,
-    hairHighlightColor   INTEGER NOT NULL DEFAULT 0,
-    hairVariation        INTEGER NOT NULL DEFAULT 0,
-    eyeColor             INTEGER NOT NULL DEFAULT 0,
-    faceType             INTEGER NOT NULL DEFAULT 0,
-    faceEyebrows         INTEGER NOT NULL DEFAULT 0,
-    faceEyeShape         INTEGER NOT NULL DEFAULT 0,
-    faceIrisSize         INTEGER NOT NULL DEFAULT 0,
-    faceNose             INTEGER NOT NULL DEFAULT 0,
-    faceMouth            INTEGER NOT NULL DEFAULT 0,
-    faceFeatures         INTEGER NOT NULL DEFAULT 0,
-    ears                 INTEGER NOT NULL DEFAULT 0,
-    characteristics      INTEGER NOT NULL DEFAULT 0,
-    characteristicsColor INTEGER NOT NULL DEFAULT 0,
-    mainhand             INTEGER NOT NULL DEFAULT 0,
-    offhand              INTEGER NOT NULL DEFAULT 0,
-    head                 INTEGER NOT NULL DEFAULT 0,
-    body                 INTEGER NOT NULL DEFAULT 0,
-    hands                INTEGER NOT NULL DEFAULT 0,
-    legs                 INTEGER NOT NULL DEFAULT 0,
-    feet                 INTEGER NOT NULL DEFAULT 0,
-    waist                INTEGER NOT NULL DEFAULT 0,
-    neck                 INTEGER NOT NULL DEFAULT 0,
-    leftIndex            INTEGER NOT NULL DEFAULT 0,
-    rightIndex           INTEGER NOT NULL DEFAULT 0,
-    leftFinger           INTEGER NOT NULL DEFAULT 0,
-    rightFinger          INTEGER NOT NULL DEFAULT 0,
-    leftEar              INTEGER NOT NULL DEFAULT 0,
-    rightEar             INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS characters_class_levels (
-    characterId INTEGER PRIMARY KEY,
-    pug INTEGER DEFAULT 0, gla INTEGER DEFAULT 0, mrd INTEGER DEFAULT 0,
-    arc INTEGER DEFAULT 0, lnc INTEGER DEFAULT 0, thm INTEGER DEFAULT 0,
-    cnj INTEGER DEFAULT 0, crp INTEGER DEFAULT 0, bsm INTEGER DEFAULT 0,
-    arm INTEGER DEFAULT 0, gsm INTEGER DEFAULT 0, ltw INTEGER DEFAULT 0,
-    wvr INTEGER DEFAULT 0, alc INTEGER DEFAULT 0, cul INTEGER DEFAULT 0,
-    min INTEGER DEFAULT 0, btn INTEGER DEFAULT 0, fsh INTEGER DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS characters_class_exp (
-    characterId INTEGER PRIMARY KEY,
-    pug INTEGER DEFAULT 0, gla INTEGER DEFAULT 0, mrd INTEGER DEFAULT 0,
-    arc INTEGER DEFAULT 0, lnc INTEGER DEFAULT 0, thm INTEGER DEFAULT 0,
-    cnj INTEGER DEFAULT 0, crp INTEGER DEFAULT 0, bsm INTEGER DEFAULT 0,
-    arm INTEGER DEFAULT 0, gsm INTEGER DEFAULT 0, ltw INTEGER DEFAULT 0,
-    wvr INTEGER DEFAULT 0, alc INTEGER DEFAULT 0, cul INTEGER DEFAULT 0,
-    min INTEGER DEFAULT 0, btn INTEGER DEFAULT 0, fsh INTEGER DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS characters_hotbar (
-    characterId INTEGER NOT NULL,
-    classId     INTEGER NOT NULL,
-    hotbarSlot  INTEGER NOT NULL,
-    commandId   INTEGER NOT NULL,
-    recastTime  INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (characterId, classId, hotbarSlot)
-);
-
-CREATE TABLE IF NOT EXISTS characters_parametersave (
-    characterId     INTEGER PRIMARY KEY,
-    hp              INTEGER NOT NULL DEFAULT 0,
-    hpMax           INTEGER NOT NULL DEFAULT 0,
-    mp              INTEGER NOT NULL DEFAULT 0,
-    mpMax           INTEGER NOT NULL DEFAULT 0,
-    mainSkill       INTEGER NOT NULL DEFAULT 0,
-    mainSkillLevel  INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS characters_chocobo (
-    characterId       INTEGER PRIMARY KEY,
-    hasChocobo        INTEGER DEFAULT 0,
-    hasGoobbue        INTEGER DEFAULT 0,
-    chocoboAppearance INTEGER DEFAULT NULL,
-    chocoboName       TEXT DEFAULT ''
-);
-
-CREATE TABLE IF NOT EXISTS characters_inventory (
-    characterId  INTEGER NOT NULL,
-    serverItemId INTEGER NOT NULL,
-    itemPackage  INTEGER NOT NULL,
-    slot         INTEGER NOT NULL,
-    PRIMARY KEY (characterId, serverItemId)
-);
-
-CREATE TABLE IF NOT EXISTS characters_inventory_equipment (
-    characterId INTEGER NOT NULL,
-    classId     INTEGER NOT NULL,
-    equipSlot   INTEGER NOT NULL,
-    itemId      INTEGER NOT NULL,
-    PRIMARY KEY (characterId, classId, equipSlot)
-);
-
-CREATE TABLE IF NOT EXISTS characters_npclinkshell (
-    characterId    INTEGER NOT NULL,
-    npcLinkshellId INTEGER NOT NULL,
-    isCalling      INTEGER NOT NULL DEFAULT 0,
-    isExtra        INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (characterId, npcLinkshellId)
-);
-
--- Ported from `ioncannon/quest_system`: one row per character, with the
--- 2048-bit completion bitfield packed as a 256-byte BLOB.
-CREATE TABLE IF NOT EXISTS characters_quest_completed (
-    characterId     INTEGER PRIMARY KEY NOT NULL,
-    completedQuests BLOB
-);
-
-CREATE TABLE IF NOT EXISTS characters_quest_guildleve_local (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    characterId INTEGER NOT NULL,
-    slot        INTEGER NOT NULL,
-    questId     INTEGER NOT NULL,
-    abandoned   INTEGER DEFAULT 0,
-    completed   INTEGER DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS characters_quest_guildleve_regional (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    characterId INTEGER NOT NULL,
-    slot        INTEGER NOT NULL,
-    guildleveId INTEGER NOT NULL,
-    abandoned   INTEGER DEFAULT 0,
-    completed   INTEGER DEFAULT 0,
-    UNIQUE (characterId, guildleveId)
-);
-
--- Ported from `ioncannon/quest_system`: JSON `questData` blob gone,
--- `currentPhase` → `sequence`, `questFlags` → `flags`, plus three 16-bit
--- counters driven by `QuestData::{Inc,Dec,Set}Counter`.
-CREATE TABLE IF NOT EXISTS characters_quest_scenario (
-    characterId     INTEGER NOT NULL,
-    slot            INTEGER NOT NULL,
-    questId         INTEGER NOT NULL,
-    sequence        INTEGER NOT NULL DEFAULT 0,
-    flags           INTEGER NOT NULL DEFAULT 0,
-    counter1        INTEGER NOT NULL DEFAULT 0,
-    counter2        INTEGER NOT NULL DEFAULT 0,
-    counter3        INTEGER NOT NULL DEFAULT 0,
-    -- C# `QuestData` per-quest NpcLs scratchpad — see migration
-    -- `050_characters_quest_scenario_npc_ls.sql` for the rationale.
-    npc_ls_from     INTEGER NOT NULL DEFAULT 0,
-    npc_ls_msg_step INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (characterId, slot)
-);
-
-CREATE TABLE IF NOT EXISTS characters_statuseffect (
-    characterId INTEGER NOT NULL,
-    statusId    INTEGER NOT NULL,
-    magnitude   INTEGER NOT NULL,
-    duration    INTEGER NOT NULL,
-    tick        INTEGER NOT NULL,
-    tier        INTEGER NOT NULL,
-    extra       INTEGER NOT NULL,
-    PRIMARY KEY (characterId, statusId)
-);
-
-CREATE TABLE IF NOT EXISTS characters_timers (
-    characterId            INTEGER PRIMARY KEY,
-    thousandmaws           INTEGER DEFAULT 0,
-    dzemaeldarkhold        INTEGER DEFAULT 0,
-    bowlofembers_hard      INTEGER DEFAULT 0,
-    bowlofembers           INTEGER DEFAULT 0,
-    thornmarch             INTEGER DEFAULT 0,
-    aurumvale              INTEGER DEFAULT 0,
-    cutterscry             INTEGER DEFAULT 0,
-    battle_aleport         INTEGER DEFAULT 0,
-    battle_hyrstmill       INTEGER DEFAULT 0,
-    battle_goldenbazaar    INTEGER DEFAULT 0,
-    howlingeye_hard        INTEGER DEFAULT 0,
-    howlingeye             INTEGER DEFAULT 0,
-    castrumnovum           INTEGER DEFAULT 0,
-    bowlofembers_extreme   INTEGER DEFAULT 0,
-    rivenroad              INTEGER DEFAULT 0,
-    rivenroad_hard         INTEGER DEFAULT 0,
-    behests                INTEGER DEFAULT 0,
-    companybehests         INTEGER DEFAULT 0,
-    returntimer            INTEGER DEFAULT 0,
-    skirmish               INTEGER DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS characters_achievements (
-    id             INTEGER PRIMARY KEY AUTOINCREMENT,
-    characterId    INTEGER NOT NULL,
-    achievementId  INTEGER NOT NULL,
-    timeDone       INTEGER DEFAULT NULL,
-    progress       INTEGER DEFAULT 0,
-    progressFlags  INTEGER DEFAULT 0,
-    UNIQUE (characterId, achievementId)
-);
-
-CREATE TABLE IF NOT EXISTS characters_retainers (
-    characterId INTEGER NOT NULL,
-    retainerId  INTEGER NOT NULL,
-    doRename    INTEGER NOT NULL DEFAULT 0,
-    customName  TEXT    DEFAULT NULL,
-    PRIMARY KEY (characterId, retainerId)
-);
-
-CREATE TABLE IF NOT EXISTS characters_retainer_bazaar (
-    retainerId   INTEGER NOT NULL,
-    serverItemId INTEGER NOT NULL,
-    slot         INTEGER NOT NULL,
-    priceGil     INTEGER NOT NULL DEFAULT 0,
-    createdUtc   INTEGER NOT NULL DEFAULT 0,
-    updatedUtc   INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (retainerId, serverItemId)
-);
-
-CREATE INDEX IF NOT EXISTS idx_retainer_bazaar_retainer
-    ON characters_retainer_bazaar (retainerId);
-
--- Retainer's personal (non-bazaar) inventory. Parallels
--- `characters_inventory` for players but keyed by `retainerId` so
--- retainer storage can't conflate with a player whose `characterId`
--- happens to match a retainer template id. Tier 4 #14 C.
-CREATE TABLE IF NOT EXISTS characters_retainer_inventory (
-    retainerId   INTEGER NOT NULL,
-    serverItemId INTEGER NOT NULL,
-    itemPackage  INTEGER NOT NULL DEFAULT 0,
-    slot         INTEGER NOT NULL,
-    PRIMARY KEY (retainerId, serverItemId)
-);
-
-CREATE INDEX IF NOT EXISTS idx_retainer_inventory_retainer
-    ON characters_retainer_inventory (retainerId);
-
-CREATE TABLE IF NOT EXISTS characters_linkshells (
-    characterId INTEGER NOT NULL,
-    linkshellId INTEGER NOT NULL,
-    rank        INTEGER NOT NULL DEFAULT 4,
-    PRIMARY KEY (characterId, linkshellId)
-);
-
-CREATE TABLE IF NOT EXISTS server_battle_commands (
-    id                 INTEGER PRIMARY KEY,
-    name               TEXT NOT NULL,
-    classJob           INTEGER NOT NULL DEFAULT 0,
-    lvl                INTEGER NOT NULL DEFAULT 0,
-    requirements       INTEGER NOT NULL DEFAULT 0,
-    mainTarget         INTEGER NOT NULL DEFAULT 0,
-    validTarget        INTEGER NOT NULL DEFAULT 0,
-    aoeType            INTEGER NOT NULL DEFAULT 0,
-    aoeRange           REAL NOT NULL DEFAULT 0,
-    aoeMinRange        REAL NOT NULL DEFAULT 0,
-    aoeConeAngle       REAL NOT NULL DEFAULT 0,
-    aoeRotateAngle     REAL NOT NULL DEFAULT 0,
-    aoeTarget          INTEGER NOT NULL DEFAULT 0,
-    basePotency        INTEGER NOT NULL DEFAULT 0,
-    numHits            INTEGER NOT NULL DEFAULT 0,
-    positionBonus      INTEGER NOT NULL DEFAULT 0,
-    procRequirement    INTEGER NOT NULL DEFAULT 0,
-    "range"            INTEGER NOT NULL DEFAULT 0,
-    minRange           INTEGER NOT NULL DEFAULT 0,
-    bestRange          INTEGER NOT NULL DEFAULT 0,
-    rangeHeight        INTEGER NOT NULL DEFAULT 10,
-    rangeWidth         INTEGER NOT NULL DEFAULT 2,
-    statusId           INTEGER NOT NULL DEFAULT 0,
-    statusDuration     INTEGER NOT NULL DEFAULT 0,
-    statusChance       REAL NOT NULL DEFAULT 0.5,
-    castType           INTEGER NOT NULL DEFAULT 0,
-    castTime           INTEGER NOT NULL DEFAULT 0,
-    recastTime         INTEGER NOT NULL DEFAULT 0,
-    mpCost             INTEGER NOT NULL DEFAULT 0,
-    tpCost             INTEGER NOT NULL DEFAULT 0,
-    animationType      INTEGER NOT NULL DEFAULT 0,
-    effectAnimation    INTEGER NOT NULL DEFAULT 0,
-    modelAnimation     INTEGER NOT NULL DEFAULT 0,
-    animationDuration  INTEGER NOT NULL DEFAULT 0,
-    battleAnimation    INTEGER NOT NULL DEFAULT 0,
-    validUser          INTEGER NOT NULL DEFAULT 0,
-    comboId1           INTEGER NOT NULL DEFAULT 0,
-    comboId2           INTEGER NOT NULL DEFAULT 0,
-    comboStep          INTEGER NOT NULL DEFAULT 0,
-    accuracyMod        REAL NOT NULL DEFAULT 1,
-    worldMasterTextId  INTEGER NOT NULL DEFAULT 0,
-    commandType        INTEGER NOT NULL DEFAULT 0,
-    actionType         INTEGER NOT NULL DEFAULT 0,
-    actionProperty     INTEGER NOT NULL DEFAULT 0,
-    isRanged           INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS server_battle_traits (
-    id       INTEGER PRIMARY KEY,
-    name     TEXT NOT NULL,
-    classJob INTEGER NOT NULL,
-    lvl      INTEGER NOT NULL,
-    modifier INTEGER NOT NULL DEFAULT 0,
-    bonus    INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS server_statuseffects (
-    id               INTEGER PRIMARY KEY,
-    name             TEXT NOT NULL,
-    flags            INTEGER NOT NULL DEFAULT 10,
-    overwrite        INTEGER NOT NULL DEFAULT 1,
-    tickMs           INTEGER NOT NULL DEFAULT 3000,
-    hidden           INTEGER NOT NULL DEFAULT 0,
-    silentOnGain     INTEGER NOT NULL DEFAULT 0,
-    silentOnLoss     INTEGER NOT NULL DEFAULT 0,
-    statusGainTextId INTEGER NOT NULL DEFAULT 30328,
-    statusLossTextId INTEGER NOT NULL DEFAULT 30331
-);
-
-CREATE TABLE IF NOT EXISTS server_items (
-    id       INTEGER PRIMARY KEY AUTOINCREMENT,
-    itemId   INTEGER NOT NULL,
-    quantity INTEGER NOT NULL DEFAULT 0,
-    quality  INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS server_items_dealing (
-    id               INTEGER PRIMARY KEY,
-    dealingValue     INTEGER NOT NULL DEFAULT 0,
-    dealingMode      INTEGER NOT NULL DEFAULT 0,
-    dealingAttached1 INTEGER DEFAULT 0,
-    dealingAttached2 INTEGER NOT NULL DEFAULT 0,
-    dealingAttached3 INTEGER NOT NULL DEFAULT 0,
-    dealingTag       INTEGER NOT NULL DEFAULT 0,
-    bazaarMode       INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS server_items_modifiers (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    durability  INTEGER NOT NULL DEFAULT 0,
-    mainQuality INTEGER NOT NULL DEFAULT 0,
-    subQuality1 INTEGER NOT NULL DEFAULT 0,
-    subQuality2 INTEGER NOT NULL DEFAULT 0,
-    subQuality3 INTEGER NOT NULL DEFAULT 0,
-    param1      INTEGER NOT NULL DEFAULT 0,
-    param2      INTEGER NOT NULL DEFAULT 0,
-    param3      INTEGER NOT NULL DEFAULT 0,
-    spiritbind  INTEGER NOT NULL DEFAULT 0,
-    materia1    INTEGER NOT NULL DEFAULT 0,
-    materia2    INTEGER NOT NULL DEFAULT 0,
-    materia3    INTEGER NOT NULL DEFAULT 0,
-    materia4    INTEGER NOT NULL DEFAULT 0,
-    materia5    INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS server_linkshells (
-    id        INTEGER PRIMARY KEY AUTOINCREMENT,
-    name      TEXT NOT NULL UNIQUE,
-    crestIcon INTEGER NOT NULL DEFAULT 0,
-    crest     INTEGER NOT NULL DEFAULT 0,
-    master    INTEGER NOT NULL DEFAULT 0,
-    rank      INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS server_retainers (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    name         TEXT NOT NULL,
-    actorClassId INTEGER NOT NULL,
-    cdIDOffset   INTEGER NOT NULL DEFAULT 0,
-    placeName    INTEGER NOT NULL DEFAULT 0,
-    conditions   INTEGER NOT NULL DEFAULT 0,
-    level        INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS server_seamless_zonechange_bounds (
-    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
-    regionId             INTEGER NOT NULL,
-    zoneId1              INTEGER NOT NULL,
-    zoneId2              INTEGER NOT NULL,
-    zone1_boundingbox_x1 REAL NOT NULL,
-    zone1_boundingbox_y1 REAL NOT NULL,
-    zone1_boundingbox_x2 REAL NOT NULL,
-    zone1_boundingbox_y2 REAL NOT NULL,
-    zone2_boundingbox_x1 REAL NOT NULL,
-    zone2_boundingbox_x2 REAL NOT NULL,
-    zone2_boundingbox_y1 REAL NOT NULL,
-    zone2_boundingbox_y2 REAL NOT NULL,
-    merge_boundingbox_x1 REAL NOT NULL,
-    merge_boundingbox_y1 REAL NOT NULL,
-    merge_boundingbox_x2 REAL NOT NULL,
-    merge_boundingbox_y2 REAL NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS server_zones (
-    id             INTEGER PRIMARY KEY,
-    regionId       INTEGER NOT NULL DEFAULT 0,
-    zoneName       TEXT DEFAULT NULL,
-    placeName      TEXT NOT NULL DEFAULT '',
-    serverIp       TEXT NOT NULL DEFAULT '',
-    serverPort     INTEGER NOT NULL DEFAULT 0,
-    classPath      TEXT NOT NULL DEFAULT '',
-    dayMusic       INTEGER DEFAULT 0,
-    nightMusic     INTEGER DEFAULT 0,
-    battleMusic    INTEGER DEFAULT 0,
-    isIsolated     INTEGER DEFAULT 0,
-    isInn          INTEGER DEFAULT 0,
-    canRideChocobo INTEGER DEFAULT 1,
-    canStealth     INTEGER DEFAULT 0,
-    isInstanceRaid INTEGER DEFAULT 0,
-    loadNavMesh    INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS server_zones_privateareas (
-    id               INTEGER PRIMARY KEY AUTOINCREMENT,
-    parentZoneId     INTEGER NOT NULL,
-    className        TEXT NOT NULL DEFAULT '',
-    privateAreaName  TEXT NOT NULL DEFAULT '',
-    privateAreaType  INTEGER NOT NULL DEFAULT 0,
-    dayMusic         INTEGER DEFAULT 0,
-    nightMusic       INTEGER DEFAULT 0,
-    battleMusic      INTEGER DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS server_zones_spawnlocations (
-    id               INTEGER PRIMARY KEY AUTOINCREMENT,
-    zoneId           INTEGER NOT NULL,
-    privateAreaName  TEXT DEFAULT NULL,
-    spawnType        INTEGER DEFAULT 0,
-    spawnX           REAL NOT NULL DEFAULT 0,
-    spawnY           REAL NOT NULL DEFAULT 0,
-    spawnZ           REAL NOT NULL DEFAULT 0,
-    spawnRotation    REAL NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS server_spawn_locations (
-    id                INTEGER PRIMARY KEY AUTOINCREMENT,
-    actorClassId      INTEGER NOT NULL,
-    uniqueId          TEXT NOT NULL DEFAULT '',
-    zoneId            INTEGER NOT NULL,
-    privateAreaName   TEXT NOT NULL DEFAULT '',
-    privateAreaLevel  INTEGER NOT NULL DEFAULT 0,
-    positionX         REAL NOT NULL DEFAULT 0,
-    positionY         REAL NOT NULL DEFAULT 0,
-    positionZ         REAL NOT NULL DEFAULT 0,
-    rotation          REAL NOT NULL DEFAULT 0,
-    actorState        INTEGER NOT NULL DEFAULT 0,
-    animationId       INTEGER NOT NULL DEFAULT 0,
-    customDisplayName TEXT DEFAULT NULL
-);
-
-CREATE TABLE IF NOT EXISTS supportdesk_tickets (
-    id       INTEGER PRIMARY KEY AUTOINCREMENT,
-    name     TEXT NOT NULL,
-    title    TEXT NOT NULL,
-    body     TEXT NOT NULL,
-    langCode INTEGER NOT NULL,
-    isOpen   INTEGER NOT NULL DEFAULT 1
-);
-
-CREATE TABLE IF NOT EXISTS supportdesk_faqs (
-    slot         INTEGER NOT NULL,
-    languageCode INTEGER NOT NULL,
-    title        TEXT NOT NULL,
-    body         TEXT NOT NULL,
-    PRIMARY KEY (slot, languageCode)
-);
-
-CREATE TABLE IF NOT EXISTS supportdesk_issues (
-    slot  INTEGER PRIMARY KEY,
-    title TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS gamedata_actor_class (
-    id              INTEGER PRIMARY KEY,
-    classPath       TEXT NOT NULL,
-    displayNameId   INTEGER NOT NULL DEFAULT 4294967295,
-    propertyFlags   INTEGER NOT NULL DEFAULT 0,
-    eventConditions TEXT
-);
-
-CREATE TABLE IF NOT EXISTS gamedata_actor_pushcommand (
-    id                  INTEGER PRIMARY KEY,
-    pushCommand         INTEGER NOT NULL DEFAULT 0,
-    pushCommandSub      INTEGER NOT NULL DEFAULT 0,
-    pushCommandPriority INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS gamedata_items (
-    catalogID        INTEGER PRIMARY KEY,
-    name             TEXT NOT NULL DEFAULT '',
-    singular         TEXT DEFAULT '',
-    plural           TEXT DEFAULT '',
-    category         TEXT NOT NULL DEFAULT '',
-    maxStack         INTEGER NOT NULL DEFAULT 0,
-    stackSize        INTEGER NOT NULL DEFAULT 0,
-    isRare           INTEGER NOT NULL DEFAULT 0,
-    isExclusive      INTEGER NOT NULL DEFAULT 0,
-    durability       INTEGER NOT NULL DEFAULT 0,
-    sellPrice        INTEGER NOT NULL DEFAULT 0,
-    buyPrice         INTEGER NOT NULL DEFAULT 0,
-    price            INTEGER NOT NULL DEFAULT 0,
-    icon             INTEGER NOT NULL DEFAULT 0,
-    kind             INTEGER NOT NULL DEFAULT 0,
-    rarity           INTEGER NOT NULL DEFAULT 0,
-    isUseable        INTEGER NOT NULL DEFAULT 0,
-    mainSkill        INTEGER NOT NULL DEFAULT 0,
-    subSkill         INTEGER NOT NULL DEFAULT 0,
-    levelType        INTEGER NOT NULL DEFAULT 0,
-    level            INTEGER NOT NULL DEFAULT 0,
-    itemLevel        INTEGER NOT NULL DEFAULT 0,
-    equipLevel       INTEGER NOT NULL DEFAULT 0,
-    itemUICategory   INTEGER NOT NULL DEFAULT 0,
-    compatibility    INTEGER NOT NULL DEFAULT 0,
-    effectMagnitude  REAL NOT NULL DEFAULT 0,
-    effectRate       REAL NOT NULL DEFAULT 0,
-    shieldBlocking   REAL NOT NULL DEFAULT 0,
-    effectDuration   REAL NOT NULL DEFAULT 0,
-    recastTime       REAL NOT NULL DEFAULT 0,
-    recastGroup      INTEGER NOT NULL DEFAULT 0,
-    repairSkill      INTEGER NOT NULL DEFAULT 0,
-    repairItem       INTEGER NOT NULL DEFAULT 0,
-    repairItemNum    INTEGER NOT NULL DEFAULT 0,
-    repairLevel      INTEGER NOT NULL DEFAULT 0,
-    repairLicense    INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS gamedata_items_accessory (
-    catalogID INTEGER PRIMARY KEY,
-    power     INTEGER NOT NULL DEFAULT 0,
-    size      INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS gamedata_items_armor (
-    catalogID            INTEGER PRIMARY KEY,
-    defense              INTEGER NOT NULL DEFAULT 0,
-    magicDefense         INTEGER NOT NULL DEFAULT 0,
-    criticalDefense      INTEGER NOT NULL DEFAULT 0,
-    evasion              INTEGER NOT NULL DEFAULT 0,
-    magicResistance      INTEGER NOT NULL DEFAULT 0,
-    damageDefenseType1   INTEGER NOT NULL DEFAULT 0,
-    damageDefenseValue1  INTEGER NOT NULL DEFAULT 0,
-    damageDefenseType2   INTEGER NOT NULL DEFAULT 0,
-    damageDefenseValue2  INTEGER NOT NULL DEFAULT 0,
-    damageDefenseType3   INTEGER NOT NULL DEFAULT 0,
-    damageDefenseValue3  INTEGER NOT NULL DEFAULT 0,
-    damageDefenseType4   INTEGER NOT NULL DEFAULT 0,
-    damageDefenseValue4  INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS gamedata_items_equipment (
-    catalogID              INTEGER PRIMARY KEY,
-    equipPoint             INTEGER NOT NULL DEFAULT 0,
-    equipTribe             INTEGER NOT NULL DEFAULT 0,
-    paramBonusType1        INTEGER NOT NULL DEFAULT 0,
-    paramBonusValue1       INTEGER NOT NULL DEFAULT 0,
-    paramBonusType2        INTEGER NOT NULL DEFAULT 0,
-    paramBonusValue2       INTEGER NOT NULL DEFAULT 0,
-    paramBonusType3        INTEGER NOT NULL DEFAULT 0,
-    paramBonusValue3       INTEGER NOT NULL DEFAULT 0,
-    paramBonusType4        INTEGER NOT NULL DEFAULT 0,
-    paramBonusValue4       INTEGER NOT NULL DEFAULT 0,
-    paramBonusType5        INTEGER NOT NULL DEFAULT 0,
-    paramBonusValue5       INTEGER NOT NULL DEFAULT 0,
-    paramBonusType6        INTEGER NOT NULL DEFAULT 0,
-    paramBonusValue6       INTEGER NOT NULL DEFAULT 0,
-    paramBonusType7        INTEGER NOT NULL DEFAULT 0,
-    paramBonusValue7       INTEGER NOT NULL DEFAULT 0,
-    paramBonusType8        INTEGER NOT NULL DEFAULT 0,
-    paramBonusValue8       INTEGER NOT NULL DEFAULT 0,
-    paramBonusType9        INTEGER NOT NULL DEFAULT 0,
-    paramBonusValue9       INTEGER NOT NULL DEFAULT 0,
-    paramBonusType10       INTEGER NOT NULL DEFAULT 0,
-    paramBonusValue10      INTEGER NOT NULL DEFAULT 0,
-    additionalEffect       INTEGER NOT NULL DEFAULT 0,
-    materiaBindPermission  INTEGER NOT NULL DEFAULT 0,
-    materializeTable       INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS gamedata_items_graphics (
-    catalogID   INTEGER PRIMARY KEY,
-    weaponId    INTEGER NOT NULL DEFAULT 0,
-    equipmentId INTEGER NOT NULL DEFAULT 0,
-    variantId   INTEGER NOT NULL DEFAULT 0,
-    colorId     INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS gamedata_items_graphics_extra (
-    catalogID          INTEGER PRIMARY KEY,
-    offHandWeaponId    INTEGER NOT NULL DEFAULT 0,
-    offHandEquipmentId INTEGER NOT NULL DEFAULT 0,
-    offHandVarientId   INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS gamedata_items_weapon (
-    catalogID               INTEGER PRIMARY KEY,
-    attack                  INTEGER NOT NULL DEFAULT 0,
-    magicAttack             INTEGER NOT NULL DEFAULT 0,
-    craftProcessing         INTEGER NOT NULL DEFAULT 0,
-    craftMagicProcessing    INTEGER NOT NULL DEFAULT 0,
-    harvestPotency          INTEGER NOT NULL DEFAULT 0,
-    harvestLimit            INTEGER NOT NULL DEFAULT 0,
-    frequency               INTEGER NOT NULL DEFAULT 0,
-    rate                    INTEGER NOT NULL DEFAULT 0,
-    magicRate               INTEGER NOT NULL DEFAULT 0,
-    craftProcessControl     INTEGER NOT NULL DEFAULT 0,
-    harvestRate             INTEGER NOT NULL DEFAULT 0,
-    critical                INTEGER NOT NULL DEFAULT 0,
-    magicCritical           INTEGER NOT NULL DEFAULT 0,
-    parry                   INTEGER NOT NULL DEFAULT 0,
-    damageAttributeType1    INTEGER NOT NULL DEFAULT 0,
-    damageAttributeValue1   REAL NOT NULL DEFAULT 0,
-    damageAttributeType2    INTEGER NOT NULL DEFAULT 0,
-    damageAttributeValue2   REAL NOT NULL DEFAULT 0,
-    damageAttributeType3    INTEGER NOT NULL DEFAULT 0,
-    damageAttributeValue3   REAL NOT NULL DEFAULT 0,
-    damagePower             INTEGER NOT NULL DEFAULT 0,
-    damageInterval          REAL NOT NULL DEFAULT 0,
-    ammoVirtualDamagePower  INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS gamedata_guildleves (
-    id                    INTEGER PRIMARY KEY,
-    zoneId                INTEGER DEFAULT 0,
-    name                  TEXT DEFAULT '',
-    difficulty            INTEGER DEFAULT 0,
-    leveType              INTEGER DEFAULT 0,
-    rewardExp             INTEGER DEFAULT 0,
-    rewardGil             INTEGER DEFAULT 0,
-    classType             INTEGER DEFAULT 0,
-    location              INTEGER DEFAULT 0,
-    factionCreditRequired INTEGER DEFAULT 0,
-    level                 INTEGER DEFAULT 0,
-    aetheryte             INTEGER DEFAULT 0,
-    plateId               INTEGER DEFAULT 0,
-    borderId              INTEGER DEFAULT 0,
-    objective             INTEGER DEFAULT 0,
-    partyRecommended      INTEGER DEFAULT 0,
-    targetLocation        INTEGER DEFAULT 0,
-    authority             INTEGER DEFAULT 0,
-    timeLimit             INTEGER DEFAULT 0,
-    skill                 INTEGER DEFAULT 0,
-    favorCount            INTEGER DEFAULT 0,
-    aimNum1               INTEGER NOT NULL DEFAULT 0,
-    aimNum2               INTEGER NOT NULL DEFAULT 0,
-    aimNum3               INTEGER NOT NULL DEFAULT 0,
-    aimNum4               INTEGER NOT NULL DEFAULT 0,
-    item1                 INTEGER NOT NULL DEFAULT 0,
-    item2                 INTEGER NOT NULL DEFAULT 0,
-    item3                 INTEGER NOT NULL DEFAULT 0,
-    item4                 INTEGER NOT NULL DEFAULT 0,
-    mob1                  INTEGER NOT NULL DEFAULT 0,
-    mob2                  INTEGER NOT NULL DEFAULT 0,
-    mob3                  INTEGER NOT NULL DEFAULT 0,
-    mob4                  INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS gamedata_achievements (
-    achievementId  INTEGER PRIMARY KEY,
-    name           TEXT NOT NULL,
-    packetOffsetId INTEGER NOT NULL DEFAULT 0,
-    rewardPoints   INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS gamedata_recipes (
-    id                INTEGER PRIMARY KEY,
-    craftedItem       INTEGER NOT NULL,
-    craftedQuantity   INTEGER NOT NULL,
-    job               TEXT NOT NULL,
-    level             INTEGER NOT NULL,
-    dated             INTEGER DEFAULT NULL,
-    kind              TEXT NOT NULL,
-    crystal0ID        INTEGER NOT NULL DEFAULT 0,
-    crystal0Quantity  INTEGER NOT NULL DEFAULT 0,
-    crystal1ID        INTEGER NOT NULL DEFAULT 0,
-    crystal1Quantity  INTEGER NOT NULL DEFAULT 0,
-    facilities        INTEGER DEFAULT NULL,
-    material0         INTEGER NOT NULL DEFAULT 0,
-    material1         INTEGER NOT NULL DEFAULT 0,
-    material2         INTEGER NOT NULL DEFAULT 0,
-    material3         INTEGER NOT NULL DEFAULT 0,
-    material4         INTEGER NOT NULL DEFAULT 0,
-    material5         INTEGER NOT NULL DEFAULT 0,
-    material6         INTEGER NOT NULL DEFAULT 0,
-    material7         INTEGER NOT NULL DEFAULT 0,
-    subSkill0Job      INTEGER DEFAULT NULL,
-    subSkill0Level    TEXT DEFAULT NULL,
-    subSkill1Job      INTEGER DEFAULT NULL,
-    subSkill1Level    TEXT DEFAULT NULL
-);
-
-CREATE TABLE IF NOT EXISTS gamedata_passivegl_craft (
-    id                   INTEGER PRIMARY KEY,
-    plateId              INTEGER NOT NULL,
-    borderId             INTEGER NOT NULL,
-    recommendedClass     INTEGER NOT NULL,
-    issuingLocation      INTEGER NOT NULL,
-    guildleveLocation    INTEGER NOT NULL,
-    deliveryDisplayName  INTEGER NOT NULL,
-    unk1                 INTEGER NOT NULL,
-    unk2                 INTEGER NOT NULL,
-    unk3                 INTEGER NOT NULL,
-    unk4                 INTEGER NOT NULL,
-    objectiveItemId1     INTEGER NOT NULL,
-    objectiveQuantity1   INTEGER NOT NULL,
-    numberOfAttempts1    INTEGER NOT NULL,
-    recommendedLevel1    INTEGER NOT NULL,
-    rewardItemId1        INTEGER NOT NULL,
-    rewardQuantity1      INTEGER NOT NULL,
-    objectiveItemId2     INTEGER NOT NULL,
-    objectiveQuantity2   INTEGER NOT NULL,
-    numberOfAttempts2    INTEGER NOT NULL,
-    recommendedLevel2    INTEGER NOT NULL,
-    rewardItemId2        INTEGER NOT NULL,
-    rewardQuantity2      INTEGER NOT NULL,
-    objectiveItemId3     INTEGER NOT NULL,
-    objectiveQuantity3   INTEGER NOT NULL,
-    numberOfAttempts3    INTEGER NOT NULL,
-    recommendedLevel3    INTEGER NOT NULL,
-    rewardItemId3        INTEGER NOT NULL,
-    rewardQuantity3      INTEGER NOT NULL,
-    objectiveItemId4     INTEGER NOT NULL,
-    objectiveQuantity4   INTEGER NOT NULL,
-    numberOfAttempts4    INTEGER NOT NULL,
-    recommendedLevel4    INTEGER NOT NULL,
-    rewardItemId4        INTEGER NOT NULL,
-    rewardQuantity4      INTEGER NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS gamedata_regional_leves (
-    id                   INTEGER PRIMARY KEY,
-    leveType             INTEGER NOT NULL,
-    plateId              INTEGER NOT NULL DEFAULT 0,
-    borderId             INTEGER NOT NULL DEFAULT 0,
-    recommendedClass     INTEGER NOT NULL DEFAULT 0,
-    issuingLocation      INTEGER NOT NULL DEFAULT 0,
-    guildleveLocation    INTEGER NOT NULL DEFAULT 0,
-    deliveryDisplayName  INTEGER NOT NULL DEFAULT 0,
-    region               INTEGER NOT NULL DEFAULT 0,
-
-    objectiveTargetId1   INTEGER NOT NULL,
-    objectiveQuantity1   INTEGER NOT NULL,
-    recommendedLevel1    INTEGER NOT NULL DEFAULT 1,
-    rewardItemId1        INTEGER NOT NULL DEFAULT 0,
-    rewardQuantity1      INTEGER NOT NULL DEFAULT 0,
-    rewardGil1           INTEGER NOT NULL DEFAULT 0,
-
-    objectiveTargetId2   INTEGER NOT NULL,
-    objectiveQuantity2   INTEGER NOT NULL,
-    recommendedLevel2    INTEGER NOT NULL DEFAULT 1,
-    rewardItemId2        INTEGER NOT NULL DEFAULT 0,
-    rewardQuantity2      INTEGER NOT NULL DEFAULT 0,
-    rewardGil2           INTEGER NOT NULL DEFAULT 0,
-
-    objectiveTargetId3   INTEGER NOT NULL,
-    objectiveQuantity3   INTEGER NOT NULL,
-    recommendedLevel3    INTEGER NOT NULL DEFAULT 1,
-    rewardItemId3        INTEGER NOT NULL DEFAULT 0,
-    rewardQuantity3      INTEGER NOT NULL DEFAULT 0,
-    rewardGil3           INTEGER NOT NULL DEFAULT 0,
-
-    objectiveTargetId4   INTEGER NOT NULL,
-    objectiveQuantity4   INTEGER NOT NULL,
-    recommendedLevel4    INTEGER NOT NULL DEFAULT 1,
-    rewardItemId4        INTEGER NOT NULL DEFAULT 0,
-    rewardQuantity4      INTEGER NOT NULL DEFAULT 0,
-    rewardGil4           INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS gamedata_gather_nodes (
-    id       INTEGER PRIMARY KEY,
-    grade    INTEGER NOT NULL DEFAULT 1,
-    attempts INTEGER NOT NULL DEFAULT 2,
-    item1    INTEGER DEFAULT NULL,
-    item2    INTEGER DEFAULT NULL,
-    item3    INTEGER DEFAULT NULL,
-    item4    INTEGER DEFAULT NULL,
-    item5    INTEGER DEFAULT NULL,
-    item6    INTEGER DEFAULT NULL,
-    item7    INTEGER DEFAULT NULL,
-    item8    INTEGER DEFAULT NULL,
-    item9    INTEGER DEFAULT NULL,
-    item10   INTEGER DEFAULT NULL,
-    item11   INTEGER DEFAULT NULL
-);
-
-CREATE TABLE IF NOT EXISTS gamedata_gather_node_items (
-    id            INTEGER PRIMARY KEY,
-    itemCatalogId INTEGER NOT NULL,
-    remainder     INTEGER NOT NULL DEFAULT 80,
-    aim           INTEGER NOT NULL DEFAULT 50,
-    sweetspot     INTEGER NOT NULL DEFAULT 30,
-    maxYield      INTEGER NOT NULL DEFAULT 1
-);
-
-CREATE TABLE IF NOT EXISTS server_gather_node_spawns (
-    id               INTEGER PRIMARY KEY AUTOINCREMENT,
-    actorClassId     INTEGER NOT NULL,
-    uniqueId         TEXT NOT NULL DEFAULT '',
-    zoneId           INTEGER NOT NULL,
-    privateAreaName  TEXT NOT NULL DEFAULT '',
-    privateAreaLevel INTEGER NOT NULL DEFAULT 0,
-    positionX        REAL NOT NULL,
-    positionY        REAL NOT NULL,
-    positionZ        REAL NOT NULL,
-    rotation         REAL NOT NULL DEFAULT 0.0,
-    harvestNodeId    INTEGER NOT NULL,
-    harvestType      INTEGER NOT NULL DEFAULT 22002
-);
-
-CREATE TABLE IF NOT EXISTS users (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    username     TEXT NOT NULL UNIQUE COLLATE NOCASE,
-    passwordHash TEXT NOT NULL,
-    email        TEXT DEFAULT NULL COLLATE NOCASE,
-    createdAt    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS sessions (
-    id         TEXT PRIMARY KEY,
-    userId     INTEGER NOT NULL,
-    expiration TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS reserved_names (
-    id     INTEGER PRIMARY KEY AUTOINCREMENT,
-    userId INTEGER NOT NULL,
-    name   TEXT NOT NULL
-);
-
--- The world/server list is deployment configuration, not database state —
--- it lives in `configs/servers.toml` (see `common::server_list`, issue #11).
+-- XIVLegacy MariaDB baseline schema. Generated by tools/mariadb/sqlite_to_mariadb.py
+-- from the SQLite seeds 001-298 (develop 5f32a3e). Change tables through sql/migrations/;
+-- change game data by editing sql/data/<table>.sql.
+
+SET NAMES utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `characters` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `userId` BIGINT NOT NULL,
+    `slot` BIGINT NOT NULL,
+    `serverId` BIGINT NOT NULL,
+    `name` TEXT NOT NULL,
+    `state` BIGINT NOT NULL DEFAULT 0,
+    `creationDate` TEXT NOT NULL DEFAULT (UTC_TIMESTAMP()),
+    `isLegacy` BIGINT DEFAULT 0,
+    `doRename` BIGINT DEFAULT 0,
+    `playTime` BIGINT NOT NULL DEFAULT 0,
+    `positionX` DOUBLE NOT NULL DEFAULT 0,
+    `positionY` DOUBLE NOT NULL DEFAULT 0,
+    `positionZ` DOUBLE NOT NULL DEFAULT 0,
+    `rotation` DOUBLE NOT NULL DEFAULT 0,
+    `actorState` BIGINT DEFAULT 0,
+    `currentZoneId` BIGINT DEFAULT 0,
+    `currentPrivateArea` TEXT DEFAULT NULL,
+    `currentPrivateAreaType` BIGINT DEFAULT 0,
+    `destinationZoneId` BIGINT DEFAULT 0,
+    `destinationSpawnType` BIGINT DEFAULT 0,
+    `guardian` BIGINT DEFAULT 0,
+    `birthDay` BIGINT DEFAULT 0,
+    `birthMonth` BIGINT DEFAULT 0,
+    `initialTown` BIGINT DEFAULT 0,
+    `tribe` BIGINT DEFAULT 0,
+    `gcCurrent` BIGINT DEFAULT 0,
+    `gcLimsaRank` BIGINT DEFAULT 127,
+    `gcGridaniaRank` BIGINT DEFAULT 127,
+    `gcUldahRank` BIGINT DEFAULT 127,
+    `currentTitle` BIGINT DEFAULT 0,
+    `restBonus` BIGINT DEFAULT 0,
+    `achievementPoints` BIGINT DEFAULT 0,
+    `currentActiveLinkshell` TEXT NOT NULL DEFAULT '',
+    `homepoint` BIGINT NOT NULL DEFAULT 0,
+    `homepointInn` BIGINT NOT NULL DEFAULT 0,
+    `snpc_nickname` TEXT NOT NULL DEFAULT '',
+    `snpc_skin` BIGINT NOT NULL DEFAULT 0,
+    `snpc_personality` BIGINT NOT NULL DEFAULT 0,
+    `snpc_coordinate` BIGINT NOT NULL DEFAULT 0,
+    `lastActiveAt` BIGINT DEFAULT NULL,
+    `jailCell` BIGINT DEFAULT NULL,
+    `jailReason` TEXT DEFAULT NULL,
+    PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `characters_achievements` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `characterId` BIGINT NOT NULL,
+    `achievementId` BIGINT NOT NULL,
+    `timeDone` BIGINT DEFAULT NULL,
+    `progress` BIGINT DEFAULT 0,
+    `progressFlags` BIGINT DEFAULT 0,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uq_characters_achievements_characterId_achievementId` (`characterId`, `achievementId`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `characters_aetherytes` (
+    `characterId` BIGINT NOT NULL,
+    `aetheryteId` BIGINT NOT NULL,
+    PRIMARY KEY (`characterId`, `aetheryteId`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `characters_appearance` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `characterId` BIGINT NOT NULL,
+    `baseId` BIGINT NOT NULL,
+    `size` BIGINT NOT NULL DEFAULT 0,
+    `voice` BIGINT NOT NULL DEFAULT 0,
+    `skinColor` BIGINT NOT NULL DEFAULT 0,
+    `hairStyle` BIGINT NOT NULL DEFAULT 0,
+    `hairColor` BIGINT NOT NULL DEFAULT 0,
+    `hairHighlightColor` BIGINT NOT NULL DEFAULT 0,
+    `hairVariation` BIGINT NOT NULL DEFAULT 0,
+    `eyeColor` BIGINT NOT NULL DEFAULT 0,
+    `faceType` BIGINT NOT NULL DEFAULT 0,
+    `faceEyebrows` BIGINT NOT NULL DEFAULT 0,
+    `faceEyeShape` BIGINT NOT NULL DEFAULT 0,
+    `faceIrisSize` BIGINT NOT NULL DEFAULT 0,
+    `faceNose` BIGINT NOT NULL DEFAULT 0,
+    `faceMouth` BIGINT NOT NULL DEFAULT 0,
+    `faceFeatures` BIGINT NOT NULL DEFAULT 0,
+    `ears` BIGINT NOT NULL DEFAULT 0,
+    `characteristics` BIGINT NOT NULL DEFAULT 0,
+    `characteristicsColor` BIGINT NOT NULL DEFAULT 0,
+    `mainhand` BIGINT NOT NULL DEFAULT 0,
+    `offhand` BIGINT NOT NULL DEFAULT 0,
+    `head` BIGINT NOT NULL DEFAULT 0,
+    `body` BIGINT NOT NULL DEFAULT 0,
+    `hands` BIGINT NOT NULL DEFAULT 0,
+    `legs` BIGINT NOT NULL DEFAULT 0,
+    `feet` BIGINT NOT NULL DEFAULT 0,
+    `waist` BIGINT NOT NULL DEFAULT 0,
+    `neck` BIGINT NOT NULL DEFAULT 0,
+    `leftIndex` BIGINT NOT NULL DEFAULT 0,
+    `rightIndex` BIGINT NOT NULL DEFAULT 0,
+    `leftFinger` BIGINT NOT NULL DEFAULT 0,
+    `rightFinger` BIGINT NOT NULL DEFAULT 0,
+    `leftEar` BIGINT NOT NULL DEFAULT 0,
+    `rightEar` BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `characters_chocobo` (
+    `characterId` BIGINT NOT NULL AUTO_INCREMENT,
+    `hasChocobo` BIGINT DEFAULT 0,
+    `hasGoobbue` BIGINT DEFAULT 0,
+    `chocoboAppearance` BIGINT DEFAULT NULL,
+    `chocoboName` TEXT DEFAULT '',
+    PRIMARY KEY (`characterId`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `characters_class_exp` (
+    `characterId` BIGINT NOT NULL AUTO_INCREMENT,
+    `pug` BIGINT DEFAULT 0,
+    `gla` BIGINT DEFAULT 0,
+    `mrd` BIGINT DEFAULT 0,
+    `arc` BIGINT DEFAULT 0,
+    `lnc` BIGINT DEFAULT 0,
+    `thm` BIGINT DEFAULT 0,
+    `cnj` BIGINT DEFAULT 0,
+    `crp` BIGINT DEFAULT 0,
+    `bsm` BIGINT DEFAULT 0,
+    `arm` BIGINT DEFAULT 0,
+    `gsm` BIGINT DEFAULT 0,
+    `ltw` BIGINT DEFAULT 0,
+    `wvr` BIGINT DEFAULT 0,
+    `alc` BIGINT DEFAULT 0,
+    `cul` BIGINT DEFAULT 0,
+    `min` BIGINT DEFAULT 0,
+    `btn` BIGINT DEFAULT 0,
+    `fsh` BIGINT DEFAULT 0,
+    PRIMARY KEY (`characterId`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `characters_class_levels` (
+    `characterId` BIGINT NOT NULL AUTO_INCREMENT,
+    `pug` BIGINT DEFAULT 0,
+    `gla` BIGINT DEFAULT 0,
+    `mrd` BIGINT DEFAULT 0,
+    `arc` BIGINT DEFAULT 0,
+    `lnc` BIGINT DEFAULT 0,
+    `thm` BIGINT DEFAULT 0,
+    `cnj` BIGINT DEFAULT 0,
+    `crp` BIGINT DEFAULT 0,
+    `bsm` BIGINT DEFAULT 0,
+    `arm` BIGINT DEFAULT 0,
+    `gsm` BIGINT DEFAULT 0,
+    `ltw` BIGINT DEFAULT 0,
+    `wvr` BIGINT DEFAULT 0,
+    `alc` BIGINT DEFAULT 0,
+    `cul` BIGINT DEFAULT 0,
+    `min` BIGINT DEFAULT 0,
+    `btn` BIGINT DEFAULT 0,
+    `fsh` BIGINT DEFAULT 0,
+    PRIMARY KEY (`characterId`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `characters_hotbar` (
+    `characterId` BIGINT NOT NULL,
+    `classId` BIGINT NOT NULL,
+    `hotbarSlot` BIGINT NOT NULL,
+    `commandId` BIGINT NOT NULL,
+    `recastTime` BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (`characterId`, `classId`, `hotbarSlot`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `characters_inventory` (
+    `characterId` BIGINT NOT NULL,
+    `serverItemId` BIGINT NOT NULL,
+    `itemPackage` BIGINT NOT NULL,
+    `slot` BIGINT NOT NULL,
+    PRIMARY KEY (`characterId`, `serverItemId`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `characters_inventory_equipment` (
+    `characterId` BIGINT NOT NULL,
+    `classId` BIGINT NOT NULL,
+    `equipSlot` BIGINT NOT NULL,
+    `itemId` BIGINT NOT NULL,
+    PRIMARY KEY (`characterId`, `classId`, `equipSlot`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `characters_linkshells` (
+    `characterId` BIGINT NOT NULL,
+    `linkshellId` BIGINT NOT NULL,
+    `rank` BIGINT NOT NULL DEFAULT 4,
+    PRIMARY KEY (`characterId`, `linkshellId`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `characters_npclinkshell` (
+    `characterId` BIGINT NOT NULL,
+    `npcLinkshellId` BIGINT NOT NULL,
+    `isCalling` BIGINT NOT NULL DEFAULT 0,
+    `isExtra` BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (`characterId`, `npcLinkshellId`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `characters_parametersave` (
+    `characterId` BIGINT NOT NULL AUTO_INCREMENT,
+    `hp` BIGINT NOT NULL DEFAULT 0,
+    `hpMax` BIGINT NOT NULL DEFAULT 0,
+    `mp` BIGINT NOT NULL DEFAULT 0,
+    `mpMax` BIGINT NOT NULL DEFAULT 0,
+    `mainSkill` BIGINT NOT NULL DEFAULT 0,
+    `mainSkillLevel` BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (`characterId`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `characters_quest_completed` (
+    `characterId` BIGINT NOT NULL AUTO_INCREMENT,
+    `completedQuests` MEDIUMBLOB,
+    PRIMARY KEY (`characterId`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `characters_quest_guildleve_local` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `characterId` BIGINT NOT NULL,
+    `slot` BIGINT NOT NULL,
+    `questId` BIGINT NOT NULL,
+    `abandoned` BIGINT DEFAULT 0,
+    `completed` BIGINT DEFAULT 0,
+    PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `characters_quest_guildleve_regional` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `characterId` BIGINT NOT NULL,
+    `slot` BIGINT NOT NULL,
+    `guildleveId` BIGINT NOT NULL,
+    `abandoned` BIGINT DEFAULT 0,
+    `completed` BIGINT DEFAULT 0,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uq_characters_quest_guildleve_regional_characterId_guildleveId` (`characterId`, `guildleveId`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `characters_quest_scenario` (
+    `characterId` BIGINT NOT NULL,
+    `slot` BIGINT NOT NULL,
+    `questId` BIGINT NOT NULL,
+    `sequence` BIGINT NOT NULL DEFAULT 0,
+    `flags` BIGINT NOT NULL DEFAULT 0,
+    `counter1` BIGINT NOT NULL DEFAULT 0,
+    `counter2` BIGINT NOT NULL DEFAULT 0,
+    `counter3` BIGINT NOT NULL DEFAULT 0,
+    `npc_ls_from` BIGINT NOT NULL DEFAULT 0,
+    `npc_ls_msg_step` BIGINT NOT NULL DEFAULT 0,
+    `counter4` BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (`characterId`, `slot`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `characters_retainer_bazaar` (
+    `retainerId` BIGINT NOT NULL,
+    `serverItemId` BIGINT NOT NULL,
+    `slot` BIGINT NOT NULL,
+    `priceGil` BIGINT NOT NULL DEFAULT 0,
+    `createdUtc` BIGINT NOT NULL DEFAULT 0,
+    `updatedUtc` BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (`retainerId`, `serverItemId`),
+    KEY `idx_retainer_bazaar_retainer` (`retainerId`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `characters_retainer_inventory` (
+    `retainerId` BIGINT NOT NULL,
+    `serverItemId` BIGINT NOT NULL,
+    `itemPackage` BIGINT NOT NULL DEFAULT 0,
+    `slot` BIGINT NOT NULL,
+    PRIMARY KEY (`retainerId`, `serverItemId`),
+    KEY `idx_retainer_inventory_retainer` (`retainerId`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `characters_retainers` (
+    `characterId` BIGINT NOT NULL,
+    `retainerId` BIGINT NOT NULL,
+    `doRename` BIGINT NOT NULL DEFAULT 0,
+    `customName` TEXT DEFAULT NULL,
+    PRIMARY KEY (`characterId`, `retainerId`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `characters_statuseffect` (
+    `characterId` BIGINT NOT NULL,
+    `statusId` BIGINT NOT NULL,
+    `magnitude` BIGINT NOT NULL,
+    `duration` BIGINT NOT NULL,
+    `tick` BIGINT NOT NULL,
+    `tier` BIGINT NOT NULL,
+    `extra` BIGINT NOT NULL,
+    `startTime` BIGINT NOT NULL DEFAULT 0,
+    `savedAt` BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (`characterId`, `statusId`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `characters_timers` (
+    `characterId` BIGINT NOT NULL AUTO_INCREMENT,
+    `thousandmaws` BIGINT DEFAULT 0,
+    `dzemaeldarkhold` BIGINT DEFAULT 0,
+    `bowlofembers_hard` BIGINT DEFAULT 0,
+    `bowlofembers` BIGINT DEFAULT 0,
+    `thornmarch` BIGINT DEFAULT 0,
+    `aurumvale` BIGINT DEFAULT 0,
+    `cutterscry` BIGINT DEFAULT 0,
+    `battle_aleport` BIGINT DEFAULT 0,
+    `battle_hyrstmill` BIGINT DEFAULT 0,
+    `battle_goldenbazaar` BIGINT DEFAULT 0,
+    `howlingeye_hard` BIGINT DEFAULT 0,
+    `howlingeye` BIGINT DEFAULT 0,
+    `castrumnovum` BIGINT DEFAULT 0,
+    `bowlofembers_extreme` BIGINT DEFAULT 0,
+    `rivenroad` BIGINT DEFAULT 0,
+    `rivenroad_hard` BIGINT DEFAULT 0,
+    `behests` BIGINT DEFAULT 0,
+    `companybehests` BIGINT DEFAULT 0,
+    `returntimer` BIGINT DEFAULT 0,
+    `skirmish` BIGINT DEFAULT 0,
+    PRIMARY KEY (`characterId`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `gamedata_achievements` (
+    `achievementId` BIGINT NOT NULL AUTO_INCREMENT,
+    `name` TEXT NOT NULL,
+    `packetOffsetId` BIGINT NOT NULL DEFAULT 0,
+    `rewardPoints` BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (`achievementId`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `gamedata_actor_appearance` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `base` BIGINT NOT NULL,
+    `size` BIGINT NOT NULL DEFAULT 0,
+    `hairStyle` BIGINT NOT NULL,
+    `hairHighlightColor` BIGINT NOT NULL DEFAULT 0,
+    `hairVariation` BIGINT NOT NULL,
+    `faceType` BIGINT NOT NULL DEFAULT 0,
+    `characteristics` BIGINT NOT NULL DEFAULT 0,
+    `characteristicsColor` BIGINT NOT NULL DEFAULT 0,
+    `faceEyebrows` BIGINT NOT NULL DEFAULT 0,
+    `faceIrisSize` BIGINT NOT NULL DEFAULT 0,
+    `faceEyeShape` BIGINT NOT NULL DEFAULT 0,
+    `faceNose` BIGINT NOT NULL DEFAULT 0,
+    `faceFeatures` BIGINT NOT NULL,
+    `faceMouth` BIGINT NOT NULL DEFAULT 0,
+    `ears` BIGINT NOT NULL DEFAULT 0,
+    `hairColor` BIGINT NOT NULL,
+    `skinColor` BIGINT NOT NULL,
+    `eyeColor` BIGINT NOT NULL,
+    `voice` BIGINT NOT NULL DEFAULT 0,
+    `mainHand` BIGINT NOT NULL,
+    `offHand` BIGINT NOT NULL,
+    `spMainHand` BIGINT NOT NULL,
+    `spOffHand` BIGINT NOT NULL,
+    `throwing` BIGINT NOT NULL,
+    `pack` BIGINT NOT NULL,
+    `pouch` BIGINT NOT NULL,
+    `head` BIGINT NOT NULL,
+    `body` BIGINT NOT NULL,
+    `legs` BIGINT NOT NULL,
+    `hands` BIGINT NOT NULL,
+    `feet` BIGINT NOT NULL,
+    `waist` BIGINT NOT NULL,
+    `neck` BIGINT NOT NULL,
+    `leftEar` BIGINT NOT NULL,
+    `rightEar` BIGINT NOT NULL,
+    `leftIndex` BIGINT NOT NULL,
+    `rightIndex` BIGINT NOT NULL,
+    `leftFinger` BIGINT NOT NULL,
+    `rightFinger` BIGINT NOT NULL,
+    PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `gamedata_actor_class` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `classPath` TEXT NOT NULL,
+    `displayNameId` BIGINT NOT NULL DEFAULT 4294967295,
+    `propertyFlags` BIGINT NOT NULL DEFAULT 0,
+    `eventConditions` TEXT,
+    PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `gamedata_actor_pushcommand` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `pushCommand` BIGINT NOT NULL DEFAULT 0,
+    `pushCommandSub` BIGINT NOT NULL DEFAULT 0,
+    `pushCommandPriority` BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `gamedata_gather_node_items` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `itemCatalogId` BIGINT NOT NULL,
+    `remainder` BIGINT NOT NULL DEFAULT 80,
+    `aim` BIGINT NOT NULL DEFAULT 50,
+    `sweetspot` BIGINT NOT NULL DEFAULT 30,
+    `maxYield` BIGINT NOT NULL DEFAULT 1,
+    PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `gamedata_gather_nodes` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `grade` BIGINT NOT NULL DEFAULT 1,
+    `attempts` BIGINT NOT NULL DEFAULT 2,
+    `item1` BIGINT DEFAULT NULL,
+    `item2` BIGINT DEFAULT NULL,
+    `item3` BIGINT DEFAULT NULL,
+    `item4` BIGINT DEFAULT NULL,
+    `item5` BIGINT DEFAULT NULL,
+    `item6` BIGINT DEFAULT NULL,
+    `item7` BIGINT DEFAULT NULL,
+    `item8` BIGINT DEFAULT NULL,
+    `item9` BIGINT DEFAULT NULL,
+    `item10` BIGINT DEFAULT NULL,
+    `item11` BIGINT DEFAULT NULL,
+    PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `gamedata_guildleves` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `zoneId` BIGINT DEFAULT 0,
+    `name` TEXT DEFAULT '',
+    `difficulty` BIGINT DEFAULT 0,
+    `leveType` BIGINT DEFAULT 0,
+    `rewardExp` BIGINT DEFAULT 0,
+    `rewardGil` BIGINT DEFAULT 0,
+    `classType` BIGINT DEFAULT 0,
+    `location` BIGINT DEFAULT 0,
+    `factionCreditRequired` BIGINT DEFAULT 0,
+    `level` BIGINT DEFAULT 0,
+    `aetheryte` BIGINT DEFAULT 0,
+    `plateId` BIGINT DEFAULT 0,
+    `borderId` BIGINT DEFAULT 0,
+    `objective` BIGINT DEFAULT 0,
+    `partyRecommended` BIGINT DEFAULT 0,
+    `targetLocation` BIGINT DEFAULT 0,
+    `authority` BIGINT DEFAULT 0,
+    `timeLimit` BIGINT DEFAULT 0,
+    `skill` BIGINT DEFAULT 0,
+    `favorCount` BIGINT DEFAULT 0,
+    `aimNum1` BIGINT NOT NULL DEFAULT 0,
+    `aimNum2` BIGINT NOT NULL DEFAULT 0,
+    `aimNum3` BIGINT NOT NULL DEFAULT 0,
+    `aimNum4` BIGINT NOT NULL DEFAULT 0,
+    `item1` BIGINT NOT NULL DEFAULT 0,
+    `item2` BIGINT NOT NULL DEFAULT 0,
+    `item3` BIGINT NOT NULL DEFAULT 0,
+    `item4` BIGINT NOT NULL DEFAULT 0,
+    `mob1` BIGINT NOT NULL DEFAULT 0,
+    `mob2` BIGINT NOT NULL DEFAULT 0,
+    `mob3` BIGINT NOT NULL DEFAULT 0,
+    `mob4` BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `gamedata_items` (
+    `catalogID` BIGINT NOT NULL AUTO_INCREMENT,
+    `name` TEXT NOT NULL DEFAULT '',
+    `singular` TEXT DEFAULT '',
+    `plural` TEXT DEFAULT '',
+    `category` TEXT NOT NULL DEFAULT '',
+    `maxStack` BIGINT NOT NULL DEFAULT 0,
+    `stackSize` BIGINT NOT NULL DEFAULT 0,
+    `isRare` BIGINT NOT NULL DEFAULT 0,
+    `isExclusive` BIGINT NOT NULL DEFAULT 0,
+    `durability` BIGINT NOT NULL DEFAULT 0,
+    `sellPrice` BIGINT NOT NULL DEFAULT 0,
+    `buyPrice` BIGINT NOT NULL DEFAULT 0,
+    `price` BIGINT NOT NULL DEFAULT 0,
+    `icon` BIGINT NOT NULL DEFAULT 0,
+    `kind` BIGINT NOT NULL DEFAULT 0,
+    `rarity` BIGINT NOT NULL DEFAULT 0,
+    `isUseable` BIGINT NOT NULL DEFAULT 0,
+    `mainSkill` BIGINT NOT NULL DEFAULT 0,
+    `subSkill` BIGINT NOT NULL DEFAULT 0,
+    `levelType` BIGINT NOT NULL DEFAULT 0,
+    `level` BIGINT NOT NULL DEFAULT 0,
+    `itemLevel` BIGINT NOT NULL DEFAULT 0,
+    `equipLevel` BIGINT NOT NULL DEFAULT 0,
+    `itemUICategory` BIGINT NOT NULL DEFAULT 0,
+    `compatibility` BIGINT NOT NULL DEFAULT 0,
+    `effectMagnitude` DOUBLE NOT NULL DEFAULT 0,
+    `effectRate` DOUBLE NOT NULL DEFAULT 0,
+    `shieldBlocking` DOUBLE NOT NULL DEFAULT 0,
+    `effectDuration` DOUBLE NOT NULL DEFAULT 0,
+    `recastTime` DOUBLE NOT NULL DEFAULT 0,
+    `recastGroup` BIGINT NOT NULL DEFAULT 0,
+    `repairSkill` BIGINT NOT NULL DEFAULT 0,
+    `repairItem` BIGINT NOT NULL DEFAULT 0,
+    `repairItemNum` BIGINT NOT NULL DEFAULT 0,
+    `repairLevel` BIGINT NOT NULL DEFAULT 0,
+    `repairLicense` BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (`catalogID`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `gamedata_items_accessory` (
+    `catalogID` BIGINT NOT NULL AUTO_INCREMENT,
+    `power` BIGINT NOT NULL DEFAULT 0,
+    `size` BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (`catalogID`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `gamedata_items_armor` (
+    `catalogID` BIGINT NOT NULL AUTO_INCREMENT,
+    `defense` BIGINT NOT NULL DEFAULT 0,
+    `magicDefense` BIGINT NOT NULL DEFAULT 0,
+    `criticalDefense` BIGINT NOT NULL DEFAULT 0,
+    `evasion` BIGINT NOT NULL DEFAULT 0,
+    `magicResistance` BIGINT NOT NULL DEFAULT 0,
+    `damageDefenseType1` BIGINT NOT NULL DEFAULT 0,
+    `damageDefenseValue1` BIGINT NOT NULL DEFAULT 0,
+    `damageDefenseType2` BIGINT NOT NULL DEFAULT 0,
+    `damageDefenseValue2` BIGINT NOT NULL DEFAULT 0,
+    `damageDefenseType3` BIGINT NOT NULL DEFAULT 0,
+    `damageDefenseValue3` BIGINT NOT NULL DEFAULT 0,
+    `damageDefenseType4` BIGINT NOT NULL DEFAULT 0,
+    `damageDefenseValue4` BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (`catalogID`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `gamedata_items_equipment` (
+    `catalogID` BIGINT NOT NULL AUTO_INCREMENT,
+    `equipPoint` BIGINT NOT NULL DEFAULT 0,
+    `equipTribe` BIGINT NOT NULL DEFAULT 0,
+    `paramBonusType1` BIGINT NOT NULL DEFAULT 0,
+    `paramBonusValue1` BIGINT NOT NULL DEFAULT 0,
+    `paramBonusType2` BIGINT NOT NULL DEFAULT 0,
+    `paramBonusValue2` BIGINT NOT NULL DEFAULT 0,
+    `paramBonusType3` BIGINT NOT NULL DEFAULT 0,
+    `paramBonusValue3` BIGINT NOT NULL DEFAULT 0,
+    `paramBonusType4` BIGINT NOT NULL DEFAULT 0,
+    `paramBonusValue4` BIGINT NOT NULL DEFAULT 0,
+    `paramBonusType5` BIGINT NOT NULL DEFAULT 0,
+    `paramBonusValue5` BIGINT NOT NULL DEFAULT 0,
+    `paramBonusType6` BIGINT NOT NULL DEFAULT 0,
+    `paramBonusValue6` BIGINT NOT NULL DEFAULT 0,
+    `paramBonusType7` BIGINT NOT NULL DEFAULT 0,
+    `paramBonusValue7` BIGINT NOT NULL DEFAULT 0,
+    `paramBonusType8` BIGINT NOT NULL DEFAULT 0,
+    `paramBonusValue8` BIGINT NOT NULL DEFAULT 0,
+    `paramBonusType9` BIGINT NOT NULL DEFAULT 0,
+    `paramBonusValue9` BIGINT NOT NULL DEFAULT 0,
+    `paramBonusType10` BIGINT NOT NULL DEFAULT 0,
+    `paramBonusValue10` BIGINT NOT NULL DEFAULT 0,
+    `additionalEffect` BIGINT NOT NULL DEFAULT 0,
+    `materiaBindPermission` BIGINT NOT NULL DEFAULT 0,
+    `materializeTable` BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (`catalogID`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `gamedata_items_graphics` (
+    `catalogID` BIGINT NOT NULL AUTO_INCREMENT,
+    `weaponId` BIGINT NOT NULL DEFAULT 0,
+    `equipmentId` BIGINT NOT NULL DEFAULT 0,
+    `variantId` BIGINT NOT NULL DEFAULT 0,
+    `colorId` BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (`catalogID`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `gamedata_items_graphics_extra` (
+    `catalogID` BIGINT NOT NULL AUTO_INCREMENT,
+    `offHandWeaponId` BIGINT NOT NULL DEFAULT 0,
+    `offHandEquipmentId` BIGINT NOT NULL DEFAULT 0,
+    `offHandVarientId` BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (`catalogID`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `gamedata_items_weapon` (
+    `catalogID` BIGINT NOT NULL AUTO_INCREMENT,
+    `attack` BIGINT NOT NULL DEFAULT 0,
+    `magicAttack` BIGINT NOT NULL DEFAULT 0,
+    `craftProcessing` BIGINT NOT NULL DEFAULT 0,
+    `craftMagicProcessing` BIGINT NOT NULL DEFAULT 0,
+    `harvestPotency` BIGINT NOT NULL DEFAULT 0,
+    `harvestLimit` BIGINT NOT NULL DEFAULT 0,
+    `frequency` BIGINT NOT NULL DEFAULT 0,
+    `rate` BIGINT NOT NULL DEFAULT 0,
+    `magicRate` BIGINT NOT NULL DEFAULT 0,
+    `craftProcessControl` BIGINT NOT NULL DEFAULT 0,
+    `harvestRate` BIGINT NOT NULL DEFAULT 0,
+    `critical` BIGINT NOT NULL DEFAULT 0,
+    `magicCritical` BIGINT NOT NULL DEFAULT 0,
+    `parry` BIGINT NOT NULL DEFAULT 0,
+    `damageAttributeType1` BIGINT NOT NULL DEFAULT 0,
+    `damageAttributeValue1` DOUBLE NOT NULL DEFAULT 0,
+    `damageAttributeType2` BIGINT NOT NULL DEFAULT 0,
+    `damageAttributeValue2` DOUBLE NOT NULL DEFAULT 0,
+    `damageAttributeType3` BIGINT NOT NULL DEFAULT 0,
+    `damageAttributeValue3` DOUBLE NOT NULL DEFAULT 0,
+    `damagePower` BIGINT NOT NULL DEFAULT 0,
+    `damageInterval` DOUBLE NOT NULL DEFAULT 0,
+    `ammoVirtualDamagePower` BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (`catalogID`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `gamedata_passivegl_craft` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `plateId` BIGINT NOT NULL,
+    `borderId` BIGINT NOT NULL,
+    `recommendedClass` BIGINT NOT NULL,
+    `issuingLocation` BIGINT NOT NULL,
+    `guildleveLocation` BIGINT NOT NULL,
+    `deliveryDisplayName` BIGINT NOT NULL,
+    `unk1` BIGINT NOT NULL,
+    `unk2` BIGINT NOT NULL,
+    `unk3` BIGINT NOT NULL,
+    `unk4` BIGINT NOT NULL,
+    `objectiveItemId1` BIGINT NOT NULL,
+    `objectiveQuantity1` BIGINT NOT NULL,
+    `numberOfAttempts1` BIGINT NOT NULL,
+    `recommendedLevel1` BIGINT NOT NULL,
+    `rewardItemId1` BIGINT NOT NULL,
+    `rewardQuantity1` BIGINT NOT NULL,
+    `objectiveItemId2` BIGINT NOT NULL,
+    `objectiveQuantity2` BIGINT NOT NULL,
+    `numberOfAttempts2` BIGINT NOT NULL,
+    `recommendedLevel2` BIGINT NOT NULL,
+    `rewardItemId2` BIGINT NOT NULL,
+    `rewardQuantity2` BIGINT NOT NULL,
+    `objectiveItemId3` BIGINT NOT NULL,
+    `objectiveQuantity3` BIGINT NOT NULL,
+    `numberOfAttempts3` BIGINT NOT NULL,
+    `recommendedLevel3` BIGINT NOT NULL,
+    `rewardItemId3` BIGINT NOT NULL,
+    `rewardQuantity3` BIGINT NOT NULL,
+    `objectiveItemId4` BIGINT NOT NULL,
+    `objectiveQuantity4` BIGINT NOT NULL,
+    `numberOfAttempts4` BIGINT NOT NULL,
+    `recommendedLevel4` BIGINT NOT NULL,
+    `rewardItemId4` BIGINT NOT NULL,
+    `rewardQuantity4` BIGINT NOT NULL,
+    PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `gamedata_quests` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `questName` TEXT NOT NULL,
+    `className` TEXT NOT NULL,
+    `prerequisite` BIGINT NOT NULL,
+    `minLevel` BIGINT NOT NULL,
+    PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `gamedata_recipes` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `craftedItem` BIGINT NOT NULL,
+    `craftedQuantity` BIGINT NOT NULL,
+    `job` TEXT NOT NULL,
+    `level` BIGINT NOT NULL,
+    `dated` BIGINT DEFAULT NULL,
+    `kind` TEXT NOT NULL,
+    `crystal0ID` BIGINT NOT NULL DEFAULT 0,
+    `crystal0Quantity` BIGINT NOT NULL DEFAULT 0,
+    `crystal1ID` BIGINT NOT NULL DEFAULT 0,
+    `crystal1Quantity` BIGINT NOT NULL DEFAULT 0,
+    `facilities` BIGINT DEFAULT NULL,
+    `material0` BIGINT NOT NULL DEFAULT 0,
+    `material1` BIGINT NOT NULL DEFAULT 0,
+    `material2` BIGINT NOT NULL DEFAULT 0,
+    `material3` BIGINT NOT NULL DEFAULT 0,
+    `material4` BIGINT NOT NULL DEFAULT 0,
+    `material5` BIGINT NOT NULL DEFAULT 0,
+    `material6` BIGINT NOT NULL DEFAULT 0,
+    `material7` BIGINT NOT NULL DEFAULT 0,
+    `subSkill0Job` BIGINT DEFAULT NULL,
+    `subSkill0Level` TEXT DEFAULT NULL,
+    `subSkill1Job` BIGINT DEFAULT NULL,
+    `subSkill1Level` TEXT DEFAULT NULL,
+    PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `gamedata_regional_leves` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `leveType` BIGINT NOT NULL,
+    `plateId` BIGINT NOT NULL DEFAULT 0,
+    `borderId` BIGINT NOT NULL DEFAULT 0,
+    `recommendedClass` BIGINT NOT NULL DEFAULT 0,
+    `issuingLocation` BIGINT NOT NULL DEFAULT 0,
+    `guildleveLocation` BIGINT NOT NULL DEFAULT 0,
+    `deliveryDisplayName` BIGINT NOT NULL DEFAULT 0,
+    `region` BIGINT NOT NULL DEFAULT 0,
+    `objectiveTargetId1` BIGINT NOT NULL,
+    `objectiveQuantity1` BIGINT NOT NULL,
+    `recommendedLevel1` BIGINT NOT NULL DEFAULT 1,
+    `rewardItemId1` BIGINT NOT NULL DEFAULT 0,
+    `rewardQuantity1` BIGINT NOT NULL DEFAULT 0,
+    `rewardGil1` BIGINT NOT NULL DEFAULT 0,
+    `objectiveTargetId2` BIGINT NOT NULL,
+    `objectiveQuantity2` BIGINT NOT NULL,
+    `recommendedLevel2` BIGINT NOT NULL DEFAULT 1,
+    `rewardItemId2` BIGINT NOT NULL DEFAULT 0,
+    `rewardQuantity2` BIGINT NOT NULL DEFAULT 0,
+    `rewardGil2` BIGINT NOT NULL DEFAULT 0,
+    `objectiveTargetId3` BIGINT NOT NULL,
+    `objectiveQuantity3` BIGINT NOT NULL,
+    `recommendedLevel3` BIGINT NOT NULL DEFAULT 1,
+    `rewardItemId3` BIGINT NOT NULL DEFAULT 0,
+    `rewardQuantity3` BIGINT NOT NULL DEFAULT 0,
+    `rewardGil3` BIGINT NOT NULL DEFAULT 0,
+    `objectiveTargetId4` BIGINT NOT NULL,
+    `objectiveQuantity4` BIGINT NOT NULL,
+    `recommendedLevel4` BIGINT NOT NULL DEFAULT 1,
+    `rewardItemId4` BIGINT NOT NULL DEFAULT 0,
+    `rewardQuantity4` BIGINT NOT NULL DEFAULT 0,
+    `rewardGil4` BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `gamedata_static_actors` (
+    `actorId` BIGINT NOT NULL AUTO_INCREMENT,
+    `name` TEXT NOT NULL,
+    `classPath` TEXT NOT NULL,
+    PRIMARY KEY (`actorId`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `reserved_names` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `userId` BIGINT NOT NULL,
+    `name` TEXT NOT NULL,
+    PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `server_battle_commands` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `name` TEXT NOT NULL,
+    `classJob` BIGINT NOT NULL DEFAULT 0,
+    `lvl` BIGINT NOT NULL DEFAULT 0,
+    `requirements` BIGINT NOT NULL DEFAULT 0,
+    `mainTarget` BIGINT NOT NULL DEFAULT 0,
+    `validTarget` BIGINT NOT NULL DEFAULT 0,
+    `aoeType` BIGINT NOT NULL DEFAULT 0,
+    `aoeRange` DOUBLE NOT NULL DEFAULT 0,
+    `aoeMinRange` DOUBLE NOT NULL DEFAULT 0,
+    `aoeConeAngle` DOUBLE NOT NULL DEFAULT 0,
+    `aoeRotateAngle` DOUBLE NOT NULL DEFAULT 0,
+    `aoeTarget` BIGINT NOT NULL DEFAULT 0,
+    `basePotency` BIGINT NOT NULL DEFAULT 0,
+    `numHits` BIGINT NOT NULL DEFAULT 0,
+    `positionBonus` BIGINT NOT NULL DEFAULT 0,
+    `procRequirement` BIGINT NOT NULL DEFAULT 0,
+    `range` BIGINT NOT NULL DEFAULT 0,
+    `minRange` BIGINT NOT NULL DEFAULT 0,
+    `bestRange` BIGINT NOT NULL DEFAULT 0,
+    `rangeHeight` BIGINT NOT NULL DEFAULT 10,
+    `rangeWidth` BIGINT NOT NULL DEFAULT 2,
+    `statusId` BIGINT NOT NULL DEFAULT 0,
+    `statusDuration` BIGINT NOT NULL DEFAULT 0,
+    `statusChance` DOUBLE NOT NULL DEFAULT 0.5,
+    `castType` BIGINT NOT NULL DEFAULT 0,
+    `castTime` BIGINT NOT NULL DEFAULT 0,
+    `recastTime` BIGINT NOT NULL DEFAULT 0,
+    `mpCost` BIGINT NOT NULL DEFAULT 0,
+    `tpCost` BIGINT NOT NULL DEFAULT 0,
+    `animationType` BIGINT NOT NULL DEFAULT 0,
+    `effectAnimation` BIGINT NOT NULL DEFAULT 0,
+    `modelAnimation` BIGINT NOT NULL DEFAULT 0,
+    `animationDuration` BIGINT NOT NULL DEFAULT 0,
+    `battleAnimation` BIGINT NOT NULL DEFAULT 0,
+    `validUser` BIGINT NOT NULL DEFAULT 0,
+    `comboId1` BIGINT NOT NULL DEFAULT 0,
+    `comboId2` BIGINT NOT NULL DEFAULT 0,
+    `comboStep` BIGINT NOT NULL DEFAULT 0,
+    `accuracyMod` DOUBLE NOT NULL DEFAULT 1,
+    `worldMasterTextId` BIGINT NOT NULL DEFAULT 0,
+    `commandType` BIGINT NOT NULL DEFAULT 0,
+    `actionType` BIGINT NOT NULL DEFAULT 0,
+    `actionProperty` BIGINT NOT NULL DEFAULT 0,
+    `isRanged` BIGINT NOT NULL DEFAULT 0,
+    `magicPotency` BIGINT NOT NULL DEFAULT 0,
+    `mainStat` BIGINT NOT NULL DEFAULT -1,
+    `mainStatMod` DOUBLE NOT NULL DEFAULT 0,
+    `secondStat` BIGINT NOT NULL DEFAULT -1,
+    `secondStatMod` DOUBLE NOT NULL DEFAULT 0,
+    `damageMultiplier` DOUBLE NOT NULL DEFAULT 0,
+    PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `server_battle_traits` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `name` TEXT NOT NULL,
+    `classJob` BIGINT NOT NULL,
+    `lvl` BIGINT NOT NULL,
+    `modifier` BIGINT NOT NULL DEFAULT 0,
+    `bonus` BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `server_battlenpc_genus` (
+    `genusId` BIGINT NOT NULL AUTO_INCREMENT,
+    `name` TEXT NOT NULL,
+    `modelSize` BIGINT NOT NULL DEFAULT 1,
+    `speed` BIGINT NOT NULL DEFAULT 0,
+    `kindredId` BIGINT NOT NULL DEFAULT 0,
+    `kindredName` TEXT NOT NULL DEFAULT 'Unknown',
+    `detection` BIGINT NOT NULL DEFAULT 0,
+    `hpp` BIGINT NOT NULL DEFAULT 100,
+    `mpp` BIGINT NOT NULL DEFAULT 100,
+    `tpp` BIGINT NOT NULL DEFAULT 100,
+    `str` BIGINT NOT NULL DEFAULT 1,
+    `vit` BIGINT NOT NULL DEFAULT 1,
+    `dex` BIGINT NOT NULL DEFAULT 1,
+    `int` BIGINT NOT NULL DEFAULT 1,
+    `mnd` BIGINT NOT NULL DEFAULT 1,
+    `pie` BIGINT NOT NULL DEFAULT 1,
+    `att` BIGINT NOT NULL DEFAULT 1,
+    `acc` BIGINT NOT NULL DEFAULT 1,
+    `def` BIGINT NOT NULL DEFAULT 1,
+    `eva` BIGINT NOT NULL DEFAULT 1,
+    `slash` DOUBLE NOT NULL DEFAULT 1,
+    `pierce` DOUBLE NOT NULL DEFAULT 1,
+    `h2h` DOUBLE NOT NULL DEFAULT 1,
+    `blunt` DOUBLE NOT NULL DEFAULT 1,
+    `fire` DOUBLE NOT NULL DEFAULT 1,
+    `ice` DOUBLE NOT NULL DEFAULT 1,
+    `wind` DOUBLE NOT NULL DEFAULT 1,
+    `lightning` DOUBLE NOT NULL DEFAULT 1,
+    `earth` DOUBLE NOT NULL DEFAULT 1,
+    `water` DOUBLE NOT NULL DEFAULT 1,
+    `element` BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (`genusId`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- server_battlenpc_genus_mods: no primary key in SQLite
+CREATE TABLE IF NOT EXISTS `server_battlenpc_genus_mods` (
+    `genusId` BIGINT NOT NULL,
+    `modId` BIGINT NOT NULL,
+    `modVal` BIGINT NOT NULL,
+    `isMobMod` BIGINT NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `server_battlenpc_groups` (
+    `groupId` BIGINT NOT NULL AUTO_INCREMENT,
+    `poolId` BIGINT NOT NULL DEFAULT 0,
+    `scriptName` TEXT NOT NULL,
+    `minLevel` BIGINT NOT NULL DEFAULT 1,
+    `maxLevel` BIGINT NOT NULL DEFAULT 1,
+    `respawnTime` BIGINT NOT NULL DEFAULT 10,
+    `hp` BIGINT NOT NULL DEFAULT 0,
+    `mp` BIGINT NOT NULL DEFAULT 0,
+    `dropListId` BIGINT NOT NULL DEFAULT 0,
+    `allegiance` BIGINT NOT NULL DEFAULT 0,
+    `spawnType` BIGINT NOT NULL DEFAULT 0,
+    `animationId` BIGINT NOT NULL DEFAULT 0,
+    `actorState` BIGINT NOT NULL DEFAULT 0,
+    `privateAreaName` TEXT NOT NULL DEFAULT '',
+    `privateAreaLevel` BIGINT NOT NULL DEFAULT 0,
+    `zoneId` BIGINT NOT NULL,
+    PRIMARY KEY (`groupId`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `server_battlenpc_pool_mods` (
+    `poolId` BIGINT NOT NULL,
+    `modId` BIGINT NOT NULL,
+    `modVal` BIGINT NOT NULL,
+    `isMobMod` BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (`poolId`, `modId`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `server_battlenpc_pools` (
+    `poolId` BIGINT NOT NULL AUTO_INCREMENT,
+    `actorClassId` BIGINT NOT NULL,
+    `name` TEXT NOT NULL,
+    `genusId` BIGINT NOT NULL,
+    `currentJob` BIGINT NOT NULL DEFAULT 0,
+    `combatSkill` BIGINT NOT NULL,
+    `combatDelay` BIGINT NOT NULL,
+    `combatDmgMult` DOUBLE NOT NULL DEFAULT 1,
+    `aggroType` BIGINT NOT NULL DEFAULT 0,
+    `immunity` BIGINT NOT NULL DEFAULT 0,
+    `linkType` BIGINT NOT NULL DEFAULT 0,
+    `spellListId` BIGINT NOT NULL DEFAULT 0,
+    `skillListId` BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (`poolId`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `server_battlenpc_skill_list` (
+    `skillListId` BIGINT NOT NULL AUTO_INCREMENT,
+    `skillId` BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (`skillListId`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `server_battlenpc_spawn_locations` (
+    `bnpcId` BIGINT NOT NULL AUTO_INCREMENT,
+    `customDisplayName` TEXT NOT NULL DEFAULT '',
+    `groupId` BIGINT NOT NULL,
+    `positionX` DOUBLE NOT NULL,
+    `positionY` DOUBLE NOT NULL,
+    `positionZ` DOUBLE NOT NULL,
+    `rotation` DOUBLE NOT NULL,
+    PRIMARY KEY (`bnpcId`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- server_battlenpc_spawn_mods: no primary key in SQLite
+CREATE TABLE IF NOT EXISTS `server_battlenpc_spawn_mods` (
+    `bnpcId` BIGINT NOT NULL,
+    `modId` BIGINT NOT NULL,
+    `modVal` BIGINT NOT NULL,
+    `isMobMod` BIGINT NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `server_battlenpc_spell_list` (
+    `spellListId` BIGINT NOT NULL DEFAULT 0,
+    `spellId` BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (`spellListId`, `spellId`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `server_eventnpc_mapobj` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `layoutId` BIGINT NOT NULL,
+    `instanceId` BIGINT NOT NULL,
+    PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `server_gather_node_spawns` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `actorClassId` BIGINT NOT NULL,
+    `uniqueId` TEXT NOT NULL DEFAULT '',
+    `zoneId` BIGINT NOT NULL,
+    `privateAreaName` TEXT NOT NULL DEFAULT '',
+    `privateAreaLevel` BIGINT NOT NULL DEFAULT 0,
+    `positionX` DOUBLE NOT NULL,
+    `positionY` DOUBLE NOT NULL,
+    `positionZ` DOUBLE NOT NULL,
+    `rotation` DOUBLE NOT NULL DEFAULT 0.0,
+    `harvestNodeId` BIGINT NOT NULL,
+    `harvestType` BIGINT NOT NULL DEFAULT 22002,
+    PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `server_items` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `itemId` BIGINT NOT NULL,
+    `quantity` BIGINT NOT NULL DEFAULT 0,
+    `quality` BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `server_items_dealing` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `dealingValue` BIGINT NOT NULL DEFAULT 0,
+    `dealingMode` BIGINT NOT NULL DEFAULT 0,
+    `dealingAttached1` BIGINT DEFAULT 0,
+    `dealingAttached2` BIGINT NOT NULL DEFAULT 0,
+    `dealingAttached3` BIGINT NOT NULL DEFAULT 0,
+    `dealingTag` BIGINT NOT NULL DEFAULT 0,
+    `bazaarMode` BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `server_items_modifiers` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `durability` BIGINT NOT NULL DEFAULT 0,
+    `mainQuality` BIGINT NOT NULL DEFAULT 0,
+    `subQuality1` BIGINT NOT NULL DEFAULT 0,
+    `subQuality2` BIGINT NOT NULL DEFAULT 0,
+    `subQuality3` BIGINT NOT NULL DEFAULT 0,
+    `param1` BIGINT NOT NULL DEFAULT 0,
+    `param2` BIGINT NOT NULL DEFAULT 0,
+    `param3` BIGINT NOT NULL DEFAULT 0,
+    `spiritbind` BIGINT NOT NULL DEFAULT 0,
+    `materia1` BIGINT NOT NULL DEFAULT 0,
+    `materia2` BIGINT NOT NULL DEFAULT 0,
+    `materia3` BIGINT NOT NULL DEFAULT 0,
+    `materia4` BIGINT NOT NULL DEFAULT 0,
+    `materia5` BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `server_linkshells` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `name` VARCHAR(255) NOT NULL,
+    `crestIcon` BIGINT NOT NULL DEFAULT 0,
+    `crest` BIGINT NOT NULL DEFAULT 0,
+    `master` BIGINT NOT NULL DEFAULT 0,
+    `rank` BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uq_server_linkshells_name` (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `server_retainers` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `name` TEXT NOT NULL,
+    `actorClassId` BIGINT NOT NULL,
+    `cdIDOffset` BIGINT NOT NULL DEFAULT 0,
+    `placeName` BIGINT NOT NULL DEFAULT 0,
+    `conditions` BIGINT NOT NULL DEFAULT 0,
+    `level` BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `server_seamless_zonechange_bounds` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `regionId` BIGINT NOT NULL,
+    `zoneId1` BIGINT NOT NULL,
+    `zoneId2` BIGINT NOT NULL,
+    `zone1_boundingbox_x1` DOUBLE NOT NULL,
+    `zone1_boundingbox_y1` DOUBLE NOT NULL,
+    `zone1_boundingbox_x2` DOUBLE NOT NULL,
+    `zone1_boundingbox_y2` DOUBLE NOT NULL,
+    `zone2_boundingbox_x1` DOUBLE NOT NULL,
+    `zone2_boundingbox_x2` DOUBLE NOT NULL,
+    `zone2_boundingbox_y1` DOUBLE NOT NULL,
+    `zone2_boundingbox_y2` DOUBLE NOT NULL,
+    `merge_boundingbox_x1` DOUBLE NOT NULL,
+    `merge_boundingbox_y1` DOUBLE NOT NULL,
+    `merge_boundingbox_x2` DOUBLE NOT NULL,
+    `merge_boundingbox_y2` DOUBLE NOT NULL,
+    PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `server_sessions` (
+    `id` VARCHAR(255) NOT NULL,
+    `characterId` BIGINT NOT NULL,
+    `actorId` BIGINT NOT NULL,
+    PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `server_spawn_locations` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `actorClassId` BIGINT NOT NULL,
+    `uniqueId` TEXT NOT NULL DEFAULT '',
+    `zoneId` BIGINT NOT NULL,
+    `privateAreaName` TEXT NOT NULL DEFAULT '',
+    `privateAreaLevel` BIGINT NOT NULL DEFAULT 0,
+    `positionX` DOUBLE NOT NULL DEFAULT 0,
+    `positionY` DOUBLE NOT NULL DEFAULT 0,
+    `positionZ` DOUBLE NOT NULL DEFAULT 0,
+    `rotation` DOUBLE NOT NULL DEFAULT 0,
+    `actorState` BIGINT NOT NULL DEFAULT 0,
+    `animationId` BIGINT NOT NULL DEFAULT 0,
+    `customDisplayName` TEXT DEFAULT NULL,
+    PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `server_statuseffects` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `name` TEXT NOT NULL,
+    `flags` BIGINT NOT NULL DEFAULT 10,
+    `overwrite` BIGINT NOT NULL DEFAULT 1,
+    `tickMs` BIGINT NOT NULL DEFAULT 3000,
+    `hidden` BIGINT NOT NULL DEFAULT 0,
+    `silentOnGain` BIGINT NOT NULL DEFAULT 0,
+    `silentOnLoss` BIGINT NOT NULL DEFAULT 0,
+    `statusGainTextId` BIGINT NOT NULL DEFAULT 30328,
+    `statusLossTextId` BIGINT NOT NULL DEFAULT 30331,
+    PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `server_zones` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `regionId` BIGINT NOT NULL DEFAULT 0,
+    `zoneName` TEXT DEFAULT NULL,
+    `placeName` TEXT NOT NULL DEFAULT '',
+    `serverIp` TEXT NOT NULL DEFAULT '',
+    `serverPort` BIGINT NOT NULL DEFAULT 0,
+    `classPath` TEXT NOT NULL DEFAULT '',
+    `dayMusic` BIGINT DEFAULT 0,
+    `nightMusic` BIGINT DEFAULT 0,
+    `battleMusic` BIGINT DEFAULT 0,
+    `isIsolated` BIGINT DEFAULT 0,
+    `isInn` BIGINT DEFAULT 0,
+    `canRideChocobo` BIGINT DEFAULT 1,
+    `canStealth` BIGINT DEFAULT 0,
+    `isInstanceRaid` BIGINT DEFAULT 0,
+    `loadNavMesh` BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `server_zones_privateareas` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `parentZoneId` BIGINT NOT NULL,
+    `className` TEXT NOT NULL DEFAULT '',
+    `privateAreaName` TEXT NOT NULL DEFAULT '',
+    `privateAreaType` BIGINT NOT NULL DEFAULT 0,
+    `dayMusic` BIGINT DEFAULT 0,
+    `nightMusic` BIGINT DEFAULT 0,
+    `battleMusic` BIGINT DEFAULT 0,
+    PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `server_zones_spawnlocations` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `zoneId` BIGINT NOT NULL,
+    `privateAreaName` TEXT DEFAULT NULL,
+    `spawnType` BIGINT DEFAULT 0,
+    `spawnX` DOUBLE NOT NULL DEFAULT 0,
+    `spawnY` DOUBLE NOT NULL DEFAULT 0,
+    `spawnZ` DOUBLE NOT NULL DEFAULT 0,
+    `spawnRotation` DOUBLE NOT NULL DEFAULT 0,
+    PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `sessions` (
+    `id` VARCHAR(255) NOT NULL,
+    `userId` BIGINT NOT NULL,
+    `expiration` TEXT NOT NULL,
+    PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `supportdesk_faqs` (
+    `slot` BIGINT NOT NULL,
+    `languageCode` BIGINT NOT NULL,
+    `title` TEXT NOT NULL,
+    `body` TEXT NOT NULL,
+    PRIMARY KEY (`slot`, `languageCode`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `supportdesk_issues` (
+    `slot` BIGINT NOT NULL AUTO_INCREMENT,
+    `title` TEXT NOT NULL,
+    PRIMARY KEY (`slot`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `supportdesk_tickets` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `name` TEXT NOT NULL,
+    `title` TEXT NOT NULL,
+    `body` TEXT NOT NULL,
+    `langCode` BIGINT NOT NULL,
+    `isOpen` BIGINT NOT NULL DEFAULT 1,
+    PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `users` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `username` VARCHAR(255) NOT NULL,
+    `passwordHash` TEXT NOT NULL,
+    `email` TEXT DEFAULT NULL,
+    `createdAt` TEXT NOT NULL DEFAULT (UTC_TIMESTAMP()),
+    `gmLevel` BIGINT NOT NULL DEFAULT 0,
+    `gmTag` BIGINT NOT NULL DEFAULT 1,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uq_users_username` (`username`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `world_sessions` (
+    `account_id` BIGINT NOT NULL AUTO_INCREMENT,
+    `character_id` BIGINT NOT NULL,
+    `world_id` BIGINT NOT NULL,
+    `zone_id` BIGINT NOT NULL,
+    `map_server` TEXT NOT NULL,
+    `client_ip` TEXT NOT NULL,
+    `conn_seq` BIGINT NOT NULL,
+    `started_at` BIGINT NOT NULL,
+    `last_seen_at` BIGINT NOT NULL,
+    `state` TEXT NOT NULL,
+    PRIMARY KEY (`account_id`),
+    UNIQUE KEY `uq_world_sessions_character_id` (`character_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

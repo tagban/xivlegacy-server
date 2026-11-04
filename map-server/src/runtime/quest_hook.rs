@@ -295,13 +295,7 @@ mod tests {
         let registry = ActorRegistry::new();
         registry.insert(handle.clone()).await;
         let world = WorldManager::new();
-        let db_path = common::test_tmp::dir().join(format!(
-            "garlemald-quest-hook-{}.db",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let db_path = common::test_db::fresh_blocking();
         let db = crate::database::Database::open(db_path)
             .await
             .expect("db stub");
@@ -341,13 +335,7 @@ mod tests {
         let registry = ActorRegistry::new();
         registry.insert(handle.clone()).await;
         let world = WorldManager::new();
-        let db_path = common::test_tmp::dir().join(format!(
-            "garlemald-quest-hook-empty-{}.db",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let db_path = common::test_db::fresh_blocking();
         let db = crate::database::Database::open(db_path)
             .await
             .expect("db stub");
@@ -401,13 +389,7 @@ mod tests {
         registry.insert(handle.clone()).await;
         let world = WorldManager::new();
 
-        let db_path = common::test_tmp::dir().join(format!(
-            "garlemald-quest-hook-drain-{}.db",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let db_path = common::test_db::fresh_blocking();
         let db = crate::database::Database::open(db_path).await.expect("db");
         // AddExp reaches into characters_class_exp — seed the row so the
         // UPDATE has a target.

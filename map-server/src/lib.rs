@@ -122,7 +122,7 @@ pub async fn run() -> Result<()> {
         bind_ip = %config.bind_ip(),
         port = config.port(),
         world_id = config.world_id(),
-        db_path = %config.db_path().display(),
+        database = %common::sql::redact(&config.db_url()),
         script_root = %config.script_root().display(),
         load_from_database = config.load_from_database(),
         "config resolved"
@@ -147,8 +147,8 @@ pub async fn run() -> Result<()> {
         }
     }
 
-    tracing::info!(db_path = %config.db_path().display(), "opening sqlite database");
-    let db = match Database::open(config.db_path()).await {
+    tracing::info!(database = %common::sql::redact(&config.db_url()), "opening sqlite database");
+    let db = match Database::open(&config.db_url()).await {
         Ok(db) => Arc::new(db),
         Err(e) => {
             if smoke {
