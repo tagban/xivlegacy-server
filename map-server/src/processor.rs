@@ -746,10 +746,14 @@ impl PacketProcessor {
     /// on warps and zone changes, so walking and then logging out brought the
     /// player back at their last warp; HP/MP weren't saved at all.
     ///
+    /// Status effects are saved again too, so their time left counts the time
+    /// played since the last gain or loss: a closed window or a dropped
+    /// connection used to hand that time back at the next login.
+    ///
     /// The spot is left alone inside a content copy (relogs there go by the
     /// copy's own rules) and mid-warp (the warp saved its destination).
     pub(crate) async fn save_on_leave(&self, handle: &ActorHandle, session_id: u32) {
-        let (x, y, z, rot, hp, hp_max, mp, mp_max) = {
+        let (x, y, z, rot, hp, hp_max, mp, mp_max, statuses) = {
             let c = handle.character.read().await;
             (
                 c.base.position_x,
@@ -760,8 +764,16 @@ impl PacketProcessor {
                 c.chara.max_hp,
                 c.chara.mp,
                 c.chara.max_mp,
+                c.status_effects.to_db_entries(),
             )
         };
+        if let Err(e) = self
+            .db
+            .save_player_status_effects(handle.actor_id, &statuses)
+            .await
+        {
+            tracing::warn!(player = handle.actor_id, err = %e, "leave: status save failed");
+        }
         if let Err(e) = self
             .db
             .save_player_pools(handle.actor_id, hp, hp_max, mp, mp_max)

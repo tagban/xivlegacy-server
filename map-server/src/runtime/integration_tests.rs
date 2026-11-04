@@ -18178,6 +18178,23 @@ async fn leaving_saves_spot_and_pools_and_zone_in_resends_status_icons() {
         (saved.2, saved.3, saved.4, saved.5, saved.6),
         (ZONE, 300, 428, 150, 180)
     );
+    // ...and Protect, stamped now, so its time left counts the time played.
+    let (sid, start, saved_at): (u32, u32, u32) = db
+        .conn_for_test()
+        .call_db(|c| {
+            c.query_row(
+                "SELECT statusId, startTime, savedAt FROM characters_statuseffect WHERE characterId = 9",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+        })
+        .await
+        .unwrap();
+    assert_eq!((sid, start), (PROTECT, 1));
+    assert!(
+        saved_at > 1_700_000_000,
+        "savedAt must be now, got {saved_at}"
+    );
 
     // Mid-warp the warp's own save stands: HP/MP still save, the spot doesn't.
     {
