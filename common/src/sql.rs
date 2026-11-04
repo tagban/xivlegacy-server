@@ -623,6 +623,72 @@ fn number_placeholders(
     Ok((out, reordered))
 }
 
+/// Bind named parameters by position. The mysql crate reads a parameter name
+/// only up to its first capital letter, so `:hpMax` became `:hp` followed by
+/// the text `Max` (a syntax error), and every camelCase name failed. Names are
+/// matched whole here (letters, digits, `_`), outside quotes and comments, and
+/// sent as plain `?`.
+fn named_to_positional(
+    sql: &str,
+    named: Vec<(String, mysql::Value)>,
+) -> Result<(String, Vec<mysql::Value>)> {
+    let map: HashMap<&str, &mysql::Value> = named.iter().map(|(k, v)| (k.as_str(), v)).collect();
+    let bytes = sql.as_bytes();
+    let mut out = String::with_capacity(sql.len());
+    let mut values = Vec::new();
+    let mut copied = 0;
+    let mut i = 0;
+    let mut quote: Option<u8> = None;
+    while i < bytes.len() {
+        let c = bytes[i];
+        if let Some(q) = quote {
+            if c == q {
+                quote = None;
+            }
+            i += 1;
+            continue;
+        }
+        match c {
+            b'\'' | b'"' | b'`' => {
+                quote = Some(c);
+                i += 1;
+            }
+            b'-' if bytes.get(i + 1) == Some(&b'-') => {
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    i += 1;
+                }
+            }
+            b':' if bytes
+                .get(i + 1)
+                .is_some_and(|b| b.is_ascii_alphabetic() || *b == b'_')
+                && (i == 0 || bytes[i - 1] != b':') =>
+            {
+                let start = i + 1;
+                let mut end = start;
+                while end < bytes.len()
+                    && (bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_')
+                {
+                    end += 1;
+                }
+                let name = &sql[start..end];
+                let Some(v) = map.get(name) else {
+                    return Err(Error::Other(format!(
+                        "named parameter :{name} has no value"
+                    )));
+                };
+                out.push_str(&sql[copied..i]);
+                out.push('?');
+                values.push((*v).clone());
+                copied = end;
+                i = end;
+            }
+            _ => i += 1,
+        }
+    }
+    out.push_str(&sql[copied..]);
+    Ok((out, values))
+}
+
 fn to_mysql_params(sql: &str, p: SqlParams) -> Result<(String, mysql::Params)> {
     Ok(match p {
         SqlParams::Empty => (sql.to_string(), mysql::Params::Empty),
@@ -631,11 +697,8 @@ fn to_mysql_params(sql: &str, p: SqlParams) -> Result<(String, mysql::Params)> {
             (sql, mysql::Params::Positional(v))
         }
         SqlParams::Named(v) => {
-            let map: HashMap<Vec<u8>, mysql::Value> = v
-                .into_iter()
-                .map(|(k, val)| (k.into_bytes(), val))
-                .collect();
-            (sql.to_string(), mysql::Params::Named(map))
+            let (sql, v) = named_to_positional(sql, v)?;
+            (sql, mysql::Params::Positional(v))
         }
     })
 }
@@ -1070,6 +1133,53 @@ mod tests {
         .unwrap();
         assert_eq!(sql, "SELECT ?, '?1', ? -- ?3\n");
         assert_eq!(v, vec![mysql::Value::Int(2), mysql::Value::Int(1)]);
+    }
+
+    #[test]
+    fn named_parameters_bind_whole_names_by_position() {
+        let (sql, v) = named_to_positional(
+            "UPDATE t SET hp = :hp, hpMax = :hpMax, note = ':hp', \"c:x\" = :hp -- :nope\n\
+             WHERE id = :charaId AND a::b",
+            vec![
+                ("hp".into(), mysql::Value::Int(1)),
+                ("hpMax".into(), mysql::Value::Int(2)),
+                ("charaId".into(), mysql::Value::Int(9)),
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            sql,
+            "UPDATE t SET hp = ?, hpMax = ?, note = ':hp', \"c:x\" = ? -- :nope\n\
+             WHERE id = ? AND a::b"
+        );
+        assert_eq!(
+            v,
+            vec![
+                mysql::Value::Int(1),
+                mysql::Value::Int(2),
+                mysql::Value::Int(1),
+                mysql::Value::Int(9)
+            ]
+        );
+        assert!(named_to_positional("SELECT :missing", vec![]).is_err());
+    }
+
+    #[tokio::test]
+    async fn camel_case_named_parameters_reach_mariadb() {
+        let conn = Connection::open(&crate::test_db::empty().await.unwrap())
+            .await
+            .unwrap();
+        let got: (i64, i64) = conn
+            .call(|c| {
+                c.query_row(
+                    "SELECT :hp + 0, :hpMax + 0",
+                    crate::named_params! { ":hp": 1, ":hpMax": 2 },
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )
+            })
+            .await
+            .unwrap();
+        assert_eq!(got, (1, 2));
     }
 
     #[test]

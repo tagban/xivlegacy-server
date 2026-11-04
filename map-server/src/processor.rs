@@ -680,6 +680,26 @@ impl PacketProcessor {
                 )
                 .await;
             }
+            // Max HP/MP the way every later rebuild works them out (class and
+            // level, gear, food, the restored effects), so they don't jump at
+            // the first status or equip change.
+            crate::runtime::dispatcher::recalc_stats_at_login(
+                &self.registry,
+                &self.world,
+                l.catalogs(),
+                &self.db,
+                actor_id,
+            )
+            .await;
+        }
+        // Current HP/MP as saved at logout, within the maxima. At least 1 HP:
+        // a 0 here draws the death nameplate before the client is ready for it.
+        if let Some(h) = self.registry.get(actor_id).await {
+            let mut c = h.character.write().await;
+            let max_hp = c.chara.max_hp.max(1);
+            let max_mp = c.chara.max_mp.max(0);
+            c.chara.hp = loaded.parameter_save.hp[0].clamp(1, max_hp);
+            c.chara.mp = loaded.parameter_save.mp.clamp(0, max_mp);
         }
 
         // 4. Fire the zone-change that places the player in their zone —
@@ -722,9 +742,85 @@ impl PacketProcessor {
         Ok(())
     }
 
+    /// Save a leaving player's spot and HP/MP. The spot used to be saved only
+    /// on warps and zone changes, so walking and then logging out brought the
+    /// player back at their last warp; HP/MP weren't saved at all.
+    ///
+    /// The spot is left alone inside a content copy (relogs there go by the
+    /// copy's own rules) and mid-warp (the warp saved its destination).
+    pub(crate) async fn save_on_leave(&self, handle: &ActorHandle, session_id: u32) {
+        let (x, y, z, rot, hp, hp_max, mp, mp_max) = {
+            let c = handle.character.read().await;
+            (
+                c.base.position_x,
+                c.base.position_y,
+                c.base.position_z,
+                c.base.rotation,
+                c.chara.hp,
+                c.chara.max_hp,
+                c.chara.mp,
+                c.chara.max_mp,
+            )
+        };
+        if let Err(e) = self
+            .db
+            .save_player_pools(handle.actor_id, hp, hp_max, mp, mp_max)
+            .await
+        {
+            tracing::warn!(player = handle.actor_id, err = %e, "leave: hp/mp save failed");
+        }
+        let Some(s) = self.world.session(session_id).await else {
+            return;
+        };
+        if s.active_content_script.is_some() || s.reload_in_flight || s.current_zone_id == 0 {
+            tracing::debug!(
+                player = handle.actor_id,
+                zone = s.current_zone_id,
+                in_content = s.active_content_script.is_some(),
+                mid_warp = s.reload_in_flight,
+                "leave: position not saved"
+            );
+            return;
+        }
+        let pa = s.current_private_area_name.clone().unwrap_or_default();
+        match self
+            .db
+            .save_player_position(
+                handle.actor_id,
+                s.current_zone_id,
+                &pa,
+                s.current_private_area_level,
+                s.current_zone_id,
+                0x1,
+                x,
+                y,
+                z,
+                rot,
+            )
+            .await
+        {
+            Ok(()) => tracing::info!(
+                player = handle.actor_id,
+                zone = s.current_zone_id,
+                x,
+                y,
+                z,
+                hp,
+                mp,
+                "leave: position and hp/mp saved"
+            ),
+            Err(e) => {
+                tracing::warn!(player = handle.actor_id, err = %e, "leave: position save failed")
+            }
+        }
+    }
+
     async fn handle_session_end(&self, client: &ClientHandle, sub: &SubPacket) -> Result<()> {
         let session_id = sub.header.source_id;
         tracing::info!(session = session_id, "session end");
+        if let Some(handle) = self.registry.by_session(session_id).await {
+            self.save_on_leave(&handle, session_id).await;
+        }
         // Purge the leaving player's parked coroutines BEFORE the
         // registry forgets the session → actor mapping. The scheduler's
         // park map is keyed by player actor id and was previously only
@@ -4519,6 +4615,7 @@ impl PacketProcessor {
             return;
         }
         self.purge_status_effects_on_disconnect(&handle).await;
+        self.save_on_leave(&handle, session_id).await;
         let Some(client) = self.world.client(session_id).await else {
             tracing::debug!(
                 player = player_id,
@@ -4554,6 +4651,7 @@ impl PacketProcessor {
             return;
         }
         self.purge_status_effects_on_disconnect(&handle).await;
+        self.save_on_leave(&handle, session_id).await;
         let Some(client) = self.world.client(session_id).await else {
             tracing::debug!(
                 player = player_id,
@@ -10007,6 +10105,26 @@ impl PacketProcessor {
         // were ignored).
         if !had_deferred_warp && let Some(h) = self.registry.by_session(session_id).await {
             crate::linkshells::send_login(&self.registry, &self.world, &self.db, h.actor_id).await;
+            // Status icons and countdowns: the zone-in rebuilt the player's
+            // actor without them (effects restored at login showed none).
+            let mut outbox = crate::status::StatusOutbox::new();
+            h.character
+                .read()
+                .await
+                .status_effects
+                .resend_slots(&mut outbox);
+            if let Some(l) = self.lua.as_ref() {
+                for e in outbox.drain() {
+                    crate::runtime::dispatcher::dispatch_status_event(
+                        &e,
+                        &self.registry,
+                        &self.world,
+                        &self.db,
+                        l.catalogs(),
+                    )
+                    .await;
+                }
+            }
         }
         if let Some(kick) = parked_kick {
             if let Some(client) = self.world.client(session_id).await {

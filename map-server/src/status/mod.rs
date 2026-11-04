@@ -771,6 +771,29 @@ impl StatusEffectContainer {
             .collect()
     }
 
+    /// The icon and countdown of every filled slot. A zone-in rebuilds the
+    /// player's actor on the client without them, so effects restored at login
+    /// (or carried through a zone change) showed no icons until they changed.
+    /// Slot and time go out together, slot first: a countdown on an empty slot
+    /// crashes the client.
+    pub fn resend_slots(&self, outbox: &mut StatusOutbox) {
+        for (i, &status_id) in self.status.iter().enumerate() {
+            if status_id == 0 {
+                continue;
+            }
+            outbox.push(StatusEvent::PacketSetStatus {
+                owner_actor_id: self.owner_actor_id,
+                slot_index: i as u16,
+                status_id,
+            });
+            outbox.push(StatusEvent::PacketSetStatusTime {
+                owner_actor_id: self.owner_actor_id,
+                slot_index: i as u16,
+                expires_at: self.status_shown_time[i],
+            });
+        }
+    }
+
     // --- charaWork slot helpers -------------------------------------------
 
     fn set_status_at_index(&mut self, index: u16, status_id: u16, outbox: &mut StatusOutbox) {
@@ -810,6 +833,43 @@ mod tests {
             /* owner */ 0, id, /* mag */ 1.0, /* tick_ms */ 0, duration, 0,
             /* now_ms */ 0,
         )
+    }
+
+    #[test]
+    fn resend_slots_sends_each_filled_slot_icon_then_time() {
+        let mut c = StatusEffectContainer::new(42);
+        let mut ob = StatusOutbox::new();
+        c.add_status_effect(mk(STATUS_POISON, 30), 42, 1_000, 30328, &mut ob);
+        c.add_status_effect(mk(STATUS_RAMPART, 60), 42, 1_000, 30328, &mut ob);
+        let mut again = StatusOutbox::new();
+        c.resend_slots(&mut again);
+        let events = again.drain();
+        assert_eq!(events.len(), 4);
+        for pair in events.chunks(2) {
+            match (&pair[0], &pair[1]) {
+                (
+                    StatusEvent::PacketSetStatus {
+                        owner_actor_id: 42,
+                        slot_index: a,
+                        status_id,
+                    },
+                    StatusEvent::PacketSetStatusTime {
+                        owner_actor_id: 42,
+                        slot_index: b,
+                        expires_at,
+                    },
+                ) => {
+                    assert_eq!(a, b);
+                    assert_eq!(*status_id, c.status[*a as usize]);
+                    assert_eq!(*expires_at, c.status_shown_time[*a as usize]);
+                    assert!(*status_id != 0 && *expires_at != 0);
+                }
+                other => panic!("expected icon then time, got {other:?}"),
+            }
+        }
+        let mut empty = StatusOutbox::new();
+        StatusEffectContainer::new(7).resend_slots(&mut empty);
+        assert!(empty.drain().is_empty());
     }
 
     #[test]

@@ -3263,6 +3263,31 @@ async fn apply_recalc_stats(
     db: &crate::database::Database,
     actor_id: u32,
 ) {
+    recalc_stats(registry, world, catalogs, db, actor_id, true).await;
+}
+
+/// The same rebuild for a player still logging in: the client isn't in the
+/// world yet, so nothing is sent (the zone-in bundle carries the pools).
+/// Login used to seed max HP/MP from the saved row and skip gear, so the
+/// first status or equip change moved them.
+pub(crate) async fn recalc_stats_at_login(
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    catalogs: &std::sync::Arc<crate::lua::Catalogs>,
+    db: &crate::database::Database,
+    actor_id: u32,
+) {
+    recalc_stats(registry, world, catalogs, db, actor_id, false).await;
+}
+
+async fn recalc_stats(
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    catalogs: &std::sync::Arc<crate::lua::Catalogs>,
+    db: &crate::database::Database,
+    actor_id: u32,
+    broadcast: bool,
+) {
     let Some(handle) = registry.get(actor_id).await else {
         return;
     };
@@ -3344,6 +3369,7 @@ async fn apply_recalc_stats(
     // keeps no-op recalcs (e.g. status-effect tick reroute) quiet — a
     // Player standing still with no equip events fires ~0 bundles/sec.
     if let (Some(pre), Some(post)) = (pre_pools, post_pools)
+        && broadcast
         && pre != post
     {
         let hp = post.0.max(0) as u16;

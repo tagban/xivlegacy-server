@@ -540,6 +540,15 @@ impl Database {
     pub async fn end_world_session(&self, character_id: u32, conn_seq: u64) -> Result<bool> {
         self.conn
             .call_db(move |c| {
+                // The zone they left, for the logout row.
+                let zone: u32 = c
+                    .query_row(
+                        "SELECT zone_id FROM world_sessions WHERE character_id = :c AND conn_seq = :seq",
+                        named_params! { ":c": character_id, ":seq": conn_seq as i64 },
+                        |r| r.get(0),
+                    )
+                    .optional()?
+                    .unwrap_or(0);
                 let n = c.execute(
                     "DELETE FROM world_sessions WHERE character_id = :c AND conn_seq = :seq",
                     named_params! { ":c": character_id, ":seq": conn_seq as i64 },
@@ -549,7 +558,7 @@ impl Database {
                         "UPDATE characters SET lastActiveAt = :now WHERE id = :c",
                         named_params! { ":c": character_id, ":now": now_s() },
                     )?;
-                    activity::session(c, 0, character_id, "logout", 0, "");
+                    activity::session(c, 0, character_id, "logout", zone, "");
                 }
                 Ok(n > 0)
             })
