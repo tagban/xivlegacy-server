@@ -132,12 +132,18 @@ PLAYER_WS_LISTS = [
     (126, 'Enemy archer', {7, 18}, r'archer|bowman', 7),
 ]
 
+# Moves an archived 1.0 Gamer Escape page says knock back ("knocking
+# them back"), with a guessed strength 1-5 (the client's knockback
+# hit-effect levels). Dream Bubble is wind damage + knockback, not sleep.
+KNOCKBACK = {'Drop Kick': 1, 'Tender Thrust': 1, 'Dream Bubble': 1,
+             'Bone Breaker': 2, 'Iron Chariot': 2, 'Vulcan Burst': 3}
+
 # Inside a block but known to belong elsewhere (a stray copy of another
 # family's move): left out of the block's kind.
 SKIP = {23560}  # Formic Pheromones inside Garuda's block
 
 STATUS = [  # (word in the move name, status id) for moves whose effect the name gives away
-    ('Slumber', 228001), ('Lullaby', 228001), ('Dream Bubble', 228001), ('Yawn', 228001),
+    ('Slumber', 228001), ('Lullaby', 228001), ('Yawn', 228001),
     ('Silencing', 223006), ('Blinding', 223007), ('Petrify', 223004), ('Stone Gaze', 223004),
     ('Queasy', 223011), ('Poison', 223011), ('Numbing', 223005), ('Binding', 228011),
     ('Sticky Web', 228011), ('Stun', 223015),
@@ -264,7 +270,9 @@ for k in sorted(sheet, key=int):
                          100, 1, 0, 0, rng, 0, 0, 10, 2, status, 15 if status else 0, 1.0 if status else 0.0,
                          11 if cast else 0, cast, recast, 0, 0, 19, 0, slot, 3, anim, 0, 0, 0, 3, 0.0, 30301,
                          2, action_type, prop, is_ranged, 0, -1, 0.0, -1, 0.0, 0.0))
-    info_rows.append([i, n, genus_of(lid), lid, fam, evidence, slot, m['row_id'] if m else 0, notes])
+    if n in KNOCKBACK:
+        notes.append(f'knockback {KNOCKBACK[n]} (1.0 page)')
+    info_rows.append([i, n, genus_of(lid), lid, fam, evidence, slot, m['row_id'] if m else 0, KNOCKBACK.get(n, 0), notes])
     if lid:
         list_rows.append([lid, i, 1, '', evidence])
         stats['listed'] += 1
@@ -301,7 +309,7 @@ for l in open(f'{REPO}/common/sql/data/server_battle_commands.sql'):
     for lid, fam, jobs, rx, job in PLAYER_WS_LISTS:
         if cjob == job and ctype == 2 and main & 0x100:
             disp = ' '.join(w if w in ('of', 'the') else w.capitalize() for w in cname.split('_'))
-            info_rows.append([cid, disp, 0, lid, fam, 'class', 0, 0, ['player weaponskill']])
+            info_rows.append([cid, disp, 0, lid, fam, 'class', 0, 0, 0, ['player weaponskill']])
             list_rows.append([lid, cid, clvl, 'class', 'class'])
             stats['player_ws'] += 1
 POOL_RE = re.compile(r"^(\((\d+), (\d+), '((?:[^']|'')*)', (\d+), (\d+), .*, )(\d+), (\d+)\)([,;])$", re.M)
@@ -408,12 +416,12 @@ level_of = {r[1]: (r[2], r[3]) for r in list_rows}
 for r in info_rows:
     if r[0] in level_of and level_of[r[0]][1]:
         lv, src = level_of[r[0]]
-        r[8].append(f'unlocks at level {lv} ({src})')
-    r[8] = '; '.join(r[8])
+        r[9].append(f'unlocks at level {lv} ({src})')
+    r[9] = "; ".join(r[9])
 
 open(f'{REPO}/common/sql/data/server_battlenpc_skill_info.sql', 'w').write(table_file(
     'server_battlenpc_skill_info',
-    ['skillId', 'displayName', 'genusId', 'skillListId', 'family', 'evidence', 'slot', 'modernActionId', 'notes'], info_rows,
+    ['skillId', 'displayName', 'genusId', 'skillListId', 'family', 'evidence', 'slot', 'modernActionId', 'knockback', 'notes'], info_rows,
     'Monster moves (1.23b command sheet 23011-23645): kind, list, evidence (zam / ge / modern / block / name / empty = unassigned), modern match. Built by tools/monster_skills.'))
 open(f'{REPO}/common/sql/data/server_battlenpc_skill_list.sql', 'w').write(table_file(
     'server_battlenpc_skill_list', ['skillListId', 'skillId', 'minLevel', 'levelSource', 'evidence'], list_rows,
