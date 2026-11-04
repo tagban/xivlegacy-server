@@ -40,6 +40,10 @@ by the pool's `currentJob` or name, for pools with no kind list.
 `SPELL_LISTS` holds the "II" tier spells of the monster spell block
 (thaumaturge 120, conjurer 121); they go in the pool's `spellListId`
 (same table), so a caster keeps its kind's moves too.
+The client has no monster copies of gladiator or archer actions, so
+`PLAYER_WS_LISTS` gives those enemies the player weaponskills of the class
+(enemy-targeted weaponskill rows; gladiator 125, archer 126) at their 1.0
+learn level, evidence `class`.
 
 Evidence per move: `zam` (a ZAM page shows that family using it), `ge` (an
 archived 1.0 Gamer Escape page names the family), `modern` (only an

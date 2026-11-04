@@ -1975,7 +1975,14 @@ mod tests {
     /// and still hits the player inside its 6 y radius.
     #[tokio::test]
     async fn monster_tp_moves_land_and_spend_tp() {
-        for (move_id, expect_self_target) in [(23012u16, false), (23090u16, true)] {
+        // Gladiator and archer enemies use player weaponskills (lists
+        // 125 / 126): Fast Blade 27150 and Heavy Shot 27228.
+        for (move_id, expect_self_target) in [
+            (23012u16, false),
+            (23090u16, true),
+            (27150u16, false),
+            (27228u16, false),
+        ] {
             let (ticker, _zone, _rx) = setup_engaged_npc_vs_player(2.0, |_| {}).await;
             let (catalog, _) = ticker
                 .db
@@ -2099,6 +2106,81 @@ mod tests {
             .await
             .get_hp();
         assert_eq!(player_hp, 1000, "the move has not landed yet");
+    }
+
+    /// A monster-centered area move hits the players around it, never
+    /// the monster itself or a second monster standing beside it.
+    #[tokio::test]
+    async fn monster_area_move_spares_monsters() {
+        let (ticker, zone, _rx) = setup_engaged_npc_vs_player(2.0, |_| {}).await;
+        // A second monster 1 y from the user, well inside Bleat's 6 y.
+        {
+            let mut ob = AreaOutbox::new();
+            zone.write().await.core.add_actor(
+                StoredActor {
+                    actor_id: 3,
+                    kind: ActorKind::BattleNpc,
+                    position: Vector3::new(3.0, 0.0, 0.0),
+                    grid: (0, 0),
+                    is_alive: true,
+                },
+                &mut ob,
+            );
+            let mut other = Character::new(3);
+            other.chara.hp = 1000;
+            other.chara.max_hp = 1000;
+            other.chara.level = 10;
+            other.base.position_x = 3.0;
+            ticker
+                .registry
+                .insert(ActorHandle::new(3, ActorKindTag::BattleNpc, 100, 0, other))
+                .await;
+        }
+        let (catalog, _) = ticker.db.load_global_battle_command_list().await.unwrap();
+        let bleat = catalog.get(&23090).unwrap().to_battle_command();
+        let mut player_hp = 1000;
+        for attempt in 0..10u64 {
+            {
+                let handle = ticker.registry.get(2).await.unwrap();
+                let mut c = handle.character.write().await;
+                c.chara.tp = 1000;
+                let ctrl = c.ai_container.controller.as_mut().unwrap();
+                ctrl.battle.skills = vec![bleat.clone()];
+                ctrl.battle.next_skill_ms = 0;
+                ctrl.auto_attack_enabled = false;
+            }
+            for i in 1..=40u64 {
+                ticker.tick_once(attempt * 4_000 + i * 100).await;
+            }
+            player_hp = ticker
+                .registry
+                .get(1)
+                .await
+                .unwrap()
+                .character
+                .read()
+                .await
+                .get_hp();
+            if player_hp < 1000 {
+                break;
+            }
+        }
+        assert!(player_hp < 1000, "Bleat must hit the player");
+        for id in [2u32, 3] {
+            let hp = ticker
+                .registry
+                .get(id)
+                .await
+                .unwrap()
+                .character
+                .read()
+                .await
+                .get_hp();
+            assert_eq!(
+                hp, 1000,
+                "monster {id} must not be hit by a monster's Bleat"
+            );
+        }
     }
 
     /// Below 1000 TP a monster never uses a move.

@@ -124,6 +124,14 @@ SPELL_LISTS = [
     (121, 'Enemy conjurer', {23, 24}, r'medicus|soilseer|bedesman|shaman', CNJ_SPELLS),
 ]
 
+# Class lists with no monster copies in the client (gladiator, archer):
+# the enemy uses the player weaponskills of that class (enemy-targeted
+# weaponskill rows of server_battle_commands), at the 1.0 learn level.
+PLAYER_WS_LISTS = [
+    (125, 'Enemy gladiator', {3, 16}, r'gladiator', 3),
+    (126, 'Enemy archer', {7, 18}, r'archer|bowman', 7),
+]
+
 # Inside a block but known to belong elsewhere (a stray copy of another
 # family's move): left out of the block's kind.
 SKIP = {23560}  # Formic Pheromones inside Garuda's block
@@ -282,6 +290,20 @@ def table_file(name, cols, rows, note):
 # pools -> lists: a named boss's own list first, then a kind whose name
 # pattern matches the pool, then a kind that covers the pool's genus
 ppath = f'{REPO}/common/sql/data/server_battlenpc_pools.sql'
+# player weaponskill lists (see PLAYER_WS_LISTS)
+for l in open(f'{REPO}/common/sql/data/server_battle_commands.sql'):
+    if not l.startswith('('):
+        continue
+    f = [x.strip() for x in l.strip().rstrip(',;').strip('()').split(',')]
+    if len(f) < 42:
+        continue
+    cid, cname, cjob, clvl, main, ctype = int(f[0]), f[1].strip("'"), int(f[2]), int(f[3]), int(f[5]), int(f[41])
+    for lid, fam, jobs, rx, job in PLAYER_WS_LISTS:
+        if cjob == job and ctype == 2 and main & 0x100:
+            disp = ' '.join(w if w in ('of', 'the') else w.capitalize() for w in cname.split('_'))
+            info_rows.append([cid, disp, 0, lid, fam, 'class', 0, 0, ['player weaponskill']])
+            list_rows.append([lid, cid, clvl, 'class', 'class'])
+            stats['player_ws'] += 1
 POOL_RE = re.compile(r"^(\((\d+), (\d+), '((?:[^']|'')*)', (\d+), (\d+), .*, )(\d+), (\d+)\)([,;])$", re.M)
 listed = {r[0] for r in list_rows}
 def list_for(pool, name, genus, job):
@@ -293,6 +315,9 @@ def list_for(pool, name, genus, job):
         if rx and re.search(rx, name, re.I):
             return lid
     for lid, fam, jobs, rx, blocks in JOB_LISTS:
+        if job in jobs or re.search(rx, name, re.I):
+            return lid
+    for lid, fam, jobs, rx, cls in PLAYER_WS_LISTS:
         if job in jobs or re.search(rx, name, re.I):
             return lid
     for lid, fam, genera, rx, named, blocks, aliases in KINDS:
@@ -344,6 +369,8 @@ for lid, rows in by_list.items():
         for r in rows:
             r[2], r[3] = 1, 'boss'
         continue
+    if lid in {w[0] for w in PLAYER_WS_LISTS}:
+        continue  # learn levels already set
     if lid not in span:
         continue  # no pools use it yet: level 1, no source
     lo, hi = span[lid]

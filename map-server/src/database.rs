@@ -6941,5 +6941,17 @@ mod monster_skill_tests {
         // caster spell lists share the table: thaumaturge (120) and conjurer (121)
         assert!(lists[&120].iter().any(|s| s.skill_id == 23508), "Fire II");
         assert!(lists[&121].iter().any(|s| s.skill_id == 23517), "Stone II");
+        // gladiator enemies: player weaponskills at their learn level
+        let gla = &lists[&125];
+        let at = |id: u16| gla.iter().find(|s| s.skill_id == id).unwrap().min_level;
+        assert_eq!(
+            (at(27150), at(27152), at(27153)),
+            (1, 10, 50),
+            "Fast/Savage/Goring Blade"
+        );
+        assert!(
+            lists[&126].iter().any(|s| s.skill_id == 27228),
+            "Heavy Shot"
+        );
     }
 }

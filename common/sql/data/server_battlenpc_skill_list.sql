@@ -1,4 +1,4 @@
--- server_battlenpc_skill_list: game data, 429 rows. Reloaded whole when this file changes.
+-- server_battlenpc_skill_list: game data, 446 rows. Reloaded whole when this file changes.
 -- One list per monster kind (skillListId = genusId, 101+ for kinds with no genus, poolId for a named boss); minLevel gates each move.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_skill_list`;
@@ -431,4 +431,21 @@ INSERT INTO `server_battlenpc_skill_list` (`skillListId`, `skillId`, `minLevel`,
 (103, 23640, 1, '', 'block'),
 (103, 23641, 1, '', 'block'),
 (109, 23642, 1, '', 'modern'),
-(109, 23643, 1, '', 'modern');
+(109, 23643, 1, '', 'modern'),
+(125, 27150, 1, 'class', 'class'),
+(125, 27151, 26, 'class', 'class'),
+(125, 27152, 10, 'class', 'class'),
+(125, 27153, 50, 'class', 'class'),
+(125, 27154, 30, 'class', 'class'),
+(125, 27155, 46, 'class', 'class'),
+(125, 27156, 18, 'class', 'class'),
+(125, 27157, 38, 'class', 'class'),
+(125, 27158, 4, 'class', 'class'),
+(126, 27228, 1, 'class', 'class'),
+(126, 27229, 10, 'class', 'class'),
+(126, 27230, 50, 'class', 'class'),
+(126, 27231, 38, 'class', 'class'),
+(126, 27233, 4, 'class', 'class'),
+(126, 27234, 30, 'class', 'class'),
+(126, 27235, 46, 'class', 'class'),
+(126, 27236, 18, 'class', 'class');

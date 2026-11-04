@@ -1,4 +1,4 @@
--- server_battlenpc_skill_info: game data, 476 rows. Reloaded whole when this file changes.
+-- server_battlenpc_skill_info: game data, 493 rows. Reloaded whole when this file changes.
 -- Monster moves (1.23b command sheet 23011-23645): kind, list, evidence (zam / ge / modern / block / name / empty = unassigned), modern match. Built by tools/monster_skills.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_skill_info`;
@@ -478,4 +478,21 @@ INSERT INTO `server_battlenpc_skill_info` (`skillId`, `displayName`, `genusId`, 
 (23640, 'Boulder Clap', 0, 103, 'Golem', 'block', 3, 444, 'modern Action 444'),
 (23641, 'Landslide', 0, 103, 'Golem', 'block', 4, 650, 'modern Action 650'),
 (23642, 'Switch Swipe', 0, 109, 'Treant', 'modern', 1, 0, 'ARR-era Gamer Escape page: family Treant'),
-(23643, 'Switch Swipe', 0, 109, 'Treant', 'modern', 2, 0, 'ARR-era Gamer Escape page: family Treant');
+(23643, 'Switch Swipe', 0, 109, 'Treant', 'modern', 2, 0, 'ARR-era Gamer Escape page: family Treant'),
+(27150, 'Fast Blade', 0, 125, 'Enemy gladiator', 'class', 0, 0, 'player weaponskill; unlocks at level 1 (class)'),
+(27151, 'Flat Blade', 0, 125, 'Enemy gladiator', 'class', 0, 0, 'player weaponskill; unlocks at level 26 (class)'),
+(27152, 'Savage Blade', 0, 125, 'Enemy gladiator', 'class', 0, 0, 'player weaponskill; unlocks at level 10 (class)'),
+(27153, 'Goring Blade', 0, 125, 'Enemy gladiator', 'class', 0, 0, 'player weaponskill; unlocks at level 50 (class)'),
+(27154, 'Riot Blade', 0, 125, 'Enemy gladiator', 'class', 0, 0, 'player weaponskill; unlocks at level 30 (class)'),
+(27155, 'Rage of Halone', 0, 125, 'Enemy gladiator', 'class', 0, 0, 'player weaponskill; unlocks at level 46 (class)'),
+(27156, 'Shield Bash', 0, 125, 'Enemy gladiator', 'class', 0, 0, 'player weaponskill; unlocks at level 18 (class)'),
+(27157, 'War Drum', 0, 125, 'Enemy gladiator', 'class', 0, 0, 'player weaponskill; unlocks at level 38 (class)'),
+(27158, 'Phalanx', 0, 125, 'Enemy gladiator', 'class', 0, 0, 'player weaponskill; unlocks at level 4 (class)'),
+(27228, 'Heavy Shot', 0, 126, 'Enemy archer', 'class', 0, 0, 'player weaponskill; unlocks at level 1 (class)'),
+(27229, 'Leaden Arrow', 0, 126, 'Enemy archer', 'class', 0, 0, 'player weaponskill; unlocks at level 10 (class)'),
+(27230, 'Wide Volley', 0, 126, 'Enemy archer', 'class', 0, 0, 'player weaponskill; unlocks at level 50 (class)'),
+(27231, 'Quick Nock', 0, 126, 'Enemy archer', 'class', 0, 0, 'player weaponskill; unlocks at level 38 (class)'),
+(27233, 'Piercing Arrow', 0, 126, 'Enemy archer', 'class', 0, 0, 'player weaponskill; unlocks at level 4 (class)'),
+(27234, 'Gloom Arrow', 0, 126, 'Enemy archer', 'class', 0, 0, 'player weaponskill; unlocks at level 30 (class)'),
+(27235, 'Bloodletter', 0, 126, 'Enemy archer', 'class', 0, 0, 'player weaponskill; unlocks at level 46 (class)'),
+(27236, 'Shadowbind', 0, 126, 'Enemy archer', 'class', 0, 0, 'player weaponskill; unlocks at level 18 (class)');
