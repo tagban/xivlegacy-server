@@ -628,6 +628,20 @@ async fn resolve_auto_attack(
     let Some(defender_handle) = registry.get(defender_actor_id).await else {
         return;
     };
+    // Cover: a melee swing at a Covered actor lands on their paladin.
+    let ranged = attacker_handle
+        .character
+        .read()
+        .await
+        .chara
+        .mods
+        .get(crate::actor::modifier::Modifier::AttackRange)
+        > f64::from(COVER_RANGE_YALMS);
+    let (defender_actor_id, defender_handle) =
+        match covering_actor(registry, &defender_handle).await {
+            Some((id, h)) if !ranged && id != attacker_actor_id => (id, h),
+            _ => (defender_actor_id, defender_handle),
+        };
 
     // Attacker snapshot — released before we lock the defender.
     let root = script_root(lua);
@@ -822,12 +836,14 @@ async fn resolve_auto_attack(
     }
 
     let mut attacker_pools_moved = false;
+    let party_statuses = std::mem::take(&mut hook_queue.party_status);
     if !hook_queue.is_empty() {
         let mut a = attacker_handle.character.write().await;
         attacker_pools_moved = hook_queue.apply(&mut a, lua, hook_now_ms, &mut hook_outbox);
     }
     flush_wake_outbox(wake_outbox, registry, world, lua, db).await;
     flush_wake_outbox(hook_outbox, registry, world, lua, db).await;
+    apply_party_statuses(party_statuses, registry, world, lua, db).await;
 
     // #28 S3.3 — attacker TP per landed swing (pmeteor
     // `Character.OnAttack`, Character.cs:886-895): delay-seconds × 100.
@@ -1142,6 +1158,102 @@ fn replace_status_from_hook(
 }
 
 const STATUS_BLISSFUL_MIND: u32 = 223228;
+const STATUS_COVERED: u32 = 223173;
+/// Covered only redirects while its paladin stands this close (pmeteor
+/// `covered.lua`), and only melee: attacks from farther out are ranged.
+const COVER_RANGE_YALMS: f32 = 8.0;
+
+/// The paladin covering `defender` (pmeteor `covered.lua` onPreAction,
+/// which only reassigned a local there): the Covered effect's source,
+/// alive, in the same zone and within [`COVER_RANGE_YALMS`].
+async fn covering_actor(
+    registry: &ActorRegistry,
+    defender: &crate::runtime::actor_registry::ActorHandle,
+) -> Option<(u32, crate::runtime::actor_registry::ActorHandle)> {
+    let (source, zone, pos) = {
+        let d = defender.character.read().await;
+        let e = d.status_effects.get(STATUS_COVERED)?;
+        (
+            e.source_actor_id,
+            d.base.zone_id,
+            common::Vector3::new(d.base.position_x, d.base.position_y, d.base.position_z),
+        )
+    };
+    if source == 0 || source == defender.actor_id {
+        return None;
+    }
+    let h = registry.get(source).await?;
+    let near = {
+        let c = h.character.read().await;
+        c.is_alive()
+            && c.base.zone_id == zone
+            && common::utils::distance(
+                pos,
+                common::Vector3::new(c.base.position_x, c.base.position_y, c.base.position_z),
+            ) <= COVER_RANGE_YALMS
+    };
+    near.then_some((source, h))
+}
+
+/// Hand out the party statuses the hooks asked for
+/// (`AddPartyStatusEffect`): every living party member of the owner, in
+/// the owner's zone and within range of them, the owner included.
+async fn apply_party_statuses(
+    list: Vec<crate::status::script::HookPartyStatus>,
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    lua: Option<&Arc<crate::lua::LuaEngine>>,
+    db: Option<&Arc<crate::database::Database>>,
+) {
+    let Some(db) = db else {
+        return;
+    };
+    let now_ms = (common::utils::unix_timestamp() as u64).saturating_mul(1000);
+    for p in list {
+        let Some(owner) = registry.get(p.owner).await else {
+            continue;
+        };
+        let (zone, pos) = {
+            let c = owner.character.read().await;
+            (
+                c.base.zone_id,
+                common::Vector3::new(c.base.position_x, c.base.position_y, c.base.position_z),
+            )
+        };
+        for member in crate::parties::members_of(p.owner) {
+            let Some(h) = registry.get(member).await else {
+                continue;
+            };
+            let near = {
+                let c = h.character.read().await;
+                c.is_alive()
+                    && c.base.zone_id == zone
+                    && common::utils::distance(
+                        pos,
+                        common::Vector3::new(
+                            c.base.position_x,
+                            c.base.position_y,
+                            c.base.position_z,
+                        ),
+                    ) <= p.range
+            };
+            if !near {
+                continue;
+            }
+            let mut cmd = BattleCommand::new(0, "");
+            cmd.status_id = p.status_id;
+            cmd.status_duration = p.duration;
+            cmd.status_magnitude = p.magnitude;
+            cmd.status_tier = p.tier;
+            let effect = command_status_effect(&cmd, member, lua, now_ms);
+            let gain_text = effect.status_gain_text_id;
+            crate::runtime::quest_apply::install_status_effect(
+                p.owner, member, effect, gain_text, registry, db, world, lua,
+            )
+            .await;
+        }
+    }
+}
 const STATUS_FULLY_BLISSFUL_MIND: u32 = 223242;
 
 /// Combat-hook work for the attacker, held until no defender is locked.
@@ -1149,6 +1261,9 @@ const STATUS_FULLY_BLISSFUL_MIND: u32 = 223242;
 struct AttackerHookQueue {
     owner: Vec<crate::status::hooks::EffectResult>,
     other: Vec<crate::status::script::HookActorChange>,
+    /// Statuses for a party (Divine Veil's Divine Regen), handed out by
+    /// [`apply_party_statuses`] once no actor is locked.
+    party_status: Vec<crate::status::script::HookPartyStatus>,
 }
 
 impl AttackerHookQueue {
@@ -1162,6 +1277,8 @@ impl AttackerHookQueue {
         outbox: &mut crate::status::StatusOutbox,
     ) {
         crate::status::hooks::apply_other(d, &run.other, outbox);
+        self.party_status
+            .extend(crate::status::hooks::party_statuses(&run));
         self.owner.extend(run.owner);
         rows.extend(run.rows);
     }
@@ -1177,6 +1294,8 @@ impl AttackerHookQueue {
         now_ms: u64,
         outbox: &mut crate::status::StatusOutbox,
     ) {
+        self.party_status
+            .extend(crate::status::hooks::party_statuses(&run));
         for r in &run.owner {
             if let Some((old, rep)) = crate::status::hooks::apply_owner(d, r, outbox) {
                 replace_status_from_hook(d, old, rep, lua, now_ms, outbox);
@@ -1530,7 +1649,7 @@ async fn resolve_action(
         .main_target
         .intersects(crate::battle::target_find::ValidTarget::CORPSE_ONLY);
 
-    let targets = action_targets(
+    let mut targets = action_targets(
         attacker_actor_id,
         defender_actor_id,
         command,
@@ -1538,6 +1657,17 @@ async fn resolve_action(
         zone,
     )
     .await;
+    // Cover: a single-target melee attack on a Covered actor lands on
+    // their paladin.
+    if targets.len() == 1
+        && command.action_type == ActionType::Physical
+        && !command.is_ranged
+        && let Some(h) = registry.get(targets[0]).await
+        && let Some((id, _)) = covering_actor(registry, &h).await
+        && id != attacker_actor_id
+    {
+        targets[0] = id;
+    }
 
     let mut rng = ThreadRng;
     let mut container = CommandResultContainer::new();
@@ -1870,6 +2000,7 @@ async fn resolve_action(
         hits.push(hit);
     }
     let mut attacker_pools_moved = false;
+    let party_statuses = std::mem::take(&mut hook_queue.party_status);
     if let Some(root) = &root {
         use crate::status::StatusEffectFlags as F;
         let mut a = attacker_handle.character.write().await;
@@ -1904,6 +2035,7 @@ async fn resolve_action(
     }
     flush_wake_outbox(wake_outbox, registry, world, lua, db).await;
     flush_wake_outbox(hook_outbox, registry, world, lua, db).await;
+    apply_party_statuses(party_statuses, registry, world, lua, db).await;
 
     // Pugilist fists (1.23b: "Effect ends upon reuse. Cannot be used
     // simultaneously with..."): using one ends whichever fists are up, and

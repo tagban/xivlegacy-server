@@ -114,6 +114,8 @@ fn merge(into: &mut HookActorChange, c: HookActorChange) {
         }
     }
     into.removed.extend(c.removed);
+    into.hate.extend(c.hate);
+    into.party_status.extend(c.party_status);
 }
 
 /// Run `hook` for each of `owner`'s effects flagged with `flag`, in
@@ -192,6 +194,12 @@ fn apply_pools(c: &mut Character, ch: &HookActorChange) {
     }
 }
 
+fn apply_hate(c: &mut Character, ch: &HookActorChange) {
+    for &(who, amount) in &ch.hate {
+        c.hate.update_hate(who, amount);
+    }
+}
+
 fn remove(c: &mut Character, ids: &[u32], outbox: &mut StatusOutbox) {
     for &id in ids {
         if c.status_effects.has(id) {
@@ -214,6 +222,7 @@ pub fn apply_owner(
         c.add_status_mods(r.effect_id, &r.owner.mod_deltas);
     }
     apply_pools(c, &r.owner);
+    apply_hate(c, &r.owner);
     if let Some(e) = c.status_effects.get_mut(r.effect_id) {
         e.extra = r.effect.extra;
         e.tier = r.effect.tier;
@@ -238,7 +247,18 @@ pub fn apply_other(c: &mut Character, ch: &HookActorChange, outbox: &mut StatusO
         c.chara.mods.add_raw(k, d);
     }
     apply_pools(c, ch);
+    apply_hate(c, ch);
     remove(c, &ch.removed, outbox);
+}
+
+/// The party statuses (`AddPartyStatusEffect`) in a hook run, from either
+/// side.
+pub fn party_statuses(run: &HookRun) -> Vec<super::script::HookPartyStatus> {
+    run.owner
+        .iter()
+        .flat_map(|r| r.owner.party_status.iter().copied())
+        .chain(run.other.party_status.iter().copied())
+        .collect()
 }
 
 impl HookSkill {

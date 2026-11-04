@@ -54,6 +54,9 @@ pub struct EffectView {
     pub tier: u8,
     pub extra: f64,
     pub duration: u32,
+    /// Who put the effect on (`effect.GetSource()`): the paladin behind
+    /// Covered, the warrior behind Collusion. 0 when unknown.
+    pub source: u32,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -285,7 +288,25 @@ fn build_effect<T: HasEffect>(lua: &Lua, st: &Arc<Mutex<T>>) -> mlua::Result<Tab
     method(lua, &t, "GetDuration", st, |s, _| {
         Value::Integer(s.effect().duration as i64)
     })?;
-    method(lua, &t, "GetSource", st, |_, _| Value::Nil)?;
+    // `effect.GetSource()`: an actor table with just `actorId`, enough for
+    // `hateContainer.UpdateHate(effect.GetSource(), n)`. Anything else on
+    // it is a stub (IsAlive() is nil), so scripts can't act on a stranger.
+    let source = st
+        .lock()
+        .map_err(|_| mlua::Error::runtime("status state poisoned"))?
+        .effect()
+        .source;
+    if source == 0 {
+        method(lua, &t, "GetSource", st, |_, _| Value::Nil)?;
+    } else {
+        let src = lua.create_table()?;
+        src.set("actorId", source)?;
+        src.set_metatable(Some(stub_meta(lua)?))?;
+        t.set(
+            "GetSource",
+            lua.create_function(move |_, _: Variadic<Value>| Ok(src.clone()))?,
+        )?;
+    }
     method(lua, &t, "RefreshTime", st, |_, _| Value::Nil)?;
     Ok(t)
 }
@@ -594,6 +615,26 @@ pub struct HookActorChange {
     pub tp: i32,
     /// Other statuses the hook took off this actor, by id.
     pub removed: Vec<u32>,
+    /// Enmity to add to this actor's hate list, by the actor it is toward
+    /// (`defender.hateContainer.UpdateHate(who, n)`, Collusion).
+    pub hate: Vec<(u32, i32)>,
+    /// Statuses for this actor's party (`AddPartyStatusEffect`, Divine
+    /// Veil's Divine Regen). They need other actors, so the caller hands
+    /// them out once no actor is locked.
+    pub party_status: Vec<HookPartyStatus>,
+}
+
+/// `owner.AddPartyStatusEffect(range, statusId, tier, magnitude, duration)`:
+/// a status for every party member of `owner` within `range` yalms of
+/// them, `owner` included.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct HookPartyStatus {
+    pub owner: u32,
+    pub range: f32,
+    pub status_id: u32,
+    pub tier: u8,
+    pub magnitude: f64,
+    pub duration: u32,
 }
 
 impl HookActorChange {
@@ -706,6 +747,8 @@ struct Side {
     mp: i32,
     tp: i32,
     removed: Vec<u32>,
+    hate: Vec<(u32, i32)>,
+    party_status: Vec<HookPartyStatus>,
 }
 
 impl Side {
@@ -718,6 +761,8 @@ impl Side {
             mp: 0,
             tp: 0,
             removed: Vec::new(),
+            hate: Vec::new(),
+            party_status: Vec::new(),
         }
     }
 
@@ -738,6 +783,8 @@ impl Side {
             mp: self.mp,
             tp: self.tp,
             removed: self.removed.clone(),
+            hate: self.hate.clone(),
+            party_status: self.party_status.clone(),
         }
     }
 }
@@ -825,6 +872,62 @@ fn build_side(lua: &Lua, st: &Arc<Mutex<Side>>, fx: &Arc<Mutex<Fx>>) -> mlua::Re
         })?;
     }
     method(lua, &t, "HasTrait", st, |_, _| Value::Boolean(false))?;
+    method(lua, &t, "AddPartyStatusEffect", st, move |s, n| {
+        s.party_status.push(HookPartyStatus {
+            owner: actor_id,
+            range: arg(n, 0) as f32,
+            status_id: arg(n, 1) as u32,
+            tier: arg(n, 2) as u8,
+            magnitude: arg(n, 3),
+            duration: arg(n, 4).clamp(0.0, f64::from(u32::MAX)) as u32,
+        });
+        Value::Nil
+    })?;
+
+    // `hateContainer.UpdateHate(who, amount)`: `who` is an actor table
+    // (`effect.GetSource()`, an attacker) or an actor id.
+    let hate = lua.create_table()?;
+    {
+        let st = st.clone();
+        hate.set(
+            "UpdateHate",
+            lua.create_function(move |_, args: Variadic<Value>| {
+                let mut who: Option<u32> = None;
+                let mut amount: Option<f64> = None;
+                for v in args.iter() {
+                    let n = match v {
+                        Value::Table(t) => {
+                            if who.is_none()
+                                && let Ok(Some(id)) = t.raw_get::<Option<u32>>("actorId")
+                            {
+                                who = Some(id);
+                            }
+                            continue;
+                        }
+                        Value::Integer(i) => *i as f64,
+                        Value::Number(n) => *n,
+                        _ => continue,
+                    };
+                    if who.is_none() {
+                        who = Some(n as u32);
+                    } else if amount.is_none() {
+                        amount = Some(n);
+                    }
+                }
+                if let (Some(who), Some(amount)) = (who, amount)
+                    && who != 0
+                {
+                    st.lock()
+                        .map_err(|_| mlua::Error::runtime("status state poisoned"))?
+                        .hate
+                        .push((who, amount.floor() as i32));
+                }
+                Ok(Value::Nil)
+            })?,
+        )?;
+    }
+    hate.set_metatable(Some(stub_meta(lua)?))?;
+    t.set("hateContainer", hate)?;
 
     let effects = lua.create_table()?;
     {
@@ -1885,5 +1988,92 @@ mod tests {
                 .map(|(_, d)| *d);
             assert!(d.is_some_and(|d| (d - delta).abs() < 1e-9), "{name}: {d:?}");
         }
+    }
+
+    #[test]
+    fn collusion_hands_the_hits_enmity_to_its_source() {
+        // The warrior (77) put Collusion on the attacker (1); the
+        // attacker's hit on the monster (2) puts its enmity on the warrior.
+        let attacker = actor(1);
+        let mob = actor(2);
+        let mut c = call(
+            "onHit",
+            "collusion",
+            &attacker,
+            &mob,
+            true,
+            skill(1),
+            Some(hit(300.0)),
+        );
+        c.effect.source = 77;
+        let out = run_hook(&root(), &c).unwrap().unwrap();
+        assert_eq!(out.action.unwrap().enmity, 0.0);
+        assert_eq!(out.other.hate, vec![(77, 300)]);
+        assert!(out.owner.hate.is_empty());
+        assert!(out.remove_self, "Collusion is used up by the hit");
+    }
+
+    #[test]
+    fn divine_veil_regens_the_party_when_someone_else_cures() {
+        let paladin = actor(1);
+        let healer = actor(2);
+        let mut cure = skill(1);
+        cure.id = 27346;
+        let out = run_hook(
+            &root(),
+            &call(
+                "onHealed",
+                "divine_veil",
+                &paladin,
+                &healer,
+                false,
+                cure,
+                Some(hit(200.0)),
+            ),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            out.owner.party_status,
+            vec![HookPartyStatus {
+                owner: 1,
+                range: 8.0,
+                status_id: 223264,
+                tier: 0,
+                magnitude: 85.0,
+                duration: 30,
+            }]
+        );
+        // Curing yourself doesn't count, nor does another spell.
+        let own = run_hook(
+            &root(),
+            &call(
+                "onHealed",
+                "divine_veil",
+                &paladin,
+                &paladin,
+                false,
+                cure,
+                Some(hit(200.0)),
+            ),
+        )
+        .unwrap()
+        .unwrap();
+        assert!(own.owner.party_status.is_empty());
+        let other = run_hook(
+            &root(),
+            &call(
+                "onHealed",
+                "divine_veil",
+                &paladin,
+                &healer,
+                false,
+                skill(1),
+                Some(hit(200.0)),
+            ),
+        )
+        .unwrap()
+        .unwrap();
+        assert!(other.owner.party_status.is_empty());
     }
 }
