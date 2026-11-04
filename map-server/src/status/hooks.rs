@@ -65,6 +65,7 @@ impl HookSide {
                 max_mp: i32::from(c.chara.max_mp),
                 tp: i32::from(c.chara.tp),
                 status_ids: c.status_effects.iter().map(|e| e.id).collect(),
+                traits: c.traits.clone(),
             },
             effects: c
                 .status_effects

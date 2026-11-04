@@ -533,6 +533,12 @@ pub struct Character {
     /// The commands that continue the player's combo
     /// (`playerWork.comboNextCommandId`), 0 when no combo is going.
     pub combo_next: [i32; 2],
+    /// The traits the player has (their class's or job's, up to their
+    /// level), by id; set by the stat recalc.
+    pub traits: Vec<u32>,
+    /// The modifier changes those traits made, taken off before the next
+    /// recalc puts them back.
+    pub trait_mods: Vec<(u32, f64)>,
 }
 
 impl Character {
@@ -567,6 +573,8 @@ impl Character {
             status_mods: Default::default(),
             speed_sent: 1.0,
             combo_next: [0, 0],
+            traits: Vec::new(),
+            trait_mods: Vec::new(),
         }
     }
 }
