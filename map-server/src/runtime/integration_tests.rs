@@ -18227,3 +18227,41 @@ async fn leaving_saves_spot_and_pools_and_zone_in_resends_status_icons() {
     );
     assert_eq!(hp, 200);
 }
+
+/// The map server confirms a session end with error 0 and the destination
+/// the world named. It used to answer 1, so the world logged "error ending
+/// session" on every logout.
+#[tokio::test]
+async fn session_end_confirms_without_error_and_echoes_destination() {
+    const SESSION: u32 = 9;
+    let world = Arc::new(WorldManager::new());
+    let registry = Arc::new(ActorRegistry::new());
+    let db = Arc::new(crate::database::Database::open(tempdb()).await.expect("db"));
+    let processor = crate::processor::PacketProcessor {
+        db,
+        world,
+        registry,
+        lua: None,
+        cmd: None,
+    };
+    let (tx, mut rx) = mpsc::channel::<Vec<u8>>(8);
+    let client = ClientHandle::new(SESSION, tx);
+    for (request, destination) in [
+        (SESSION.to_le_bytes().to_vec(), 0u32),
+        ([SESSION.to_le_bytes(), 133u32.to_le_bytes()].concat(), 133),
+    ] {
+        let sub = common::subpacket::SubPacket::new_with_flag(
+            false,
+            crate::packets::opcodes::OP_SESSION_END,
+            SESSION,
+            request,
+        );
+        processor.handle_session_end(&client, &sub).await.unwrap();
+        let bytes = rx.try_recv().expect("a confirm");
+        let mut offset = 0;
+        let reply = common::subpacket::SubPacket::parse(&bytes, &mut offset).unwrap();
+        assert_eq!(&reply.data[0..4], &SESSION.to_le_bytes());
+        assert_eq!(&reply.data[4..6], &[0, 0], "error code must be 0");
+        assert_eq!(&reply.data[6..10], &destination.to_le_bytes());
+    }
+}

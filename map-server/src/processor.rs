@@ -827,7 +827,11 @@ impl PacketProcessor {
         }
     }
 
-    async fn handle_session_end(&self, client: &ClientHandle, sub: &SubPacket) -> Result<()> {
+    pub(crate) async fn handle_session_end(
+        &self,
+        client: &ClientHandle,
+        sub: &SubPacket,
+    ) -> Result<()> {
         let session_id = sub.header.source_id;
         tracing::info!(session = session_id, "session end");
         if let Some(handle) = self.registry.by_session(session_id).await {
@@ -881,7 +885,16 @@ impl PacketProcessor {
         }
         self.registry.remove_session(session_id).await;
         self.world.remove_session(session_id).await;
-        let reply = tx::build_session_end(session_id, 1, 0);
+        // Confirm with error 0 and the destination the world asked for (a zone
+        // change names one after the session id), as pmeteor's
+        // SessionEndConfirmPacket does. A 1 here made the world log "error
+        // ending session" on every logout.
+        let destination = sub
+            .data
+            .get(4..8)
+            .map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+            .unwrap_or(0);
+        let reply = tx::build_session_end(session_id, 0, destination);
         client.send_bytes(reply.to_bytes()).await;
         Ok(())
     }
