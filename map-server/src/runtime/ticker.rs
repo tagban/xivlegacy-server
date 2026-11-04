@@ -45,7 +45,7 @@ use tokio::time::interval;
 
 use crate::actor::Character;
 use crate::actor::modifier::ModifierMap;
-use crate::battle::controller::ControllerOwnerView;
+use crate::battle::controller::{ControllerOwnerView, LEASH_DISTANCE};
 use crate::battle::outbox::BattleOutbox;
 use crate::battle::target_find::{ActorArena, ActorView};
 use crate::database::Database;
@@ -1029,6 +1029,18 @@ pub(crate) fn build_owner_view(
         .map(|s| s.target_actor_id)
         .filter(|id| *id != 0);
     let most_hated = chara.hate.most_hated();
+    // (0, 0, 0) = no spawn point (scripted and test actors).
+    let spawn = common::Vector3::new(
+        chara.chara.spawn_x,
+        chara.chara.spawn_y,
+        chara.chara.spawn_z,
+    );
+    let spawn_position = (spawn.x != 0.0 || spawn.y != 0.0 || spawn.z != 0.0).then_some(spawn);
+    let pos = chara.base.position();
+    let is_close_to_spawn = spawn_position.is_none_or(|sp| {
+        let (dx, dz) = (pos.x - sp.x, pos.z - sp.z);
+        dx * dx + dz * dz <= LEASH_DISTANCE * LEASH_DISTANCE
+    });
     ControllerOwnerView {
         actor: ActorView {
             actor_id,
@@ -1071,7 +1083,8 @@ pub(crate) fn build_owner_view(
         current_hp: chara.get_hp(),
         target_hpp: None,
         target_has_stealth: false,
-        is_close_to_spawn: true,
+        is_close_to_spawn,
+        spawn_position,
         target_is_locked: false,
         attack_delay_ms: chara.get_attack_delay_ms(),
         attack_range: chara.get_attack_range(),
@@ -2366,6 +2379,86 @@ mod tests {
             hp_after, hp_before,
             "a sleeping player must not hit the monster"
         );
+    }
+
+    /// Nobody left on its hate list: the monster leaves combat once
+    /// (one hate-gem clear), not every tick.
+    #[tokio::test]
+    async fn monster_with_no_hate_leaves_combat_once() {
+        let (ticker, _zone, mut rx) = setup_engaged_npc_vs_player(2.0, |_| {}).await;
+        {
+            let handle = ticker.registry.get(2).await.unwrap();
+            handle.character.write().await.hate.clear_hate(None);
+        }
+        drain_subpackets(&mut rx);
+        for i in 1..=10u64 {
+            ticker.tick_once(i * 100).await;
+        }
+        let handle = ticker.registry.get(2).await.unwrap();
+        assert!(
+            !handle.character.read().await.ai_container.is_engaged(),
+            "a monster with nobody to fight leaves combat"
+        );
+        let gem_clears = drain_subpackets(&mut rx)
+            .iter()
+            .filter(|s| {
+                s.header.source_id == 2
+                    && s.game_message.opcode == crate::packets::opcodes::OP_SET_ENMITY_INDICATOR
+            })
+            .count();
+        assert!(gem_clears <= 1, "disengage sent {gem_clears} times");
+    }
+
+    /// Led too far from its spawn point, a monster drops the fight and
+    /// walks back home.
+    #[tokio::test]
+    async fn monster_dragged_from_spawn_gives_up_and_walks_home() {
+        let (ticker, _zone, _rx) = setup_engaged_npc_vs_player(2.0, |_| {}).await;
+        {
+            let handle = ticker.registry.get(2).await.unwrap();
+            let mut c = handle.character.write().await;
+            c.chara.spawn_x = 2.0 + LEASH_DISTANCE + 5.0;
+        }
+        for i in 1..=10u64 {
+            ticker.tick_once(i * 100).await;
+        }
+        let handle = ticker.registry.get(2).await.unwrap();
+        let (engaged, hated, x0) = {
+            let c = handle.character.read().await;
+            (
+                c.ai_container.is_engaged(),
+                c.hate.most_hated(),
+                c.base.position_x,
+            )
+        };
+        assert!(!engaged, "too far from spawn: drops the fight");
+        assert_eq!(hated, None);
+        assert!(x0 > 2.0, "heading home, at {x0}");
+        for i in 11..=250u64 {
+            ticker.tick_once(i * 100).await;
+        }
+        let c = handle.character.read().await;
+        assert!(
+            (c.base.position_x - c.chara.spawn_x).abs() < 0.01,
+            "home at {}",
+            c.base.position_x
+        );
+        assert!(!c.ai_container.is_engaged());
+    }
+
+    /// Inside the leash a monster keeps fighting.
+    #[tokio::test]
+    async fn monster_near_spawn_keeps_fighting() {
+        let (ticker, _zone, _rx) = setup_engaged_npc_vs_player(2.0, |_| {}).await;
+        {
+            let handle = ticker.registry.get(2).await.unwrap();
+            handle.character.write().await.chara.spawn_x = 2.0 + LEASH_DISTANCE - 5.0;
+        }
+        for i in 1..=10u64 {
+            ticker.tick_once(i * 100).await;
+        }
+        let handle = ticker.registry.get(2).await.unwrap();
+        assert!(handle.character.read().await.ai_container.is_engaged());
     }
 
     /// Below 1000 TP a monster never uses a move.

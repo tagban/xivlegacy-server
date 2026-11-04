@@ -45,6 +45,12 @@ The client has no monster copies of gladiator or archer actions, so
 (enemy-targeted weaponskill rows; gladiator 125, archer 126) at their 1.0
 learn level, evidence `class`.
 
+Enemies left with no class and no kind list (bandits, assassins) take the
+class of the weapon their model holds: `WEAPON_LISTS` / `WEAPON_SPELLS`
+map the appearance's main-hand weapon family (`mainHand >> 20`) to a class
+list, matched against pools whose class is known (56 hand-to-hand, 76/77
+sword, 141 axe, 161 spear, 201 bow, 296/331 scepter, 316 staff).
+
 Evidence per move: `zam` (a ZAM page shows that family using it), `ge` (an
 archived 1.0 Gamer Escape page names the family), `modern` (only an
 ARR-era page does), `block` (same client id block as such a move), `name`

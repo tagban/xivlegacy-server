@@ -217,8 +217,12 @@ pub struct ControllerOwnerView {
     pub target_hpp: Option<u8>,
     /// Does the target have a visible Stealth mod > 0.
     pub target_has_stealth: bool,
-    /// Has this actor moved "close to spawn" recently.
+    /// Within the leash of its spawn point (`LEASH_DISTANCE`); always
+    /// true for an actor with no spawn point.
     pub is_close_to_spawn: bool,
+    /// Where the actor spawned, if it has a spawn point: a monster that
+    /// leaves combat walks back here.
+    pub spawn_position: Option<Vector3>,
     /// Does the current target belong to a hate entry whose owner hates it back?
     pub target_is_locked: bool,
     /// Milliseconds between auto-attack swings for the owner. Read from
@@ -276,6 +280,9 @@ pub enum ControllerDecision {
 pub const COMBAT_TICK_INTERVAL_MS: u64 = 3_000;
 /// Default roaming delay when the mob mod isn't set.
 pub const DEFAULT_ROAM_DELAY_MS: u64 = 5_000;
+/// How far (yalms, ground plane) a monster follows a fight away from its
+/// spawn point before it gives up and walks home.
+pub const LEASH_DISTANCE: f32 = 50.0;
 /// Aggro scan radius.
 pub const AGGRO_SCAN_RADIUS: f32 = 50.0;
 /// Max aggro level delta when `IgnoreLevelDifference` isn't set.
@@ -651,10 +658,11 @@ impl Controller {
         if owner.most_hated_actor_id.is_none() {
             return true;
         }
-        if !owner.is_close_to_spawn {
-            return true;
-        }
-        false
+        // Allies and duty actors follow the fight; only open-world
+        // monsters are leashed to their spawn point.
+        !owner.is_close_to_spawn
+            && self.kind == ControllerKind::BattleNpc
+            && self.battle.content_group_ids.is_empty()
     }
 
     fn do_roam_tick(&mut self, now_ms: u64, _owner: ControllerOwnerView) -> ControllerDecision {
@@ -789,6 +797,7 @@ mod tests {
             target_hpp: Some(100),
             target_has_stealth: false,
             is_close_to_spawn: true,
+            spawn_position: None,
             target_is_locked: false,
             attack_delay_ms: 2500,
             attack_range: 3.0,
