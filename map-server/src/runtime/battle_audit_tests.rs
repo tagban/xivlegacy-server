@@ -209,12 +209,8 @@ fn static_checks(
             .push(format!("recast {} s", cmd.max_recast_time_seconds));
     }
     if cmd.status_id != 0 && cmd.status_chance <= 0.0 {
-        s.notes.push(
-            "statusChance 0: status needs a combo/positional/trait hook (none in Rust)".into(),
-        );
-    }
-    if cmd.combo_step != 0 {
-        s.notes.push("combo bonus not implemented".into());
+        s.notes
+            .push("statusChance 0: lands only through its onCombo, positional or trait".into());
     }
     s
 }
@@ -447,6 +443,19 @@ async fn hp(reg: &ActorRegistry, id: u32) -> i32 {
     i32::from(reg.get(id).await.unwrap().character.read().await.chara.hp)
 }
 
+async fn max_hp(reg: &ActorRegistry, id: u32) -> i32 {
+    i32::from(
+        reg.get(id)
+            .await
+            .unwrap()
+            .character
+            .read()
+            .await
+            .chara
+            .max_hp,
+    )
+}
+
 async fn press_once(sc: &mut Scene, cmd: &BattleCommand, rcpt: Recipient) -> Outcome {
     let mut o = Outcome::default();
     // Re-arm between attempts: recast clear, pools full, a clean state
@@ -460,6 +469,7 @@ async fn press_once(sc: &mut Scene, cmd: &BattleCommand, rcpt: Recipient) -> Out
         c.chara.mp = 9999;
         c.chara.tp = 3000;
     }
+    let max_before = max_hp(&sc.registry, PLAYER).await;
     let before: HashMap<u32, i32> = {
         let mut m = HashMap::new();
         for id in [PLAYER, ENEMY, ENEMY2, FRIEND] {
@@ -497,7 +507,14 @@ async fn press_once(sc: &mut Scene, cmd: &BattleCommand, rcpt: Recipient) -> Out
     if rcpt != Recipient::Enemy {
         o.heal = r_after - r_before;
     }
-    o.self_damage = (before[&PLAYER] - after_player).max(0);
+    // A status landing on the caster (a combo's Combo status) recalcs its
+    // stats, which can pull this scene's oversized HP down to the level's
+    // own max: that's no hit.
+    o.self_damage = if max_hp(&sc.registry, PLAYER).await == max_before {
+        (before[&PLAYER] - after_player).max(0)
+    } else {
+        0
+    };
     o.friend_damage = (before[&FRIEND] - after_friend).max(0);
     {
         let h = sc

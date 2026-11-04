@@ -18397,11 +18397,116 @@ async fn collusion_puts_the_hits_enmity_on_its_warrior() {
     let attacker = c.hate.get(1).map_or(0, |e| e.cumulative_enmity);
     assert!(warrior > 0, "the warrior holds the hit's enmity");
     // An entry starts at 1 (base hate); the hit added nothing to it.
-    assert!(attacker <= 1, "the attacker holds none of the hit: {attacker}");
+    assert!(
+        attacker <= 1,
+        "the attacker holds none of the hit: {attacker}"
+    );
     drop(c);
     let p = registry.get(1).await.unwrap();
     assert!(
         !p.character.read().await.status_effects.has(223097),
         "Collusion is used up"
+    );
+}
+
+/// Fast Blade starts a combo, Savage Blade continues it for free and
+/// carries the combo step, and a weaponskill outside the chain ends it.
+#[tokio::test]
+async fn fast_blade_then_savage_blade_is_a_free_combo() {
+    let (world, registry, zone) = party_hook_zone().await;
+    let db = Arc::new(crate::database::Database::open(tempdb()).await.expect("db"));
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../scripts/lua");
+    let lua = Arc::new(crate::lua::LuaEngine::new(&root));
+    let (catalog, by_level) = db.load_global_battle_command_list().await.unwrap();
+    let statuses = db.load_global_status_effect_list().await.unwrap();
+    lua.catalogs()
+        .install_battle_commands_with_level_index(catalog.clone(), by_level);
+    lua.catalogs().install_status_effects(statuses);
+    {
+        let h = registry.get(2).await.unwrap();
+        let mut c = h.character.write().await;
+        c.chara.hp = 30000;
+        c.chara.max_hp = 30000;
+        c.chara.level = 1;
+    }
+    {
+        let h = registry.get(1).await.unwrap();
+        h.character.write().await.chara.class = 3;
+    }
+    let press = |id: u16| {
+        let command = catalog[&id].to_battle_command();
+        let (world, registry, zone, lua, db) = (
+            world.clone(),
+            registry.clone(),
+            zone.clone(),
+            lua.clone(),
+            db.clone(),
+        );
+        async move {
+            dispatch_battle_event(
+                &BattleEvent::ResolveAction {
+                    attacker_actor_id: 1,
+                    defender_actor_id: 2,
+                    command,
+                },
+                &registry,
+                &world,
+                &zone,
+                Some(&lua),
+                Some(&db),
+            )
+            .await;
+        }
+    };
+    let player = |registry: Arc<ActorRegistry>| async move {
+        let h = registry.get(1).await.unwrap();
+        let c = h.character.read().await;
+        (c.combo_next, c.chara.tp, c.status_effects.has(223205))
+    };
+    // A miss breaks the chain, so try the whole chain a few times.
+    let mut chained = false;
+    for _ in 0..10 {
+        registry
+            .get(1)
+            .await
+            .unwrap()
+            .character
+            .write()
+            .await
+            .chara
+            .tp = 3000;
+        press(27150).await; // fast_blade, 1000 TP
+        let (next, tp, combo) = player(registry.clone()).await;
+        if next != [27151, 27152] {
+            continue;
+        }
+        assert!(combo, "the Combo status is up");
+        assert_eq!(tp, 2000);
+        press(27152).await; // savage_blade, the second link
+        let (next, tp, _) = player(registry.clone()).await;
+        assert_eq!(tp, 2000, "a continuing link costs no TP");
+        if next != [27153, 0] {
+            continue;
+        }
+        chained = true;
+        break;
+    }
+    assert!(chained, "Fast Blade -> Savage Blade never chained");
+    // Riot Blade starts its own chain, so the Savage Blade combo ends.
+    registry
+        .get(1)
+        .await
+        .unwrap()
+        .character
+        .write()
+        .await
+        .chara
+        .tp = 3000;
+    press(27154).await;
+    let (next, tp, _) = player(registry.clone()).await;
+    assert_ne!(next, [27153, 0]);
+    assert_eq!(
+        tp, 1000,
+        "Riot Blade isn't a link here, so it costs its 2000 TP"
     );
 }
