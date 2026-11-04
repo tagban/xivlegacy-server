@@ -219,6 +219,8 @@ pub struct BattleNpcSpawn {
     pub current_job: u32,
     pub combat_skill: u32,
     pub combat_delay: u32,
+    /// `pool.skillListId`: the family's monster move list (0 = none).
+    pub skill_list_id: u32,
     pub aggro_type: u8,
     pub speed: u8,
     /// `genus.detection` — bitfield of `DetectionType` flags (Sight=1,
@@ -227,6 +229,21 @@ pub struct BattleNpcSpawn {
     pub detection: u32,
     pub kindred_id: u8,
     pub kindred_name: String,
+}
+
+/// One move in a monster's skill list and the level it unlocks at.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MonsterSkill {
+    pub skill_id: u16,
+    pub min_level: i16,
+}
+
+/// The moves from `list` a monster of `level` may use: a level 9 aldgoat
+/// can't use a move its list unlocks at level 10.
+pub fn usable_monster_skills(list: &[MonsterSkill], level: i16) -> impl Iterator<Item = u16> + '_ {
+    list.iter()
+        .filter(move |s| s.min_level <= level)
+        .map(|s| s.skill_id)
 }
 
 /// One row of `server_zones_privateareas`.
@@ -743,6 +760,37 @@ impl Database {
         Ok(rows)
     }
 
+    /// Every monster move list (`server_battlenpc_skill_list`), keyed by
+    /// skillListId, each move with the level a monster needs to use it.
+    pub async fn load_monster_skill_lists(&self) -> Result<HashMap<u32, Vec<MonsterSkill>>> {
+        let rows = self
+            .conn
+            .call_db(|c| {
+                let mut stmt = c.prepare(
+                    "SELECT skillListId, skillId, minLevel FROM server_battlenpc_skill_list \
+                     ORDER BY skillListId, minLevel, skillId",
+                )?;
+                let rows = stmt
+                    .query_map([], |r| {
+                        Ok((
+                            r.get::<_, u32>(0)?,
+                            MonsterSkill {
+                                skill_id: r.get(1)?,
+                                min_level: r.get(2)?,
+                            },
+                        ))
+                    })?
+                    .collect::<std::result::Result<Vec<_>, _>>()?;
+                Ok(rows)
+            })
+            .await?;
+        let mut lists: HashMap<u32, Vec<MonsterSkill>> = HashMap::new();
+        for (list, skill) in rows {
+            lists.entry(list).or_default().push(skill);
+        }
+        Ok(lists)
+    }
+
     /// Load one `BattleNpcSpawn` row by `bnpc_id` — the spawn-locations,
     /// groups, pools, and genus tables joined into a single DTO. Returns
     /// `None` if `bnpc_id` doesn't exist in `server_battlenpc_spawn_locations`.
@@ -763,7 +811,8 @@ impl Database {
                         bgr.zoneId,
                         bpo.genusId, bpo.actorClassId, bpo.currentJob,
                         bpo.combatSkill, bpo.combatDelay, bpo.aggroType,
-                        bge.speed, bge.detection, bge.kindredId, bge.kindredName
+                        bge.speed, bge.detection, bge.kindredId, bge.kindredName,
+                        bpo.skillListId
                       FROM server_battlenpc_spawn_locations bsl
                       INNER JOIN server_battlenpc_groups bgr ON bsl.groupId = bgr.groupId
                       INNER JOIN server_battlenpc_pools  bpo ON bgr.poolId  = bpo.poolId
@@ -805,6 +854,7 @@ impl Database {
                             detection: r.get::<_, u32>(28)?,
                             kindred_id: r.get::<_, u8>(29)?,
                             kindred_name: r.get::<_, String>(30).unwrap_or_default(),
+                            skill_list_id: r.get(31)?,
                         })
                     })
                     .optional()?;
@@ -6837,5 +6887,41 @@ mod activity_log_tests {
             .await,
             vec![("additem 1000 1".into(), 7001), ("reload ".into(), 0)]
         );
+    }
+}
+
+#[cfg(test)]
+mod monster_skill_tests {
+    use super::*;
+
+    #[test]
+    fn a_monster_below_a_moves_level_cannot_use_it() {
+        let list = [
+            MonsterSkill { skill_id: 1, min_level: 1 },
+            MonsterSkill { skill_id: 2, min_level: 10 },
+            MonsterSkill { skill_id: 3, min_level: 30 },
+        ];
+        assert_eq!(usable_monster_skills(&list, 9).collect::<Vec<_>>(), [1]);
+        assert_eq!(usable_monster_skills(&list, 10).collect::<Vec<_>>(), [1, 2]);
+        assert_eq!(usable_monster_skills(&list, 50).collect::<Vec<_>>(), [1, 2, 3]);
+    }
+
+    /// The shipped lists load with their gates: aldgoats (list 1) unlock
+    /// Bleat first and Alpine Fury later, and every pool's list exists.
+    #[tokio::test]
+    async fn shipped_skill_lists_load_with_level_gates() {
+        let db = Database::open(&common::test_db::fresh_blocking())
+            .await
+            .expect("open db");
+        let lists = db.load_monster_skill_lists().await.expect("skill lists");
+        let goat = &lists[&1];
+        let level = |id: u16| goat.iter().find(|s| s.skill_id == id).unwrap().min_level;
+        // 23090 Bleat, 23092 Alpine Fury
+        assert!(level(23090) < level(23092), "{goat:?}");
+        let lowest = goat.iter().map(|s| s.min_level).min().unwrap();
+        assert!(usable_monster_skills(goat, lowest).count() < goat.len());
+        assert!(usable_monster_skills(goat, 99).count() == goat.len());
+        // a named boss's list: every move usable at any level
+        assert!(lists[&30100].iter().all(|s| s.min_level == 1));
     }
 }
