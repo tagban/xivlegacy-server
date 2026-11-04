@@ -336,6 +336,18 @@ mod tests {
             assert_eq!(count(&conn, q).await, 0, "{q}");
         }
         assert!(count(&conn, "SELECT COUNT(*) FROM server_battlenpc_skill_list").await > 100);
+        // Classless enemies take the class of their weapon (gen.py
+        // WEAPON_LISTS): the Westroad Raider's bow makes it an archer,
+        // the Venomtongue Assassin's scepter a thaumaturge caster.
+        let pool = |q: &'static str| count(&conn, q);
+        assert_eq!(
+            pool("SELECT skillListId FROM server_battlenpc_pools WHERE poolId = 10191").await,
+            126
+        );
+        assert_eq!(
+            pool("SELECT spellListId FROM server_battlenpc_pools WHERE poolId = 10064").await,
+            120
+        );
         assert!(
             count(
                 &conn,

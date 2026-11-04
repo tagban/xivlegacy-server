@@ -132,6 +132,19 @@ PLAYER_WS_LISTS = [
     (126, 'Enemy archer', {7, 18}, r'archer|bowman', 7),
 ]
 
+# Enemies with no class and no kind list (bandits, assassins...): the
+# class of the weapon their model holds (gamedata_actor_appearance
+# mainHand >> 20, the weapon model family; matched against pools whose
+# class is known: 56 hand-to-hand, 76/77 sword, 141 axe, 161 spear,
+# 201 bow, 296/331 thaumaturge scepter, 316 conjurer staff).
+WEAPON_LISTS = {56: 122, 76: 125, 77: 125, 141: 123, 161: 124, 201: 126}
+WEAPON_SPELLS = {296: 120, 331: 120, 316: 121}
+main_hand = {}
+for l in open(f'{REPO}/common/sql/data/gamedata_actor_appearance.sql'):
+    if l.startswith('('):
+        f = l.strip().rstrip(',;').strip('()').split(', ')
+        main_hand[int(f[0])] = int(f[20]) >> 20
+
 # Moves an archived 1.0 Gamer Escape page says knock back ("knocking
 # them back"), with a guessed strength 1-5 (the client's knockback
 # hit-effect levels). Dream Bubble is wind damage + knockback, not sleep.
@@ -345,8 +358,14 @@ pool_list, pool_spells = {}, {}
 for mo in POOL_RE.finditer(open(ppath).read()):
     pid, job = int(mo.group(2)), int(mo.group(6))
     lid = list_for(pid, mo.group(4), int(mo.group(5)), job)
+    spells = spell_list_for(mo.group(4), job)
+    if not lid and not spells and job == 0:
+        weapon = main_hand.get(int(mo.group(3)), 0)
+        lid, spells = WEAPON_LISTS.get(weapon, 0), WEAPON_SPELLS.get(weapon, 0)
+        if lid or spells:
+            stats['by_weapon'] += 1
     pool_list[pid] = lid if lid in listed else 0
-    pool_spells[pid] = spell_list_for(mo.group(4), job)
+    pool_spells[pid] = spells
 
 # levels: spawn level range of the pools using each list
 span = collections.defaultdict(lambda: [999, 0])
