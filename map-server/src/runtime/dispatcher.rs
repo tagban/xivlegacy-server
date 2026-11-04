@@ -1255,15 +1255,16 @@ pub(crate) fn apply_combo_cast_time(
         max_mp: 0,
         status_ids: caster.status_effects.iter().map(|e| e.id).collect(),
     };
-    apply_on_combo(&root, &mut probe, &view);
+    apply_skill_hook(&root, "onCombo", &mut probe, &view);
     c.cast_time_ms = probe.cast_time_ms;
 }
 
-/// Put what the command's `onCombo` changed on the command. Power comes
-/// from `magicPotency` / `damageMultiplier` here, so a script's
-/// `basePotency` change scales those.
-fn apply_on_combo(
+/// Put what the command's `onCombo` / `onPositional` changed on the
+/// command. Power comes from `magicPotency` / `damageMultiplier` here, so
+/// a script's `basePotency` change scales those.
+fn apply_skill_hook(
     root: &std::path::Path,
+    hook: &str,
     c: &mut BattleCommand,
     caster: &crate::status::script::OwnerView,
 ) {
@@ -1282,14 +1283,15 @@ fn apply_on_combo(
         bonus_crit_rate: f64::from(c.bonus_crit_rate),
         enmity_modifier: f64::from(c.enmity_modifier),
     };
-    let set = match crate::status::script::run_command_combo(root, &c.name, caster, start) {
-        Ok(Some(set)) => set,
-        Ok(None) => return,
-        Err(e) => {
-            tracing::debug!(command = %c.name, error = %e, "onCombo failed");
-            return;
-        }
-    };
+    let set =
+        match crate::status::script::run_command_skill_hook(root, &c.name, hook, caster, start) {
+            Ok(Some(set)) => set,
+            Ok(None) => return,
+            Err(e) => {
+                tracing::debug!(command = %c.name, hook, error = %e, "skill hook failed");
+                return;
+            }
+        };
     let ratio = set.base_potency / start.base_potency;
     if (ratio - 1.0).abs() > 1e-9 {
         c.base_potency = (f64::from(c.base_potency) * ratio)
@@ -1327,7 +1329,29 @@ fn apply_on_combo(
     c.accuracy_modifier = set.accuracy_modifier as f32;
     c.bonus_crit_rate = set.bonus_crit_rate as f32;
     c.enmity_modifier = set.enmity_modifier as f32;
-    tracing::debug!(command = %c.name, ?set, "onCombo applied");
+    tracing::debug!(command = %c.name, hook, ?set, "skill hook applied");
+}
+
+/// Which side of `target` an attacker at `attacker` stands on (pmeteor
+/// `ConvertHitDirToPosition`): front, rear, or flank for either side.
+async fn side_of_target(
+    registry: &ActorRegistry,
+    target: u32,
+    attacker: common::Vector3,
+) -> Option<crate::battle::command::BattleCommandPositionBonus> {
+    use crate::battle::command::BattleCommandPositionBonus as P;
+    let h = registry.get(target).await?;
+    let c = h.character.read().await;
+    let dir = crate::status::hooks::hit_direction(
+        common::Vector3::new(c.base.position_x, c.base.position_y, c.base.position_z),
+        c.base.rotation,
+        attacker,
+    );
+    Some(match dir {
+        1 => P::Front,
+        4 => P::Rear,
+        _ => P::Flank,
+    })
 }
 
 /// pmeteor `Player.SetCombos`: the commands that continue the combo, the
@@ -1765,10 +1789,36 @@ async fn resolve_action(
                 max_mp: 0,
                 status_ids: atk_status_ids.clone(),
             };
-            apply_on_combo(&root, &mut c, &caster);
+            apply_skill_hook(&root, "onCombo", &mut c, &caster);
         }
         comboed = c;
         &comboed
+    } else {
+        command
+    };
+
+    // Positionals (pmeteor `WeaponSkillState.OnStart`): a weaponskill used
+    // from the side its row names (front, rear or flank of the target)
+    // runs its script's `onPositional` (Fast Blade's power, Goring
+    // Blade's status chance…).
+    let positioned;
+    let command = if command.command_type == CommandType::WEAPON_SKILL
+        && command.position_bonus != crate::battle::command::BattleCommandPositionBonus::None
+        && let Some(root) = script_root(lua)
+        && let Some(side) = side_of_target(registry, defender_actor_id, atk_pos).await
+        && side == command.position_bonus
+    {
+        let mut c = command.clone();
+        let caster = crate::status::script::OwnerView {
+            mods: atk_mods.clone(),
+            level: atk_level,
+            max_hp: atk_max_hp as i32,
+            max_mp: 0,
+            status_ids: atk_status_ids.clone(),
+        };
+        apply_skill_hook(&root, "onPositional", &mut c, &caster);
+        positioned = c;
+        &positioned
     } else {
         command
     };

@@ -18510,3 +18510,92 @@ async fn fast_blade_then_savage_blade_is_a_free_combo() {
         "Riot Blade isn't a link here, so it costs its 2000 TP"
     );
 }
+
+/// Goring Blade's bleed only lands from behind: its row has statusChance
+/// 0 and its `onPositional` raises it to 0.9 when the attacker is at the
+/// target's rear.
+#[tokio::test]
+async fn goring_blade_bleeds_only_from_behind() {
+    let (world, registry, zone) = party_hook_zone().await;
+    let db = Arc::new(crate::database::Database::open(tempdb()).await.expect("db"));
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../scripts/lua");
+    let lua = Arc::new(crate::lua::LuaEngine::new(&root));
+    let (catalog, by_level) = db.load_global_battle_command_list().await.unwrap();
+    let statuses = db.load_global_status_effect_list().await.unwrap();
+    lua.catalogs()
+        .install_battle_commands_with_level_index(catalog.clone(), by_level);
+    lua.catalogs().install_status_effects(statuses);
+    {
+        let h = registry.get(2).await.unwrap();
+        let mut c = h.character.write().await;
+        c.chara.hp = 30000;
+        c.chara.max_hp = 30000;
+        c.chara.level = 1;
+    }
+    registry
+        .get(1)
+        .await
+        .unwrap()
+        .character
+        .write()
+        .await
+        .chara
+        .class = 3;
+    // Spots around the monster (at the origin, facing rotation 0) by the
+    // side the hit-direction rule gives them.
+    let spot = |want: u8| {
+        (0..16)
+            .map(|i| {
+                let a = f32::from(i as u8) * std::f32::consts::PI / 8.0 + 0.1;
+                Vector3::new(2.0 * a.cos(), 0.0, 2.0 * a.sin())
+            })
+            .find(|p| crate::status::hooks::hit_direction(Vector3::ZERO, 0.0, *p) == want)
+            .unwrap()
+    };
+    let mut landed = std::collections::HashMap::new();
+    for (side, dir) in [("front", 1u8), ("rear", 4u8)] {
+        let p = spot(dir);
+        {
+            let h = registry.get(1).await.unwrap();
+            let mut c = h.character.write().await;
+            c.base.position_x = p.x;
+            c.base.position_z = p.z;
+        }
+        let mut n = 0;
+        for _ in 0..12 {
+            registry
+                .get(1)
+                .await
+                .unwrap()
+                .character
+                .write()
+                .await
+                .chara
+                .tp = 3000;
+            dispatch_battle_event(
+                &BattleEvent::ResolveAction {
+                    attacker_actor_id: 1,
+                    defender_actor_id: 2,
+                    command: catalog[&27153].to_battle_command(),
+                },
+                &registry,
+                &world,
+                &zone,
+                Some(&lua),
+                Some(&db),
+            )
+            .await;
+            let h = registry.get(2).await.unwrap();
+            let mut c = h.character.write().await;
+            if c.status_effects.has(223206) {
+                n += 1;
+                let mut ob = crate::status::StatusOutbox::new();
+                c.status_effects
+                    .remove_status_effect(223206, 0, false, &mut ob);
+            }
+        }
+        landed.insert(side, n);
+    }
+    assert_eq!(landed["front"], 0, "{landed:?}");
+    assert!(landed["rear"] >= 6, "{landed:?}");
+}

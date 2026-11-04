@@ -507,12 +507,14 @@ fn command_script(script_root: &Path, command_name: &str) -> Option<std::path::P
         .find(|p| p.exists())
 }
 
-/// Run `onCombo(caster, target, skill)` from the command's script (pmeteor
-/// `WeaponSkillState` / `MagicState`) and read back what it changed on
-/// the skill. `None` when the command has no script or no `onCombo`.
-pub fn run_command_combo(
+/// Run `hook(caster, target, skill)` from the command's script (pmeteor
+/// `WeaponSkillState` / `MagicState`: `onCombo`, `onPositional`) and read
+/// back what it changed on the skill. `None` when the command has no
+/// script or no such hook.
+pub fn run_command_skill_hook(
     script_root: &Path,
     command_name: &str,
+    hook: &str,
     caster: &OwnerView,
     start: ComboSkill,
 ) -> Result<Option<ComboSkill>> {
@@ -521,7 +523,7 @@ pub fn run_command_combo(
     };
     let source =
         std::fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
-    if !source.contains("onCombo") {
+    if !source.contains(hook) {
         return Ok(None);
     }
     let lua = new_lua(script_root)?;
@@ -529,7 +531,7 @@ pub fn run_command_combo(
         .set_name(path.display().to_string())
         .exec()
         .map_err(|e| anyhow::anyhow!("loading {command_name}: {e}"))?;
-    let Ok(f) = lua.globals().get::<mlua::Function>("onCombo") else {
+    let Ok(f) = lua.globals().get::<mlua::Function>(hook) else {
         return Ok(None);
     };
     let st = Arc::new(Mutex::new(State {
@@ -569,7 +571,7 @@ pub fn run_command_combo(
     }
     skill.set_metatable(Some(stub_meta(&lua)?))?;
     if let Err(e) = f.call::<Value>((caster_t, target_t, skill.clone())) {
-        tracing::debug!(command = command_name, error = %e, "onCombo stopped early");
+        tracing::debug!(command = command_name, hook, error = %e, "skill hook stopped early");
     }
     let num = |k: &str, d: f64| skill.raw_get::<Option<f64>>(k).ok().flatten().unwrap_or(d);
     Ok(Some(ComboSkill {
@@ -2198,38 +2200,42 @@ mod tests {
     #[test]
     fn on_combo_reads_back_what_the_script_changed() {
         let c = owner();
-        let thundara = run_command_combo(&root(), "thundara", &c, combo_start(100.0))
-            .unwrap()
-            .unwrap();
+        let thundara =
+            run_command_skill_hook(&root(), "thundara", "onCombo", &c, combo_start(100.0))
+                .unwrap()
+                .unwrap();
         assert_eq!(thundara.base_potency, 150.0);
         assert_eq!(thundara.recast_time_ms, 5000.0);
         assert_eq!(thundara.status_chance, 0.0);
-        let fira = run_command_combo(&root(), "fira", &c, combo_start(100.0))
+        let fira = run_command_skill_hook(&root(), "fira", "onCombo", &c, combo_start(100.0))
             .unwrap()
             .unwrap();
         assert_eq!(fira.cast_time_ms, 2500.0);
-        let stonera = run_command_combo(&root(), "stonera", &c, combo_start(100.0))
+        let stonera = run_command_skill_hook(&root(), "stonera", "onCombo", &c, combo_start(100.0))
             .unwrap()
             .unwrap();
         assert_eq!(
             stonera.aoe_type, 0.0,
             "the combo makes Stonera single-target"
         );
-        let godsbane = run_command_combo(&root(), "godsbane", &c, combo_start(100.0))
-            .unwrap()
-            .unwrap();
+        let godsbane =
+            run_command_skill_hook(&root(), "godsbane", "onCombo", &c, combo_start(100.0))
+                .unwrap()
+                .unwrap();
         assert_eq!(godsbane.bonus_crit_rate, 200.0);
-        let bloodletter = run_command_combo(&root(), "bloodletter", &c, combo_start(100.0))
-            .unwrap()
-            .unwrap();
+        let bloodletter =
+            run_command_skill_hook(&root(), "bloodletter", "onCombo", &c, combo_start(100.0))
+                .unwrap()
+                .unwrap();
         assert_eq!(bloodletter.status_id, 223127.0);
         // Whirlwind's bonus needs a Berserk the caster doesn't have.
-        let whirlwind = run_command_combo(&root(), "whirlwind", &c, combo_start(100.0))
-            .unwrap()
-            .unwrap();
+        let whirlwind =
+            run_command_skill_hook(&root(), "whirlwind", "onCombo", &c, combo_start(100.0))
+                .unwrap()
+                .unwrap();
         assert_eq!(whirlwind.base_potency, 100.0);
         assert!(
-            run_command_combo(&root(), "fast_blade", &c, combo_start(100.0))
+            run_command_skill_hook(&root(), "fast_blade", "onCombo", &c, combo_start(100.0))
                 .unwrap()
                 .is_none(),
             "no onCombo"
