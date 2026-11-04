@@ -517,6 +517,19 @@ pub fn build_retainer_spawn_bundle(
 /// [`MONSTER_DESPAWN_RADIUS`], so their number on the client stays bounded.
 pub(crate) const INSTANCE_STREAM_RADIUS: f32 = 100.0;
 
+/// What `send_instance_update` gathers under the zone lock: actors to spawn,
+/// actors gone out of range, the player's position and region, the zone
+/// name, and players who came into or left range.
+type StreamScan = (
+    Vec<u32>,
+    Vec<u32>,
+    Option<Vector3>,
+    u32,
+    String,
+    Vec<u32>,
+    Vec<u32>,
+);
+
 /// Radius of `send_zone_in_bundle`'s warp-time neighbour scan: pmeteor's
 /// 50, keeping warp bundles the size the client is known to take. The
 /// instance stream fills in the rest on the first position update.
@@ -4151,15 +4164,7 @@ impl WorldManager {
         // NOT already have, holding the zone read-lock only for the scan.
         // The player's live grid position + region ride along for the
         // partner-zone point query below.
-        let (new_ids, far_ids, player_position, region_id, zone_name, new_players, gone_players): (
-            Vec<u32>,
-            Vec<u32>,
-            Option<Vector3>,
-            u32,
-            String,
-            Vec<u32>,
-            Vec<u32>,
-        ) = {
+        let (new_ids, far_ids, player_position, region_id, zone_name, new_players, gone_players): StreamScan = {
             let z = zone_arc.read().await;
             let center = z.core.find_actor(actor_id).map(|a| a.position);
             let ids = z

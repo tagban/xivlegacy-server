@@ -855,9 +855,7 @@ impl CommandProcessor {
             explicit_zone,
             private_area,
             private_area_type,
-            x,
-            y,
-            z,
+            (x, y, z),
         )
         .await
     }
@@ -885,9 +883,7 @@ impl CommandProcessor {
         explicit_zone: Option<u32>,
         private_area: Option<String>,
         private_area_type: u32,
-        x: f32,
-        y: f32,
-        z: f32,
+        (x, y, z): (f32, f32, f32),
     ) -> String {
         let Some(chara_id) = self.lookup_character_id(name).await else {
             return format!("unknown character: {name}");
@@ -1056,7 +1052,9 @@ impl CommandProcessor {
             };
             return match self.db.zone_landing(zone_id).await {
                 Ok(Some((x, y, z))) => {
-                    let r = self.teleport(&name, Some(zone_id), None, 0, x, y, z).await;
+                    let r = self
+                        .teleport(&name, Some(zone_id), None, 0, (x, y, z))
+                        .await;
                     if r.starts_with("warped") {
                         format!("{name} → {place} (zone {zone_id})")
                     } else {
@@ -1117,7 +1115,7 @@ impl CommandProcessor {
             };
             let (a, camp) = hits[0];
             let r = self
-                .teleport(&name, Some(a.zone_id), None, 0, a.x, a.y, a.z)
+                .teleport(&name, Some(a.zone_id), None, 0, (a.x, a.y, a.z))
                 .await;
             return if r.starts_with("warped") {
                 format!("{name} → {camp}")
