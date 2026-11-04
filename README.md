@@ -52,8 +52,9 @@ joins a server. Only a client reporting version `2012.09.19.0001` can connect.
 - **1,142 Lua scripts** (quests, directors, shops, aetherytes, populace,
   commands) run by [`mlua`](https://github.com/mlua-rs/mlua) 5.4, with a
   coroutine scheduler for the upstream `_WAIT_TIME` / `_WAIT_SIGNAL` idioms
-- **SQLite** with no database server to install: the schema is created and
-  seeded on first run, with numbered migrations tracked in `schema_migrations`
+- **MariaDB** shared by all four servers: the schema and game data are laid
+  down on first boot, game data reloads when its file changes, and numbered
+  migrations are tracked in `schema_migrations` ([docs/database.md](docs/database.md))
 - **Sessions:** the world server keeps `world_sessions`, the one record of who
   is in the game (one character per account), cleared at start-up and
   refreshed every 30 s so a crash never leaves ghosts
@@ -98,7 +99,7 @@ Client ─►│  map-server  │   Lua directors,
          │  :1989       │   navmesh, combat
          └──────────────┘
                 ▲
-                │  shared SQLite (./data/garlemald.db)
+                │  shared MariaDB database (xivlegacy)
                 │  shared Lua script root (./scripts/lua/)
                 ▼
          ┌──────────────┐
@@ -109,7 +110,8 @@ Client ─►│  map-server  │   Lua directors,
 ## Quick start
 
 Requires Rust 1.95 (pinned in `rust-toolchain.toml`; `rustup` installs
-it automatically on first build).
+it automatically on first build) and a MariaDB server with an account for the
+servers: see [docs/database.md](docs/database.md) for the two-minute setup.
 
 ```sh
 # Build every workspace member once, then launch the full stack.
@@ -130,9 +132,8 @@ Individual services can be started on their own for debugging:
 Windows hosts have `.cmd` equivalents of every script in the same
 directory.
 
-On a fresh checkout the first run will create `./data/garlemald.db`,
-apply the bundled schema, seed every reference table, and boot the
-stack on localhost. Add `127.0.0.1` as a server in the
+On a fresh checkout the first run creates the `xivlegacy` database, lays
+down the bundled schema and game data, and boots the stack on localhost. Add `127.0.0.1` as a server in the
 [XIVLegacy launcher](https://github.com/tagban/xivlegacy-launcher), then use
 Create Account and Join.
 
@@ -182,7 +183,6 @@ xivlegacy-server/
 ├── scripts/
 │   ├── run-*.sh       # Build + launch helpers (bash and .cmd variants)
 │   └── lua/           # 1,142 upstream Lua scripts — quests, directors, shops, ...
-├── data/              # SQLite database and WAL (created on first run)
 ├── data-backups/      # Zip snapshots of known-good save states
 └── logs/              # Per-server log files
 ```

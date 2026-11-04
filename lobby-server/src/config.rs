@@ -50,8 +50,9 @@ pub struct ServerSection {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct DatabaseSection {
-    /// Path to the SQLite file, created on first run if missing.
-    pub path: PathBuf,
+    /// The MariaDB database, as `mysql://user:password@host:port/database`.
+    /// `XIVLEGACY_DB_URL` in the environment takes its place when set.
+    pub url: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -75,7 +76,7 @@ impl Default for ServerSection {
 impl Default for DatabaseSection {
     fn default() -> Self {
         Self {
-            path: PathBuf::from("./data/garlemald.db"),
+            url: common::sql::DEFAULT_URL.to_string(),
         }
     }
 }
@@ -95,8 +96,9 @@ impl Config {
     pub fn port(&self) -> u16 {
         self.server.port
     }
-    pub fn db_path(&self) -> &Path {
-        &self.database.path
+    /// The database URL to connect to (see `DatabaseSection::url`).
+    pub fn db_url(&self) -> String {
+        common::sql::configured_url(&self.database.url)
     }
     /// A server list file to use over the defaults instead of
     /// settings/servers.toml (`[servers] path`; unset: None).
@@ -121,8 +123,8 @@ impl Config {
         if let Some(port) = args.port {
             self.server.port = port;
         }
-        if let Some(db) = args.db_path {
-            self.database.path = db;
+        if let Some(db) = args.db_url {
+            self.database.url = db;
         }
     }
 }
@@ -136,9 +138,9 @@ pub struct LaunchArgs {
     /// Override bind port
     #[arg(long)]
     pub port: Option<u16>,
-    /// Override SQLite file path
-    #[arg(long = "db-path")]
-    pub db_path: Option<PathBuf>,
+    /// Override the database URL (mysql://user:password@host:port/database)
+    #[arg(long = "db-url")]
+    pub db_url: Option<String>,
     /// Boot only far enough to validate config + DB, print a SMOKE_OK /
     /// SMOKE_FAIL marker, then exit (CI/dev fail-fast).
     #[arg(long)]

@@ -23,12 +23,11 @@
 //! them `#[allow(dead_code)]` for now so the API stays stable.
 #![allow(dead_code)]
 
-use std::path::Path;
-
 use anyhow::{Context, Result};
+use common::activity;
 use common::db::ConnCallExt;
-use rusqlite::{OptionalExtension, named_params};
-use tokio_rusqlite::Connection;
+use common::sql::Connection;
+use common::sql::{OptionalExtension, named_params};
 
 use crate::group::{Linkshell, LinkshellMember, RetainerGroupMember};
 
@@ -37,8 +36,8 @@ pub struct Database {
 }
 
 impl Database {
-    pub async fn open(path: impl AsRef<Path>) -> Result<Self> {
-        let conn = common::db::open_or_create(path).await?;
+    pub async fn open(url: impl AsRef<str>) -> Result<Self> {
+        let conn = common::db::open_or_create(url).await?;
         Ok(Self { conn })
     }
 
@@ -106,7 +105,7 @@ impl Database {
                             r.get::<_, u16>(2)?,
                         ))
                     })?
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect::<common::sql::Result<_>>()?;
                 Ok(rows)
             })
             .await?;
@@ -120,7 +119,7 @@ impl Database {
                 let mut stmt = c.prepare("SELECT id, name FROM characters")?;
                 let rows: Vec<(u32, String)> = stmt
                     .query_map([], |r| Ok((r.get::<_, u32>(0)?, r.get::<_, String>(1)?)))?
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect::<common::sql::Result<_>>()?;
                 Ok(rows)
             })
             .await?;
@@ -172,7 +171,7 @@ impl Database {
                             r.get::<_, u8>(6)?,
                         ))
                     })?
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect::<common::sql::Result<_>>()?;
                 Ok(rows)
             })
             .await?;
@@ -260,7 +259,7 @@ impl Database {
                             rank: r.get::<_, u8>(2)?,
                         })
                     })?
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect::<common::sql::Result<_>>()?;
                 rows.sort_by_key(|m| m.character_id);
                 Ok(rows)
             })
@@ -282,7 +281,7 @@ impl Database {
                             rank: r.get::<_, u8>(2)?,
                         })
                     })?
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect::<common::sql::Result<_>>()?;
                 Ok(rows)
             })
             .await?;
@@ -316,7 +315,7 @@ impl Database {
                 c.execute(
                     r"INSERT INTO characters_linkshells(characterId, linkshellId, rank)
                       VALUES(:c, :l, :r)
-                      ON CONFLICT(characterId, linkshellId) DO UPDATE SET rank = excluded.rank",
+                      ON DUPLICATE KEY UPDATE rank = VALUES(rank)",
                     named_params! { ":c": chara_id, ":l": ls_id as i64, ":r": rank },
                 )?;
                 Ok(())
@@ -469,7 +468,7 @@ impl Database {
                 )?;
                 let now = now_s();
                 tx.execute(
-                    r"INSERT OR REPLACE INTO world_sessions
+                    r"REPLACE INTO world_sessions
                         (account_id, character_id, world_id, zone_id, map_server, client_ip,
                          conn_seq, started_at, last_seen_at, state)
                       VALUES (:a, :c, :w, :z, :m, :ip, :seq, :now, :now, 'connecting')",
@@ -478,6 +477,7 @@ impl Database {
                         ":m": s.map_server, ":ip": s.client_ip, ":seq": s.conn_seq as i64, ":now": now,
                     },
                 )?;
+                activity::session(&tx, account as u32, s.character_id, "login", s.zone_id, &s.client_ip);
                 tx.commit()?;
                 Ok(previous.filter(|&p| p != s.character_id))
             })
@@ -516,11 +516,13 @@ impl Database {
             .call_db(move |c| {
                 let now = now_s();
                 match destination {
-                    Some((zone, map)) => c.execute(
-                        r"UPDATE world_sessions SET state = 'zoning', zone_id = :z, map_server = :m,
-                          last_seen_at = :now WHERE character_id = :c",
-                        named_params! { ":c": character_id, ":z": zone, ":m": map, ":now": now },
-                    )?,
+                    Some((zone, map)) => {
+                        c.execute(
+                            r"UPDATE world_sessions SET state = 'zoning', zone_id = :z, map_server = :m,
+                              last_seen_at = :now WHERE character_id = :c",
+                            named_params! { ":c": character_id, ":z": zone, ":m": map, ":now": now },
+                        )?
+                    }
                     None => c.execute(
                         "UPDATE world_sessions SET state = 'zoning', last_seen_at = :now WHERE character_id = :c",
                         named_params! { ":c": character_id, ":now": now },
@@ -547,6 +549,7 @@ impl Database {
                         "UPDATE characters SET lastActiveAt = :now WHERE id = :c",
                         named_params! { ":c": character_id, ":now": now_s() },
                     )?;
+                    activity::session(c, 0, character_id, "logout", 0, "");
                 }
                 Ok(n > 0)
             })
@@ -615,7 +618,7 @@ mod tests {
             .call_db(|c| {
                 let mut st = c.prepare("SELECT character_id, state, conn_seq FROM world_sessions ORDER BY character_id")?;
                 st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get::<_, i64>(2)? as u64)))?
-                    .collect::<rusqlite::Result<Vec<_>>>()
+                    .collect::<common::sql::Result<Vec<_>>>()
             })
             .await
             .unwrap()
@@ -623,10 +626,9 @@ mod tests {
 
     #[tokio::test]
     async fn world_sessions_follow_the_lifecycle() {
-        let path =
-            common::test_tmp::dir().join(format!("xivl-world-sessions-{}.db", std::process::id()));
-        let _ = std::fs::remove_file(&path);
-        let db = Database::open(&path).await.unwrap();
+        let db = Database::open(common::test_db::fresh().await.unwrap())
+            .await
+            .unwrap();
         db.conn_for_test()
             .call_db(|c| {
                 c.execute_batch(
@@ -683,6 +685,5 @@ mod tests {
         db.touch_world_sessions(vec![11]).await.unwrap();
         assert_eq!(db.clear_world_sessions().await.unwrap(), 1);
         drop(db);
-        let _ = std::fs::remove_file(&path);
     }
 }

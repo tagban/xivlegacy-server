@@ -624,20 +624,27 @@ mod tests {
         use std::sync::Arc;
         let world = Arc::new(crate::world_manager::WorldManager::new());
         let registry = Arc::new(crate::runtime::actor_registry::ActorRegistry::new());
-        let path =
-            std::env::temp_dir().join(format!("xivlegacy-worldend-{}.db", std::process::id()));
-        let db = Arc::new(crate::database::Database::open(&path).await.unwrap());
+        let db = Arc::new(
+            crate::database::Database::open(common::test_db::fresh().await.unwrap())
+                .await
+                .unwrap(),
+        );
         // Seed class paths the way seed/106 does, all but Atomos's, which
         // has none: a class without one must be skipped, not sent.
-        rusqlite::Connection::open(&path)
-            .unwrap()
-            .execute(
-                "UPDATE gamedata_actor_class SET classPath = '/Chara/Npc/Monster/Test'
-                 WHERE id IN (2210901, 2207001, 2208701, 2108904, 2108901,
-                              2102806, 2202401, 2201607, 2203302)",
-                [],
-            )
-            .unwrap();
+        {
+            use common::db::ConnCallExt;
+            db.conn_for_test()
+                .call_db(|c| {
+                    c.execute(
+                        "UPDATE gamedata_actor_class SET classPath = '/Chara/Npc/Monster/Test'
+                         WHERE id IN (2210901, 2207001, 2208701, 2108904, 2108901,
+                                      2102806, 2202401, 2201607, 2203302)",
+                        [],
+                    )
+                })
+                .await
+                .unwrap();
+        }
         let lua = Arc::new(crate::lua::LuaEngine::new("/nonexistent"));
         world
             .register_zone(crate::zone::zone::Zone::new(
@@ -702,7 +709,6 @@ mod tests {
             assert!(registry.actors_in_zone(170).await.is_empty());
             assert_eq!(world.weather_id(), 1, "the configured sky comes back");
         }
-        let _ = std::fs::remove_file(path);
     }
 
     #[test]

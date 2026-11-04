@@ -23,6 +23,7 @@
 //! are preserved verbatim so this crate can interoperate with the original
 //! client without re-sniffing traffic.
 
+pub mod activity;
 pub mod bitfield;
 pub mod bitstream;
 pub mod blowfish;
@@ -41,7 +42,9 @@ pub mod packet_log;
 pub mod server_list;
 pub mod settings;
 pub mod smoke;
+pub mod sql;
 pub mod subpacket;
+pub mod test_db;
 pub mod test_tmp;
 pub mod utils;
 

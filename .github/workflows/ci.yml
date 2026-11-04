@@ -26,7 +26,7 @@ permissions:
 #   * installs the toolchain pinned in rust-toolchain.toml (1.95.0 + the rustfmt
 #     and clippy components) because no `toolchain:` input is given, and
 #   * caches the cargo registry + target/ by default (Swatinem/rust-cache under
-#     the hood), keyed per job, so the vendored-Lua / bundled-SQLite C builds are
+#     the hood), keyed per job, so the vendored-Lua C build is
 #     not recompiled every run.
 # `rustflags: ""` neutralizes that action's default RUSTFLAGS=-D warnings, which
 # would otherwise turn ordinary build/test warnings into hard errors. Deny-warnings
@@ -66,6 +66,20 @@ jobs:
   test:
     name: test
     runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: ci
+          MARIADB_USER: xivlegacy
+          MARIADB_PASSWORD: ci
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    env:
+      # Tests and the smoke boots make their own xivlegacy_* databases.
+      XIVLEGACY_TEST_DB_URL: mysql://root:ci@127.0.0.1:3306/
     steps:
       - uses: actions/checkout@v6
       - uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -85,6 +99,20 @@ jobs:
     name: content-test
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: ci
+          MARIADB_USER: xivlegacy
+          MARIADB_PASSWORD: ci
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    env:
+      # Tests and the smoke boots make their own xivlegacy_* databases.
+      XIVLEGACY_TEST_DB_URL: mysql://root:ci@127.0.0.1:3306/
     steps:
       - uses: actions/checkout@v6
       - uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -93,7 +121,7 @@ jobs:
       # Run from the repo root so it resolves ./scripts/lua + ./scripts/tests.
       - run: cargo run --locked -p content-test
 
-  # smoke boots each service in `--smoke` mode against a throwaway SQLite DB and
+  # smoke boots each service in `--smoke` mode against a throwaway MariaDB DB and
   # asserts a SMOKE_OK marker + exit 0 (a bind/config/DB/catalog-load failure is
   # reported as SMOKE_FAIL → non-zero). This covers the end-to-end boot path the
   # unit-level `test` job cannot. PROFILE=debug avoids a second release build.
@@ -101,6 +129,20 @@ jobs:
     name: smoke
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: ci
+          MARIADB_USER: xivlegacy
+          MARIADB_PASSWORD: ci
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    env:
+      # Tests and the smoke boots make their own xivlegacy_* databases.
+      XIVLEGACY_TEST_DB_URL: mysql://root:ci@127.0.0.1:3306/
     steps:
       - uses: actions/checkout@v6
       - uses: actions-rust-lang/setup-rust-toolchain@v1

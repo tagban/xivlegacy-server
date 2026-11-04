@@ -1106,15 +1106,8 @@ mod tests {
     use crate::zone::navmesh::StubNavmeshLoader;
     use common::Vector3;
 
-    fn tempdb() -> std::path::PathBuf {
-        use std::sync::atomic::{AtomicU64, Ordering};
-        static SEQ: AtomicU64 = AtomicU64::new(0);
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-        common::test_tmp::dir().join(format!("garlemald-ticker-{nanos}-{seq}.db"))
+    fn tempdb() -> String {
+        common::test_db::fresh_blocking()
     }
 
     async fn setup_one_zone_one_actor() -> (GameTicker, Arc<RwLock<Zone>>) {

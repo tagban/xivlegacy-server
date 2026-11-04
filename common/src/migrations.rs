@@ -16,46 +16,64 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-//! Bundled SQL migrations — the Meteor-ported seed data applied on fresh
-//! or upgrading Garlemald databases.
-//!
-//! `build.rs` enumerates `common/sql/seed/*.sql`, gzip-compresses each
-//! file, and writes a manifest listing every bundled blob. This module
-//! `include!`s that manifest and provides [`iter`] for the db layer.
-//!
-//! Migrations are identified by filename (e.g. `001_gamedata_items.sql`).
-//! The runner (`common::db::apply_migrations`) records applied names in a
-//! `schema_migrations` tracking table so existing databases only pick up
-//! *new* migrations on upgrade.
+//! The SQL bundled into every server binary (see `build.rs`): the MariaDB
+//! baseline schema, one game-data file per table, and numbered migrations.
 
 use std::io::Read;
 
 use flate2::read::GzDecoder;
 
-include!(concat!(env!("OUT_DIR"), "/seed_manifest.rs"));
+include!(concat!(env!("OUT_DIR"), "/sql_manifest.rs"));
 
-/// One bundled migration, ready to execute.
-pub struct Migration {
+/// One bundled SQL file.
+pub struct SqlFile {
     pub name: &'static str,
     pub sql: String,
 }
 
-/// Iterate every migration the binary was built with, in filename order.
-/// Each call decompresses on-demand — there is no long-lived cache.
-pub fn iter() -> impl Iterator<Item = Migration> {
-    SEED_MIGRATIONS.iter().map(|(name, gz)| {
-        let mut dec = GzDecoder::new(*gz);
-        let mut sql = String::new();
-        dec.read_to_string(&mut sql).unwrap_or_else(|e| {
-            panic!("decompressing migration {name}: {e}");
-        });
-        Migration { name, sql }
+fn inflate(name: &str, gz: &[u8]) -> String {
+    let mut dec = GzDecoder::new(gz);
+    let mut sql = String::new();
+    dec.read_to_string(&mut sql)
+        .unwrap_or_else(|e| panic!("decompressing bundled {name}: {e}"));
+    sql
+}
+
+fn files(set: &'static [(&'static str, &'static [u8])]) -> impl Iterator<Item = SqlFile> {
+    set.iter().map(|(name, gz)| SqlFile {
+        name,
+        sql: inflate(name, gz),
     })
 }
 
-/// Count of bundled migrations (useful for startup logs).
+/// The baseline schema, for an empty database.
+pub fn schema() -> String {
+    inflate(SCHEMA[0].0, SCHEMA[0].1)
+}
+
+/// Game-data files, one per table, in name order.
+pub fn data() -> impl Iterator<Item = SqlFile> {
+    files(DATA)
+}
+
+/// Numbered migrations, in name order.
+pub fn iter() -> impl Iterator<Item = SqlFile> {
+    files(MIGRATIONS)
+}
+
 pub fn count() -> usize {
-    SEED_MIGRATIONS.len()
+    MIGRATIONS.len()
+}
+
+/// FNV-1a 64 of a file's text: how a changed data file or an edited
+/// migration is noticed.
+pub fn checksum(sql: &str) -> String {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in sql.as_bytes() {
+        h ^= *b as u64;
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    format!("{h:016x}")
 }
 
 #[cfg(test)]
@@ -63,125 +81,37 @@ mod tests {
     use super::*;
 
     #[test]
-    fn manifest_is_non_empty() {
-        assert!(count() > 0);
+    fn schema_creates_tables() {
+        let s = schema();
+        assert!(s.matches("CREATE TABLE IF NOT EXISTS").count() > 50);
     }
 
     #[test]
-    fn every_migration_decompresses_to_sqlite_sql() {
-        for mig in iter() {
-            assert!(!mig.sql.is_empty(), "{} decompressed empty", mig.name);
-            // Every bundled file should contain a sanity-check DDL/DML
-            // token — guards against accidentally shipping an empty
-            // (or wholly-commented-out) migration. `ALTER TABLE`
-            // migrations are a legitimate column-add path (see
-            // `050_characters_quest_scenario_npc_ls.sql` for the first
-            // landed example), `UPDATE` a legitimate data-fix path
-            // (`052_fix_tutorial_ally_pools.sql`), `DELETE` a
-            // legitimate data-removal path
-            // (`092_remove_bluebadger_closed_gate.sql`), and
-            // `DROP TABLE` a legitimate table-retirement path
-            // (`100_drop_servers_table.sql`), so the check is the union
-            // of all six.
+    fn every_data_file_reloads_its_own_table() {
+        let mut n = 0;
+        for f in data() {
+            let table = f.name.trim_end_matches(".sql");
             assert!(
-                mig.sql.contains("CREATE TABLE")
-                    || mig.sql.contains("INSERT")
-                    || mig.sql.contains("ALTER TABLE")
-                    || mig.sql.contains("UPDATE")
-                    || mig.sql.contains("DELETE")
-                    || mig.sql.contains("DROP TABLE"),
-                "{} has none of CREATE TABLE / INSERT / ALTER TABLE / UPDATE / DELETE / DROP TABLE",
-                mig.name,
+                f.sql.contains(&format!("DELETE FROM `{table}`;")),
+                "{} must start by clearing {table}",
+                f.name
             );
+            n += 1;
         }
+        assert!(n > 30, "expected the game-data files, found {n}");
     }
 
     #[test]
-    fn migration_names_are_sorted() {
+    fn migrations_are_numbered_and_sorted() {
         let names: Vec<&str> = iter().map(|m| m.name).collect();
         let mut sorted = names.clone();
         sorted.sort();
-        assert_eq!(names, sorted, "migrations are expected in filename order");
-    }
-
-    /// Seed/099 contract: the Man1l0 seafield push trigger (spawn row 2090 +
-    /// the class-1090082 un-stripping) and the ASSESSOR1 gate-echo position
-    /// repair, applied twice for idempotency, against the pre-099 shapes the
-    /// seed guards on. The quest's SEQ_070 leg soft-locks without the spawn
-    /// (Garlemald-Server #48), and the content-test walkthrough can't see
-    /// seeds — this is the only automated coverage of the fix.
-    #[test]
-    fn man1l0_spawn_repairs_restore_trigger_and_assessor() {
-        let c = rusqlite::Connection::open_in_memory().unwrap();
-        c.execute_batch(
-            "CREATE TABLE gamedata_actor_class (
-                 id INTEGER PRIMARY KEY,
-                 classPath TEXT NOT NULL,
-                 displayNameId INTEGER NOT NULL DEFAULT 4294967295,
-                 propertyFlags INTEGER NOT NULL DEFAULT 0,
-                 eventConditions TEXT
-             );
-             CREATE TABLE server_spawn_locations (
-                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                 actorClassId INTEGER NOT NULL,
-                 uniqueId TEXT NOT NULL DEFAULT '',
-                 zoneId INTEGER NOT NULL,
-                 privateAreaName TEXT NOT NULL DEFAULT '',
-                 privateAreaLevel INTEGER NOT NULL DEFAULT 0,
-                 positionX REAL NOT NULL DEFAULT 0,
-                 positionY REAL NOT NULL DEFAULT 0,
-                 positionZ REAL NOT NULL DEFAULT 0,
-                 rotation REAL NOT NULL DEFAULT 0,
-                 actorState INTEGER NOT NULL DEFAULT 0,
-                 animationId INTEGER NOT NULL DEFAULT 0,
-                 customDisplayName TEXT DEFAULT NULL
-             );
-             -- Pre-099 shapes: the stripped seed/003 class row and the
-             -- seed/059 placeholder-at-origin ASSESSOR1 row.
-             INSERT INTO gamedata_actor_class VALUES (1090082, '', 0, 0, NULL);
-             INSERT INTO server_spawn_locations VALUES
-                 (2107, 1000120, 'man1l0_echo3_assessor2', 230,
-                  'PrivateAreaMasterPast', 7, 0, 0, 0, 0, 0, 0, NULL);",
-        )
-        .unwrap();
-
-        let mig = iter()
-            .find(|m| m.name == "099_man1l0_spawn_repairs.sql")
-            .expect("seed/099 must be bundled");
-        c.execute_batch(&mig.sql).unwrap();
-        c.execute_batch(&mig.sql).unwrap(); // idempotent re-run
-
-        let (path, flags): (String, i64) = c
-            .query_row(
-                "SELECT classPath, propertyFlags FROM gamedata_actor_class WHERE id = 1090082",
-                [],
-                |r| Ok((r.get(0)?, r.get(1)?)),
-            )
-            .unwrap();
-        assert_eq!(path, "/Chara/Npc/Populace/PopulaceStandard");
-        assert_eq!(flags, 1);
-
-        let (zone, x, z): (i64, f64, f64) = c
-            .query_row(
-                "SELECT zoneId, positionX, positionZ FROM server_spawn_locations WHERE id = 2090",
-                [],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
-            )
-            .unwrap();
-        assert_eq!(zone, 128, "seafield trigger belongs to sea0Field01");
-        assert!((x - 218.58).abs() < 1e-6 && (z - 1176.56).abs() < 1e-6);
-
-        let (ax, ay, az): (f64, f64, f64) = c
-            .query_row(
-                "SELECT positionX, positionY, positionZ \
-                 FROM server_spawn_locations WHERE id = 2107",
-                [],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
-            )
-            .unwrap();
-        assert!(
-            ax != 0.0 && ay != 0.0 && az != 0.0,
-            "ASSESSOR1 must no longer sit at the origin placeholder"
-        );
+        assert_eq!(names, sorted);
+        for n in names {
+            assert!(
+                n.len() > 4 && n[..3].bytes().all(|b| b.is_ascii_digit()) && &n[3..4] == "_",
+                "migration {n} must be named NNN_description.sql"
+            );
+        }
     }
 }

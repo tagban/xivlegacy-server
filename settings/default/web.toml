@@ -7,11 +7,16 @@ port = 54993
 show_timestamp = true
 
 [database]
-# Shared SQLite file used by every service. Created (with schema)
-# on first run if missing.
-path = "./data/garlemald.db"
+# The MariaDB database every server shares. Put the password in your own
+# settings file or in XIVLEGACY_DB_URL, not here.
+url = "mysql://xivlegacy@127.0.0.1:3306/xivlegacy"
 
 [session]
 # How long a session row lives after a successful login/signup. The lobby
 # server rejects rows whose `expiration` is in the past.
 hours = 24
+
+[reports]
+# Activity reports at /reports (sessions, items, gil, quests, GM commands).
+# Only accounts with users.gmLevel at or above this may sign in (at least 1).
+gm_level = 1

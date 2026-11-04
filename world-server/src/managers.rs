@@ -348,17 +348,10 @@ impl Default for RetainerGroupManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rusqlite::named_params;
+    use common::sql::named_params;
 
-    fn tempdb() -> std::path::PathBuf {
-        use std::sync::atomic::{AtomicU64, Ordering};
-        static SEQ: AtomicU64 = AtomicU64::new(0);
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-        common::test_tmp::dir().join(format!("garlemald-ls-{nanos}-{seq}.db"))
+    fn tempdb() -> String {
+        common::test_db::fresh_blocking()
     }
 
     async fn seed_character(db: &Database, id: u32, name: &str) {

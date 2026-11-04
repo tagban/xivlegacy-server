@@ -52,6 +52,7 @@ pub async fn run(config: Config, db: Database, smoke: bool) -> Result<()> {
             .and_then(|l| l.active().next().map(|w| w.name.clone()))
             .unwrap_or_default(),
         bug_reports: bug_reports.clone(),
+        reports_gm_level: config.reports_gm_level(),
     };
 
     let app = Router::new()
@@ -64,7 +65,15 @@ pub async fn run(config: Config, db: Database, smoke: bool) -> Result<()> {
             "/signup",
             get(handlers::signup_form).post(handlers::signup_submit),
         )
-        .route("/healthz", get(handlers::healthz));
+        .route("/healthz", get(handlers::healthz))
+        // activity reports for GMs (the log_* tables)
+        .route("/reports", get(crate::reports::overview))
+        .route(
+            "/reports/login",
+            get(crate::reports::login_form).post(crate::reports::login_submit),
+        )
+        .route("/reports/logout", post(crate::reports::logout))
+        .route("/reports/character", get(crate::reports::character));
     // modules/status
     let app = if common::modules::is_enabled("status") {
         tracing::info!("status module: GET /status");

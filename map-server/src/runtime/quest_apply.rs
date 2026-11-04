@@ -8024,15 +8024,8 @@ mod tests {
         dir
     }
 
-    pub(crate) fn tempdb() -> std::path::PathBuf {
-        use std::sync::atomic::{AtomicU64, Ordering};
-        static SEQ: AtomicU64 = AtomicU64::new(0);
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-        common::test_tmp::dir().join(format!("garlemald-onnotice-{nanos}-{seq}.db"))
+    pub(crate) fn tempdb() -> String {
+        common::test_db::fresh_blocking()
     }
 
     /// `apply_quest_on_notice` resolves the script, fires

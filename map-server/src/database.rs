@@ -26,13 +26,13 @@
 #![allow(dead_code)]
 
 use std::collections::HashMap;
-use std::path::Path;
 
 use anyhow::{Context, Result};
+use common::activity;
 use common::bitstream::Bitstream2048;
 use common::db::ConnCallExt;
-use rusqlite::{OptionalExtension, named_params};
-use tokio_rusqlite::Connection;
+use common::sql::Connection;
+use common::sql::{OptionalExtension, named_params};
 
 use crate::actor::modifier::decode_param_bonus_type;
 use crate::data::{InventoryItem, ItemData, ItemTag, SeamlessBoundary, ZoneEntrance};
@@ -264,8 +264,8 @@ pub struct Database {
 }
 
 impl Database {
-    pub async fn open(path: impl AsRef<Path>) -> Result<Self> {
-        let conn = common::db::open_or_create(path).await?;
+    pub async fn open(url: impl AsRef<str>) -> Result<Self> {
+        let conn = common::db::open_or_create(url).await?;
         Ok(Self { conn })
     }
 
@@ -323,7 +323,7 @@ impl Database {
                             })
                         },
                     )?
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect::<common::sql::Result<_>>()?;
                 Ok(rows)
             })
             .await?;
@@ -353,7 +353,7 @@ impl Database {
                             bgm_battle: r.get::<_, u16>(7).unwrap_or_default(),
                         })
                     })?
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect::<common::sql::Result<_>>()?;
                 Ok(rows)
             })
             .await?;
@@ -387,7 +387,7 @@ impl Database {
                             },
                         ))
                     })?
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect::<common::sql::Result<_>>()?;
                 Ok(rows)
             })
             .await?;
@@ -466,7 +466,7 @@ impl Database {
                 )?;
                 let rows = stmt
                     .query_map([zone_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect::<common::sql::Result<_>>()?;
                 Ok(rows)
             })
             .await
@@ -520,7 +520,7 @@ impl Database {
                             ),
                         ))
                     })?
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect::<common::sql::Result<_>>()?;
                 Ok(rows)
             })
             .await?;
@@ -671,7 +671,7 @@ impl Database {
                             },
                         ))
                     })?
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect::<common::sql::Result<_>>()?;
                 Ok(rows)
             })
             .await?;
@@ -712,7 +712,7 @@ impl Database {
                             mapobj_instance_id: r.get::<_, u32>(12).unwrap_or_default(),
                         })
                     })?
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect::<common::sql::Result<_>>()?;
                 Ok(rows)
             })
             .await?;
@@ -736,7 +736,7 @@ impl Database {
                 )?;
                 let rows = stmt
                     .query_map([], |r| Ok((r.get::<_, u32>(0)?, r.get::<_, u32>(1)?)))?
-                    .collect::<rusqlite::Result<Vec<_>>>()?;
+                    .collect::<common::sql::Result<Vec<_>>>()?;
                 Ok(rows)
             })
             .await?;
@@ -849,7 +849,7 @@ impl Database {
                             merge_y2: r.get(15)?,
                         })
                     })?
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect::<common::sql::Result<_>>()?;
                 Ok(rows)
             })
             .await?;
@@ -871,7 +871,7 @@ impl Database {
             .call_db(move |c| {
                 let v = c
                     .query_row(
-                        "SELECT userId FROM sessions WHERE id = :sid AND expiration > datetime('now')",
+                        "SELECT userId FROM sessions WHERE id = :sid AND expiration > UTC_TIMESTAMP()",
                         named_params! { ":sid": sid },
                         |r| r.get::<_, u32>(0),
                     )
@@ -997,7 +997,7 @@ impl Database {
                             },
                         ))
                     })?
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect::<common::sql::Result<_>>()?;
                 Ok(rows)
             })
             .await?;
@@ -1043,7 +1043,7 @@ impl Database {
                             ))
                         },
                     )?
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect::<common::sql::Result<_>>()?;
                 Ok(rows)
             })
             .await?;
@@ -1075,7 +1075,7 @@ impl Database {
                             },
                         ))
                     })?
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect::<common::sql::Result<_>>()?;
                 Ok(rows)
             })
             .await?;
@@ -1123,7 +1123,7 @@ impl Database {
                             },
                         ))
                     })?
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect::<common::sql::Result<_>>()?;
                 Ok(rows)
             })
             .await?;
@@ -1186,7 +1186,7 @@ impl Database {
                             1,
                         ))
                     })?
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect::<common::sql::Result<_>>()?;
                 Ok(rows)
             })
             .await?;
@@ -1269,7 +1269,7 @@ impl Database {
                             },
                         ))
                     })?
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect::<common::sql::Result<_>>()?;
                 Ok(rows)
             })
             .await?;
@@ -1306,7 +1306,7 @@ impl Database {
                             id, grade, attempts, items,
                         ))
                     })?
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect::<common::sql::Result<_>>()?;
                 let mut items_stmt = c.prepare(
                     r"SELECT id, itemCatalogId, remainder, aim, sweetspot, maxYield
                       FROM gamedata_gather_node_items
@@ -1323,7 +1323,7 @@ impl Database {
                             max_yield: r.get::<_, u32>(5).unwrap_or(1),
                         })
                     })?
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect::<common::sql::Result<_>>()?;
                 Ok((nodes, items))
             })
             .await?;
@@ -1368,7 +1368,7 @@ impl Database {
                                 .unwrap_or(crate::gathering::HARVEST_TYPE_MINE),
                         })
                     })?
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect::<common::sql::Result<_>>()?;
                 Ok(rows)
             })
             .await?;
@@ -1475,7 +1475,7 @@ impl Database {
                             ],
                         })
                     })?
-                    .collect::<rusqlite::Result<Vec<_>>>()?;
+                    .collect::<common::sql::Result<Vec<_>>>()?;
                 Ok(rows)
             })
             .await?;
@@ -1572,7 +1572,7 @@ impl Database {
                         },
                         |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i32>(1)?)),
                     )?
-                    .collect::<rusqlite::Result<Vec<_>>>()?
+                    .collect::<common::sql::Result<Vec<_>>>()?
                 };
 
                 let mut remaining = delta;
@@ -1864,7 +1864,7 @@ impl Database {
                             },
                         ))
                     })?
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect::<common::sql::Result<_>>()?;
                 Ok(rows)
             })
             .await?;
@@ -1968,7 +1968,7 @@ impl Database {
                             damage_multiplier: r.get::<_, f32>(48).unwrap_or_default(),
                         })
                     })?
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect::<common::sql::Result<_>>()?;
                 Ok(rows)
             })
             .await?;
@@ -2005,7 +2005,7 @@ impl Database {
                             bonus: r.get::<_, i32>(5).unwrap_or_default(),
                         })
                     })?
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect::<common::sql::Result<_>>()?;
                 Ok(rows)
             })
             .await?;
@@ -2104,8 +2104,13 @@ impl Database {
             .unwrap_or_default();
         player.chocobo = self.load_chocobo(chara_id).await.unwrap_or_default();
         player.timers = self.load_timers(chara_id).await.unwrap_or_default();
+        // Hotbars and gear sets are kept per job while in one.
+        let bar_class = match player.parameter_save.state_current_job {
+            0 => player.parameter_save.state_main_skill[0],
+            job => job,
+        };
         player.hotbar = self
-            .load_hotbar(chara_id, player.parameter_save.state_main_skill[0])
+            .load_hotbar(chara_id, bar_class)
             .await
             .unwrap_or_default();
         player.quest_scenario = self.load_quest_scenario(chara_id).await.unwrap_or_default();
@@ -2134,7 +2139,7 @@ impl Database {
         }
 
         player.equipment = self
-            .get_equipment(chara_id, player.parameter_save.state_main_skill[0] as u16)
+            .get_equipment(chara_id, bar_class as u16)
             .await
             .unwrap_or_default();
 
@@ -2204,7 +2209,7 @@ impl Database {
             .call_db(move |c| {
                 let v = c
                     .query_row(
-                        r"SELECT hp, hpMax, mp, mpMax, mainSkill
+                        r"SELECT hp, hpMax, mp, mpMax, mainSkill, currentJob
                           FROM characters_parametersave WHERE characterId = :cid",
                         named_params! { ":cid": chara_id },
                         |r| {
@@ -2214,6 +2219,7 @@ impl Database {
                             save.mp = r.get::<_, i16>(2).unwrap_or_default();
                             save.mp_max = r.get::<_, i16>(3).unwrap_or_default();
                             save.state_main_skill[0] = r.get::<_, u8>(4).unwrap_or_default();
+                            save.state_current_job = r.get::<_, u8>(5).unwrap_or_default();
                             Ok(save)
                         },
                     )
@@ -2303,7 +2309,7 @@ impl Database {
                             saved_at: r.get::<_, u32>(7).unwrap_or_default(),
                         })
                     })?
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect::<common::sql::Result<_>>()?;
                 Ok(rows)
             })
             .await?;
@@ -2380,7 +2386,7 @@ impl Database {
                             npc_ls_msg_step: r.get::<_, u8>(9).unwrap_or_default(),
                         })
                     })?
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect::<common::sql::Result<_>>()?;
                 Ok(rows)
             })
             .await?;
@@ -2420,7 +2426,7 @@ impl Database {
                 c.execute(
                     r"INSERT INTO characters_quest_completed (characterId, completedQuests)
                       VALUES (:cid, :blob)
-                      ON CONFLICT(characterId) DO UPDATE SET completedQuests = excluded.completedQuests",
+                      ON DUPLICATE KEY UPDATE completedQuests = VALUES(completedQuests)",
                     named_params! { ":cid": chara_id, ":blob": bytes },
                 )?;
                 Ok(())
@@ -2446,7 +2452,7 @@ impl Database {
                             completed: r.get::<_, i64>(3).unwrap_or(0) != 0,
                         })
                     })?
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect::<common::sql::Result<_>>()?;
                 Ok(rows)
             })
             .await?;
@@ -2470,7 +2476,7 @@ impl Database {
                             completed: r.get::<_, i64>(3).unwrap_or(0) != 0,
                         })
                     })?
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect::<common::sql::Result<_>>()?;
                 Ok(rows)
             })
             .await?;
@@ -2493,7 +2499,7 @@ impl Database {
                             is_extra: r.get::<_, i64>(2).unwrap_or(0) != 0,
                         })
                     })?
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect::<common::sql::Result<_>>()?;
                 Ok(rows)
             })
             .await?;
@@ -2552,6 +2558,21 @@ impl Database {
         Ok(())
     }
 
+    /// Save the job the character is in (0 = none).
+    pub async fn save_player_current_job(&self, chara_id: u32, job_id: u8) -> Result<()> {
+        self.conn
+            .call_db(move |c| {
+                c.execute(
+                    "UPDATE characters_parametersave SET currentJob = :job WHERE characterId = :cid",
+                    named_params! { ":job": job_id, ":cid": chara_id },
+                )?;
+                activity::progress(c, chara_id, "job", job_id, job_id as i64);
+                Ok(())
+            })
+            .await?;
+        Ok(())
+    }
+
     pub async fn save_player_current_class(
         &self,
         chara_id: u32,
@@ -2565,6 +2586,7 @@ impl Database {
                       WHERE characterId = :charaId",
                     named_params! { ":cid": class_id, ":lvl": class_level, ":charaId": chara_id },
                 )?;
+                activity::progress(c, chara_id, "class", class_id, class_level as i64);
                 Ok(())
             })
             .await?;
@@ -2588,6 +2610,17 @@ impl Database {
         let private_area = private_area.to_owned();
         self.conn
             .call_db(move |c| {
+                let was: Option<u32> = c
+                    .query_row(
+                        "SELECT currentZoneId FROM characters WHERE id = :cid",
+                        named_params! { ":cid": chara_id },
+                        |r| r.get(0),
+                    )
+                    .optional()?
+                    .flatten();
+                if was.is_some_and(|z| z != zone_id) {
+                    activity::session(c, 0, chara_id, "zone", zone_id, &private_area);
+                }
                 c.execute(
                     r"UPDATE characters SET
                           positionX = :x, positionY = :y, positionZ = :z, rotation = :rot,
@@ -2650,7 +2683,7 @@ impl Database {
         self.conn
             .call_db(move |c| {
                 c.execute(
-                    "INSERT OR IGNORE INTO characters_aetherytes (characterId, aetheryteId)
+                    "INSERT IGNORE INTO characters_aetherytes (characterId, aetheryteId)
                      VALUES (:cid, :aid)",
                     named_params! { ":cid": chara_id, ":aid": aetheryte_id },
                 )?;
@@ -2675,7 +2708,7 @@ impl Database {
                 )?;
                 let rows: Vec<u32> = stmt
                     .query_map(named_params! { ":cid": chara_id }, |r| r.get::<_, u32>(0))?
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect::<common::sql::Result<_>>()?;
                 Ok(rows)
             })
             .await?;
@@ -2711,20 +2744,36 @@ impl Database {
         let qid = 0xF_FFFFu32 & quest_actor_id;
         self.conn
             .call_db(move |c| {
+                let before: Option<(u32, u32)> = c
+                    .query_row(
+                        "SELECT questId, sequence FROM characters_quest_scenario \
+                         WHERE characterId = :cid AND slot = :slot",
+                        named_params! { ":cid": chara_id, ":slot": slot },
+                        |r| Ok((r.get(0)?, r.get(1)?)),
+                    )
+                    .optional()?;
+                if before != Some((qid, sequence)) {
+                    let event = if before.is_some_and(|(q, _)| q == qid) {
+                        "step"
+                    } else {
+                        "accept"
+                    };
+                    activity::quest(c, chara_id, "quest", qid, event, sequence);
+                }
                 c.execute(
                     r"INSERT INTO characters_quest_scenario
                         (characterId, slot, questId, sequence, flags,
                          counter1, counter2, counter3, counter4)
                       VALUES (:cid, :slot, :qid, :seq, :flags,
                               :c1, :c2, :c3, :c4)
-                      ON CONFLICT(characterId, slot) DO UPDATE SET
-                        questId  = excluded.questId,
-                        sequence = excluded.sequence,
-                        flags    = excluded.flags,
-                        counter1 = excluded.counter1,
-                        counter2 = excluded.counter2,
-                        counter3 = excluded.counter3,
-                        counter4 = excluded.counter4",
+                      ON DUPLICATE KEY UPDATE
+                        questId  = VALUES(questId),
+                        sequence = VALUES(sequence),
+                        flags    = VALUES(flags),
+                        counter1 = VALUES(counter1),
+                        counter2 = VALUES(counter2),
+                        counter3 = VALUES(counter3),
+                        counter4 = VALUES(counter4)",
                     named_params! {
                         ":cid": chara_id,
                         ":slot": slot,
@@ -2795,6 +2844,11 @@ impl Database {
                         ":gid": gl_id,
                     },
                 )?;
+                if is_completed {
+                    activity::quest(c, chara_id, "leve", gl_id, "complete", 0);
+                } else if is_abandoned {
+                    activity::quest(c, chara_id, "leve", gl_id, "abandon", 0);
+                }
                 Ok(())
             })
             .await?;
@@ -2808,11 +2862,12 @@ impl Database {
                     r"INSERT INTO characters_quest_guildleve_regional
                         (characterId, slot, guildleveId, abandoned, completed)
                       VALUES (:cid, :slot, :gid, 0, 0)
-                      ON CONFLICT(characterId, guildleveId) DO UPDATE SET
-                        guildleveId = excluded.guildleveId,
+                      ON DUPLICATE KEY UPDATE
+                        guildleveId = VALUES(guildleveId),
                         abandoned = 0, completed = 0",
                     named_params! { ":cid": chara_id, ":slot": slot, ":gid": gl_id },
                 )?;
+                activity::quest(c, chara_id, "leve", gl_id, "accept", 0);
                 Ok(())
             })
             .await?;
@@ -2822,11 +2877,14 @@ impl Database {
     pub async fn remove_guildleve(&self, chara_id: u32, gl_id: u32) -> Result<()> {
         self.conn
             .call_db(move |c| {
-                c.execute(
+                let n = c.execute(
                     "DELETE FROM characters_quest_guildleve_regional
                      WHERE characterId = :cid AND guildleveId = :gid",
                     named_params! { ":cid": chara_id, ":gid": gl_id },
                 )?;
+                if n > 0 {
+                    activity::quest(c, chara_id, "leve", gl_id, "remove", 0);
+                }
                 Ok(())
             })
             .await?;
@@ -2837,10 +2895,13 @@ impl Database {
         let qid = 0xF_FFFFu32 & quest_id;
         self.conn
             .call_db(move |c| {
-                c.execute(
+                let n = c.execute(
                     "DELETE FROM characters_quest_scenario WHERE characterId = :cid AND questId = :qid",
                     named_params! { ":cid": chara_id, ":qid": qid },
                 )?;
+                if n > 0 {
+                    activity::quest(c, chara_id, "quest", qid, "remove", 0);
+                }
                 Ok(())
             })
             .await?;
@@ -2859,7 +2920,13 @@ impl Database {
             return Ok(());
         }
         current.set(bit);
-        self.save_completed_quests(chara_id, &current).await
+        self.save_completed_quests(chara_id, &current).await?;
+        self.conn
+            .call_db(move |c| {
+                activity::quest(c, chara_id, "quest", quest_id, "complete", 0);
+                Ok(())
+            })
+            .await
     }
 
     pub async fn is_quest_completed(&self, chara_id: u32, quest_id: u32) -> Result<bool> {
@@ -2893,7 +2960,7 @@ impl Database {
                             })
                         },
                     )?
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect::<common::sql::Result<_>>()?;
                 Ok(rows)
             })
             .await?;
@@ -3006,7 +3073,7 @@ impl Database {
                 c.execute(
                     r"INSERT INTO characters_inventory_equipment (characterId, classId, equipSlot, itemId)
                       VALUES (:cid, :class, :slot, :iid)
-                      ON CONFLICT(characterId, classId, equipSlot) DO UPDATE SET itemId = excluded.itemId",
+                      ON DUPLICATE KEY UPDATE itemId = VALUES(itemId)",
                     named_params! {
                         ":cid": chara_id,
                         ":class": effective_class,
@@ -3059,7 +3126,7 @@ impl Database {
                      WHERE i.catalogID = ?1",
                     [catalog_id],
                     |r| {
-                        let int = |k: usize| -> rusqlite::Result<i32> {
+                        let int = |k: usize| -> common::sql::Result<i32> {
                             Ok(r.get::<_, Option<i32>>(k)?.unwrap_or(-1))
                         };
                         let mut effects = Vec::new();
@@ -3123,7 +3190,7 @@ impl Database {
                         tx.execute(
                             "INSERT INTO server_battlenpc_pools (poolId, actorClassId, name, genusId, combatSkill, combatDelay)
                              VALUES (?1, ?2, ?3, ?4, 1, 4200)",
-                            rusqlite::params![p, class_id, name, genus_id],
+                            common::sql::params![p, class_id, name, genus_id],
                         )?;
                         (p, Some(p))
                     }
@@ -3136,14 +3203,14 @@ impl Database {
                 tx.execute(
                     "INSERT INTO server_battlenpc_groups (groupId, poolId, scriptName, minLevel, maxLevel, respawnTime, zoneId)
                      VALUES (?1, ?2, 'gm_spawn', ?3, ?3, 0, ?4)",
-                    rusqlite::params![group_id, pool_id, level, zone_id],
+                    common::sql::params![group_id, pool_id, level, zone_id],
                 )?;
                 let mut ids = Vec::new();
                 for (x, y, z, rot) in positions {
                     tx.execute(
                         "INSERT INTO server_battlenpc_spawn_locations (groupId, positionX, positionY, positionZ, rotation)
                          VALUES (?1, ?2, ?3, ?4, ?5)",
-                        rusqlite::params![group_id, x, y, z, rot],
+                        common::sql::params![group_id, x, y, z, rot],
                     )?;
                     ids.push(tx.last_insert_rowid() as u32);
                 }
@@ -3273,7 +3340,7 @@ impl Database {
                             ))
                         },
                     )?
-                    .collect::<rusqlite::Result<Vec<_>>>()?;
+                    .collect::<common::sql::Result<Vec<_>>>()?;
                 Ok(rows)
             })
             .await
@@ -3357,8 +3424,8 @@ impl Database {
                 c.execute(
                     r"INSERT INTO characters_hotbar (characterId, classId, hotbarSlot, commandId, recastTime)
                       VALUES (:cid, :class, :slot, :cmd, :rcst)
-                      ON CONFLICT(characterId, classId, hotbarSlot) DO UPDATE SET
-                        commandId = excluded.commandId, recastTime = excluded.recastTime",
+                      ON DUPLICATE KEY UPDATE
+                        commandId = VALUES(commandId), recastTime = VALUES(recastTime)",
                     named_params! {
                         ":cid": chara_id, ":class": class_id, ":slot": hotbar_slot,
                         ":cmd": command_id, ":rcst": recast_time,
@@ -3410,7 +3477,7 @@ impl Database {
                             })
                         },
                     )?
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect::<common::sql::Result<_>>()?;
                 Ok(rows)
             })
             .await?;
@@ -3431,7 +3498,7 @@ impl Database {
                         named_params! { ":cid": chara_id, ":class": class_id },
                         |r| r.get::<_, u16>(0),
                     )?
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect::<common::sql::Result<_>>()?;
                 Ok(rows)
             })
             .await?;
@@ -3501,7 +3568,7 @@ impl Database {
                             },
                         })
                     })?
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect::<common::sql::Result<_>>()?;
                 Ok(rows)
             })
             .await?;
@@ -3574,6 +3641,9 @@ impl Database {
                         ":iid": server_item_id as i64, ":slot": slot,
                     },
                 )?;
+                if let Some((_, item_id, _, qty)) = activity::item_row(c, server_item_id) {
+                    activity::item(c, owner_id, item_id, server_item_id, qty, item_package, "add");
+                }
                 Ok(())
             })
             .await?;
@@ -3583,10 +3653,14 @@ impl Database {
     pub async fn remove_item(&self, owner_id: u32, server_item_id: u64) -> Result<()> {
         self.conn
             .call_db(move |c| {
-                c.execute(
+                let before = activity::item_row(c, server_item_id);
+                let n = c.execute(
                     "DELETE FROM characters_inventory WHERE characterId = :cid AND serverItemId = :iid",
                     named_params! { ":cid": owner_id, ":iid": server_item_id as i64 },
                 )?;
+                if let Some((_, item_id, pkg, qty)) = before.filter(|_| n > 0) {
+                    activity::item(c, owner_id, item_id, server_item_id, -qty, pkg, "remove");
+                }
                 Ok(())
             })
             .await?;
@@ -3616,10 +3690,22 @@ impl Database {
     pub async fn set_quantity(&self, server_item_id: u64, quantity: i32) -> Result<()> {
         self.conn
             .call_db(move |c| {
+                let before = activity::item_row(c, server_item_id);
                 c.execute(
                     "UPDATE server_items SET quantity = :q WHERE id = :iid",
                     named_params! { ":q": quantity, ":iid": server_item_id as i64 },
                 )?;
+                if let Some((chara, item_id, pkg, old)) = before {
+                    activity::item(
+                        c,
+                        chara,
+                        item_id,
+                        server_item_id,
+                        quantity as i64 - old,
+                        pkg,
+                        "quantity",
+                    );
+                }
                 Ok(())
             })
             .await?;
@@ -3689,7 +3775,7 @@ impl Database {
                 )?;
                 let rows: Vec<u32> = stmt
                     .query_map(named_params! { ":cid": chara_id }, |r| r.get::<_, u32>(0))?
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect::<common::sql::Result<_>>()?;
                 Ok(rows)
             })
             .await?;
@@ -3713,7 +3799,7 @@ impl Database {
                 )?;
                 let rows: Vec<u32> = stmt
                     .query_map(named_params! { ":cid": chara_id }, |r| r.get::<_, u32>(0))?
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect::<common::sql::Result<_>>()?;
                 Ok(rows)
             })
             .await?;
@@ -3763,7 +3849,7 @@ impl Database {
             .conn
             .call_db(move |c| {
                 c.execute(
-                    r"INSERT OR IGNORE INTO gamedata_achievements
+                    r"INSERT IGNORE INTO gamedata_achievements
                           (achievementId, name, packetOffsetId, rewardPoints)
                       VALUES (:aid, '', :aid, :pts)",
                     named_params! { ":aid": achievement_id, ":pts": points },
@@ -3783,8 +3869,7 @@ impl Database {
                     r"INSERT INTO characters_achievements
                           (characterId, achievementId, timeDone, progress, progressFlags)
                       VALUES (:cid, :aid, :now, 0, 0)
-                      ON CONFLICT(characterId, achievementId)
-                          DO UPDATE SET timeDone = :now",
+                      ON DUPLICATE KEY UPDATE timeDone = :now",
                     named_params! { ":cid": chara_id, ":aid": achievement_id, ":now": now },
                 )?;
                 Ok(true)
@@ -3847,8 +3932,7 @@ impl Database {
                     r"INSERT INTO characters_achievements
                           (characterId, achievementId, progress, progressFlags)
                       VALUES (:cid, :aid, :p, :f)
-                      ON CONFLICT(characterId, achievementId)
-                          DO UPDATE SET progress = :p, progressFlags = :f",
+                      ON DUPLICATE KEY UPDATE progress = :p, progressFlags = :f",
                     named_params! {
                         ":cid": chara_id,
                         ":aid": achievement_id,
@@ -3881,7 +3965,7 @@ impl Database {
             .call_db(move |c| {
                 let tx = c.transaction()?;
                 let taken: bool = tx.query_row(
-                    "SELECT EXISTS(SELECT 1 FROM server_linkshells WHERE name = :n COLLATE NOCASE)",
+                    "SELECT EXISTS(SELECT 1 FROM server_linkshells WHERE name = :n)",
                     named_params! { ":n": name },
                     |r| r.get(0),
                 )?;
@@ -3951,7 +4035,7 @@ impl Database {
         self.conn
             .call_db(move |c| {
                 c.query_row(
-                    "SELECT id, name, crestIcon, master, rank FROM server_linkshells WHERE name = :n COLLATE NOCASE",
+                    "SELECT id, name, crestIcon, master, rank FROM server_linkshells WHERE name = :n",
                     named_params! { ":n": name },
                     |r| {
                         Ok((
@@ -4016,7 +4100,7 @@ impl Database {
         self.conn
             .call_db(move |c| {
                 c.execute(
-                    "INSERT OR REPLACE INTO characters_linkshells (characterId, linkshellId, rank) VALUES (:p, :l, :r)",
+                    "REPLACE INTO characters_linkshells (characterId, linkshellId, rank) VALUES (:p, :l, :r)",
                     named_params! { ":p": character_id, ":l": id as i64, ":r": rank },
                 )?;
                 Ok(())
@@ -4155,6 +4239,7 @@ impl Database {
                         |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i32>(1)?)),
                     )
                     .optional()?;
+                let old_total = existing.map_or(0, |(_, q)| q);
                 let new_total = match existing {
                     Some((sid, qty)) => {
                         let updated = qty.saturating_add(delta).max(0);
@@ -4181,6 +4266,7 @@ impl Database {
                         seed
                     }
                 };
+                activity::gil(&tx, chara_id, new_total as i64 - old_total as i64, new_total as i64, "");
                 tx.commit()?;
                 Ok(new_total)
             })
@@ -4198,11 +4284,32 @@ impl Database {
                 )?;
                 let rows: Vec<u32> = stmt
                     .query_map(named_params! { ":id": ls_id_i }, |r| r.get::<_, u32>(0))?
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect::<common::sql::Result<_>>()?;
                 Ok(rows)
             })
             .await?;
         Ok(rows)
+    }
+
+    /// Record a command run from chat (`invoker`) or the console (`None`,
+    /// character 0) in `log_gm`.
+    pub async fn log_gm_command(
+        &self,
+        invoker: Option<&str>,
+        command: &str,
+        args: &str,
+    ) -> Result<()> {
+        let chara = match invoker {
+            Some(name) => self.character_id_by_name(name).await?.unwrap_or(0),
+            None => 0,
+        };
+        let (command, args) = (command.to_owned(), args.to_owned());
+        self.conn
+            .call_db(move |c| {
+                activity::gm(c, chara, &command, &args);
+                Ok(())
+            })
+            .await
     }
 
     pub async fn character_id_by_name(&self, name: &str) -> Result<Option<u32>> {
@@ -4212,7 +4319,7 @@ impl Database {
             .call_db(move |c| {
                 let v: Option<u32> = c
                     .query_row(
-                        "SELECT id FROM characters WHERE name = :n COLLATE NOCASE",
+                        "SELECT id FROM characters WHERE name = :n",
                         named_params! { ":n": name },
                         |r| r.get(0),
                     )
@@ -4530,7 +4637,7 @@ impl Database {
                     .query_map(named_params! { ":c": character_id }, |r| {
                         Ok((r.get::<_, u32>(0)?, r.get::<_, i64>(1)? as i32))
                     })?
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect::<common::sql::Result<_>>()?;
                 Ok(rows)
             })
             .await
@@ -4562,12 +4669,12 @@ impl Database {
             .call_db(move |c| {
                 let mut st = c.prepare(
                     r"SELECT id, placeName FROM server_zones
-                      WHERE CAST(id AS TEXT) = :q OR REPLACE(placeName, '''', '') LIKE '%' || :q || '%'
+                      WHERE CAST(id AS CHAR) = :q OR REPLACE(placeName, '''', '') LIKE '%' || :q || '%'
                          OR zoneName LIKE '%' || :q || '%'
-                      ORDER BY (CAST(id AS TEXT) = :q) DESC, (REPLACE(placeName, '''', '') = :q COLLATE NOCASE) DESC, id",
+                      ORDER BY (CAST(id AS CHAR) = :q) DESC, (REPLACE(placeName, '''', '') = :q) DESC, id",
                 )?;
                 st.query_map(named_params! { ":q": q }, |r| Ok((r.get(0)?, r.get::<_, Option<String>>(1)?.unwrap_or_default())))?
-                    .collect::<rusqlite::Result<Vec<_>>>()
+                    .collect::<common::sql::Result<Vec<_>>>()
             })
             .await?;
         Ok(rows)
@@ -4675,13 +4782,13 @@ impl Database {
                     r"SELECT isCalling, isExtra FROM characters_npclinkshell
                       WHERE characterId = :cid AND npcLinkshellId = :lsid",
                 )?;
-                let row: rusqlite::Result<(i64, i64)> = stmt.query_row(
+                let row: common::sql::Result<(i64, i64)> = stmt.query_row(
                     named_params! { ":cid": chara_id, ":lsid": npc_ls_id_zero_based },
                     |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)),
                 );
                 match row {
                     Ok((c, e)) => Ok(Some((c != 0, e != 0))),
-                    Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+                    Err(common::sql::Error::QueryReturnedNoRows) => Ok(None),
                     Err(e) => Err(e),
                 }
             })
@@ -4701,8 +4808,8 @@ impl Database {
                 c.execute(
                     r"INSERT INTO characters_npclinkshell (characterId, npcLinkshellId, isCalling, isExtra)
                       VALUES (:cid, :lsid, :c, :e)
-                      ON CONFLICT(characterId, npcLinkshellId) DO UPDATE SET
-                        isCalling = excluded.isCalling, isExtra = excluded.isExtra",
+                      ON DUPLICATE KEY UPDATE
+                        isCalling = VALUES(isCalling), isExtra = VALUES(isExtra)",
                     named_params! {
                         ":cid": chara_id, ":lsid": npc_ls_id,
                         ":c": is_calling as i64, ":e": is_extra as i64,
@@ -4779,7 +4886,7 @@ impl Database {
                 )?;
                 let rows: Vec<String> = stmt
                     .query_map(named_params! { ":l": lang_code }, |r| r.get::<_, String>(0))?
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect::<common::sql::Result<_>>()?;
                 Ok(rows)
             })
             .await?;
@@ -4810,7 +4917,7 @@ impl Database {
                 let mut stmt = c.prepare("SELECT title FROM supportdesk_issues ORDER BY slot")?;
                 let rows: Vec<String> = stmt
                     .query_map([], |r| r.get::<_, String>(0))?
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect::<common::sql::Result<_>>()?;
                 Ok(rows)
             })
             .await?;
@@ -4829,10 +4936,10 @@ impl Database {
                 c.execute(
                     r"INSERT INTO characters_chocobo (characterId, hasChocobo, chocoboAppearance, chocoboName)
                       VALUES (:cid, 1, :app, :name)
-                      ON CONFLICT(characterId) DO UPDATE SET
+                      ON DUPLICATE KEY UPDATE
                         hasChocobo = 1,
-                        chocoboAppearance = excluded.chocoboAppearance,
-                        chocoboName = excluded.chocoboName",
+                        chocoboAppearance = VALUES(chocoboAppearance),
+                        chocoboName = VALUES(chocoboName)",
                     named_params! { ":cid": chara_id, ":app": appearance_id, ":name": name },
                 )?;
                 Ok(())
@@ -5072,6 +5179,7 @@ impl Database {
                     "UPDATE characters_class_exp SET {col} = :exp WHERE characterId = :cid"
                 );
                 c.execute(&sql, named_params! { ":exp": exp, ":cid": chara_id })?;
+                activity::progress(c, chara_id, "exp", class_id, exp as i64);
                 Ok(())
             })
             .await?;
@@ -5089,6 +5197,7 @@ impl Database {
                     "UPDATE characters_class_levels SET {col} = :lvl WHERE characterId = :cid"
                 );
                 c.execute(&sql, named_params! { ":lvl": level, ":cid": chara_id })?;
+                activity::progress(c, chara_id, "level", class_id, level as i64);
                 Ok(())
             })
             .await?;
@@ -5212,7 +5321,7 @@ impl Database {
                             class_path: r.get::<_, String>(7).unwrap_or_default(),
                         })
                     })?
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect::<common::sql::Result<_>>()?;
                 Ok(rows)
             })
             .await?;
@@ -5229,7 +5338,7 @@ impl Database {
             .conn
             .call_db(move |c| {
                 let n = c.execute(
-                    r"INSERT OR IGNORE INTO characters_retainers
+                    r"INSERT IGNORE INTO characters_retainers
                         (characterId, retainerId, doRename)
                       VALUES (:cid, :rid, 0)",
                     named_params! { ":cid": chara_id, ":rid": retainer_id },
@@ -5502,7 +5611,7 @@ impl Database {
                             updated_utc: r.get::<_, i64>(7)?.max(0) as u32,
                         })
                     })?
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect::<common::sql::Result<_>>()?;
                 Ok(rows)
             })
             .await?;
@@ -5625,23 +5734,27 @@ impl Database {
                 // pattern `add_gil` produces: find the existing
                 // currency row + decrement in place.
                 if total_price > 0 {
-                    tx.execute(
-                        r"UPDATE server_items
-                          SET quantity = quantity - :price
-                          WHERE id IN (
-                              SELECT si.id FROM server_items si
+                    // MariaDB has no LIMIT inside IN (...), so find the
+                    // row first.
+                    let buyer_sid: Option<i64> = tx
+                        .query_row(
+                            r"SELECT si.id FROM server_items si
                               INNER JOIN characters_inventory ci
                                   ON ci.serverItemId = si.id
                               WHERE ci.characterId = :cid
                                 AND ci.itemPackage = 99
                                 AND si.itemId = 1000001
-                              LIMIT 1
-                          )",
-                        named_params! {
-                            ":price": total_price,
-                            ":cid": buyer_chara_id,
-                        },
-                    )?;
+                              LIMIT 1",
+                            named_params! { ":cid": buyer_chara_id },
+                            |r| r.get(0),
+                        )
+                        .optional()?;
+                    if let Some(buyer_sid) = buyer_sid {
+                        tx.execute(
+                            "UPDATE server_items SET quantity = quantity - :price WHERE id = :sid",
+                            named_params! { ":price": total_price, ":sid": buyer_sid },
+                        )?;
+                    }
 
                     // Credit owner — merge into existing stack or
                     // seed a new row. Same shape as the
@@ -5863,18 +5976,8 @@ pub struct RetainerBazaarListing {
 mod battle_npc_spawn_tests {
     use super::*;
 
-    fn tempdb(label: &str) -> std::path::PathBuf {
-        // Tag the file with the test name AND a nanosecond stamp —
-        // running the suite twice in quick succession (or with
-        // --test-threads=N) otherwise hits the same path and tokio's
-        // SQLite "file is locked" error fires from a stale WAL.
-        common::test_tmp::dir().join(format!(
-            "garlemald-battle-npc-spawn-{label}-{}.db",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ))
+    fn tempdb(_label: &str) -> String {
+        common::test_db::fresh_blocking()
     }
 
     /// `load_battle_npc_spawn` joins the four `server_battlenpc_*`
@@ -6120,14 +6223,8 @@ mod battle_npc_spawn_tests {
 mod achievement_persist_tests {
     use super::*;
 
-    fn tempdb(label: &str) -> std::path::PathBuf {
-        common::test_tmp::dir().join(format!(
-            "garlemald-achievement-{label}-{}.db",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ))
+    fn tempdb(_label: &str) -> String {
+        common::test_db::fresh_blocking()
     }
 
     /// earn → persist → read: awarding an achievement writes a
@@ -6247,14 +6344,8 @@ mod achievement_persist_tests {
 mod equip_from_package_tests {
     use super::*;
 
-    fn tempdb(label: &str) -> std::path::PathBuf {
-        common::test_tmp::dir().join(format!(
-            "garlemald-equip-from-package-{label}-{}.db",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ))
+    fn tempdb(_label: &str) -> String {
+        common::test_db::fresh_blocking()
     }
 
     /// Seed a Gladiator-shaped starter bag: AddItems lands the five
@@ -6358,14 +6449,8 @@ mod key_item_tests {
     use super::*;
     use common::db::ConnCallExt;
 
-    fn tempdb(label: &str) -> std::path::PathBuf {
-        common::test_tmp::dir().join(format!(
-            "garlemald-key-item-{label}-{}.db",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ))
+    fn tempdb(_label: &str) -> String {
+        common::test_db::fresh_blocking()
     }
 
     /// `add_key_item` inserts one non-stacking row into the KEYITEMS bag
@@ -6431,14 +6516,8 @@ mod add_harvest_item_stack_cap_tests {
     use super::*;
     use common::db::ConnCallExt;
 
-    fn tempdb(label: &str) -> std::path::PathBuf {
-        common::test_tmp::dir().join(format!(
-            "garlemald-harvest-cap-{label}-{}.db",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ))
+    fn tempdb(_label: &str) -> String {
+        common::test_db::fresh_blocking()
     }
 
     /// Seed one `gamedata_items` row so `add_harvest_item` reads a
@@ -6605,5 +6684,114 @@ mod add_harvest_item_stack_cap_tests {
         assert_eq!(rows[0].2, 0);
 
         let _ = std::fs::remove_file(&path);
+    }
+}
+
+#[cfg(test)]
+mod activity_log_tests {
+    use super::*;
+    use common::db::ConnCallExt;
+
+    async fn rows(db: &Database, sql: &'static str) -> Vec<(String, i64)> {
+        db.conn_for_test()
+            .call_db(move |c| {
+                let mut st = c.prepare(sql)?;
+                st.query_map((), |r| Ok((r.get(0)?, r.get(1)?)))?
+                    .collect::<common::sql::Result<_>>()
+            })
+            .await
+            .unwrap()
+    }
+
+    /// The save paths write their log rows: gil with the balance after,
+    /// items gained and lost, quest accept/step (a repeat save with the
+    /// same step writes nothing), job changes and GM commands.
+    #[tokio::test]
+    async fn saves_write_activity_log_rows() {
+        let db = Database::open(common::test_db::fresh().await.unwrap())
+            .await
+            .unwrap();
+        db.conn_for_test()
+            .call_db(|c| {
+                c.execute(
+                    "INSERT INTO characters (id, userId, slot, serverId, name) VALUES (7001, 0, 0, 0, 'Logger')",
+                    (),
+                )?;
+                c.execute("INSERT INTO server_items (id, itemId, quantity, quality) VALUES (880001, 10001006, 12, 1)", ())
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(db.add_gil(7001, 500).await.unwrap(), 500);
+        assert_eq!(db.add_gil(7001, -200).await.unwrap(), 300);
+        assert_eq!(
+            rows(
+                &db,
+                "SELECT CONCAT(delta, '/', balance), characterId FROM log_gil ORDER BY id"
+            )
+            .await,
+            vec![("500/500".into(), 7001), ("-200/300".into(), 7001)]
+        );
+
+        db.add_item(7001, 880001, 0, 3).await.unwrap();
+        db.set_quantity(880001, 10).await.unwrap();
+        db.remove_item(7001, 880001).await.unwrap();
+        assert_eq!(
+            rows(
+                &db,
+                "SELECT reason, quantity FROM log_items WHERE itemId = 10001006 ORDER BY id"
+            )
+            .await,
+            vec![
+                ("add".into(), 12),
+                ("quantity".into(), -2),
+                ("remove".into(), -10)
+            ]
+        );
+
+        db.save_quest(7001, 0, 110_001, 1, 0, 0, 0, 0, 0)
+            .await
+            .unwrap();
+        db.save_quest(7001, 0, 110_001, 2, 0, 0, 0, 0, 0)
+            .await
+            .unwrap();
+        db.save_quest(7001, 0, 110_001, 2, 4, 1, 0, 0, 0)
+            .await
+            .unwrap();
+        db.remove_quest(7001, 110_001).await.unwrap();
+        assert_eq!(
+            rows(
+                &db,
+                "SELECT event, sequence FROM log_quests WHERE characterId = 7001 ORDER BY id"
+            )
+            .await,
+            vec![
+                ("accept".into(), 1),
+                ("step".into(), 2),
+                ("remove".into(), 0)
+            ]
+        );
+
+        db.save_player_current_job(7001, 15).await.unwrap();
+        db.log_gm_command(Some("Logger"), "additem", "1000 1")
+            .await
+            .unwrap();
+        db.log_gm_command(None, "reload", "").await.unwrap();
+        assert_eq!(
+            rows(
+                &db,
+                "SELECT kind, value FROM log_progress WHERE characterId = 7001"
+            )
+            .await,
+            vec![("job".into(), 15)]
+        );
+        assert_eq!(
+            rows(
+                &db,
+                "SELECT CONCAT(command, ' ', args), characterId FROM log_gm ORDER BY id"
+            )
+            .await,
+            vec![("additem 1000 1".into(), 7001), ("reload ".into(), 0)]
+        );
     }
 }

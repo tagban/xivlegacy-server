@@ -20,12 +20,10 @@
 //! via `tokio_rusqlite` for async, background-thread access against a single
 //! on-disk SQLite file (see `common::db::open_or_create`).
 
-use std::path::Path;
-
 use anyhow::{Context, Result};
 use common::db::ConnCallExt;
-use rusqlite::{OptionalExtension, named_params};
-use tokio_rusqlite::Connection;
+use common::sql::Connection;
+use common::sql::{OptionalExtension, named_params};
 
 use crate::character_creator::class_name_for_id;
 use crate::data::{Appearance, CharaInfo, Character, Retainer};
@@ -35,8 +33,8 @@ pub struct Database {
 }
 
 impl Database {
-    pub async fn open(path: impl AsRef<Path>) -> Result<Self> {
-        let conn = common::db::open_or_create(path).await?;
+    pub async fn open(url: impl AsRef<str>) -> Result<Self> {
+        let conn = common::db::open_or_create(url).await?;
         Ok(Self { conn })
     }
 
@@ -57,7 +55,7 @@ impl Database {
             .call_db(move |c| {
                 let v = c
                     .query_row(
-                        "SELECT userId FROM sessions WHERE id = :sid AND expiration > datetime('now')",
+                        "SELECT userId FROM sessions WHERE id = :sid AND expiration > UTC_TIMESTAMP()",
                         named_params! { ":sid": sid },
                         |r| r.get::<_, u32>(0),
                     )
@@ -202,14 +200,14 @@ impl Database {
                 // selected class, which keeps the dynamic column name out of
                 // the INSERT (SQLite can't parameterise identifiers).
                 c.execute(
-                    "INSERT OR IGNORE INTO characters_class_levels(characterId) VALUES(:cid)",
+                    "INSERT IGNORE INTO characters_class_levels(characterId) VALUES(:cid)",
                     named_params! { ":cid": cid },
                 )?;
                 let levels_sql =
                     format!("UPDATE characters_class_levels SET {class_col} = 1 WHERE characterId = :cid");
                 c.execute(&levels_sql, named_params! { ":cid": cid })?;
                 c.execute(
-                    "INSERT OR IGNORE INTO characters_class_exp(characterId) VALUES(:cid)",
+                    "INSERT IGNORE INTO characters_class_exp(characterId) VALUES(:cid)",
                     named_params! { ":cid": cid },
                 )?;
 
@@ -229,7 +227,7 @@ impl Database {
                         named_params! { ":cls": info.current_class },
                         |r| r.get::<_, u32>(0),
                     )?
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect::<common::sql::Result<_>>()?;
                 drop(stmt);
 
                 for (slot, command_id) in default_actions.iter().enumerate() {
@@ -335,7 +333,7 @@ impl Database {
                 )?;
                 let rows: Vec<Character> = stmt
                     .query_map(named_params! { ":uid": user_id }, character_from_row)?
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect::<common::sql::Result<_>>()?;
                 Ok(rows)
             })
             .await?;
@@ -437,7 +435,7 @@ impl Database {
                 let mut stmt = c.prepare("SELECT name FROM reserved_names WHERE userId = :uid")?;
                 let rows: Vec<String> = stmt
                     .query_map(named_params! { ":uid": user_id }, |r| r.get::<_, String>(0))?
-                    .collect::<rusqlite::Result<_>>()?;
+                    .collect::<common::sql::Result<_>>()?;
                 Ok(rows)
             })
             .await?;
@@ -456,7 +454,7 @@ impl Database {
 // cheaper and the queries are local.
 // ---------------------------------------------------------------------------
 
-fn character_from_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<Character> {
+fn character_from_row(r: &common::sql::Row) -> common::sql::Result<Character> {
     Ok(Character {
         id: r.get::<_, u32>(0)?,
         slot: r.get::<_, u16>(1)?,
@@ -477,7 +475,7 @@ fn character_from_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<Character> {
     })
 }
 
-fn appearance_from_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<Appearance> {
+fn appearance_from_row(r: &common::sql::Row) -> common::sql::Result<Appearance> {
     Ok(Appearance {
         size: r.get::<_, u8>(1).unwrap_or_default(),
         voice: r.get::<_, u8>(2).unwrap_or_default(),
@@ -522,7 +520,9 @@ mod tests {
     /// A fresh in-memory database opened through the shared helper (applies
     /// `schema.sql` because the `:memory:` path never "exists" on disk).
     async fn fresh_db() -> Database {
-        Database::open(":memory:").await.expect("open in-memory db")
+        Database::open(common::test_db::fresh().await.expect("test database"))
+            .await
+            .expect("open test db")
     }
 
     async fn insert_character(db: &Database, user_id: u32, name: &str, state: u32) -> u32 {
