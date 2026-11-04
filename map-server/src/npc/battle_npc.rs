@@ -412,6 +412,8 @@ impl BattleNpc {
         // Restore HP to max.
         let max_hp = self.npc.character.chara.max_hp;
         self.npc.character.chara.hp = max_hp;
+        // A fresh monster starts with no TP (no opening TP move).
+        self.npc.character.chara.tp = 0;
         // Clear hate + last attacker.
         self.npc.character.hate.clear_hate(None);
         self.last_attacker_actor_id = 0;

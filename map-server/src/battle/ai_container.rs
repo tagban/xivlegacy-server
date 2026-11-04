@@ -603,6 +603,33 @@ impl AIContainer {
                     });
                 }
             }
+            ControllerDecision::UseSkill {
+                target_actor_id,
+                skill_index,
+            } => {
+                // A cast or move already in flight wins; the controller
+                // tries again after its gap.
+                if self.is_current(BattleStateKind::Magic)
+                    || self.is_current(BattleStateKind::WeaponSkill)
+                    || self.is_current(BattleStateKind::Ability)
+                {
+                    return;
+                }
+                let Some(cmd) = self
+                    .controller
+                    .as_ref()
+                    .and_then(|c| c.battle.skills.get(skill_index).cloned())
+                else {
+                    return;
+                };
+                tracing::debug!(
+                    owner = format!("0x{owner_id:08X}"),
+                    target = format!("0x{target_actor_id:08X}"),
+                    command = cmd.id,
+                    "battle: monster readies a TP move",
+                );
+                self.internal_weapon_skill(target_actor_id, cmd, now_ms);
+            }
             ControllerDecision::ChangeTarget { target_actor_id } => {
                 // Write the retarget into the live state stack. Without
                 // this, `do_combat_tick`'s `most_hated != current_target`
@@ -685,6 +712,7 @@ mod tests {
             target_is_locked: false,
             attack_delay_ms: 2500,
             attack_range: 3.0,
+            tp: 0,
         }
     }
 

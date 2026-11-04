@@ -138,6 +138,17 @@ pub struct BattleNpcControllerState {
     /// has no catalog access) — same gamedata→battle conversion the
     /// plan routes through `apply_decision`.
     pub spell: Option<BattleCommand>,
+    /// TP moves this monster may use: its pool's skill list filtered to
+    /// its level at spawn (`Catalogs::monster_commands`).
+    pub skills: Vec<BattleCommand>,
+    /// Spells from the pool's spell list, same level filter. A caster
+    /// picks one per cast; empty keeps the single `spell`.
+    pub spells: Vec<BattleCommand>,
+    /// Earliest `now_ms` the next TP move may start.
+    pub next_skill_ms: u64,
+    /// xorshift state for move and spell picks; seeded from the actor id
+    /// on first use so each monster rolls its own sequence.
+    pub rng: u64,
 }
 
 impl Controller {
@@ -218,6 +229,8 @@ pub struct ControllerOwnerView {
     /// (default 3.0). Drives both the melee stop ring (#28 S2.2) and the
     /// swing range gate (#28 S2.3).
     pub attack_range: f32,
+    /// Current TP (0..3000). A monster readies a TP move at 1000.
+    pub tp: u16,
 }
 
 /// What the controller wants the AIContainer to do this tick. Emitted by
@@ -243,6 +256,12 @@ pub enum ControllerDecision {
     /// `battle.spell` at the target. The AIContainer's Cast arm runs
     /// `internal_cast` + re-arms `battle.next_cast_ms`.
     Cast { target_actor_id: u32 },
+    /// Use TP move `battle.skills[skill_index]` on `target_actor_id`
+    /// (the monster itself for a move centered on it).
+    UseSkill {
+        target_actor_id: u32,
+        skill_index: usize,
+    },
     /// Change the locked target, no engage.
     ChangeTarget { target_actor_id: Option<u32> },
     /// Fire a Lua combat-tick hook. The container dispatches by name.
@@ -261,6 +280,10 @@ pub const DEFAULT_ROAM_DELAY_MS: u64 = 5_000;
 pub const AGGRO_SCAN_RADIUS: f32 = 50.0;
 /// Max aggro level delta when `IgnoreLevelDifference` isn't set.
 pub const AGGRO_LEVEL_CAP: i16 = 10;
+/// TP a monster needs before it readies a TP move.
+pub const MONSTER_SKILL_TP: u16 = 1000;
+/// Least time between two TP moves from one monster.
+pub const MONSTER_SKILL_GAP_MS: u64 = 10_000;
 /// Maximum detection distance regardless of detection type.
 pub const MAX_DETECT_DISTANCE: f32 = 20.0;
 /// Max vertical gap for detection.
@@ -487,16 +510,23 @@ impl Controller {
             let dz = target.position.z - owner.actor.position.z;
             let dist = (dx * dx + dz * dz).sqrt();
 
+            // TP move: at 1000 TP, a random move from the monster's
+            // list that reaches the target. Rides ahead of the cast and
+            // movement decisions, like LSB mob_controller.cpp TryTpMove.
+            if let Some(d) = self.pick_skill(now_ms, owner, target_id, dist) {
+                return d;
+            }
+
             // Caster spell decision rides ahead of movement so an
             // in-range caster never takes a step the tick it casts.
             // LSB: mob_controller.cpp::DoCombatTick (cast before Move).
             if self.battle.is_caster
                 && self.casting_enabled
                 && now_ms >= self.battle.next_cast_ms
-                && self.battle.spell.as_ref().is_some_and(|s| dist <= s.range)
+                && let Some(spell_target) = self.pick_spell(owner.actor.actor_id, target_id, dist)
             {
                 return ControllerDecision::Cast {
-                    target_actor_id: target_id,
+                    target_actor_id: spell_target,
                 };
             }
 
@@ -547,6 +577,76 @@ impl Controller {
         ControllerDecision::Idle
     }
 
+    fn next_random(&mut self) -> u64 {
+        if self.battle.rng == 0 {
+            self.battle.rng = u64::from(self.owner_actor_id) | 0x9E37_79B9_0000_0000;
+        }
+        let mut x = self.battle.rng;
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
+        self.battle.rng = x;
+        x
+    }
+
+    /// TP move decision: `UseSkill` when the monster has the TP, its
+    /// gap has passed, nothing stops it, and some move reaches.
+    fn pick_skill(
+        &mut self,
+        now_ms: u64,
+        owner: ControllerOwnerView,
+        target_id: u32,
+        dist: f32,
+    ) -> Option<ControllerDecision> {
+        if !self.weapon_skill_enabled
+            || self.battle.skills.is_empty()
+            || owner.tp < MONSTER_SKILL_TP
+            || now_ms < self.battle.next_skill_ms
+            || owner.has_prevent_attack
+            || crate::status::StatusEffectFlags::from(owner.status_flags)
+                .intersects(crate::status::StatusEffectFlags::PREVENT_WEAPON_SKILL)
+        {
+            return None;
+        }
+        let owner_id = owner.actor.actor_id;
+        let reach = owner.attack_range;
+        let usable: Vec<usize> = (0..self.battle.skills.len())
+            .filter(|&i| command_reaches(&self.battle.skills[i], dist, reach))
+            .collect();
+        if usable.is_empty() {
+            return None;
+        }
+        let skill_index = usable[(self.next_random() % usable.len() as u64) as usize];
+        self.battle.next_skill_ms = now_ms + MONSTER_SKILL_GAP_MS;
+        Some(ControllerDecision::UseSkill {
+            target_actor_id: command_target(&self.battle.skills[skill_index], owner_id, target_id),
+            skill_index,
+        })
+    }
+
+    /// Caster spell choice: a random spell from the list that reaches
+    /// (stored in `battle.spell` for the Cast arm), else the single
+    /// pre-resolved spell. Returns the cast's target.
+    fn pick_spell(&mut self, owner_id: u32, target_id: u32, dist: f32) -> Option<u32> {
+        if !self.battle.spells.is_empty() {
+            let usable: Vec<usize> = (0..self.battle.spells.len())
+                .filter(|&i| command_reaches(&self.battle.spells[i], dist, 0.0))
+                .collect();
+            if !usable.is_empty() {
+                let i = usable[(self.next_random() % usable.len() as u64) as usize];
+                let spell = self.battle.spells[i].clone();
+                let target = command_target(&spell, owner_id, target_id);
+                self.battle.spell = Some(spell);
+                return Some(target);
+            }
+        }
+        self.battle
+            .spell
+            .as_ref()
+            .filter(|s| dist <= s.range)
+            .map(|s| command_target(s, owner_id, target_id))
+    }
+
     fn should_deaggro(&self, owner: ControllerOwnerView) -> bool {
         if owner.most_hated_actor_id.is_none() {
             return true;
@@ -565,6 +665,36 @@ impl Controller {
         self.battle.wait_time_ms =
             now_ms + (self.battle.roam_delay_seconds as u64 * 1000).max(DEFAULT_ROAM_DELAY_MS);
         ControllerDecision::Roam
+    }
+}
+
+/// Who a monster aims `cmd` at: itself for a move or spell centered on
+/// or cast on the user (caster-centered AoE, buffs), else its target.
+/// Same rule as the battle audit's recipient.
+pub fn command_target(cmd: &BattleCommand, owner_id: u32, target_id: u32) -> u32 {
+    use crate::battle::target_find::ValidTarget as V;
+    let mt = cmd.main_target;
+    if mt.intersects(V::SELF_ONLY) || (!mt.intersects(V::ENEMY) && mt.intersects(V::SELF)) {
+        owner_id
+    } else {
+        target_id
+    }
+}
+
+/// Does `cmd` reach a target `dist` yalms away? A move on the user
+/// reaches as far as its area radius; anything else its range (at
+/// least the user's swing reach `min_reach`).
+pub fn command_reaches(cmd: &BattleCommand, dist: f32, min_reach: f32) -> bool {
+    use crate::battle::target_find::ValidTarget as V;
+    let mt = cmd.main_target;
+    let on_self =
+        mt.intersects(V::SELF_ONLY) || (!mt.intersects(V::ENEMY) && mt.intersects(V::SELF));
+    if on_self {
+        let enemy_area = cmd.valid_target.intersects(V::ENEMY);
+        // Buffs on itself always "reach"; areas need the target inside.
+        !enemy_area || dist <= cmd.aoe_range.max(min_reach)
+    } else {
+        dist <= cmd.range.max(min_reach)
     }
 }
 
@@ -662,6 +792,7 @@ mod tests {
             target_is_locked: false,
             attack_delay_ms: 2500,
             attack_range: 3.0,
+            tp: 0,
         }
     }
 
@@ -837,6 +968,93 @@ mod tests {
             c.tick(300, v, &arena_close),
             ControllerDecision::FaceTarget { .. }
         ));
+    }
+
+    fn monster_move(id: u16, on_self: bool, range: f32, aoe_range: f32) -> BattleCommand {
+        use crate::battle::target_find::ValidTarget as V;
+        let mut cmd = BattleCommand::new(id, "move");
+        cmd.main_target = if on_self { V(31) } else { V(768) };
+        cmd.valid_target = V(17152);
+        cmd.range = range;
+        cmd.aoe_range = aoe_range;
+        cmd
+    }
+
+    #[test]
+    fn monster_uses_a_move_at_1000_tp_then_waits_its_gap() {
+        let mut c = Controller::new(ControllerKind::BattleNpc, 1);
+        c.battle.skills = vec![monster_move(23012, false, 5.0, 0.0)];
+        let target = view(10, 2.0, 0.0, 1, true);
+        let arena = arena_with(&[target]);
+        let mut o = owner_view(true, true, Some(10), Some(10));
+        o.tp = 999;
+        assert!(!matches!(
+            c.tick(100, o, &arena),
+            ControllerDecision::UseSkill { .. }
+        ));
+        o.tp = 1000;
+        assert_eq!(
+            c.tick(200, o, &arena),
+            ControllerDecision::UseSkill {
+                target_actor_id: 10,
+                skill_index: 0
+            }
+        );
+        assert!(!matches!(
+            c.tick(300, o, &arena),
+            ControllerDecision::UseSkill { .. }
+        ));
+        assert!(matches!(
+            c.tick(200 + MONSTER_SKILL_GAP_MS, o, &arena),
+            ControllerDecision::UseSkill { .. }
+        ));
+    }
+
+    #[test]
+    fn monster_move_reach_and_target() {
+        let single = monster_move(1, false, 5.0, 0.0);
+        let area = monster_move(2, true, 0.0, 6.0);
+        assert!(command_reaches(&single, 4.0, 3.0));
+        assert!(!command_reaches(&single, 6.0, 3.0));
+        assert!(command_reaches(&area, 5.5, 3.0));
+        assert!(!command_reaches(&area, 7.0, 3.0));
+        assert_eq!(command_target(&single, 2, 1), 1);
+        assert_eq!(command_target(&area, 2, 1), 2);
+        // Out of reach: no move, the monster walks in instead.
+        let mut c = Controller::new(ControllerKind::BattleNpc, 1);
+        c.battle.skills = vec![single];
+        let arena = arena_with(&[view(10, 8.0, 0.0, 1, true)]);
+        let mut o = owner_view(true, true, Some(10), Some(10));
+        o.tp = 3000;
+        assert!(matches!(
+            c.tick(100, o, &arena),
+            ControllerDecision::MoveTo { .. }
+        ));
+    }
+
+    #[test]
+    fn caster_picks_spells_from_its_list() {
+        let mut c = Controller::new(ControllerKind::BattleNpc, 1);
+        c.battle.is_caster = true;
+        let mut fire = monster_move(23508, false, 20.0, 0.0);
+        fire.name = "fire_ii".into();
+        let mut skin = monster_move(23517, false, 0.0, 0.0);
+        skin.main_target = crate::battle::target_find::ValidTarget(1);
+        skin.valid_target = crate::battle::target_find::ValidTarget(1);
+        c.battle.spells = vec![fire, skin];
+        let arena = arena_with(&[view(10, 10.0, 0.0, 1, true)]);
+        let o = owner_view(true, true, Some(10), Some(10));
+        let mut seen = std::collections::HashSet::new();
+        for i in 0..40u64 {
+            c.battle.next_cast_ms = 0;
+            if let ControllerDecision::Cast { target_actor_id } = c.tick(i * 100, o, &arena) {
+                let id = c.battle.spell.as_ref().unwrap().id;
+                // Stoneskin II goes on the caster, Fire II on the foe.
+                assert_eq!(target_actor_id, if id == 23517 { 1 } else { 10 });
+                seen.insert(id);
+            }
+        }
+        assert_eq!(seen.len(), 2, "both spells get picked: {seen:?}");
     }
 
     #[test]

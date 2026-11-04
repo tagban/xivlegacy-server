@@ -6900,13 +6900,25 @@ mod monster_skill_tests {
     #[test]
     fn a_monster_below_a_moves_level_cannot_use_it() {
         let list = [
-            MonsterSkill { skill_id: 1, min_level: 1 },
-            MonsterSkill { skill_id: 2, min_level: 10 },
-            MonsterSkill { skill_id: 3, min_level: 30 },
+            MonsterSkill {
+                skill_id: 1,
+                min_level: 1,
+            },
+            MonsterSkill {
+                skill_id: 2,
+                min_level: 10,
+            },
+            MonsterSkill {
+                skill_id: 3,
+                min_level: 30,
+            },
         ];
         assert_eq!(usable_monster_skills(&list, 9).collect::<Vec<_>>(), [1]);
         assert_eq!(usable_monster_skills(&list, 10).collect::<Vec<_>>(), [1, 2]);
-        assert_eq!(usable_monster_skills(&list, 50).collect::<Vec<_>>(), [1, 2, 3]);
+        assert_eq!(
+            usable_monster_skills(&list, 50).collect::<Vec<_>>(),
+            [1, 2, 3]
+        );
     }
 
     /// The shipped lists load with their gates: aldgoats (list 1) unlock

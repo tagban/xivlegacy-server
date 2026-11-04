@@ -1075,6 +1075,7 @@ pub(crate) fn build_owner_view(
         target_is_locked: false,
         attack_delay_ms: chara.get_attack_delay_ms(),
         attack_range: chara.get_attack_range(),
+        tp: chara.chara.tp,
     }
 }
 
@@ -1965,6 +1966,121 @@ mod tests {
             chant_ons, 2,
             "exactly two casts in 8 s (recast = cast 2 s + 6 s); got {substates:?}",
         );
+    }
+
+    /// Monster TP moves against the real catalog: at 1000 TP the
+    /// monster uses a move from its list, the move lands damage, and the
+    /// monster's TP goes back to 0. Nutshell (23012) is single-target;
+    /// Bleat (23090) is centered on the monster, so it aims at itself
+    /// and still hits the player inside its 6 y radius.
+    #[tokio::test]
+    async fn monster_tp_moves_land_and_spend_tp() {
+        for (move_id, expect_self_target) in [(23012u16, false), (23090u16, true)] {
+            let (ticker, _zone, _rx) = setup_engaged_npc_vs_player(2.0, |_| {}).await;
+            let (catalog, _) = ticker
+                .db
+                .load_global_battle_command_list()
+                .await
+                .expect("battle command catalog");
+            let skill = catalog
+                .get(&move_id)
+                .expect("monster move seeded")
+                .to_battle_command();
+            assert_eq!(skill.command_type, crate::battle::CommandType::WEAPON_SKILL);
+            assert_eq!(
+                crate::battle::controller::command_target(&skill, 2, 1) == 2,
+                expect_self_target,
+                "move {move_id} target choice",
+            );
+            {
+                let handle = ticker.registry.get(2).await.unwrap();
+                let mut c = handle.character.write().await;
+                c.chara.tp = 1000;
+                let ctrl = c.ai_container.controller.as_mut().unwrap();
+                ctrl.battle.skills = vec![skill];
+                // Swings off, so only the move can hurt the player.
+                ctrl.auto_attack_enabled = false;
+            }
+            {
+                let handle = ticker.registry.get(1).await.unwrap();
+                let mut c = handle.character.write().await;
+                c.ai_container.internal_engage(2, 0, 2500);
+            }
+            // A move can miss, so give the monster up to ten tries.
+            let mut player_hp = 1000;
+            for attempt in 0..10u64 {
+                let base = attempt * 4_000;
+                if attempt > 0 {
+                    let handle = ticker.registry.get(2).await.unwrap();
+                    let mut c = handle.character.write().await;
+                    c.chara.tp = 1000;
+                    c.ai_container
+                        .controller
+                        .as_mut()
+                        .unwrap()
+                        .battle
+                        .next_skill_ms = 0;
+                }
+                for i in 1..=40u64 {
+                    ticker.tick_once(base + i * 100).await;
+                }
+                let handle = ticker.registry.get(2).await.unwrap();
+                let tp = handle.character.read().await.chara.tp;
+                // The player's own swings bank the monster a little TP
+                // back after the reset, so check it fell below 1000.
+                assert!(
+                    tp < 1000,
+                    "move {move_id} must spend the monster's TP, tp {tp}"
+                );
+                let player = ticker.registry.get(1).await.unwrap();
+                player_hp = player.character.read().await.get_hp();
+                if player_hp < 1000 {
+                    break;
+                }
+            }
+            assert!(
+                player_hp < 1000,
+                "move {move_id} must damage the player, hp {player_hp}"
+            );
+        }
+    }
+
+    /// Below 1000 TP a monster never uses a move.
+    #[tokio::test]
+    async fn monster_without_tp_uses_no_move() {
+        let (ticker, _zone, _rx) = setup_engaged_npc_vs_player(2.0, |_| {}).await;
+        let (catalog, _) = ticker.db.load_global_battle_command_list().await.unwrap();
+        let skill = catalog.get(&23012).unwrap().to_battle_command();
+        {
+            let handle = ticker.registry.get(2).await.unwrap();
+            let mut c = handle.character.write().await;
+            c.chara.tp = 999;
+            let ctrl = c.ai_container.controller.as_mut().unwrap();
+            ctrl.battle.skills = vec![skill];
+            ctrl.auto_attack_enabled = false;
+        }
+        {
+            let handle = ticker.registry.get(1).await.unwrap();
+            handle
+                .character
+                .write()
+                .await
+                .ai_container
+                .internal_engage(2, 0, 2500);
+        }
+        for i in 1..=40u64 {
+            ticker.tick_once(i * 100).await;
+        }
+        let player_hp = ticker
+            .registry
+            .get(1)
+            .await
+            .unwrap()
+            .character
+            .read()
+            .await
+            .get_hp();
+        assert_eq!(player_hp, 1000, "no TP, no move");
     }
 
     #[tokio::test]

@@ -626,6 +626,7 @@ mod tests {
             target_is_locked: false,
             attack_delay_ms: 2500,
             attack_range: 3.0,
+            tp: 0,
         };
 
         let decision = controller.tick(1_000, owner_view, &zone);
