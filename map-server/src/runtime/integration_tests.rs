@@ -18373,8 +18373,15 @@ async fn collusion_puts_the_hits_enmity_on_its_warrior() {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../scripts/lua");
     let lua = Arc::new(crate::lua::LuaEngine::new(&root));
     put_status(&registry, 1, 223097, "collusion", 1_048_601, 3).await;
+    let collusion_on = |registry: Arc<ActorRegistry>| async move {
+        let p = registry.get(1).await.unwrap();
+        p.character.read().await.status_effects.has(223097)
+    };
+    // Swing until a hit lands and uses Collusion up. (Stopping on HP
+    // alone is flaky: a hit can land for 0 damage, use Collusion up,
+    // and leave the next swing's enmity to the attacker.)
     for _ in 0..30 {
-        if hp_of(&registry, 2).await < 1000 {
+        if !collusion_on(registry.clone()).await {
             break;
         }
         dispatch_battle_event(
@@ -18390,7 +18397,10 @@ async fn collusion_puts_the_hits_enmity_on_its_warrior() {
         )
         .await;
     }
-    assert!(hp_of(&registry, 2).await < 1000, "a swing landed");
+    assert!(
+        !collusion_on(registry.clone()).await,
+        "a hit landed and used Collusion up"
+    );
     let mob = registry.get(2).await.unwrap();
     let c = mob.character.read().await;
     let warrior = c.hate.get(3).map_or(0, |e| e.cumulative_enmity);
@@ -18400,12 +18410,6 @@ async fn collusion_puts_the_hits_enmity_on_its_warrior() {
     assert!(
         attacker <= 1,
         "the attacker holds none of the hit: {attacker}"
-    );
-    drop(c);
-    let p = registry.get(1).await.unwrap();
-    assert!(
-        !p.character.read().await.status_effects.has(223097),
-        "Collusion is used up"
     );
 }
 
