@@ -387,6 +387,13 @@ impl Character {
     /// `server_battlenpc_*_mods` seeds at spawn and never want them
     /// zeroed. The dispatcher guards this call with `is_player`.
     pub fn reset_player_bonus_stats(&mut self) {
+        // Gear can add stats the list below doesn't zero (Evasion, crit,
+        // resistances): take last time's off so they don't stack.
+        for (k, d) in std::mem::take(&mut self.gear_mods) {
+            if !PLAYER_PIPELINE_MODS.iter().any(|m| *m as u32 == k) {
+                self.chara.mods.subtract_raw(k, d);
+            }
+        }
         for m in PLAYER_PIPELINE_MODS {
             self.chara.mods.set(m, 0.0);
         }
@@ -438,11 +445,11 @@ impl Character {
         totals
     }
 
-    /// What statuses and traits add on top of the actor's own stats: the
-    /// share the accuracy, evasion and potency formulas count.
+    /// What statuses, traits and gear add on top of the actor's own
+    /// stats: the share the accuracy, evasion and potency formulas count.
     pub fn bonus_mod_totals(&self) -> crate::actor::modifier::ModifierMap {
         let mut totals = self.status_mod_totals();
-        for &(k, d) in &self.trait_mods {
+        for &(k, d) in self.trait_mods.iter().chain(&self.gear_mods) {
             totals.add_raw(k, d);
         }
         totals
@@ -519,12 +526,14 @@ impl Character {
         items: &std::collections::HashMap<u32, crate::data::ItemData>,
         equipped_by_slot: &std::collections::HashMap<u16, u32>,
     ) {
+        self.gear_mods.clear();
         for &catalog_id in equipped_by_slot.values() {
             let Some(item) = items.get(&catalog_id) else {
                 continue;
             };
             for (mod_id, delta) in &item.gear_bonuses {
                 self.chara.mods.add_raw(*mod_id, *delta as f64);
+                self.gear_mods.push((*mod_id, *delta as f64));
             }
         }
     }
@@ -1540,5 +1549,45 @@ mod trait_tests {
         assert!(c.traits.is_empty());
         assert_eq!(c.chara.mods.get(Modifier::Accuracy), 100.0);
         assert_eq!(c.chara.mods.get(Modifier::Defense), 0.0);
+    }
+}
+
+#[cfg(test)]
+mod gear_share_tests {
+    use super::*;
+    use crate::data::ItemData;
+    use std::collections::HashMap;
+
+    #[test]
+    fn gear_counts_in_the_bonus_share_and_does_not_stack() {
+        let mut items = HashMap::new();
+        items.insert(
+            7,
+            ItemData {
+                id: 7,
+                gear_bonuses: vec![
+                    (Modifier::Accuracy as u32, 20),
+                    (Modifier::Evasion as u32, 10),
+                ],
+                ..Default::default()
+            },
+        );
+        let equipped: HashMap<u16, u32> = [(5u16, 7u32)].into();
+        let mut c = Character::new(1);
+        for _ in 0..3 {
+            c.reset_player_bonus_stats();
+            c.apply_player_gear_stats(&items, &equipped);
+        }
+        assert_eq!(c.chara.mods.get(Modifier::Evasion), 10.0);
+        assert_eq!(c.chara.mods.get(Modifier::Accuracy), 20.0);
+        let share = c.bonus_mod_totals();
+        assert_eq!(share.get(Modifier::Accuracy), 20.0);
+        assert_eq!(share.get(Modifier::Evasion), 10.0);
+
+        // Taking it off takes it all back.
+        c.reset_player_bonus_stats();
+        c.apply_player_gear_stats(&items, &HashMap::new());
+        assert_eq!(c.chara.mods.get(Modifier::Evasion), 0.0);
+        assert_eq!(c.bonus_mod_totals().get(Modifier::Accuracy), 0.0);
     }
 }

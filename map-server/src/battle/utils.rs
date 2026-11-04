@@ -117,9 +117,9 @@ pub struct CombatView<'a> {
     pub level: i16,
     pub max_hp: i16,
     pub mods: &'a ModifierMap,
-    /// The share of `mods` the actor's status effects put there
-    /// ([`crate::actor::Character::status_mod_totals`]). Accuracy, evasion
-    /// and potency count only this share, so gear and stat baselines (which
+    /// The share of `mods` the actor's statuses, traits and gear put there
+    /// ([`crate::actor::Character::bonus_mod_totals`]). Accuracy, evasion
+    /// and potency count only this share, so stat baselines (which
     /// monsters don't have) keep the tuned rates.
     pub status: &'a ModifierMap,
     pub has_aegis_boon: bool,
