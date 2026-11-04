@@ -1072,6 +1072,18 @@ async fn action_targets(
     }
     find.find_within_area(main, flags, command.aoe_target, &arena);
     let mut out: Vec<u32> = find.targets().iter().map(|v| v.actor_id).collect();
+    // The finder has no party ids, so party-only AoEs (Enhanced Rampart)
+    // keep to the party here: other players are left out, duty allies
+    // (who fight beside the party without joining it) stay in.
+    let npc_ally = |id: &u32| arena.get(id).is_some_and(|v| !v.is_player && v.allegiance == 1);
+    if command.valid_target.intersects(ValidTarget::PARTY_ONLY) {
+        let party = crate::parties::members_of(attacker_actor_id);
+        out.retain(|id| party.contains(id) || npc_ally(id));
+    }
+    if command.valid_target.intersects(ValidTarget::MAIN_TARGET_PARTY_ONLY) {
+        let party = crate::parties::members_of(primary_actor_id);
+        out.retain(|id| party.contains(id) || npc_ally(id));
+    }
     // Main target first (it carries the result row the client keys the
     // animation on); an AoE centred on the caster may leave it out.
     if let Some(pos) = out.iter().position(|id| *id == primary_actor_id) {
@@ -1266,13 +1278,23 @@ pub(crate) fn apply_combo_cast_time(
 /// Put what the command's `onCombo` / `onPositional` changed on the
 /// command. Power comes from `magicPotency` / `damageMultiplier` here, so
 /// a script's `basePotency` change scales those.
+/// A script's `aoeType` number as the command's AoE shape.
+fn aoe_from(n: f64) -> crate::battle::target_find::TargetFindAOEType {
+    use crate::battle::target_find::TargetFindAOEType;
+    match n as u8 {
+        1 => TargetFindAOEType::Circle,
+        2 => TargetFindAOEType::Cone,
+        3 => TargetFindAOEType::Box,
+        _ => TargetFindAOEType::None,
+    }
+}
+
 fn apply_skill_hook(
     root: &std::path::Path,
     hook: &str,
     c: &mut BattleCommand,
     caster: &crate::status::script::OwnerView,
 ) {
-    use crate::battle::target_find::TargetFindAOEType as Aoe;
     let start = crate::status::script::ComboSkill {
         base_potency: f64::from(c.base_potency.max(1)),
         cast_time_ms: f64::from(c.cast_time_ms),
@@ -1319,12 +1341,7 @@ fn apply_skill_hook(
         c.recast_time_ms = recast;
         c.max_recast_time_seconds = recast.div_ceil(1000);
     }
-    c.aoe_type = match set.aoe_type as u8 {
-        1 => Aoe::Circle,
-        2 => Aoe::Cone,
-        3 => Aoe::Box,
-        _ => Aoe::None,
-    };
+    c.aoe_type = aoe_from(set.aoe_type);
     c.status_id = set.status_id.max(0.0) as u32;
     c.status_chance = set.status_chance as f32;
     c.status_duration = set.status_duration.max(0.0) as u32;
@@ -1877,6 +1894,7 @@ async fn resolve_action(
                 magnitude: command.status_magnitude,
                 tier: command.status_tier,
                 chance: f64::from(command.status_chance),
+                aoe_type: f64::from(command.aoe_type as u8),
                 ..Default::default()
             };
             match crate::status::script::run_command_setup(&root, &command.name, &caster, start) {
@@ -1890,6 +1908,7 @@ async fn resolve_action(
                     c.status_magnitude = set.magnitude.max(0.0);
                     c.status_tier = set.tier;
                     c.status_chance = set.chance as f32;
+                    c.aoe_type = aoe_from(set.aoe_type);
                     tracing::debug!(
                         command = %command.name,
                         held = ?atk_status_ids,

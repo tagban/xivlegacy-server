@@ -18689,3 +18689,75 @@ async fn whirlwind_combo_spends_berserk_stacks() {
     assert_eq!(added.get(Modifier::Defense), 0.0);
     assert_eq!(c.chara.tp, 3000, "Whirlwind as the next link is free");
 }
+
+/// Enhanced Rampart (trait 27163) widens Rampart to the paladin's party:
+/// without the trait only the paladin gets it, and a stranger standing as
+/// close never does.
+#[tokio::test]
+async fn enhanced_rampart_covers_the_party() {
+    // Own ids: the party table is process-wide.
+    let (pld, friend, stranger) = (9301u32, 9303u32, 9304u32);
+    crate::parties::join_for_test(pld, friend).expect("party");
+    for (traits, friend_gets_it) in [(vec![], false), (vec![27163u32], true)] {
+        let world = Arc::new(WorldManager::new());
+        let registry = Arc::new(ActorRegistry::new());
+        let zone = Zone::new(
+            100, "test", 1, "/Area/Zone/Test", 0, 0, 0, false, false, false, false, false,
+            Some(&StubNavmeshLoader),
+        );
+        world.register_zone(zone).await;
+        let zone = world.zone(100).await.unwrap();
+        for (id, x) in [(pld, 0.0f32), (friend, 3.0), (stranger, -3.0)] {
+            let mut c = Character::new(id);
+            c.chara.hp = 1000;
+            c.chara.max_hp = 1000;
+            c.chara.level = 50;
+            c.base.position_x = x;
+            if id == pld {
+                c.chara.class = 3;
+                c.traits = traits.clone();
+            }
+            registry
+                .insert(ActorHandle::new(id, ActorKindTag::Player, 100, 0, c))
+                .await;
+            let mut ob = crate::zone::outbox::AreaOutbox::new();
+            zone.write().await.core.add_actor(
+                StoredActor {
+                    actor_id: id,
+                    kind: ActorKind::Player,
+                    position: Vector3::new(x, 0.0, 0.0),
+                    grid: (0, 0),
+                    is_alive: true,
+                },
+                &mut ob,
+            );
+        }
+        let db = Arc::new(crate::database::Database::open(tempdb()).await.expect("db"));
+        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../scripts/lua");
+        let lua = Arc::new(crate::lua::LuaEngine::new(&root));
+        let (catalog, by_level) = db.load_global_battle_command_list().await.unwrap();
+        let statuses = db.load_global_status_effect_list().await.unwrap();
+        lua.catalogs()
+            .install_battle_commands_with_level_index(catalog.clone(), by_level);
+        lua.catalogs().install_status_effects(statuses);
+        dispatch_battle_event(
+            &BattleEvent::ResolveAction {
+                attacker_actor_id: pld,
+                defender_actor_id: pld,
+                command: catalog[&27142].to_battle_command(),
+            },
+            &registry,
+            &world,
+            &zone,
+            Some(&lua),
+            Some(&db),
+        )
+        .await;
+        let mut has = Vec::new();
+        for id in [pld, friend, stranger] {
+            let h = registry.get(id).await.unwrap();
+            has.push(h.character.read().await.status_effects.has(223064));
+        }
+        assert_eq!(has, vec![true, friend_gets_it, false], "traits {traits:?}");
+    }
+}

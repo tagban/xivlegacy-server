@@ -394,6 +394,9 @@ pub struct CommandStatus {
     /// toggle used with its buff up (Rampage, Berserk, Cleric Stance…), so
     /// the command lands no status.
     pub toggled_off: bool,
+    /// `aoeType` (0 none, 1 circle, 2 cone, 3 box): traits widen
+    /// Rampart and Flash.
+    pub aoe_type: f64,
 }
 
 /// The `statusEffects` a command script sees on its caster: what the
@@ -642,6 +645,7 @@ pub fn run_command_setup(
     skill.set("statusMagnitude", start.magnitude)?;
     skill.set("statusTier", start.tier)?;
     skill.set("statusChance", start.chance)?;
+    skill.set("aoeType", start.aoe_type)?;
     let action = lua.create_table()?;
     let s = setup.clone();
     action.set(
@@ -696,6 +700,7 @@ pub fn run_command_setup(
         magnitude: num("statusMagnitude", start.magnitude),
         tier: num("statusTier", start.tier as f64) as u8,
         chance: num("statusChance", start.chance),
+        aoe_type: num("aoeType", start.aoe_type),
     }))
 }
 
@@ -1473,8 +1478,14 @@ mod tests {
         assert_eq!(out.chance, 0.0);
         let mut gla = owner();
         gla.traits = vec![27161];
-        let out = run_command_setup(&root(), "flash", &gla, no_trait).unwrap().unwrap();
+        let out = run_command_setup(&root(), "flash", &gla, no_trait.clone())
+            .unwrap()
+            .unwrap();
         assert_eq!(out.chance, 1.0);
+        assert_eq!(out.aoe_type, 0.0);
+        gla.traits.push(27162);
+        let out = run_command_setup(&root(), "flash", &gla, no_trait).unwrap().unwrap();
+        assert_eq!(out.aoe_type, 1.0, "Enhanced Flash II makes it a circle");
     }
 
     #[test]
