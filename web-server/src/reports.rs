@@ -404,7 +404,7 @@ impl crate::database::Database {
                 };
                 let mut st = c.prepare(
                     r"SELECT COALESCE(NULLIF(z.placeName, ''), z.zoneName, CONCAT('Zone ', l.zoneId)), COUNT(*) AS n
-                      FROM log_sessions l LEFT JOIN server_zones z ON z.id = l.zoneId
+                      FROM log_sessions l LEFT JOIN server_zones z ON z.id = l.zoneId AND l.zoneId > 0
                       WHERE l.at >= :s AND l.event = 'zone'
                       GROUP BY l.zoneId ORDER BY n DESC LIMIT 15",
                 )?;
@@ -414,7 +414,7 @@ impl crate::database::Database {
                              COALESCE(NULLIF(z.placeName, ''), z.zoneName, '')
                       FROM log_sessions l
                       LEFT JOIN characters c ON c.id = l.characterId
-                      LEFT JOIN server_zones z ON z.id = l.zoneId
+                      LEFT JOIN server_zones z ON z.id = l.zoneId AND l.zoneId > 0
                       WHERE l.at >= :s AND l.event IN ('login', 'logout')
                       ORDER BY l.at DESC, l.id DESC LIMIT 25",
                 )?;
@@ -467,7 +467,7 @@ impl crate::database::Database {
                 let parts: [(&str, &str); 6] = [
                     ("session", r"SELECT l.at, l.id, 'session',
                         CONCAT(l.event, CASE WHEN z.id IS NULL THEN '' ELSE CONCAT(' · ', COALESCE(NULLIF(z.placeName, ''), z.zoneName)) END)
-                        FROM log_sessions l LEFT JOIN server_zones z ON z.id = l.zoneId WHERE l.characterId = :c"),
+                        FROM log_sessions l LEFT JOIN server_zones z ON z.id = l.zoneId AND l.zoneId > 0 WHERE l.characterId = :c"),
                     ("item", r"SELECT l.at, l.id, 'item',
                         CONCAT(CASE WHEN l.quantity > 0 THEN '+' ELSE '' END, l.quantity, ' × ',
                                COALESCE(NULLIF(i.name, ''), CONCAT('item ', l.itemId)),
@@ -610,6 +610,7 @@ th { font-size:.75rem; text-transform:uppercase; letter-spacing:.06em; color:var
 tr:last-child td { border-bottom:0; }
 td.n, th.n { text-align:right; font-variant-numeric:tabular-nums; }
 td.t { white-space:nowrap; color:var(--muted); font-variant-numeric:tabular-nums; }
+@media (max-width: 600px) { td.t { white-space:normal; min-width:6.5em; } th, td { padding:6px; } }
 code { font:13px ui-monospace, SFMono-Regular, Menlo, monospace; word-break:break-word; }
 .kind { font-size:.75rem; padding:1px 8px; border-radius:999px; border:1px solid var(--line); white-space:nowrap; }
 .signin { max-width:340px; display:flex; flex-direction:column; gap:8px; }

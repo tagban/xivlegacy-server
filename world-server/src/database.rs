@@ -517,7 +517,6 @@ impl Database {
                 let now = now_s();
                 match destination {
                     Some((zone, map)) => {
-                        activity::session(c, 0, character_id, "zone", zone, &map);
                         c.execute(
                             r"UPDATE world_sessions SET state = 'zoning', zone_id = :z, map_server = :m,
                               last_seen_at = :now WHERE character_id = :c",

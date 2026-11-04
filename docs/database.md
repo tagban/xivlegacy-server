@@ -121,7 +121,7 @@ character and time.
 
 | Table | One row per | Written by |
 | --- | --- | --- |
-| `log_sessions` | login, zone change, logout | world server |
+| `log_sessions` | login, logout (world server); zone change (map server) | world and map servers |
 | `log_items` | item gained or lost (`quantity` is the change) | map server: add, remove, stack size |
 | `log_gil` | gil change, with the balance after | map server |
 | `log_progress` | exp, level, class or job change | map server |

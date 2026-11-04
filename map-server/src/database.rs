@@ -2610,6 +2610,17 @@ impl Database {
         let private_area = private_area.to_owned();
         self.conn
             .call_db(move |c| {
+                let was: Option<u32> = c
+                    .query_row(
+                        "SELECT currentZoneId FROM characters WHERE id = :cid",
+                        named_params! { ":cid": chara_id },
+                        |r| r.get(0),
+                    )
+                    .optional()?
+                    .flatten();
+                if was.is_some_and(|z| z != zone_id) {
+                    activity::session(c, 0, chara_id, "zone", zone_id, &private_area);
+                }
                 c.execute(
                     r"UPDATE characters SET
                           positionX = :x, positionY = :y, positionZ = :z, rotation = :rot,
