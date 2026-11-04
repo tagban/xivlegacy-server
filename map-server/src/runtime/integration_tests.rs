@@ -18761,3 +18761,62 @@ async fn enhanced_rampart_covers_the_party() {
         assert_eq!(has, vec![true, friend_gets_it, false], "traits {traits:?}");
     }
 }
+
+/// A bard's new song replaces their old one on the target (Paeon's Regain
+/// comes off with it); another bard's song stays.
+#[tokio::test]
+async fn a_bards_new_song_replaces_their_old_one() {
+    use crate::actor::modifier::Modifier;
+    let (world, registry, zone) = party_hook_zone().await;
+    let db = Arc::new(crate::database::Database::open(tempdb()).await.expect("db"));
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../scripts/lua");
+    let lua = Arc::new(crate::lua::LuaEngine::new(&root));
+    let (catalog, by_level) = db.load_global_battle_command_list().await.unwrap();
+    let statuses = db.load_global_status_effect_list().await.unwrap();
+    lua.catalogs()
+        .install_battle_commands_with_level_index(catalog.clone(), by_level);
+    lua.catalogs().install_status_effects(statuses);
+    put_status(&registry, 1, 223256, "minuet_of_rigor", 0, 3).await;
+    let cast = |id: u16| {
+        let (registry, world, zone, lua, db) =
+            (registry.clone(), world.clone(), zone.clone(), lua.clone(), db.clone());
+        let command = catalog[&id].to_battle_command();
+        async move {
+            dispatch_battle_event(
+                &BattleEvent::ResolveAction {
+                    attacker_actor_id: 1,
+                    defender_actor_id: 1,
+                    command,
+                },
+                &registry,
+                &world,
+                &zone,
+                Some(&lua),
+                Some(&db),
+            )
+            .await;
+        }
+    };
+    let state = || {
+        let registry = registry.clone();
+        async move {
+            let h = registry.get(1).await.unwrap();
+            let c = h.character.read().await;
+            (
+                c.status_effects.has(223255),
+                c.status_effects.has(223254),
+                c.status_effects.has(223256),
+                c.chara.mods.get(Modifier::Regain),
+            )
+        }
+    };
+    cast(27238).await;
+    let (paeon, ballad, minuet, regain) = state().await;
+    assert!(paeon && !ballad && minuet, "Paeon lands beside the other bard's Minuet");
+    assert!(regain > 0.0, "Paeon gives Regain");
+    cast(27237).await;
+    let (paeon, ballad, minuet, regain) = state().await;
+    assert!(!paeon && ballad, "Ballad replaces Paeon");
+    assert!(minuet, "the other bard's Minuet stays");
+    assert_eq!(regain, 0.0, "Paeon's Regain went with it");
+}

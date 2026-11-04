@@ -1278,6 +1278,51 @@ pub(crate) fn apply_combo_cast_time(
 /// Put what the command's `onCombo` / `onPositional` changed on the
 /// command. Power comes from `magicPotency` / `damageMultiplier` here, so
 /// a script's `basePotency` change scales those.
+/// Swiftsong, Ballad of Magi, Paeon of War, Minuet of Rigor: a bard's
+/// songs on one target replace each other (pmeteor's song scripts take
+/// the caster's old song off the target before the new one lands).
+const BARD_SONGS: [u32; 4] = [223224, 223254, 223255, 223256];
+
+/// Take `bard`'s other songs off `target` before `song` lands. Another
+/// bard's songs stay.
+#[allow(clippy::too_many_arguments)]
+async fn drop_other_songs(
+    bard: u32,
+    target: u32,
+    song: u32,
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    db: &Database,
+    lua: Option<&Arc<crate::lua::LuaEngine>>,
+) {
+    let Some(h) = registry.get(target).await else {
+        return;
+    };
+    let mut outbox = crate::status::StatusOutbox::new();
+    {
+        let mut c = h.character.write().await;
+        let old: Vec<u32> = c
+            .status_effects
+            .iter()
+            .filter(|e| e.id != song && BARD_SONGS.contains(&e.id) && e.source_actor_id == bard)
+            .map(|e| e.id)
+            .collect();
+        for id in old {
+            c.status_effects.remove_status_effect(
+                id,
+                crate::status::DEFAULT_LOSS_TEXT_ID,
+                true,
+                &mut outbox,
+            );
+        }
+    }
+    if let Some(l) = lua {
+        for e in outbox.drain() {
+            dispatch_status_event(&e, registry, world, db, l.catalogs()).await;
+        }
+    }
+}
+
 /// A script's `aoeType` number as the command's AoE shape.
 fn aoe_from(n: f64) -> crate::battle::target_find::TargetFindAOEType {
     use crate::battle::target_find::TargetFindAOEType;
@@ -2517,6 +2562,18 @@ async fn resolve_action(
     {
         let now_ms = (common::utils::unix_timestamp() as u64).saturating_mul(1000);
         for hit in hits.iter().filter(|h| h.status_roll) {
+            if BARD_SONGS.contains(&command.status_id) {
+                drop_other_songs(
+                    attacker_actor_id,
+                    hit.target_actor_id,
+                    command.status_id,
+                    registry,
+                    world,
+                    db,
+                    lua,
+                )
+                .await;
+            }
             let mut effect = command_status_effect(command, hit.target_actor_id, lua, now_ms);
             effect.silent_on_gain = true;
             let gain_text = effect.status_gain_text_id;
