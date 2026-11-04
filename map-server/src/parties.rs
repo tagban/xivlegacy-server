@@ -174,6 +174,12 @@ fn take_sent(actor: u32) -> Option<u64> {
 
 /// Join `invitee` to `inviter`'s party, forming one if `inviter` is solo.
 /// None when the party is full or `invitee` already has one.
+/// Put `invitee` in `inviter`'s party, as accepting an invite does.
+#[cfg(test)]
+pub(crate) fn join_for_test(inviter: u32, invitee: u32) -> Option<Vec<u32>> {
+    join(inviter, invitee)
+}
+
 fn join(inviter: u32, invitee: u32) -> Option<Vec<u32>> {
     let mut t = table();
     if t.of.contains_key(&invitee) {
