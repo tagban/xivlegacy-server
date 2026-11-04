@@ -628,7 +628,14 @@ impl AIContainer {
                     command = cmd.id,
                     "battle: monster readies a TP move",
                 );
-                self.internal_weapon_skill(target_actor_id, cmd, now_ms);
+                let command_id = cmd.id;
+                if self.internal_weapon_skill(target_actor_id, cmd, now_ms) {
+                    outbox.push(BattleEvent::SkillReady {
+                        owner_actor_id: owner_id,
+                        target_actor_id,
+                        command_id,
+                    });
+                }
             }
             ControllerDecision::ChangeTarget { target_actor_id } => {
                 // Write the retarget into the live state stack. Without

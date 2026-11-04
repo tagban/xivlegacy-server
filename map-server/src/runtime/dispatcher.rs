@@ -456,6 +456,26 @@ pub async fn dispatch_battle_event(
             let sub = tx::actor_battle::build_command_result_x00(*owner_actor_id, *animation, 0);
             broadcast_around_actor(world, registry, zone, *owner_actor_id, sub.to_bytes()).await;
         }
+        BattleEvent::SkillReady {
+            owner_actor_id,
+            target_actor_id,
+            command_id,
+        } => {
+            // Client text 30126 (English: "<name> readies <command>.",
+            // the line beside 30128 "begins casting"). No animation:
+            // which 0x0139 animation 1.0 played here is unknown, so only
+            // the battle-log line is sent.
+            let row = tx::actor_battle::CommandResult {
+                target_id: *target_actor_id,
+                worldmaster_text_id: MONSTER_READIES_TEXT_ID,
+                param: 1,
+                hit_num: 1,
+                ..Default::default()
+            };
+            let ready =
+                tx::actor_battle::build_command_result_x01(*owner_actor_id, 0, *command_id, &row);
+            broadcast_around_actor(world, registry, zone, *owner_actor_id, ready.to_bytes()).await;
+        }
         BattleEvent::CastStart {
             owner_actor_id,
             target_actor_id,
@@ -582,6 +602,9 @@ pub async fn dispatch_battle_event(
         }
     }
 }
+
+/// Client battle text "<name> readies <command>." (sheet 03/A2/00/BC).
+pub(crate) const MONSTER_READIES_TEXT_ID: u16 = 30126;
 
 // ---------------------------------------------------------------------------
 // Auto-attack + cast-complete resolution.
