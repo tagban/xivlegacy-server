@@ -196,7 +196,8 @@ impl CommandProcessor {
             return "that actor is gone".into();
         };
         let my_name = args.invoker.unwrap_or_default().to_string();
-        self.teleport(&my_name, Some(zone), None, 0, x, y, z).await;
+        self.teleport(&my_name, Some(zone), None, 0, (x, y, z))
+            .await;
         format!("went to {} (zone {zone})", self.actor_label(tid).await)
     }
 
@@ -231,7 +232,7 @@ impl CommandProcessor {
             };
             if h.session_id != 0 {
                 let name = h.character.read().await.base.display_name().to_string();
-                return self.teleport(&name, Some(zone), None, 0, x, y, z).await;
+                return self.teleport(&name, Some(zone), None, 0, (x, y, z)).await;
             }
             if h.zone_id != zone {
                 return "your target is in another zone".into();
@@ -262,7 +263,7 @@ impl CommandProcessor {
                 self.actor_label(tid).await
             );
         }
-        let r = self.teleport(&what, Some(zone), None, 0, x, y, z).await;
+        let r = self.teleport(&what, Some(zone), None, 0, (x, y, z)).await;
         if r.starts_with("warped") {
             format!("brought {what} to you")
         } else {
@@ -286,7 +287,7 @@ impl CommandProcessor {
             }
             if let Ok(Some(name)) = self.db.character_name(s.id).await
                 && self
-                    .teleport(&name, Some(zone), None, 0, x, y, z)
+                    .teleport(&name, Some(zone), None, 0, (x, y, z))
                     .await
                     .starts_with("warped")
             {
@@ -316,7 +317,7 @@ impl CommandProcessor {
         let Some((zone, x, y, z, _)) = self.spot_of(tid).await else {
             return format!("{to} is not online");
         };
-        let r = self.teleport(&who, Some(zone), None, 0, x, y, z).await;
+        let r = self.teleport(&who, Some(zone), None, 0, (x, y, z)).await;
         if r.starts_with("warped") {
             format!("sent {who} to {to}")
         } else {
@@ -341,7 +342,7 @@ impl CommandProcessor {
         let Some((zone, x, y, z)) = spot else {
             return format!("{name} hasn't been moved by a command since the server started");
         };
-        let r = self.teleport(&name, Some(zone), None, 0, x, y, z).await;
+        let r = self.teleport(&name, Some(zone), None, 0, (x, y, z)).await;
         if r.starts_with("warped") {
             format!("returned {name} to zone {zone}")
         } else {
@@ -369,7 +370,7 @@ impl CommandProcessor {
         let Some((zone, x, y, z, _)) = self.spot_of(id).await else {
             return format!("{name} is not online");
         };
-        self.teleport(&name, Some(zone), None, 0, x, y + sign * dist, z)
+        self.teleport(&name, Some(zone), None, 0, (x, y + sign * dist, z))
             .await
     }
 
@@ -391,7 +392,7 @@ impl CommandProcessor {
             return format!("no spawn point known in zone {zone}");
         };
         if self.registry.get(id).await.is_some() {
-            return self.teleport(&name, Some(zone), None, 0, x, y, z).await;
+            return self.teleport(&name, Some(zone), None, 0, (x, y, z)).await;
         }
         match self.db.set_character_position(id, zone, x, y, z).await {
             Ok(true) => format!("{name} will log in at their home city (zone {zone})"),
@@ -436,7 +437,7 @@ impl CommandProcessor {
         let c = crate::jail::cell(cell);
         let zone = crate::jail::get().zone;
         if self.registry.get(id).await.is_some() {
-            self.teleport(&name, Some(zone), None, 0, c.x, c.y, c.z)
+            self.teleport(&name, Some(zone), None, 0, (c.x, c.y, c.z))
                 .await;
             format!("{name} is in Mordion Gaol, cell {cell}")
         } else {
