@@ -284,6 +284,7 @@ impl BattleNpc {
         self.bnpc_id = bnpc_id;
         self.pool_id = spawn.pool_id;
         self.genus_id = spawn.genus_id;
+        self.skill_list_id = spawn.skill_list_id;
         self.drop_list_id = spawn.drop_list_id;
         self.respawn_time_seconds = spawn.respawn_time;
         self.detection_type = DetectionType(spawn.detection);
@@ -569,6 +570,7 @@ mod tests {
             current_job: 0,
             combat_skill: 0,
             combat_delay: 0,
+            skill_list_id: 0,
             aggro_type,
             speed: 8,
             detection,
