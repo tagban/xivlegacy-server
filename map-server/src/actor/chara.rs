@@ -438,6 +438,49 @@ impl Character {
         totals
     }
 
+    /// What statuses and traits add on top of the actor's own stats: the
+    /// share the accuracy, evasion and potency formulas count.
+    pub fn bonus_mod_totals(&self) -> crate::actor::modifier::ModifierMap {
+        let mut totals = self.status_mod_totals();
+        for &(k, d) in &self.trait_mods {
+            totals.add_raw(k, d);
+        }
+        totals
+    }
+
+    /// Take the traits' modifier changes back off (before a stat rebuild).
+    pub fn remove_trait_mods(&mut self) {
+        for (k, d) in std::mem::take(&mut self.trait_mods) {
+            self.chara.mods.subtract_raw(k, d);
+        }
+    }
+
+    /// pmeteor `Player.CalculateTraitMods` / `HasTrait`: the player has
+    /// every trait of their class or job at or below their level, and
+    /// the stat ones add their bonus.
+    pub fn apply_traits(
+        &mut self,
+        traits: &std::collections::HashMap<u16, crate::gamedata::BattleTrait>,
+    ) {
+        self.remove_trait_mods();
+        let class = self.chara.class.max(0) as u8;
+        let job = self.chara.current_job as u8;
+        let level = self.chara.level;
+        let mut held: Vec<&crate::gamedata::BattleTrait> = traits
+            .values()
+            .filter(|t| (t.job == class || (job != 0 && t.job == job)) && i16::from(t.level) <= level)
+            .collect();
+        held.sort_by_key(|t| t.id);
+        self.traits = held.iter().map(|t| u32::from(t.id)).collect();
+        for t in held {
+            if t.modifier != 0 && t.bonus != 0 {
+                let d = f64::from(t.bonus);
+                self.chara.mods.add_raw(t.modifier, d);
+                self.trait_mods.push((t.modifier, d));
+            }
+        }
+    }
+
     /// The player stat rebuild zeroes [`PLAYER_PIPELINE_MODS`]; put the
     /// active effects' share of those back. Other modifiers keep theirs.
     pub fn apply_status_pipeline_mods(&mut self) {
@@ -1440,5 +1483,62 @@ impl Character {
     /// Does the character meet `trait_ref`'s class/level requirement?
     pub fn meets_trait(&self, trait_ref: TraitRef) -> bool {
         self.chara.class as u8 == trait_ref.job && trait_ref.level as i16 <= self.chara.level
+    }
+}
+
+#[cfg(test)]
+mod trait_tests {
+    use super::*;
+    use crate::gamedata::BattleTrait;
+    use std::collections::HashMap;
+
+    fn catalog() -> HashMap<u16, BattleTrait> {
+        let t = |id: u16, job: u8, level: u8, modifier: u32, bonus: i32| BattleTrait {
+            id,
+            name: String::new(),
+            job,
+            level,
+            modifier,
+            bonus,
+        };
+        let acc = Modifier::Accuracy as u32;
+        let def = Modifier::Defense as u32;
+        [
+            t(27161, 3, 28, 0, 0),
+            t(27162, 3, 48, 0, 0),
+            t(1, 3, 10, acc, 15),
+            t(2, 3, 30, def, 20),
+            t(3, 4, 10, acc, 99),
+        ]
+        .into_iter()
+        .map(|x| (x.id, x))
+        .collect()
+    }
+
+    #[test]
+    fn traits_follow_class_and_level_and_do_not_stack() {
+        let mut c = Character::new(1);
+        c.chara.class = 3;
+        c.chara.level = 29;
+        c.chara.mods.set(Modifier::Accuracy, 100.0);
+        c.apply_traits(&catalog());
+        assert_eq!(c.traits, vec![1, 27161]);
+        assert_eq!(c.chara.mods.get(Modifier::Accuracy), 115.0);
+        assert_eq!(c.chara.mods.get(Modifier::Defense), 0.0);
+        assert_eq!(c.bonus_mod_totals().get(Modifier::Accuracy), 15.0);
+
+        // A second recalc swaps the old bonus for the new one.
+        c.chara.level = 50;
+        c.apply_traits(&catalog());
+        assert_eq!(c.traits, vec![1, 2, 27161, 27162]);
+        assert_eq!(c.chara.mods.get(Modifier::Accuracy), 115.0);
+        assert_eq!(c.chara.mods.get(Modifier::Defense), 20.0);
+
+        // Changing class drops them.
+        c.chara.class = 7;
+        c.apply_traits(&catalog());
+        assert!(c.traits.is_empty());
+        assert_eq!(c.chara.mods.get(Modifier::Accuracy), 100.0);
+        assert_eq!(c.chara.mods.get(Modifier::Defense), 0.0);
     }
 }

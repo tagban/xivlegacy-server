@@ -283,6 +283,20 @@ pub async fn run() -> Result<()> {
         }
     }
 
+    // Traits (`server_battle_traits`): the stat recalc gives a player
+    // their class's traits up to their level, and command scripts ask
+    // `HasTrait`. Non-fatal: without them nobody has a trait.
+    match db.load_global_battle_trait_list().await {
+        Ok((traits, _)) => {
+            let trait_count = traits.len();
+            lua.catalogs().install_battle_traits(traits);
+            tracing::info!(trait_count, "server_battle_traits catalog loaded");
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "server_battle_traits load failed");
+        }
+    }
+
     // Status-effect templates (`server_statuseffects`): battle commands
     // build the effects they apply from these, so flags such as Stance
     // and each status's overwrite rule come along. Non-fatal: without

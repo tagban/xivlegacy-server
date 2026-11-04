@@ -45,6 +45,8 @@ pub struct OwnerView {
     pub max_mp: i32,
     /// The statuses the owner holds, by id (command setup reads them).
     pub status_ids: Vec<u32>,
+    /// The traits the owner has, by id (`HasTrait`).
+    pub traits: Vec<u32>,
 }
 
 /// The effect's own numbers, as the container holds them.
@@ -75,6 +77,7 @@ struct State {
     max_mp: i32,
     hp: i32,
     effect: EffectView,
+    traits: Vec<u32>,
 }
 
 /// The arguments of a call made with either `owner.F(a, b)` or
@@ -182,8 +185,9 @@ fn build_owner(lua: &Lua, st: &Arc<Mutex<State>>) -> mlua::Result<Table> {
         s.hp -= arg(n, 0) as i32;
         Value::Nil
     })?;
-    // Traits aren't tracked yet.
-    method(lua, &t, "HasTrait", st, |_, _| Value::Boolean(false))?;
+    method(lua, &t, "HasTrait", st, |s, n| {
+        Value::Boolean(s.traits.contains(&(arg(n, 0) as u32)))
+    })?;
     method(lua, &t, "SetProc", st, |_, _| Value::Nil)?;
     method(lua, &t, "SetCombos", st, |_, _| Value::Nil)?;
     // Gear isn't visible here.
@@ -343,6 +347,7 @@ pub fn run_on_gain(
         max_mp: owner.max_mp,
         hp: 0,
         effect,
+        traits: owner.traits.clone(),
     }));
     let owner_t = build_owner(&lua, &st)?;
     let effect_t = build_effect(&lua, &st)?;
@@ -542,6 +547,7 @@ pub fn run_command_skill_hook(
         max_mp: caster.max_mp,
         hp: 0,
         effect: EffectView::default(),
+        traits: caster.traits.clone(),
     }));
     let caster_t = build_owner(&lua, &st)?;
     let setup = Arc::new(Mutex::new(SetupStatus {
@@ -622,6 +628,7 @@ pub fn run_command_setup(
         max_mp: caster.max_mp,
         hp: 0,
         effect: EffectView::default(),
+        traits: caster.traits.clone(),
     }));
     let caster_t = build_owner(&lua, &st)?;
     let setup = Arc::new(Mutex::new(SetupStatus {
@@ -709,6 +716,7 @@ pub struct HookActor {
     pub max_mp: i32,
     pub tp: i32,
     pub status_ids: Vec<u32>,
+    pub traits: Vec<u32>,
 }
 
 /// What a hook did to one actor.
@@ -977,7 +985,9 @@ fn build_side(lua: &Lua, st: &Arc<Mutex<Side>>, fx: &Arc<Mutex<Fx>>) -> mlua::Re
             Value::Nil
         })?;
     }
-    method(lua, &t, "HasTrait", st, |_, _| Value::Boolean(false))?;
+    method(lua, &t, "HasTrait", st, |s, n| {
+        Value::Boolean(s.actor.traits.contains(&(arg(n, 0) as u32)))
+    })?;
     method(lua, &t, "AddPartyStatusEffect", st, move |s, n| {
         s.party_status.push(HookPartyStatus {
             owner: actor_id,
@@ -1318,6 +1328,7 @@ mod tests {
             max_hp: 400,
             max_mp: 100,
             status_ids: Vec::new(),
+            traits: Vec::new(),
         }
     }
 
@@ -1452,6 +1463,21 @@ mod tests {
     }
 
     #[test]
+    fn flash_blinds_only_with_enhanced_flash() {
+        let mut no_trait = start(223137);
+        no_trait.chance = 0.0;
+        let caster = owner();
+        let out = run_command_setup(&root(), "flash", &caster, no_trait.clone())
+            .unwrap()
+            .unwrap();
+        assert_eq!(out.chance, 0.0);
+        let mut gla = owner();
+        gla.traits = vec![27161];
+        let out = run_command_setup(&root(), "flash", &gla, no_trait).unwrap().unwrap();
+        assert_eq!(out.chance, 1.0);
+    }
+
+    #[test]
     fn protect_takes_its_magnitude_from_enhancing_potency() {
         let mut caster = owner();
         caster.mods.set(Modifier::EnhancementMagicPotency, 120.0);
@@ -1563,6 +1589,7 @@ mod tests {
             max_mp: 400,
             tp: 0,
             status_ids: Vec::new(),
+            traits: Vec::new(),
         }
     }
 

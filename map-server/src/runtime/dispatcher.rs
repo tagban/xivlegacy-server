@@ -672,7 +672,7 @@ async fn resolve_auto_attack(
             a.chara.level,
             a.chara.max_hp,
             a.chara.mods.clone(),
-            a.status_mod_totals(),
+            a.bonus_mod_totals(),
             common::Vector3::new(a.base.position_x, a.base.position_y, a.base.position_z),
             root.as_ref()
                 .map(|_| crate::status::hooks::HookSide::of(&a)),
@@ -718,7 +718,7 @@ async fn resolve_auto_attack(
         let def_level = d.chara.level;
         let def_max_hp = d.chara.max_hp;
         let def_mods_snapshot = d.chara.mods.clone();
-        let def_status = d.status_mod_totals();
+        let def_status = d.bonus_mod_totals();
 
         let atk_view = battle_utils::CombatView {
             actor_id: attacker_actor_id,
@@ -1257,6 +1257,7 @@ pub(crate) fn apply_combo_cast_time(
         max_hp: i32::from(caster.chara.max_hp),
         max_mp: 0,
         status_ids: caster.status_effects.iter().map(|e| e.id).collect(),
+        traits: caster.traits.clone(),
     };
     apply_skill_hook(&root, "onCombo", &mut probe, &view);
     c.cast_time_ms = probe.cast_time_ms;
@@ -1758,7 +1759,7 @@ async fn resolve_action(
         return;
     }
 
-    let (atk_level, atk_max_hp, atk_mods, atk_status, atk_pos, atk_status_ids) = {
+    let (atk_level, atk_max_hp, atk_mods, atk_status, atk_pos, atk_status_ids, atk_traits) = {
         let a = attacker_handle.character.read().await;
         if !a.is_alive() {
             return;
@@ -1767,9 +1768,10 @@ async fn resolve_action(
             a.chara.level,
             a.chara.max_hp,
             a.chara.mods.clone(),
-            a.status_mod_totals(),
+            a.bonus_mod_totals(),
             common::Vector3::new(a.base.position_x, a.base.position_y, a.base.position_z),
             a.status_effects.iter().map(|e| e.id).collect::<Vec<u32>>(),
+            a.traits.clone(),
         )
     };
 
@@ -1803,6 +1805,7 @@ async fn resolve_action(
                 max_hp: atk_max_hp as i32,
                 max_mp: 0,
                 status_ids: atk_status_ids.clone(),
+                traits: atk_traits.clone(),
             };
             apply_skill_hook(&root, "onCombo", &mut c, &caster);
         }
@@ -1838,6 +1841,7 @@ async fn resolve_action(
             max_hp: atk_max_hp as i32,
             max_mp: 0,
             status_ids: atk_status_ids.clone(),
+                traits: atk_traits.clone(),
         };
         apply_skill_hook(&root, "onPositional", &mut c, &caster);
         positioned = c;
@@ -1865,6 +1869,7 @@ async fn resolve_action(
                 max_hp: atk_max_hp as i32,
                 max_mp: 0,
                 status_ids: atk_status_ids.clone(),
+                traits: atk_traits.clone(),
             };
             let start = crate::status::script::CommandStatus {
                 status_id: command.status_id,
@@ -2025,7 +2030,7 @@ async fn resolve_action(
         let def_level = d_write.chara.level;
         let def_max_hp = d_write.chara.max_hp;
         let def_mods_snapshot = d_write.chara.mods.clone();
-        let def_status = d_write.status_mod_totals();
+        let def_status = d_write.bonus_mod_totals();
         let atk_view = battle_utils::CombatView {
             actor_id: attacker_actor_id,
             level: atk_level,
@@ -3602,6 +3607,7 @@ async fn apply_status_script(
                     max_hp: c.chara.max_hp as i32,
                     max_mp: c.chara.max_mp as i32,
                     status_ids: Vec::new(),
+                    traits: c.traits.clone(),
                 }
             };
             let outcome = match crate::status::script::run_on_gain(&root, &name, &owner, effect) {
@@ -3871,6 +3877,7 @@ async fn recalc_stats(
             //   7. recalculate_stats — project Hp/Mp mods onto the
             //      character's HP/MP pools and plant the HitCount=1
             //      h2h fallback if the weapon stage didn't set one.
+            c.remove_trait_mods();
             c.reset_player_bonus_stats();
             c.apply_player_stat_baseline();
             if let Ok(items) = catalogs.items.read() {
@@ -3879,6 +3886,9 @@ async fn recalc_stats(
                 c.apply_player_weapon_damage_power(&items, &equipped);
             }
             c.apply_player_stat_derivation();
+            if let Ok(traits) = catalogs.battle_traits.read() {
+                c.apply_traits(&traits);
+            }
             c.apply_food_bonuses();
             c.apply_status_pipeline_mods();
         }

@@ -27,7 +27,7 @@ use std::sync::{Arc, RwLock};
 
 use crate::crafting::{PassiveGuildleveData, RecipeResolver};
 use crate::data::ItemData;
-use crate::gamedata::{BattleCommand, GuildleveGamedata, QuestMeta, StatusEffectDef};
+use crate::gamedata::{BattleCommand, BattleTrait, GuildleveGamedata, QuestMeta, StatusEffectDef};
 use crate::gathering::GatherResolver;
 use crate::leve::RegionalLeveResolver;
 use crate::world_manager::GatherNodeMetadata;
@@ -38,6 +38,8 @@ pub struct Catalogs {
     pub guildleves: RwLock<HashMap<u32, GuildleveGamedata>>,
     pub status_effects: RwLock<HashMap<u32, StatusEffectDef>>,
     pub battle_commands: RwLock<HashMap<u16, BattleCommand>>,
+    /// `server_battle_traits`: what each class or job gains by level.
+    pub battle_traits: RwLock<HashMap<u16, BattleTrait>>,
     /// Side-index of `battle_commands` grouped by `(class_id, level)`.
     /// Lets the level-up path look up "which abilities unlock on the
     /// transition 1→2 for Gladiator?" in constant time. Populated
@@ -98,6 +100,12 @@ impl Catalogs {
     pub fn install_status_effects(&self, effects: HashMap<u32, StatusEffectDef>) {
         if let Ok(mut w) = self.status_effects.write() {
             *w = effects;
+        }
+    }
+
+    pub fn install_battle_traits(&self, traits: HashMap<u16, BattleTrait>) {
+        if let Ok(mut w) = self.battle_traits.write() {
+            *w = traits;
         }
     }
 
