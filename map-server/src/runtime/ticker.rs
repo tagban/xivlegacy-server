@@ -2045,6 +2045,62 @@ mod tests {
         }
     }
 
+    /// A monster starting a TP move sends the battle-log line
+    /// "<monster> readies <move>." (0x0139, text 30126, the move's id,
+    /// aimed at its target) before the move lands.
+    #[tokio::test]
+    async fn monster_tp_move_sends_readies_line() {
+        let (ticker, _zone, mut rx) = setup_engaged_npc_vs_player(2.0, |_| {}).await;
+        let (catalog, _) = ticker.db.load_global_battle_command_list().await.unwrap();
+        // Nutshell: single target, 2.5 s wind-up.
+        let skill = catalog.get(&23012).unwrap().to_battle_command();
+        {
+            let handle = ticker.registry.get(2).await.unwrap();
+            let mut c = handle.character.write().await;
+            c.chara.tp = 1000;
+            let ctrl = c.ai_container.controller.as_mut().unwrap();
+            ctrl.battle.skills = vec![skill];
+            ctrl.auto_attack_enabled = false;
+        }
+        // Two ticks: the move starts, but its 2.5 s wind-up has not run.
+        ticker.tick_once(100).await;
+        ticker.tick_once(200).await;
+        let lines: Vec<(u32, u16, u32, u16)> = drain_subpackets(&mut rx)
+            .iter()
+            .filter(|s| {
+                s.game_message.opcode == crate::packets::opcodes::OP_COMMAND_RESULT_X01
+                    && s.header.source_id == 2
+            })
+            .map(|s| {
+                let anim = u32::from_le_bytes(s.data[0x04..0x08].try_into().unwrap());
+                let cmd = u16::from_le_bytes(s.data[0x24..0x26].try_into().unwrap());
+                let target = u32::from_le_bytes(s.data[0x28..0x2C].try_into().unwrap());
+                let text = u16::from_le_bytes(s.data[0x2E..0x30].try_into().unwrap());
+                (anim, cmd, target, text)
+            })
+            .collect();
+        assert_eq!(
+            lines,
+            vec![(
+                0,
+                23012,
+                1,
+                crate::runtime::dispatcher::MONSTER_READIES_TEXT_ID
+            )],
+            "exactly one readies line, before any damage"
+        );
+        let player_hp = ticker
+            .registry
+            .get(1)
+            .await
+            .unwrap()
+            .character
+            .read()
+            .await
+            .get_hp();
+        assert_eq!(player_hp, 1000, "the move has not landed yet");
+    }
+
     /// Below 1000 TP a monster never uses a move.
     #[tokio::test]
     async fn monster_without_tp_uses_no_move() {
