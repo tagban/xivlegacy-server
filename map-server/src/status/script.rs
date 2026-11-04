@@ -476,6 +476,119 @@ fn build_setup_status(lua: &Lua, st: &Arc<Mutex<SetupStatus>>) -> mlua::Result<T
     Ok(t)
 }
 
+/// The command fields an `onCombo` script changes (pmeteor
+/// `BattleCommand`): Thundara's potency and recast, Fira's cast time,
+/// Bloodletter's status...
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct ComboSkill {
+    pub base_potency: f64,
+    pub cast_time_ms: f64,
+    pub recast_time_ms: f64,
+    pub aoe_type: f64,
+    pub status_id: f64,
+    pub status_chance: f64,
+    pub status_duration: f64,
+    pub status_magnitude: f64,
+    pub num_hits: f64,
+    pub accuracy_modifier: f64,
+    pub bonus_crit_rate: f64,
+    pub enmity_modifier: f64,
+}
+
+fn command_script(script_root: &Path, command_name: &str) -> Option<std::path::PathBuf> {
+    ["ability", "magic", "weaponskill"]
+        .iter()
+        .map(|dir| {
+            script_root
+                .join("commands")
+                .join(dir)
+                .join(format!("{command_name}.lua"))
+        })
+        .find(|p| p.exists())
+}
+
+/// Run `onCombo(caster, target, skill)` from the command's script (pmeteor
+/// `WeaponSkillState` / `MagicState`) and read back what it changed on
+/// the skill. `None` when the command has no script or no `onCombo`.
+pub fn run_command_combo(
+    script_root: &Path,
+    command_name: &str,
+    caster: &OwnerView,
+    start: ComboSkill,
+) -> Result<Option<ComboSkill>> {
+    let Some(path) = command_script(script_root, command_name) else {
+        return Ok(None);
+    };
+    let source =
+        std::fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
+    if !source.contains("onCombo") {
+        return Ok(None);
+    }
+    let lua = new_lua(script_root)?;
+    lua.load(&source)
+        .set_name(path.display().to_string())
+        .exec()
+        .map_err(|e| anyhow::anyhow!("loading {command_name}: {e}"))?;
+    let Ok(f) = lua.globals().get::<mlua::Function>("onCombo") else {
+        return Ok(None);
+    };
+    let st = Arc::new(Mutex::new(State {
+        start: caster.mods.clone(),
+        mods: caster.mods.clone(),
+        level: caster.level,
+        max_hp: caster.max_hp,
+        max_mp: caster.max_mp,
+        hp: 0,
+        effect: EffectView::default(),
+    }));
+    let caster_t = build_owner(&lua, &st)?;
+    let setup = Arc::new(Mutex::new(SetupStatus {
+        held: caster.status_ids.clone(),
+        ..Default::default()
+    }));
+    caster_t.set("statusEffects", build_setup_status(&lua, &setup)?)?;
+    let target_t = lua.create_table()?;
+    target_t.set_metatable(Some(stub_meta(&lua)?))?;
+    let fields: [(&str, f64); 12] = [
+        ("basePotency", start.base_potency),
+        ("castTimeMs", start.cast_time_ms),
+        ("recastTimeMs", start.recast_time_ms),
+        ("aoeType", start.aoe_type),
+        ("statusId", start.status_id),
+        ("statusChance", start.status_chance),
+        ("statusDuration", start.status_duration),
+        ("statusMagnitude", start.status_magnitude),
+        ("numHits", start.num_hits),
+        ("accuracyModifier", start.accuracy_modifier),
+        ("bonusCritRate", start.bonus_crit_rate),
+        ("enmityModifier", start.enmity_modifier),
+    ];
+    let skill = lua.create_table()?;
+    for (k, v) in fields {
+        skill.set(k, v)?;
+    }
+    skill.set_metatable(Some(stub_meta(&lua)?))?;
+    if let Err(e) = f.call::<Value>((caster_t, target_t, skill.clone())) {
+        tracing::debug!(command = command_name, error = %e, "onCombo stopped early");
+    }
+    let num = |k: &str, d: f64| skill.raw_get::<Option<f64>>(k).ok().flatten().unwrap_or(d);
+    Ok(Some(ComboSkill {
+        base_potency: num("basePotency", start.base_potency),
+        cast_time_ms: num("castTimeMs", start.cast_time_ms),
+        recast_time_ms: num("recastTimeMs", start.recast_time_ms),
+        aoe_type: num("aoeType", start.aoe_type),
+        status_id: num("statusId", start.status_id),
+        status_chance: num("statusChance", start.status_chance),
+        status_duration: num("statusDuration", start.status_duration),
+        status_magnitude: num("statusMagnitude", start.status_magnitude),
+        num_hits: num("numHits", start.num_hits),
+        accuracy_modifier: num("accuracyModifier", start.accuracy_modifier),
+        // Godsbane spells it `critRateBonus`.
+        bonus_crit_rate: num("critRateBonus", num("bonusCritRate", start.bonus_crit_rate)),
+        enmity_modifier: num("enmityModifier", start.enmity_modifier),
+    }))
+}
+
 /// Run the setup half of `commands/{ability,magic,weaponskill}/<name>.lua`
 /// — `on*Start` then `onSkillFinish` with `action.DoAction` / `TryStatus`
 /// as no-ops — and read back the status fields the script set on the
@@ -488,16 +601,7 @@ pub fn run_command_setup(
     caster: &OwnerView,
     start: CommandStatus,
 ) -> Result<Option<CommandStatus>> {
-    let Some(path) = ["ability", "magic", "weaponskill"]
-        .iter()
-        .map(|dir| {
-            script_root
-                .join("commands")
-                .join(dir)
-                .join(format!("{command_name}.lua"))
-        })
-        .find(|p| p.exists())
-    else {
+    let Some(path) = command_script(script_root, command_name) else {
         return Ok(None);
     };
     let source =
@@ -2075,5 +2179,60 @@ mod tests {
         .unwrap()
         .unwrap();
         assert!(other.owner.party_status.is_empty());
+    }
+
+    fn combo_start(potency: f64) -> ComboSkill {
+        ComboSkill {
+            base_potency: potency,
+            cast_time_ms: 5000.0,
+            recast_time_ms: 10000.0,
+            aoe_type: 1.0,
+            status_chance: 1.0,
+            status_duration: 20.0,
+            num_hits: 1.0,
+            enmity_modifier: 1.0,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn on_combo_reads_back_what_the_script_changed() {
+        let c = owner();
+        let thundara = run_command_combo(&root(), "thundara", &c, combo_start(100.0))
+            .unwrap()
+            .unwrap();
+        assert_eq!(thundara.base_potency, 150.0);
+        assert_eq!(thundara.recast_time_ms, 5000.0);
+        assert_eq!(thundara.status_chance, 0.0);
+        let fira = run_command_combo(&root(), "fira", &c, combo_start(100.0))
+            .unwrap()
+            .unwrap();
+        assert_eq!(fira.cast_time_ms, 2500.0);
+        let stonera = run_command_combo(&root(), "stonera", &c, combo_start(100.0))
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            stonera.aoe_type, 0.0,
+            "the combo makes Stonera single-target"
+        );
+        let godsbane = run_command_combo(&root(), "godsbane", &c, combo_start(100.0))
+            .unwrap()
+            .unwrap();
+        assert_eq!(godsbane.bonus_crit_rate, 200.0);
+        let bloodletter = run_command_combo(&root(), "bloodletter", &c, combo_start(100.0))
+            .unwrap()
+            .unwrap();
+        assert_eq!(bloodletter.status_id, 223127.0);
+        // Whirlwind's bonus needs a Berserk the caster doesn't have.
+        let whirlwind = run_command_combo(&root(), "whirlwind", &c, combo_start(100.0))
+            .unwrap()
+            .unwrap();
+        assert_eq!(whirlwind.base_potency, 100.0);
+        assert!(
+            run_command_combo(&root(), "fast_blade", &c, combo_start(100.0))
+                .unwrap()
+                .is_none(),
+            "no onCombo"
+        );
     }
 }

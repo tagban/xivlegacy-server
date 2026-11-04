@@ -530,6 +530,9 @@ pub struct Character {
     /// Movement-speed multiplier the client last got in a 0x00D0 (1.0 =
     /// the default bands every zone-in sends; 0 while bound).
     pub speed_sent: f32,
+    /// The commands that continue the player's combo
+    /// (`playerWork.comboNextCommandId`), 0 when no combo is going.
+    pub combo_next: [i32; 2],
 }
 
 impl Character {
@@ -563,6 +566,7 @@ impl Character {
             food: None,
             status_mods: Default::default(),
             speed_sent: 1.0,
+            combo_next: [0, 0],
         }
     }
 }

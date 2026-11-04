@@ -9038,6 +9038,7 @@ impl PacketProcessor {
             can_change,
             recast_end,
             status_flags,
+            combo_link,
         ) = {
             let c = handle.character.read().await;
             (
@@ -9059,6 +9060,11 @@ impl PacketProcessor {
                 c.status_effects
                     .iter()
                     .fold(crate::status::StatusEffectFlags::NONE, |f, e| f | e.flags),
+                // The next link of a combo costs nothing (pmeteor
+                // `comboCostBonusRate`), so it isn't refused for MP or TP.
+                c.combo_next.contains(&i32::from(command.id))
+                    && c.status_effects
+                        .has(crate::runtime::dispatcher::STATUS_COMBO),
             )
         };
 
@@ -9184,11 +9190,11 @@ impl PacketProcessor {
             Some(32540) // "The target is too far above you."
         } else if my_y - t_y > half_height {
             Some(32541) // "The target is too far below you."
-        } else if i32::from(command.to_battle_command().calculate_mp_cost(level, 0.0))
-            > i32::from(mp)
+        } else if !combo_link
+            && i32::from(command.to_battle_command().calculate_mp_cost(level, 0.0)) > i32::from(mp)
         {
             Some(32545) // "You do not have enough MP."
-        } else if command.tp_cost as i32 > tp as i32 {
+        } else if !combo_link && command.tp_cost as i32 > tp as i32 {
             Some(32546) // "You do not have enough TP."
         } else {
             None
@@ -9223,7 +9229,8 @@ impl PacketProcessor {
                 // entry for downstream reads. (#28.)
                 c.hate.update_hate(target_id, 1);
             }
-            let bc = command.to_battle_command();
+            let mut bc = command.to_battle_command();
+            crate::runtime::dispatcher::apply_combo_cast_time(self.lua.as_ref(), &mut bc, &c);
             match command.command_type {
                 t if t == crate::battle::CommandType::WEAPON_SKILL.bits() as i16 => {
                     c.ai_container.internal_weapon_skill(target_id, bc, now_ms)

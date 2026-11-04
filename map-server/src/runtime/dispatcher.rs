@@ -181,6 +181,24 @@ pub async fn dispatch_status_event(
             function_name,
             effect,
         } => {
+            // pmeteor `combo.lua` onLose: the Combo status wearing off
+            // ends the combo (unless a new link just put it back).
+            if *status_effect_id == STATUS_COMBO
+                && *function_name == "onLose"
+                && let Some(h) = registry.get(*owner_actor_id).await
+            {
+                let ended = {
+                    let mut c = h.character.write().await;
+                    let ended = c.combo_next != [0, 0] && !c.status_effects.has(STATUS_COMBO);
+                    if ended {
+                        c.combo_next = [0, 0];
+                    }
+                    ended
+                };
+                if ended {
+                    send_combo_property(*owner_actor_id, [0, 0], registry, world).await;
+                }
+            }
             apply_status_script(
                 registry,
                 world,
@@ -1158,6 +1176,226 @@ fn replace_status_from_hook(
 }
 
 const STATUS_BLISSFUL_MIND: u32 = 223228;
+/// The Combo status (pmeteor `StatusEffectId.Combo`): up for 13 s while a
+/// combo can continue.
+pub(crate) const STATUS_COMBO: u32 = 223205;
+const COMBO_SECONDS: u32 = 13;
+/// pmeteor `SetCombos`: `playerWork.comboCostBonusRate = 1`, so a link
+/// that continues a combo costs no MP or TP.
+const COMBO_COST_BONUS_RATE: f32 = 1.0;
+
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+struct ComboUse {
+    /// The command starts or continues a combo: its hit carries the step.
+    is_combo: bool,
+    /// It is the next link of the player's combo (free, runs `onCombo`).
+    continues: bool,
+    run_on_combo: bool,
+}
+
+/// What a command does to a combo (pmeteor `WeaponSkillState` and
+/// `MagicState`): it has to be the player's class's or job's. A
+/// weaponskill runs `onCombo` only as a continuing link; a spell runs it
+/// when it starts a combo too.
+fn combo_use(command: &BattleCommand, class: u8, job: u8, continues: bool) -> ComboUse {
+    let ws = command.command_type == CommandType::WEAPON_SKILL;
+    let spell = command.command_type == CommandType::SPELL;
+    if !(ws || spell) || command.job == 0 || (command.job != class && command.job != job) {
+        return ComboUse::default();
+    }
+    let starts = command.combo_step == 1;
+    ComboUse {
+        is_combo: starts || continues,
+        continues,
+        run_on_combo: continues || (spell && starts),
+    }
+}
+
+fn character_combo(c: &crate::actor::Character, command: &BattleCommand) -> ComboUse {
+    let class = c.chara.class.max(0) as u8;
+    let job = if c.chara.current_job != 0 {
+        c.chara.current_job as u8
+    } else {
+        class
+    };
+    let id = i32::from(command.id);
+    let continues = c.combo_next.contains(&id) && c.status_effects.has(STATUS_COMBO);
+    combo_use(command, class, job, continues)
+}
+
+async fn player_combo(
+    h: &crate::runtime::actor_registry::ActorHandle,
+    command: &BattleCommand,
+) -> ComboUse {
+    if !h.is_player() {
+        return ComboUse::default();
+    }
+    character_combo(&*h.character.read().await, command)
+}
+
+/// A spell that starts or continues a combo casts for as long as its
+/// `onCombo` says (Fira and Firaga halve the cast). Called when the cast
+/// starts; the rest of `onCombo` applies when it lands.
+pub(crate) fn apply_combo_cast_time(
+    lua: Option<&Arc<crate::lua::LuaEngine>>,
+    c: &mut BattleCommand,
+    caster: &crate::actor::Character,
+) {
+    let Some(root) = script_root(lua) else {
+        return;
+    };
+    if c.command_type != CommandType::SPELL || !character_combo(caster, c).run_on_combo {
+        return;
+    }
+    let mut probe = c.clone();
+    let view = crate::status::script::OwnerView {
+        mods: caster.chara.mods.clone(),
+        level: caster.chara.level,
+        max_hp: i32::from(caster.chara.max_hp),
+        max_mp: 0,
+        status_ids: caster.status_effects.iter().map(|e| e.id).collect(),
+    };
+    apply_on_combo(&root, &mut probe, &view);
+    c.cast_time_ms = probe.cast_time_ms;
+}
+
+/// Put what the command's `onCombo` changed on the command. Power comes
+/// from `magicPotency` / `damageMultiplier` here, so a script's
+/// `basePotency` change scales those.
+fn apply_on_combo(
+    root: &std::path::Path,
+    c: &mut BattleCommand,
+    caster: &crate::status::script::OwnerView,
+) {
+    use crate::battle::target_find::TargetFindAOEType as Aoe;
+    let start = crate::status::script::ComboSkill {
+        base_potency: f64::from(c.base_potency.max(1)),
+        cast_time_ms: f64::from(c.cast_time_ms),
+        recast_time_ms: f64::from(c.recast_time_ms),
+        aoe_type: c.aoe_type as u8 as f64,
+        status_id: f64::from(c.status_id),
+        status_chance: f64::from(c.status_chance),
+        status_duration: f64::from(c.status_duration),
+        status_magnitude: c.status_magnitude,
+        num_hits: f64::from(c.num_hits),
+        accuracy_modifier: f64::from(c.accuracy_modifier),
+        bonus_crit_rate: f64::from(c.bonus_crit_rate),
+        enmity_modifier: f64::from(c.enmity_modifier),
+    };
+    let set = match crate::status::script::run_command_combo(root, &c.name, caster, start) {
+        Ok(Some(set)) => set,
+        Ok(None) => return,
+        Err(e) => {
+            tracing::debug!(command = %c.name, error = %e, "onCombo failed");
+            return;
+        }
+    };
+    let ratio = set.base_potency / start.base_potency;
+    if (ratio - 1.0).abs() > 1e-9 {
+        c.base_potency = (f64::from(c.base_potency) * ratio)
+            .round()
+            .clamp(0.0, 65535.0) as u16;
+        c.magic_potency = (f64::from(c.magic_potency) * ratio)
+            .round()
+            .clamp(0.0, 65535.0) as u16;
+        if c.action_type == ActionType::Physical {
+            let m = if c.damage_multiplier > 0.0 {
+                f64::from(c.damage_multiplier)
+            } else {
+                battle_utils::DEFAULT_PHYSICAL_SKILL_MULTIPLIER
+            };
+            c.damage_multiplier = (m * ratio) as f32;
+        }
+    }
+    c.cast_time_ms = set.cast_time_ms.max(0.0) as u32;
+    let recast = set.recast_time_ms.max(0.0) as u32;
+    if recast != c.recast_time_ms {
+        c.recast_time_ms = recast;
+        c.max_recast_time_seconds = recast.div_ceil(1000);
+    }
+    c.aoe_type = match set.aoe_type as u8 {
+        1 => Aoe::Circle,
+        2 => Aoe::Cone,
+        3 => Aoe::Box,
+        _ => Aoe::None,
+    };
+    c.status_id = set.status_id.max(0.0) as u32;
+    c.status_chance = set.status_chance as f32;
+    c.status_duration = set.status_duration.max(0.0) as u32;
+    c.status_magnitude = set.status_magnitude;
+    c.num_hits = set.num_hits.clamp(0.0, 255.0) as u8;
+    c.accuracy_modifier = set.accuracy_modifier as f32;
+    c.bonus_crit_rate = set.bonus_crit_rate as f32;
+    c.enmity_modifier = set.enmity_modifier as f32;
+    tracing::debug!(command = %c.name, ?set, "onCombo applied");
+}
+
+/// pmeteor `Player.SetCombos`: the commands that continue the combo, the
+/// Combo status while one can (13 s), and `playerWork/combo` for the
+/// client's hotbar. `[0, 0]` ends it.
+pub(crate) async fn set_combos(
+    actor_id: u32,
+    next: [i32; 2],
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    lua: Option<&Arc<crate::lua::LuaEngine>>,
+    db: Option<&Arc<crate::database::Database>>,
+) {
+    let Some(h) = registry.get(actor_id).await else {
+        return;
+    };
+    let now_ms = (common::utils::unix_timestamp() as u64).saturating_mul(1000);
+    let mut outbox = crate::status::StatusOutbox::new();
+    let changed = {
+        let mut c = h.character.write().await;
+        let was = c.combo_next;
+        c.combo_next = next;
+        if next[0] != 0 {
+            let mut cmd = BattleCommand::new(0, "");
+            cmd.status_id = STATUS_COMBO;
+            cmd.status_duration = COMBO_SECONDS;
+            let mut effect = command_status_effect(&cmd, actor_id, lua, now_ms);
+            effect.overwrite = crate::status::StatusEffectOverwrite::Always;
+            effect.silent_on_gain = true;
+            c.status_effects
+                .add_status_effect(effect, actor_id, now_ms, 0, &mut outbox);
+        } else if c.status_effects.has(STATUS_COMBO) {
+            c.status_effects.remove_status_effect(
+                STATUS_COMBO,
+                crate::status::DEFAULT_LOSS_TEXT_ID,
+                false,
+                &mut outbox,
+            );
+        }
+        was != next
+    };
+    flush_wake_outbox(outbox, registry, world, lua, db).await;
+    if changed || next[0] != 0 {
+        send_combo_property(actor_id, next, registry, world).await;
+    }
+}
+
+async fn send_combo_property(
+    actor_id: u32,
+    next: [i32; 2],
+    registry: &ActorRegistry,
+    world: &WorldManager,
+) {
+    let mut b = tx::actor::ActorPropertyPacketBuilder::new(actor_id, "playerWork/combo");
+    b.add_float(
+        "playerWork.comboCostBonusRate",
+        if next[0] != 0 {
+            COMBO_COST_BONUS_RATE
+        } else {
+            0.0
+        },
+    );
+    b.add_int("playerWork.comboNextCommandId[0]", next[0].max(0) as u32);
+    b.add_int("playerWork.comboNextCommandId[1]", next[1].max(0) as u32);
+    for sub in b.done() {
+        send_to_self_if_player(registry, world, actor_id, sub.to_bytes()).await;
+    }
+}
 const STATUS_COVERED: u32 = 223173;
 /// Covered only redirects while its paladin stands this close (pmeteor
 /// `covered.lua`), and only melee: attacks from farther out are ranged.
@@ -1506,6 +1744,33 @@ async fn resolve_action(
             common::Vector3::new(a.base.position_x, a.base.position_y, a.base.position_z),
             a.status_effects.iter().map(|e| e.id).collect::<Vec<u32>>(),
         )
+    };
+
+    // Combos (pmeteor `WeaponSkillState` / `MagicState`): a command that
+    // starts or continues the player's combo carries the combo step on
+    // its hit, a link that continues one runs its script's `onCombo`
+    // (Thundara's potency, Bloodletter's status…) and costs nothing.
+    let combo = player_combo(&attacker_handle, command).await;
+    let comboed;
+    let command = if combo.is_combo {
+        let mut c = command.clone();
+        c.is_combo = true;
+        if combo.run_on_combo
+            && let Some(root) = script_root(lua)
+        {
+            let caster = crate::status::script::OwnerView {
+                mods: atk_mods.clone(),
+                level: atk_level,
+                max_hp: atk_max_hp as i32,
+                max_mp: 0,
+                status_ids: atk_status_ids.clone(),
+            };
+            apply_on_combo(&root, &mut c, &caster);
+        }
+        comboed = c;
+        &comboed
+    } else {
+        command
     };
 
     // The command's script settles the status it applies (Protect's size
@@ -2266,12 +2531,18 @@ async fn resolve_action(
         let recast_end = now_unix.saturating_add(command.max_recast_time_seconds);
         let (class_id, slot0) = {
             let mut a = attacker_handle.character.write().await;
-            let mp_cost = command.calculate_mp_cost(a.chara.level, 0.0);
+            let bonus = if combo.continues {
+                COMBO_COST_BONUS_RATE
+            } else {
+                0.0
+            };
+            let mp_cost = command.calculate_mp_cost(a.chara.level, bonus);
             if mp_cost != 0 {
                 a.add_mp(-i32::from(mp_cost));
             }
-            if command.tp_cost != 0 {
-                a.add_tp(-i32::from(command.tp_cost));
+            let tp_cost = command.calculate_tp_cost(bonus);
+            if tp_cost != 0 {
+                a.add_tp(-i32::from(tp_cost));
             }
             // Abilities accrue TP like swings (pmeteor `OnAttack` gate:
             // AutoAttack | Ability, non-miss); WS/spells gain none.
@@ -2319,6 +2590,27 @@ async fn resolve_action(
                 // Self-only; the helper stamps the session id (proxy rule).
                 send_to_self_if_player(registry, world, attacker_actor_id, sub.to_bytes()).await;
             }
+        }
+    }
+
+    // pmeteor `Character.DoBattleCommand`: a combo link that hit moves
+    // the combo on; any other spell or weaponskill ends it (abilities can
+    // go between links).
+    if attacker_handle.is_player() {
+        let is_link = command.command_type == CommandType::WEAPON_SKILL
+            || command.command_type == CommandType::SPELL;
+        if command.is_combo && hits.iter().any(|h| h.landed) {
+            set_combos(
+                attacker_actor_id,
+                command.combo_next_command_id,
+                registry,
+                world,
+                lua,
+                db,
+            )
+            .await;
+        } else if is_link {
+            set_combos(attacker_actor_id, [0, 0], registry, world, lua, db).await;
         }
     }
 
@@ -4585,6 +4877,42 @@ pub(crate) async fn send_to_self_if_player(
         let mut bytes = bytes;
         common::subpacket::SubPacket::stamp_target_id_if_zero(&mut bytes, handle.session_id);
         client.send_bytes(bytes).await;
+    }
+}
+
+#[cfg(test)]
+mod combo_tests {
+    use super::*;
+
+    fn cmd(job: u8, kind: CommandType, step: i16) -> BattleCommand {
+        let mut c = BattleCommand::new(27150, "fast_blade");
+        c.job = job;
+        c.command_type = kind;
+        c.combo_step = step;
+        c
+    }
+
+    #[test]
+    fn combo_rules_follow_pmeteor() {
+        let ws = CommandType::WEAPON_SKILL;
+        // A first link starts a combo; onCombo waits for a continuing one.
+        let u = combo_use(&cmd(3, ws, 1), 3, 3, false);
+        assert!(u.is_combo && !u.continues && !u.run_on_combo);
+        let u = combo_use(&cmd(3, ws, 2), 3, 3, true);
+        assert!(u.is_combo && u.continues && u.run_on_combo);
+        // A second link out of order is no combo.
+        assert_eq!(combo_use(&cmd(3, ws, 2), 3, 3, false), ComboUse::default());
+        // Another class's skill is no combo; the job's is.
+        assert_eq!(combo_use(&cmd(4, ws, 1), 3, 3, false), ComboUse::default());
+        assert!(combo_use(&cmd(16, ws, 2), 3, 16, true).is_combo);
+        // A spell runs onCombo when it starts the combo too.
+        let u = combo_use(&cmd(22, CommandType::SPELL, 1), 22, 22, false);
+        assert!(u.is_combo && u.run_on_combo);
+        // Abilities don't take part.
+        assert_eq!(
+            combo_use(&cmd(3, CommandType::ABILITY, 1), 3, 3, false),
+            ComboUse::default()
+        );
     }
 }
 
