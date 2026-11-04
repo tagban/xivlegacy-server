@@ -18599,3 +18599,93 @@ async fn goring_blade_bleeds_only_from_behind() {
     assert_eq!(landed["front"], 0, "{landed:?}");
     assert!(landed["rear"] >= 6, "{landed:?}");
 }
+
+/// Holy Succor on someone else gives the paladin half of what it healed.
+#[tokio::test]
+async fn holy_succor_on_a_friend_heals_the_paladin_half() {
+    let (world, registry, zone) = party_hook_zone().await;
+    let db = Arc::new(crate::database::Database::open(tempdb()).await.expect("db"));
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../scripts/lua");
+    let lua = Arc::new(crate::lua::LuaEngine::new(&root));
+    let (catalog, by_level) = db.load_global_battle_command_list().await.unwrap();
+    lua.catalogs()
+        .install_battle_commands_with_level_index(catalog.clone(), by_level);
+    for (id, hp, max) in [(1, 100, 5000), (3, 100, 5000)] {
+        let h = registry.get(id).await.unwrap();
+        let mut c = h.character.write().await;
+        c.chara.hp = hp;
+        c.chara.max_hp = max;
+    }
+    dispatch_battle_event(
+        &BattleEvent::ResolveAction {
+            attacker_actor_id: 1,
+            defender_actor_id: 3,
+            command: catalog[&27149].to_battle_command(),
+        },
+        &registry,
+        &world,
+        &zone,
+        Some(&lua),
+        Some(&db),
+    )
+    .await;
+    let healed = i32::from(hp_of(&registry, 3).await) - 100;
+    let back = i32::from(hp_of(&registry, 1).await) - 100;
+    assert!(healed > 0, "the friend is healed");
+    assert_eq!(back, healed / 2, "the paladin recovers half");
+}
+
+/// Whirlwind in combo spends the warrior's Berserk stacks: their Attack
+/// and Defense come off and the stack count goes back to 0.
+#[tokio::test]
+async fn whirlwind_combo_spends_berserk_stacks() {
+    use crate::actor::modifier::Modifier;
+    let (world, registry, zone) = party_hook_zone().await;
+    let db = Arc::new(crate::database::Database::open(tempdb()).await.expect("db"));
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../scripts/lua");
+    let lua = Arc::new(crate::lua::LuaEngine::new(&root));
+    let (catalog, by_level) = db.load_global_battle_command_list().await.unwrap();
+    let statuses = db.load_global_status_effect_list().await.unwrap();
+    lua.catalogs()
+        .install_battle_commands_with_level_index(catalog.clone(), by_level);
+    lua.catalogs().install_status_effects(statuses);
+    put_status(&registry, 1, 223207, "berserk2", 0, 1).await;
+    put_status(&registry, 1, 223205, "combo", 0, 1).await;
+    {
+        let h = registry.get(1).await.unwrap();
+        let mut c = h.character.write().await;
+        c.chara.class = 4;
+        c.chara.tp = 3000;
+        c.combo_next = [27197, 0];
+        c.status_effects.get_mut(223207).unwrap().extra = 5.0;
+        c.add_status_mods(
+            223207,
+            &[
+                (Modifier::Attack.as_u32(), 100.0),
+                (Modifier::Defense.as_u32(), -100.0),
+            ],
+        );
+    }
+    dispatch_battle_event(
+        &BattleEvent::ResolveAction {
+            attacker_actor_id: 1,
+            defender_actor_id: 2,
+            command: catalog[&27197].to_battle_command(),
+        },
+        &registry,
+        &world,
+        &zone,
+        Some(&lua),
+        Some(&db),
+    )
+    .await;
+    let h = registry.get(1).await.unwrap();
+    let c = h.character.read().await;
+    assert_eq!(c.status_effects.get(223207).unwrap().extra, 0.0);
+    // The stacks' Attack/Defense are gone (a stat recalc may have set the
+    // base values since, so read what statuses add).
+    let added = c.status_mod_totals();
+    assert_eq!(added.get(Modifier::Attack), 0.0);
+    assert_eq!(added.get(Modifier::Defense), 0.0);
+    assert_eq!(c.chara.tp, 3000, "Whirlwind as the next link is free");
+}

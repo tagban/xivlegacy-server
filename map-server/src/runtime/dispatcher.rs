@@ -1176,6 +1176,9 @@ fn replace_status_from_hook(
 }
 
 const STATUS_BLISSFUL_MIND: u32 = 223228;
+const STATUS_BERSERK2: u32 = 223207;
+/// "You recover [amount] HP." (pmeteor `holy_succor.lua`).
+const HOLY_SUCCOR_RECOVER_TEXT: u16 = 33012;
 /// The Combo status (pmeteor `StatusEffectId.Combo`): up for 13 s while a
 /// combo can continue.
 pub(crate) const STATUS_COMBO: u32 = 223205;
@@ -1775,6 +1778,18 @@ async fn resolve_action(
     // its hit, a link that continues one runs its script's `onCombo`
     // (Thundara's potency, Bloodletter's status…) and costs nothing.
     let combo = player_combo(&attacker_handle, command).await;
+    // Whirlwind in combo spends the warrior's Berserk stacks for ×1.5
+    // power (its script looks for an old Berserk id; the stacks' Attack
+    // and Defense live with the effect here).
+    let spend_berserk = combo.continues
+        && command.name == "whirlwind"
+        && attacker_handle
+            .character
+            .read()
+            .await
+            .status_effects
+            .get(STATUS_BERSERK2)
+            .is_some_and(|e| e.extra > 0.0);
     let comboed;
     let command = if combo.is_combo {
         let mut c = command.clone();
@@ -1790,6 +1805,14 @@ async fn resolve_action(
                 status_ids: atk_status_ids.clone(),
             };
             apply_skill_hook(&root, "onCombo", &mut c, &caster);
+        }
+        if spend_berserk {
+            let m = if c.damage_multiplier > 0.0 {
+                f64::from(c.damage_multiplier)
+            } else {
+                battle_utils::DEFAULT_PHYSICAL_SKILL_MULTIPLIER
+            };
+            c.damage_multiplier = (m * 1.5) as f32;
         }
         comboed = c;
         &comboed
@@ -2551,6 +2574,41 @@ async fn resolve_action(
                         }
                     }
                 }
+            }
+        }
+        "whirlwind" if spend_berserk => {
+            let mut a = attacker_handle.character.write().await;
+            a.remove_status_mods(STATUS_BERSERK2);
+            if let Some(e) = a.status_effects.get_mut(STATUS_BERSERK2) {
+                e.extra = 0.0;
+            }
+        }
+        // pmeteor `holy_succor.lua`: cast on someone else, the paladin
+        // recovers half of what it restored ("You recover [n] HP.").
+        "holy_succor" => {
+            let back: u32 = hits
+                .iter()
+                .filter(|h| h.target_actor_id != attacker_actor_id && h.healed)
+                .map(|h| u32::from(h.heal_amount) / 2)
+                .sum();
+            if back > 0 {
+                let back = back.min(u32::from(u16::MAX)) as u16;
+                attacker_handle
+                    .character
+                    .write()
+                    .await
+                    .add_hp(i32::from(back));
+                container.add_action(CommandResult {
+                    target_actor_id: attacker_actor_id,
+                    amount: back,
+                    world_master_text_id: HOLY_SUCCOR_RECOVER_TEXT,
+                    effect_id: (crate::battle::effects::HitEffect::SELF_HEAL_TYPE
+                        | crate::battle::effects::HitEffect::SELF_HEAL
+                        | crate::battle::effects::HitEffect::SELF_HEAL_HP)
+                        .bits(),
+                    hit_num: 1,
+                    ..Default::default()
+                });
             }
         }
         "chameleon" | "elusive_jump" => {
