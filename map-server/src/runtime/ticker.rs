@@ -2265,6 +2265,122 @@ mod tests {
         }
     }
 
+    /// A monster move that inflicts a status lands it on the player:
+    /// Yawn (23208, Sleep 228001) and Stone Gaze (23023, Petrify
+    /// 223004), both single target.
+    #[tokio::test]
+    async fn monster_status_moves_land_on_the_player() {
+        for (move_id, status_id) in [(23208u16, 228001u32), (23023u16, 223004u32)] {
+            let (ticker, _zone, _rx) = setup_engaged_npc_vs_player(2.0, |_| {}).await;
+            let (catalog, _) = ticker.db.load_global_battle_command_list().await.unwrap();
+            let skill = catalog.get(&move_id).unwrap().to_battle_command();
+            assert_eq!(skill.status_id, status_id);
+            let mut has = false;
+            for attempt in 0..10u64 {
+                {
+                    let handle = ticker.registry.get(2).await.unwrap();
+                    let mut c = handle.character.write().await;
+                    c.chara.tp = 1000;
+                    let ctrl = c.ai_container.controller.as_mut().unwrap();
+                    ctrl.battle.skills = vec![skill.clone()];
+                    ctrl.battle.next_skill_ms = 0;
+                    ctrl.auto_attack_enabled = false;
+                }
+                for i in 1..=40u64 {
+                    ticker.tick_once(attempt * 4_000 + i * 100).await;
+                }
+                let player = ticker.registry.get(1).await.unwrap();
+                has = player.character.read().await.status_effects.has(status_id);
+                if has {
+                    break;
+                }
+            }
+            assert!(
+                has,
+                "move {move_id} must put status {status_id} on the player"
+            );
+        }
+    }
+
+    /// A player put to sleep by a monster's Yawn stops swinging: the
+    /// monster takes no auto-attack damage while the player sleeps.
+    #[tokio::test]
+    async fn player_slept_by_a_monster_stops_swinging() {
+        let (mut ticker, _zone, _rx) = setup_engaged_npc_vs_player(2.0, |_| {}).await;
+        // The real status catalog, so Sleep carries its PREVENT_ATTACK flag.
+        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../scripts/lua");
+        let lua = Arc::new(crate::lua::LuaEngine::new(&root));
+        lua.catalogs()
+            .install_status_effects(ticker.db.load_global_status_effect_list().await.unwrap());
+        ticker.lua = Some(lua);
+        let (catalog, _) = ticker.db.load_global_battle_command_list().await.unwrap();
+        let yawn = catalog.get(&23208).unwrap().to_battle_command();
+        {
+            let handle = ticker.registry.get(1).await.unwrap();
+            handle
+                .character
+                .write()
+                .await
+                .ai_container
+                .internal_engage(2, 0, 2500);
+        }
+        let mut now = 0u64;
+        let mut asleep = false;
+        for _ in 0..10 {
+            {
+                let handle = ticker.registry.get(2).await.unwrap();
+                let mut c = handle.character.write().await;
+                c.chara.tp = 1000;
+                let ctrl = c.ai_container.controller.as_mut().unwrap();
+                ctrl.battle.skills = vec![yawn.clone()];
+                ctrl.battle.next_skill_ms = 0;
+                ctrl.auto_attack_enabled = false;
+            }
+            for _ in 0..40 {
+                now += 100;
+                ticker.tick_once(now).await;
+            }
+            let player = ticker.registry.get(1).await.unwrap();
+            asleep = player.character.read().await.status_effects.has(228001);
+            if asleep {
+                break;
+            }
+        }
+        assert!(asleep, "Yawn must put the player to sleep");
+        let hp_before = ticker
+            .registry
+            .get(2)
+            .await
+            .unwrap()
+            .character
+            .read()
+            .await
+            .get_hp();
+        // 8 s of a 15 s sleep: three swing windows pass with no swing.
+        for _ in 0..80 {
+            now += 100;
+            ticker.tick_once(now).await;
+        }
+        let player = ticker.registry.get(1).await.unwrap();
+        assert!(
+            player.character.read().await.status_effects.has(228001),
+            "still asleep"
+        );
+        let hp_after = ticker
+            .registry
+            .get(2)
+            .await
+            .unwrap()
+            .character
+            .read()
+            .await
+            .get_hp();
+        assert_eq!(
+            hp_after, hp_before,
+            "a sleeping player must not hit the monster"
+        );
+    }
+
     /// Nobody left on its hate list: the monster leaves combat once
     /// (one hate-gem clear), not every tick.
     #[tokio::test]
