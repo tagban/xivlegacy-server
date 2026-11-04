@@ -539,6 +539,9 @@ pub struct Character {
     /// The modifier changes those traits made, taken off before the next
     /// recalc puts them back.
     pub trait_mods: Vec<(u32, f64)>,
+    /// What the player's gear added to their modifiers at the last
+    /// recalc (the stat rebuild clears the mods themselves).
+    pub gear_mods: Vec<(u32, f64)>,
 }
 
 impl Character {
@@ -575,6 +578,7 @@ impl Character {
             combo_next: [0, 0],
             traits: Vec::new(),
             trait_mods: Vec::new(),
+            gear_mods: Vec::new(),
         }
     }
 }
