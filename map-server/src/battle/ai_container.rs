@@ -105,6 +105,9 @@ impl ActionQueue {
 // AIContainer
 // ---------------------------------------------------------------------------
 
+/// Close enough (yalms) to the spawn point to stop walking home.
+const HOME_ARRIVED: f32 = 0.1;
+
 #[derive(Debug, Clone, Default)]
 pub struct AIContainer {
     pub owner_actor_id: u32,
@@ -117,6 +120,9 @@ pub struct AIContainer {
     /// Steps taken since the current pursuit started — drives the
     /// ticker's every-3rd-step 0x00CF throttle.
     pub movement_step_count: u32,
+    /// A monster that left combat walks back to its spawn point; it
+    /// ignores players until it gets there.
+    pub home: Option<Vector3>,
 
     states: Vec<BattleState>,
     last_action_time_ms: u64,
@@ -137,6 +143,7 @@ impl AIContainer {
             action_queue: ActionQueue::new(),
             pending_movement: None,
             movement_step_count: 0,
+            home: None,
             states: Vec::new(),
             last_action_time_ms: 0,
             latest_update_ms: 0,
@@ -382,6 +389,19 @@ impl AIContainer {
             // actor and calls `follow_path` directly when needed.
         }
 
+        // Walking home after a fight: no aggro, no controller, just the
+        // next step toward the spawn point.
+        if let Some(home) = self.home {
+            let pos = owner_view.actor.position;
+            let (dx, dz) = (home.x - pos.x, home.z - pos.z);
+            if self.is_engaged() || dx * dx + dz * dz <= HOME_ARRIVED * HOME_ARRIVED {
+                self.home = None;
+            } else {
+                self.pending_movement = Some(MovementStep::MoveTo { destination: home });
+                return;
+            }
+        }
+
         // Run the controller, then apply its decision. We pull the decision out
         // of the `&mut self.controller` borrow before calling `apply_decision`
         // (which needs `&mut self` to push an AttackState on Engage).
@@ -393,7 +413,13 @@ impl AIContainer {
             None
         };
         if let Some(decision) = controller_decision {
-            self.apply_decision(decision, now_ms, owner_view.attack_delay_ms, outbox);
+            self.apply_decision(
+                decision,
+                now_ms,
+                owner_view.attack_delay_ms,
+                owner_view.spawn_position,
+                outbox,
+            );
         }
 
         // Process the state stack. Auto-attack swings (Attack state, ready)
@@ -539,6 +565,7 @@ impl AIContainer {
         decision: ControllerDecision,
         now_ms: u64,
         attack_delay_ms: u32,
+        spawn_position: Option<Vector3>,
         outbox: &mut BattleOutbox,
     ) {
         let owner_id = self.owner_actor_id;
@@ -555,9 +582,13 @@ impl AIContainer {
                 });
             }
             ControllerDecision::Disengage => {
-                outbox.push(BattleEvent::Disengage {
-                    owner_actor_id: owner_id,
-                });
+                // Leave combat for good: drop the attack state (else the
+                // controller stays in its combat branch and disengages
+                // again every tick), then walk back to the spawn point.
+                self.internal_disengage(outbox);
+                if let Some(spawn) = spawn_position {
+                    self.home = Some(spawn);
+                }
             }
             ControllerDecision::MoveTo { position } => {
                 // Handed to the ticker (#28 S2.2) — it steps the actor
@@ -716,6 +747,7 @@ mod tests {
             target_hpp: None,
             target_has_stealth: false,
             is_close_to_spawn: true,
+            spawn_position: None,
             target_is_locked: false,
             attack_delay_ms: 2500,
             attack_range: 3.0,
