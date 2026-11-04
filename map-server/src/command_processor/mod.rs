@@ -135,6 +135,9 @@ impl CommandProcessor {
             return Ok(format!("unknown command: !{cmd} (!help lists yours)"));
         }
         let mut rest: Vec<&str> = tokens.collect();
+        if let Err(e) = self.db.log_gm_command(invoker, &cmd, &rest.join(" ")).await {
+            tracing::warn!(error = %e, "logging a GM command");
+        }
         if typed == "fixspeed" {
             rest.insert(0, "1"); // back to normal speed
         }
@@ -1854,8 +1857,8 @@ mod tests {
     use common::sql::named_params;
 
     fn tempdb() -> String {
-    common::test_db::fresh_blocking()
-}
+        common::test_db::fresh_blocking()
+    }
 
     async fn fixture() -> (CommandProcessor, Arc<Database>) {
         let world = Arc::new(WorldManager::new());

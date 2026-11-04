@@ -70,8 +70,8 @@ mod integration_tests {
     }
 
     fn tempdb() -> String {
-    common::test_db::fresh_blocking()
-}
+        common::test_db::fresh_blocking()
+    }
 
     async fn open_test_db() -> Arc<crate::database::Database> {
         Arc::new(

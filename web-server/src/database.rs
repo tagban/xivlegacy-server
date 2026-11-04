@@ -20,11 +20,10 @@
 //! and session-row insertion. Shares the same on-disk file as every other
 //! Garlemald binary (see `common::db::open_or_create`).
 
-
 use anyhow::{Context, Result};
 use common::db::ConnCallExt;
-use common::sql::{OptionalExtension, named_params};
 use common::sql::Connection;
+use common::sql::{OptionalExtension, named_params};
 
 /// A filed bug report (modules/bugreport), as the publisher sees it.
 #[derive(Debug, Clone, Default)]
@@ -57,6 +56,10 @@ pub struct StoredUser {
 }
 
 impl Database {
+    pub(crate) fn conn(&self) -> &Connection {
+        &self.conn
+    }
+
     pub async fn open(url: impl AsRef<str>) -> Result<Self> {
         let conn = common::db::open_or_create(url).await?;
         Ok(Self { conn })
@@ -91,9 +94,7 @@ impl Database {
                 );
                 match res {
                     Ok(_) => Ok(Some(c.last_insert_rowid())),
-                    Err(e) if e.is_constraint_violation() => {
-                        Ok(None)
-                    }
+                    Err(e) if e.is_constraint_violation() => Ok(None),
                     Err(e) => Err(e),
                 }
             })

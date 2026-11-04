@@ -4900,8 +4900,8 @@ mod battle_exp_award_tests {
     const GLADIATOR: i16 = 3;
 
     fn tempdb() -> String {
-    common::test_db::fresh_blocking()
-}
+        common::test_db::fresh_blocking()
+    }
 
     fn make_zone(zone_id: u32) -> Zone {
         Zone::new(
@@ -5224,8 +5224,8 @@ mod pool_tick_sync_tests {
     const ZONE_ID: u32 = 100;
 
     fn tempdb() -> String {
-    common::test_db::fresh_blocking()
-}
+        common::test_db::fresh_blocking()
+    }
 
     /// Zone 100 with one Player (session + client channel attached),
     /// pools at `hp`/`tp`, ready for a dispatched pool-tick event.

@@ -350,6 +350,7 @@ impl PacketProcessor {
         // ScriptBind LuaParams stay on the non-director path.
         character.base.zone_id = zone_id;
         character.chara.class = class_slot as i16;
+        character.chara.current_job = loaded.parameter_save.state_current_job as u16;
         // Seed level from the DB's per-class `skill_level` row so the
         // stat-baseline formula sees the right per-level multiplier at
         // login. Meteor's C# reads this from
@@ -5766,6 +5767,9 @@ impl PacketProcessor {
             let mut c = handle.character.write().await;
             c.chara.current_job = job_id as u16;
         }
+        if let Err(e) = self.db.save_player_current_job(player_id, job_id).await {
+            tracing::warn!(player = player_id, job_id, err = %e, "SetCurrentJob: saving the job failed");
+        }
         let bytes =
             crate::packets::send::player::build_set_current_job(actor_id, job_id as u32).to_bytes();
         crate::runtime::dispatcher::send_to_self_if_player(
@@ -6192,10 +6196,28 @@ impl PacketProcessor {
                 }
             }
         }
-        {
+        // A class change leaves any job (a job belongs to one class).
+        let level = {
             let mut c = handle.character.write().await;
             c.chara.class = class_id as i16;
+            c.chara.current_job = 0;
             c.chara.hotbar = new_hotbar;
+            c.battle_save
+                .skill_level
+                .get(class_id as usize)
+                .copied()
+                .unwrap_or(1)
+                .max(1)
+        };
+        if let Err(e) = self
+            .db
+            .save_player_current_class(player_id, class_id, level)
+            .await
+        {
+            tracing::warn!(player = player_id, class_id, err = %e, "DoClassChange: saving the class failed");
+        }
+        if let Err(e) = self.db.save_player_current_job(player_id, 0).await {
+            tracing::warn!(player = player_id, err = %e, "DoClassChange: clearing the job failed");
         }
 
         // Broadcast 0x01A4 — same packet shape as SetCurrentJob;

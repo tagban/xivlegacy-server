@@ -12,17 +12,22 @@
 //! [`fresh`] hands each test its own database holding the full baseline and
 //! game data. Building that from SQL takes a couple of seconds, so it is
 //! built once into a template database (named after a checksum of the
-//! bundled SQL, kept between runs) and each test gets a server-side copy.
-//! A process's databases are dropped when it exits; a crashed run's are
-//! swept by the next one.
+//! bundled SQL, kept between runs). Each test process keeps a small pool of
+//! copies: when the last connection to a test's database closes, the
+//! database is reset to the template's contents and handed to a later test,
+//! because creating 75 InnoDB tables per test is slow. A process's
+//! databases are dropped when it exits; a crashed run's are swept by the
+//! next one.
 //!
 //! The MariaDB server comes from `XIVLEGACY_TEST_DB_URL`
 //! (`mysql://user:pass@host:port/`), else `XIV_DB_ADMIN_URL` in
 //! `~/.config/xivlegacy/db.env`. The account needs rights on databases
 //! named `xivlegacy%`.
 
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use tokio::sync::OnceCell;
@@ -45,9 +50,12 @@ pub fn server_url() -> String {
         .get_or_init(|| {
             let url = std::env::var("XIVLEGACY_TEST_DB_URL").ok().or_else(|| {
                 let home = std::env::var("HOME").ok()?;
-                let env = std::fs::read_to_string(format!("{home}/.config/xivlegacy/db.env")).ok()?;
-                env.lines()
-                    .find_map(|l| l.strip_prefix("XIV_DB_ADMIN_URL=").map(|s| s.trim().to_string()))
+                let env =
+                    std::fs::read_to_string(format!("{home}/.config/xivlegacy/db.env")).ok()?;
+                env.lines().find_map(|l| {
+                    l.strip_prefix("XIV_DB_ADMIN_URL=")
+                        .map(|s| s.trim().to_string())
+                })
             });
             let mut url = url.unwrap_or_else(|| "mysql://xivlegacy@127.0.0.1:3306/".to_string());
             if !url.ends_with('/') {
@@ -103,7 +111,11 @@ async fn sweep(admin: &Connection, keep_template: String) -> Result<()> {
         .await?;
     for n in names {
         let stale = if let Some(rest) = n.strip_prefix("xivlegacy_t_") {
-            let pid: i32 = rest.split('_').next().and_then(|p| p.parse().ok()).unwrap_or(0);
+            let pid: i32 = rest
+                .split('_')
+                .next()
+                .and_then(|p| p.parse().ok())
+                .unwrap_or(0);
             // SAFETY: signal 0 only asks whether the process exists.
             pid > 0 && unsafe { kill(pid, 0) } != 0
         } else if n.starts_with("xivlegacy_tpl_") {
@@ -126,7 +138,11 @@ async fn template() -> Result<String> {
             let admin = admin().await?;
             // Several test binaries may start at once; one builds the template.
             admin
-                .call(|c| c.query_row("SELECT GET_LOCK('xivlegacy_test_template', 600)", (), |r| r.get::<_, i64>(0)))
+                .call(|c| {
+                    c.query_row("SELECT GET_LOCK('xivlegacy_test_template', 600)", (), |r| {
+                        r.get::<_, i64>(0)
+                    })
+                })
                 .await?;
             let result = async {
                 let _ = sweep(&admin, name.clone()).await;
@@ -146,13 +162,17 @@ async fn template() -> Result<String> {
                     admin.call(move |c| c.execute_batch(&drop)).await?;
                     let url = format!("{}{name}", server_url());
                     let conn = crate::db::open_or_create(&url).await?;
-                    conn.call(|c| c.execute_batch("CREATE TABLE _template_ready (id INT PRIMARY KEY)"))
-                        .await?;
+                    conn.call(|c| {
+                        c.execute_batch("CREATE TABLE _template_ready (id INT PRIMARY KEY)")
+                    })
+                    .await?;
                 }
                 anyhow::Ok(name.clone())
             }
             .await;
-            let _ = admin.call(|c| c.execute_batch("DO RELEASE_LOCK('xivlegacy_test_template')")).await;
+            let _ = admin
+                .call(|c| c.execute_batch("DO RELEASE_LOCK('xivlegacy_test_template')"))
+                .await;
             result
         })
         .await
@@ -173,9 +193,163 @@ fn next_name() -> String {
     name
 }
 
-/// The URL of a new database holding the baseline schema and game data.
+/// What a reset needs to know about the template: every table, and the
+/// checksum of each table that holds game data.
+struct TemplateInfo {
+    tables: Vec<String>,
+    data: HashMap<String, Option<i64>>,
+}
+
+static TEMPLATE_INFO: OnceCell<TemplateInfo> = OnceCell::const_new();
+
+async fn template_info(tpl: &str) -> Result<&'static TemplateInfo> {
+    TEMPLATE_INFO
+        .get_or_try_init(|| async {
+            let admin = admin().await?;
+            let tpl = tpl.to_string();
+            let info = admin
+                .call(move |c| {
+                    let tables: Vec<String> = {
+                        let mut st = c.prepare(
+                            "SELECT table_name FROM information_schema.tables \
+                             WHERE table_schema = :db AND table_type = 'BASE TABLE' \
+                             AND table_name <> '_template_ready' ORDER BY table_name",
+                        )?;
+                        st.query_map(crate::sql::named_params! { ":db": tpl }, |r| r.get(0))?
+                            .collect::<crate::sql::Result<_>>()?
+                    };
+                    let mut data = HashMap::new();
+                    for t in &tables {
+                        let rows: i64 =
+                            c.query_row(&format!("SELECT COUNT(*) FROM `{tpl}`.`{t}`"), (), |r| {
+                                r.get(0)
+                            })?;
+                        if rows > 0 {
+                            let sum: Option<i64> =
+                                c.query_row(&format!("CHECKSUM TABLE `{tpl}`.`{t}`"), (), |r| {
+                                    r.get(1)
+                                })?;
+                            data.insert(t.clone(), sum);
+                        }
+                    }
+                    Ok(TemplateInfo { tables, data })
+                })
+                .await?;
+            anyhow::Ok(info)
+        })
+        .await
+}
+
+/// Test databases this process made, and who has them open. A database
+/// goes back to the pool when its last connection closes, and is reset to
+/// the template's contents when it is handed out again.
+#[derive(Default)]
+struct Pool {
+    all: HashSet<String>,
+    open: HashMap<String, usize>,
+    free: VecDeque<(String, Instant)>,
+}
+
+static POOL: Mutex<Option<Pool>> = Mutex::new(None);
+
+fn with_pool<R>(f: impl FnOnce(&mut Pool) -> R) -> R {
+    let mut g = POOL.lock().unwrap_or_else(|e| e.into_inner());
+    f(g.get_or_insert_with(Pool::default))
+}
+
+/// A connection to `db` opened (called by `sql::Connection`).
+pub(crate) fn note_open(db: &str) {
+    with_pool(|p| {
+        if p.all.contains(db) {
+            *p.open.entry(db.to_string()).or_default() += 1;
+            p.free.retain(|(n, _)| n != db);
+        }
+    });
+}
+
+/// A connection to `db` closed (called by `sql::Connection`).
+pub(crate) fn note_close(db: &str) {
+    with_pool(|p| {
+        if let Some(n) = p.open.get_mut(db) {
+            *n = n.saturating_sub(1);
+            if *n == 0 {
+                p.open.remove(db);
+                p.free.push_back((db.to_string(), Instant::now()));
+            }
+        }
+    });
+}
+
+/// A pooled database whose last connection closed a while ago. The wait
+/// leaves a test that drops its database and reopens it at once (to check
+/// what was saved) with the database it had.
+fn take_free() -> Option<String> {
+    with_pool(|p| {
+        let idx = p
+            .free
+            .iter()
+            .position(|(_, at)| at.elapsed() > Duration::from_secs(2))?;
+        p.free.remove(idx).map(|(n, _)| n)
+    })
+}
+
+/// Put a used database back to the template's contents: empty every table
+/// the template has empty, reload any game-data table a test changed, and
+/// drop tables a test added.
+async fn reset(name: &str, tpl: &str) -> Result<()> {
+    let info = template_info(tpl).await?;
+    let admin = admin().await?;
+    let (name, tpl) = (name.to_string(), tpl.to_string());
+    admin
+        .call(move |c| {
+            let here: Vec<(String, Option<i64>)> = {
+                let mut st = c.prepare(
+                    "SELECT table_name, auto_increment FROM information_schema.tables \
+                     WHERE table_schema = :db AND table_type = 'BASE TABLE'",
+                )?;
+                st.query_map(crate::sql::named_params! { ":db": name }, |r| Ok((r.get(0)?, r.get(1)?)))?
+                    .collect::<crate::sql::Result<_>>()?
+            };
+            let mut script = String::from(
+                "SET SESSION sql_mode = CONCAT(@@sql_mode, ',NO_AUTO_VALUE_ON_ZERO'); SET FOREIGN_KEY_CHECKS = 0;\n",
+            );
+            for (t, auto) in &here {
+                if !info.tables.contains(t) {
+                    script.push_str(&format!("DROP TABLE `{name}`.`{t}`;\n"));
+                    continue;
+                }
+                if let Some(want) = info.data.get(t) {
+                    let have: Option<i64> =
+                        c.query_row(&format!("CHECKSUM TABLE `{name}`.`{t}`"), (), |r| r.get(1))?;
+                    if have != *want {
+                        script.push_str(&format!(
+                            "DELETE FROM `{name}`.`{t}`; INSERT INTO `{name}`.`{t}` SELECT * FROM `{tpl}`.`{t}`;\n"
+                        ));
+                    }
+                } else {
+                    script.push_str(&format!("DELETE FROM `{name}`.`{t}`;\n"));
+                    if auto.is_some_and(|a| a > 1) {
+                        script.push_str(&format!("ALTER TABLE `{name}`.`{t}` AUTO_INCREMENT = 1;\n"));
+                    }
+                }
+            }
+            script.push_str("SET FOREIGN_KEY_CHECKS = 1;\n");
+            c.execute_batch(&script)
+        })
+        .await?;
+    Ok(())
+}
+
+/// A database holding the baseline schema and game data and nothing else:
+/// a reset one from the pool, or a new copy of the template.
 pub async fn fresh() -> Result<String> {
     let tpl = template().await?;
+    if let Some(name) = take_free() {
+        reset(&name, &tpl)
+            .await
+            .with_context(|| format!("resetting test database {name}"))?;
+        return Ok(format!("{}{name}", server_url()));
+    }
     let name = next_name();
     let admin = admin().await?;
     let (tpl2, name2) = (tpl.clone(), name.clone());
@@ -184,16 +358,16 @@ pub async fn fresh() -> Result<String> {
             c.execute_batch(&format!(
                 "CREATE DATABASE `{name2}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
             ))?;
-            let tables: Vec<(String, i64)> = {
+            let tables: Vec<String> = {
                 let mut st = c.prepare(
-                    "SELECT table_name, table_rows FROM information_schema.tables \
+                    "SELECT table_name FROM information_schema.tables \
                      WHERE table_schema = :db AND table_type = 'BASE TABLE' AND table_name <> '_template_ready'",
                 )?;
-                st.query_map(crate::sql::named_params! { ":db": tpl2 }, |r| Ok((r.get(0)?, r.get(1)?)))?
+                st.query_map(crate::sql::named_params! { ":db": tpl2 }, |r| r.get(0))?
                     .collect::<crate::sql::Result<_>>()?
             };
             let mut script = String::from("SET SESSION sql_mode = CONCAT(@@sql_mode, ',NO_AUTO_VALUE_ON_ZERO');\n");
-            for (t, _) in &tables {
+            for t in &tables {
                 script.push_str(&format!("CREATE TABLE `{name2}`.`{t}` LIKE `{tpl2}`.`{t}`;\n"));
                 script.push_str(&format!("INSERT INTO `{name2}`.`{t}` SELECT * FROM `{tpl2}`.`{t}`;\n"));
             }
@@ -201,6 +375,9 @@ pub async fn fresh() -> Result<String> {
         })
         .await
         .with_context(|| format!("copying test database {name} from {tpl}"))?;
+    with_pool(|p| {
+        p.all.insert(name.clone());
+    });
     Ok(format!("{}{name}", server_url()))
 }
 
@@ -222,7 +399,8 @@ pub fn fresh_blocking() -> String {
 pub async fn empty() -> Result<String> {
     let name = next_name();
     let admin = admin().await?;
-    let create = format!("CREATE DATABASE `{name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+    let create =
+        format!("CREATE DATABASE `{name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
     admin.call(move |c| c.execute_batch(&create)).await?;
     Ok(format!("{}{name}", server_url()))
 }

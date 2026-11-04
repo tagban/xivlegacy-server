@@ -15,3 +15,8 @@ url = "mysql://xivlegacy@127.0.0.1:3306/xivlegacy"
 # How long a session row lives after a successful login/signup. The lobby
 # server rejects rows whose `expiration` is in the past.
 hours = 24
+
+[reports]
+# Activity reports at /reports (sessions, items, gil, quests, GM commands).
+# Only accounts with users.gmLevel at or above this may sign in (at least 1).
+gm_level = 1

@@ -351,8 +351,8 @@ mod tests {
     use common::sql::named_params;
 
     fn tempdb() -> String {
-    common::test_db::fresh_blocking()
-}
+        common::test_db::fresh_blocking()
+    }
 
     async fn seed_character(db: &Database, id: u32, name: &str) {
         use common::db::ConnCallExt;

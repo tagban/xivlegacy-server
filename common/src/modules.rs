@@ -219,8 +219,14 @@ mod tests {
         .await
         .unwrap();
         let (m1, m2) = (m.clone(), m);
-        let first = conn.call(move |c| Ok(apply_sql(c, std::slice::from_ref(&m1)).unwrap())).await.unwrap();
-        let again = conn.call(move |c| Ok(apply_sql(c, &[m2]).unwrap())).await.unwrap();
+        let first = conn
+            .call(move |c| Ok(apply_sql(c, std::slice::from_ref(&m1)).unwrap()))
+            .await
+            .unwrap();
+        let again = conn
+            .call(move |c| Ok(apply_sql(c, &[m2]).unwrap()))
+            .await
+            .unwrap();
         assert_eq!((first, again), (1, 0));
 
         module_dir(&root, "bad", "name = \"other\"\nversion = \"1\"\n");

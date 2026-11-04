@@ -23,11 +23,11 @@
 //! them `#[allow(dead_code)]` for now so the API stays stable.
 #![allow(dead_code)]
 
-
 use anyhow::{Context, Result};
+use common::activity;
 use common::db::ConnCallExt;
-use common::sql::{OptionalExtension, named_params};
 use common::sql::Connection;
+use common::sql::{OptionalExtension, named_params};
 
 use crate::group::{Linkshell, LinkshellMember, RetainerGroupMember};
 
@@ -477,6 +477,7 @@ impl Database {
                         ":m": s.map_server, ":ip": s.client_ip, ":seq": s.conn_seq as i64, ":now": now,
                     },
                 )?;
+                activity::session(&tx, account as u32, s.character_id, "login", s.zone_id, &s.client_ip);
                 tx.commit()?;
                 Ok(previous.filter(|&p| p != s.character_id))
             })
@@ -515,11 +516,14 @@ impl Database {
             .call_db(move |c| {
                 let now = now_s();
                 match destination {
-                    Some((zone, map)) => c.execute(
-                        r"UPDATE world_sessions SET state = 'zoning', zone_id = :z, map_server = :m,
-                          last_seen_at = :now WHERE character_id = :c",
-                        named_params! { ":c": character_id, ":z": zone, ":m": map, ":now": now },
-                    )?,
+                    Some((zone, map)) => {
+                        activity::session(c, 0, character_id, "zone", zone, &map);
+                        c.execute(
+                            r"UPDATE world_sessions SET state = 'zoning', zone_id = :z, map_server = :m,
+                              last_seen_at = :now WHERE character_id = :c",
+                            named_params! { ":c": character_id, ":z": zone, ":m": map, ":now": now },
+                        )?
+                    }
                     None => c.execute(
                         "UPDATE world_sessions SET state = 'zoning', last_seen_at = :now WHERE character_id = :c",
                         named_params! { ":c": character_id, ":now": now },
@@ -546,6 +550,7 @@ impl Database {
                         "UPDATE characters SET lastActiveAt = :now WHERE id = :c",
                         named_params! { ":c": character_id, ":now": now_s() },
                     )?;
+                    activity::session(c, 0, character_id, "logout", 0, "");
                 }
                 Ok(n > 0)
             })
@@ -622,7 +627,9 @@ mod tests {
 
     #[tokio::test]
     async fn world_sessions_follow_the_lifecycle() {
-        let db = Database::open(common::test_db::fresh().await.unwrap()).await.unwrap();
+        let db = Database::open(common::test_db::fresh().await.unwrap())
+            .await
+            .unwrap();
         db.conn_for_test()
             .call_db(|c| {
                 c.execute_batch(

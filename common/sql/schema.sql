@@ -108,7 +108,7 @@ CREATE TABLE IF NOT EXISTS `characters_appearance` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `characters_chocobo` (
-    `characterId` BIGINT NOT NULL AUTO_INCREMENT,
+    `characterId` BIGINT NOT NULL,
     `hasChocobo` BIGINT DEFAULT 0,
     `hasGoobbue` BIGINT DEFAULT 0,
     `chocoboAppearance` BIGINT DEFAULT NULL,
@@ -117,7 +117,7 @@ CREATE TABLE IF NOT EXISTS `characters_chocobo` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `characters_class_exp` (
-    `characterId` BIGINT NOT NULL AUTO_INCREMENT,
+    `characterId` BIGINT NOT NULL,
     `pug` BIGINT DEFAULT 0,
     `gla` BIGINT DEFAULT 0,
     `mrd` BIGINT DEFAULT 0,
@@ -140,7 +140,7 @@ CREATE TABLE IF NOT EXISTS `characters_class_exp` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `characters_class_levels` (
-    `characterId` BIGINT NOT NULL AUTO_INCREMENT,
+    `characterId` BIGINT NOT NULL,
     `pug` BIGINT DEFAULT 0,
     `gla` BIGINT DEFAULT 0,
     `mrd` BIGINT DEFAULT 0,
@@ -203,7 +203,7 @@ CREATE TABLE IF NOT EXISTS `characters_npclinkshell` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `characters_parametersave` (
-    `characterId` BIGINT NOT NULL AUTO_INCREMENT,
+    `characterId` BIGINT NOT NULL,
     `hp` BIGINT NOT NULL DEFAULT 0,
     `hpMax` BIGINT NOT NULL DEFAULT 0,
     `mp` BIGINT NOT NULL DEFAULT 0,
@@ -214,7 +214,7 @@ CREATE TABLE IF NOT EXISTS `characters_parametersave` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `characters_quest_completed` (
-    `characterId` BIGINT NOT NULL AUTO_INCREMENT,
+    `characterId` BIGINT NOT NULL,
     `completedQuests` MEDIUMBLOB,
     PRIMARY KEY (`characterId`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -297,7 +297,7 @@ CREATE TABLE IF NOT EXISTS `characters_statuseffect` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `characters_timers` (
-    `characterId` BIGINT NOT NULL AUTO_INCREMENT,
+    `characterId` BIGINT NOT NULL,
     `thousandmaws` BIGINT DEFAULT 0,
     `dzemaeldarkhold` BIGINT DEFAULT 0,
     `bowlofembers_hard` BIGINT DEFAULT 0,
@@ -322,7 +322,7 @@ CREATE TABLE IF NOT EXISTS `characters_timers` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `gamedata_achievements` (
-    `achievementId` BIGINT NOT NULL AUTO_INCREMENT,
+    `achievementId` BIGINT NOT NULL,
     `name` TEXT NOT NULL,
     `packetOffsetId` BIGINT NOT NULL DEFAULT 0,
     `rewardPoints` BIGINT NOT NULL DEFAULT 0,
@@ -456,7 +456,7 @@ CREATE TABLE IF NOT EXISTS `gamedata_guildleves` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `gamedata_items` (
-    `catalogID` BIGINT NOT NULL AUTO_INCREMENT,
+    `catalogID` BIGINT NOT NULL,
     `name` TEXT NOT NULL DEFAULT '',
     `singular` TEXT DEFAULT '',
     `plural` TEXT DEFAULT '',
@@ -496,14 +496,14 @@ CREATE TABLE IF NOT EXISTS `gamedata_items` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `gamedata_items_accessory` (
-    `catalogID` BIGINT NOT NULL AUTO_INCREMENT,
+    `catalogID` BIGINT NOT NULL,
     `power` BIGINT NOT NULL DEFAULT 0,
     `size` BIGINT NOT NULL DEFAULT 0,
     PRIMARY KEY (`catalogID`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `gamedata_items_armor` (
-    `catalogID` BIGINT NOT NULL AUTO_INCREMENT,
+    `catalogID` BIGINT NOT NULL,
     `defense` BIGINT NOT NULL DEFAULT 0,
     `magicDefense` BIGINT NOT NULL DEFAULT 0,
     `criticalDefense` BIGINT NOT NULL DEFAULT 0,
@@ -521,7 +521,7 @@ CREATE TABLE IF NOT EXISTS `gamedata_items_armor` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `gamedata_items_equipment` (
-    `catalogID` BIGINT NOT NULL AUTO_INCREMENT,
+    `catalogID` BIGINT NOT NULL,
     `equipPoint` BIGINT NOT NULL DEFAULT 0,
     `equipTribe` BIGINT NOT NULL DEFAULT 0,
     `paramBonusType1` BIGINT NOT NULL DEFAULT 0,
@@ -551,7 +551,7 @@ CREATE TABLE IF NOT EXISTS `gamedata_items_equipment` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `gamedata_items_graphics` (
-    `catalogID` BIGINT NOT NULL AUTO_INCREMENT,
+    `catalogID` BIGINT NOT NULL,
     `weaponId` BIGINT NOT NULL DEFAULT 0,
     `equipmentId` BIGINT NOT NULL DEFAULT 0,
     `variantId` BIGINT NOT NULL DEFAULT 0,
@@ -560,7 +560,7 @@ CREATE TABLE IF NOT EXISTS `gamedata_items_graphics` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `gamedata_items_graphics_extra` (
-    `catalogID` BIGINT NOT NULL AUTO_INCREMENT,
+    `catalogID` BIGINT NOT NULL,
     `offHandWeaponId` BIGINT NOT NULL DEFAULT 0,
     `offHandEquipmentId` BIGINT NOT NULL DEFAULT 0,
     `offHandVarientId` BIGINT NOT NULL DEFAULT 0,
@@ -568,7 +568,7 @@ CREATE TABLE IF NOT EXISTS `gamedata_items_graphics_extra` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `gamedata_items_weapon` (
-    `catalogID` BIGINT NOT NULL AUTO_INCREMENT,
+    `catalogID` BIGINT NOT NULL,
     `attack` BIGINT NOT NULL DEFAULT 0,
     `magicAttack` BIGINT NOT NULL DEFAULT 0,
     `craftProcessing` BIGINT NOT NULL DEFAULT 0,
@@ -709,7 +709,7 @@ CREATE TABLE IF NOT EXISTS `gamedata_regional_leves` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `gamedata_static_actors` (
-    `actorId` BIGINT NOT NULL AUTO_INCREMENT,
+    `actorId` BIGINT NOT NULL,
     `name` TEXT NOT NULL,
     `classPath` TEXT NOT NULL,
     PRIMARY KEY (`actorId`)
@@ -831,7 +831,7 @@ CREATE TABLE IF NOT EXISTS `server_battlenpc_genus_mods` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `server_battlenpc_groups` (
-    `groupId` BIGINT NOT NULL AUTO_INCREMENT,
+    `groupId` BIGINT NOT NULL DEFAULT 0,
     `poolId` BIGINT NOT NULL DEFAULT 0,
     `scriptName` TEXT NOT NULL,
     `minLevel` BIGINT NOT NULL DEFAULT 1,
@@ -859,7 +859,7 @@ CREATE TABLE IF NOT EXISTS `server_battlenpc_pool_mods` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `server_battlenpc_pools` (
-    `poolId` BIGINT NOT NULL AUTO_INCREMENT,
+    `poolId` BIGINT NOT NULL,
     `actorClassId` BIGINT NOT NULL,
     `name` TEXT NOT NULL,
     `genusId` BIGINT NOT NULL,
@@ -876,7 +876,7 @@ CREATE TABLE IF NOT EXISTS `server_battlenpc_pools` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `server_battlenpc_skill_list` (
-    `skillListId` BIGINT NOT NULL AUTO_INCREMENT,
+    `skillListId` BIGINT NOT NULL DEFAULT 0,
     `skillId` BIGINT NOT NULL DEFAULT 0,
     PRIMARY KEY (`skillListId`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -1108,7 +1108,7 @@ CREATE TABLE IF NOT EXISTS `supportdesk_faqs` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `supportdesk_issues` (
-    `slot` BIGINT NOT NULL AUTO_INCREMENT,
+    `slot` BIGINT NOT NULL,
     `title` TEXT NOT NULL,
     PRIMARY KEY (`slot`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -1136,7 +1136,7 @@ CREATE TABLE IF NOT EXISTS `users` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `world_sessions` (
-    `account_id` BIGINT NOT NULL AUTO_INCREMENT,
+    `account_id` BIGINT NOT NULL,
     `character_id` BIGINT NOT NULL,
     `world_id` BIGINT NOT NULL,
     `zone_id` BIGINT NOT NULL,

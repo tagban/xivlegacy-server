@@ -20,11 +20,10 @@
 //! via `tokio_rusqlite` for async, background-thread access against a single
 //! on-disk SQLite file (see `common::db::open_or_create`).
 
-
 use anyhow::{Context, Result};
 use common::db::ConnCallExt;
-use common::sql::{OptionalExtension, named_params};
 use common::sql::Connection;
+use common::sql::{OptionalExtension, named_params};
 
 use crate::character_creator::class_name_for_id;
 use crate::data::{Appearance, CharaInfo, Character, Retainer};
@@ -521,7 +520,9 @@ mod tests {
     /// A fresh in-memory database opened through the shared helper (applies
     /// `schema.sql` because the `:memory:` path never "exists" on disk).
     async fn fresh_db() -> Database {
-        Database::open(common::test_db::fresh().await.expect("test database")).await.expect("open test db")
+        Database::open(common::test_db::fresh().await.expect("test database"))
+            .await
+            .expect("open test db")
     }
 
     async fn insert_character(db: &Database, user_id: u32, name: &str, state: u32) -> u32 {

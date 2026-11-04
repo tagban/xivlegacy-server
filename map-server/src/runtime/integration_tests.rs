@@ -13410,8 +13410,8 @@ async fn ticker_survives_tutorial_state_and_drains_time_parks() {
     let registry = Arc::new(ActorRegistry::new());
     let db = Arc::new(
         crate::database::Database::open(common::test_db::fresh_blocking())
-        .await
-        .expect("db"),
+            .await
+            .expect("db"),
     );
 
     // Zone 166 with the tutorial cast.

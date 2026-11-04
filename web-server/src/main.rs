@@ -32,6 +32,7 @@ mod bug_reports;
 mod config;
 mod database;
 mod handlers;
+mod reports;
 mod server;
 mod session;
 mod status;

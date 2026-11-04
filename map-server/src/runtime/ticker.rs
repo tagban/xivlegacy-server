@@ -1107,8 +1107,8 @@ mod tests {
     use common::Vector3;
 
     fn tempdb() -> String {
-    common::test_db::fresh_blocking()
-}
+        common::test_db::fresh_blocking()
+    }
 
     async fn setup_one_zone_one_actor() -> (GameTicker, Arc<RwLock<Zone>>) {
         let world = Arc::new(WorldManager::new());

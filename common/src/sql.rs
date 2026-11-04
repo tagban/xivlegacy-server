@@ -273,7 +273,9 @@ macro_rules! array_params {
         }
     )*};
 }
-array_params!(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24);
+array_params!(
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24
+);
 
 impl Params for &[&dyn ToSql] {
     fn into_params(self) -> Result<SqlParams> {
@@ -283,7 +285,11 @@ impl Params for &[&dyn ToSql] {
 
 impl Params for Vec<mysql::Value> {
     fn into_params(self) -> Result<SqlParams> {
-        Ok(if self.is_empty() { SqlParams::Empty } else { SqlParams::Positional(self) })
+        Ok(if self.is_empty() {
+            SqlParams::Empty
+        } else {
+            SqlParams::Positional(self)
+        })
     }
 }
 
@@ -291,9 +297,16 @@ impl Params for &[(&str, &dyn ToSql)] {
     fn into_params(self) -> Result<SqlParams> {
         let mut out = Vec::with_capacity(self.len());
         for (k, v) in self {
-            out.push((k.trim_start_matches([':', '@', '$']).to_string(), v.to_sql()?));
+            out.push((
+                k.trim_start_matches([':', '@', '$']).to_string(),
+                v.to_sql()?,
+            ));
         }
-        Ok(if out.is_empty() { SqlParams::Empty } else { SqlParams::Named(out) })
+        Ok(if out.is_empty() {
+            SqlParams::Empty
+        } else {
+            SqlParams::Named(out)
+        })
     }
 }
 
@@ -305,7 +318,11 @@ impl<const N: usize> Params for &[(&str, &dyn ToSql); N] {
 
 fn positional<'a>(it: impl Iterator<Item = &'a dyn ToSql>) -> Result<SqlParams> {
     let v = it.map(|p| p.to_sql()).collect::<Result<Vec<_>>>()?;
-    Ok(if v.is_empty() { SqlParams::Empty } else { SqlParams::Positional(v) })
+    Ok(if v.is_empty() {
+        SqlParams::Empty
+    } else {
+        SqlParams::Positional(v)
+    })
 }
 
 /// Positional parameters from an iterator (rusqlite's `params_from_iter`).
@@ -356,7 +373,12 @@ fn as_i128(v: &mysql::Value) -> std::result::Result<i128, String> {
             let s = std::str::from_utf8(b).unwrap_or("").trim();
             s.parse::<i128>()
                 .ok()
-                .or_else(|| s.parse::<f64>().ok().filter(|f| f.fract() == 0.0).map(|f| f as i128))
+                .or_else(|| {
+                    s.parse::<f64>()
+                        .ok()
+                        .filter(|f| f.fract() == 0.0)
+                        .map(|f| f as i128)
+                })
                 .ok_or_else(|| format!("text {s:?} is not an integer"))
         }
         mysql::Value::NULL => Err("NULL read as a non-Option integer".into()),
@@ -492,7 +514,10 @@ impl Row {
         let i = idx.index(self)?;
         T::from_sql(&self.values[i]).map_err(|message| Error::Conversion {
             index: i,
-            message: format!("{} ({message})", self.columns.get(i).map_or("?", |c| c.as_str())),
+            message: format!(
+                "{} ({message})",
+                self.columns.get(i).map_or("?", |c| c.as_str())
+            ),
         })
     }
 
@@ -505,7 +530,10 @@ impl Row {
     }
 
     pub fn column_name(&self, i: usize) -> Result<&str> {
-        self.columns.get(i).map(|s| s.as_str()).ok_or(Error::InvalidColumnIndex(i))
+        self.columns
+            .get(i)
+            .map(|s| s.as_str())
+            .ok_or(Error::InvalidColumnIndex(i))
     }
 }
 
@@ -529,7 +557,10 @@ impl<T> OptionalExtension<T> for Result<T> {
 
 /// Rewrite SQLite's numbered `?1`, `?2` placeholders as plain `?`, putting
 /// the values in the order the placeholders appear. Plain `?` is left alone.
-fn number_placeholders(sql: &str, values: Vec<mysql::Value>) -> Result<(String, Vec<mysql::Value>)> {
+fn number_placeholders(
+    sql: &str,
+    values: Vec<mysql::Value>,
+) -> Result<(String, Vec<mysql::Value>)> {
     let bytes = sql.as_bytes();
     let mut out = String::with_capacity(sql.len());
     let mut order: Vec<usize> = Vec::new();
@@ -600,8 +631,10 @@ fn to_mysql_params(sql: &str, p: SqlParams) -> Result<(String, mysql::Params)> {
             (sql, mysql::Params::Positional(v))
         }
         SqlParams::Named(v) => {
-            let map: HashMap<Vec<u8>, mysql::Value> =
-                v.into_iter().map(|(k, val)| (k.into_bytes(), val)).collect();
+            let map: HashMap<Vec<u8>, mysql::Value> = v
+                .into_iter()
+                .map(|(k, val)| (k.into_bytes(), val))
+                .collect();
             (sql.to_string(), mysql::Params::Named(map))
         }
     })
@@ -620,7 +653,10 @@ pub struct Conn {
 
 impl Conn {
     fn new(inner: mysql::Conn) -> Self {
-        Self { inner: RefCell::new(inner), in_tx: RefCell::new(false) }
+        Self {
+            inner: RefCell::new(inner),
+            in_tx: RefCell::new(false),
+        }
     }
 
     fn run(&self, sql: &str, params: SqlParams) -> Result<(Vec<Row>, u64)> {
@@ -640,7 +676,10 @@ impl Conn {
                 .into();
             for row in set {
                 let row = row?;
-                rows.push(Row { values: row.unwrap(), columns: columns.clone() });
+                rows.push(Row {
+                    values: row.unwrap(),
+                    columns: columns.clone(),
+                });
             }
         }
         Ok((rows, affected))
@@ -679,7 +718,10 @@ impl Conn {
     }
 
     pub fn prepare(&self, sql: &str) -> Result<Statement<'_>> {
-        Ok(Statement { conn: self, sql: sql.to_string() })
+        Ok(Statement {
+            conn: self,
+            sql: sql.to_string(),
+        })
     }
 
     pub fn prepare_cached(&self, sql: &str) -> Result<Statement<'_>> {
@@ -702,7 +744,10 @@ impl Conn {
     }
 
     /// The same as [`Conn::transaction`]; SQLite's lock modes don't apply.
-    pub fn transaction_with_behavior(&mut self, _b: TransactionBehavior) -> Result<Transaction<'_>> {
+    pub fn transaction_with_behavior(
+        &mut self,
+        _b: TransactionBehavior,
+    ) -> Result<Transaction<'_>> {
         Transaction::begin(self)
     }
 
@@ -737,7 +782,11 @@ impl<'c> Transaction<'c> {
             conn.execute_batch("START TRANSACTION")?;
             *conn.in_tx.borrow_mut() = true;
         }
-        Ok(Self { conn, done: false, nested })
+        Ok(Self {
+            conn,
+            done: false,
+            nested,
+        })
     }
 
     pub fn commit(mut self) -> Result<()> {
@@ -767,10 +816,10 @@ impl<'c> Transaction<'c> {
 
 impl Drop for Transaction<'_> {
     fn drop(&mut self) {
-        if !self.done {
-            if let Err(e) = self.finish_rollback() {
-                tracing::warn!(error = %e, "rolling back an abandoned transaction failed");
-            }
+        if !self.done
+            && let Err(e) = self.finish_rollback()
+        {
+            tracing::warn!(error = %e, "rolling back an abandoned transaction failed");
         }
     }
 }
@@ -800,7 +849,10 @@ impl Statement<'_> {
         F: FnMut(&Row) -> Result<T>,
     {
         let (rows, _) = self.conn.run(&self.sql, params.into_params()?)?;
-        Ok(MappedRows { rows: rows.into_iter(), f })
+        Ok(MappedRows {
+            rows: rows.into_iter(),
+            f,
+        })
     }
 
     /// Like `query_map` for closures that return another error type.
@@ -811,7 +863,10 @@ impl Statement<'_> {
         E: From<Error>,
     {
         let (rows, _) = self.conn.run(&self.sql, params.into_params()?)?;
-        Ok(AndThenRows { rows: rows.into_iter(), f })
+        Ok(AndThenRows {
+            rows: rows.into_iter(),
+            f,
+        })
     }
 
     pub fn query_row<P, F, T>(&mut self, params: P, f: F) -> Result<T>
@@ -825,7 +880,10 @@ impl Statement<'_> {
     /// Every row, unmapped.
     pub fn query<P: Params>(&mut self, params: P) -> Result<Rows> {
         let (rows, _) = self.conn.run(&self.sql, params.into_params()?)?;
-        Ok(Rows { rows: rows.into_iter(), current: None })
+        Ok(Rows {
+            rows: rows.into_iter(),
+            current: None,
+        })
     }
 
     pub fn exists<P: Params>(&mut self, params: P) -> Result<bool> {
@@ -883,6 +941,15 @@ impl Rows {
 
 type Job = Box<dyn FnOnce(&mut Conn) + Send>;
 
+/// Tells the test pool a connection's worker has stopped (see `test_db`).
+struct CloseNote(String);
+
+impl Drop for CloseNote {
+    fn drop(&mut self) {
+        crate::test_db::note_close(&self.0);
+    }
+}
+
 /// A handle to one MariaDB connection on its own worker thread. Cheap to
 /// clone; clones share the worker, so their closures run in the order sent.
 #[derive(Clone)]
@@ -893,17 +960,26 @@ pub struct Connection {
 
 impl std::fmt::Debug for Connection {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Connection").field("database", &database_name(&self.url)).finish()
+        f.debug_struct("Connection")
+            .field("database", &database_name(&self.url))
+            .finish()
     }
 }
 
 /// The database name at the end of a `mysql://` URL.
 pub fn database_name(url: &str) -> String {
-    url.rsplit('/').next().unwrap_or("").split('?').next().unwrap_or("").to_string()
+    url.rsplit('/')
+        .next()
+        .unwrap_or("")
+        .split('?')
+        .next()
+        .unwrap_or("")
+        .to_string()
 }
 
 fn connect(url: &str) -> Result<mysql::Conn> {
-    let opts = mysql::Opts::from_url(url).map_err(|e| Error::Other(format!("database url: {e}")))?;
+    let opts =
+        mysql::Opts::from_url(url).map_err(|e| Error::Other(format!("database url: {e}")))?;
     let builder = mysql::OptsBuilder::from_opts(opts)
         .additional_capabilities(mysql::consts::CapabilityFlags::CLIENT_FOUND_ROWS)
         .stmt_cache_size(Some(512))
@@ -926,6 +1002,9 @@ impl Connection {
         std::thread::Builder::new()
             .name(format!("db-{}", database_name(&url)))
             .spawn(move || {
+                let db = database_name(&worker_url);
+                crate::test_db::note_open(&db);
+                let _closed = CloseNote(db);
                 let mut conn = match connect(&worker_url) {
                     Ok(c) => {
                         let _ = ready_tx.send(Ok(()));
@@ -995,7 +1074,11 @@ mod tests {
 
     #[test]
     fn plain_placeholders_are_untouched() {
-        let (sql, v) = number_placeholders("SELECT ?, ?", vec![mysql::Value::Int(1), mysql::Value::Int(2)]).unwrap();
+        let (sql, v) = number_placeholders(
+            "SELECT ?, ?",
+            vec![mysql::Value::Int(1), mysql::Value::Int(2)],
+        )
+        .unwrap();
         assert_eq!(sql, "SELECT ?, ?");
         assert_eq!(v.len(), 2);
     }
@@ -1005,8 +1088,14 @@ mod tests {
         assert_eq!(u8::from_sql(&mysql::Value::Int(200)).unwrap(), 200);
         assert!(u8::from_sql(&mysql::Value::Int(300)).is_err());
         assert!(u32::from_sql(&mysql::Value::Int(-1)).is_err());
-        assert_eq!(i64::from_sql(&mysql::Value::Bytes(b"42".to_vec())).unwrap(), 42);
-        assert_eq!(i64::from_sql(&mysql::Value::Bytes(b"42.000".to_vec())).unwrap(), 42);
+        assert_eq!(
+            i64::from_sql(&mysql::Value::Bytes(b"42".to_vec())).unwrap(),
+            42
+        );
+        assert_eq!(
+            i64::from_sql(&mysql::Value::Bytes(b"42.000".to_vec())).unwrap(),
+            42
+        );
         assert!(i64::from_sql(&mysql::Value::NULL).is_err());
         assert_eq!(Option::<i64>::from_sql(&mysql::Value::NULL).unwrap(), None);
     }

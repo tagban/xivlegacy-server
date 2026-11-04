@@ -1509,8 +1509,8 @@ mod tests {
     /// collide. The `AtomicU64` guarantees uniqueness even when two
     /// parallel tests hit `SystemTime::now` within the same nanosecond.
     fn tempdb() -> String {
-    common::test_db::fresh_blocking()
-}
+        common::test_db::fresh_blocking()
+    }
 
     #[tokio::test]
     async fn quest_completion_fires_lua_hook() {

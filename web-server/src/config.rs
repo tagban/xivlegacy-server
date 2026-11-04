@@ -33,6 +33,21 @@ pub struct Config {
     pub server: ServerSection,
     pub database: DatabaseSection,
     pub session: SessionSection,
+    pub reports: ReportsSection,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ReportsSection {
+    /// The lowest account GM level (`users.gmLevel`) that may sign in to
+    /// the activity reports at /reports.
+    pub gm_level: u8,
+}
+
+impl Default for ReportsSection {
+    fn default() -> Self {
+        Self { gm_level: 1 }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -94,6 +109,9 @@ impl Config {
     /// The database URL to connect to (see `DatabaseSection::url`).
     pub fn db_url(&self) -> String {
         common::sql::configured_url(&self.database.url)
+    }
+    pub fn reports_gm_level(&self) -> u8 {
+        self.reports.gm_level.max(1)
     }
     pub fn session_hours(&self) -> u32 {
         self.session.hours

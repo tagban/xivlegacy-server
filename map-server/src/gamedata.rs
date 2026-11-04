@@ -135,6 +135,8 @@ pub struct CharaParameterSave {
     pub mp_max: i16,
     pub state_main_skill: [u8; 1],
     pub state_main_skill_level: i16,
+    /// The job the character is in (0 = none, playing `state_main_skill`).
+    pub state_current_job: u8,
     pub command_slot_recast_time: [u32; 32],
 }
 
@@ -149,6 +151,7 @@ impl Default for CharaParameterSave {
             mp_max: 0,
             state_main_skill: [0; 1],
             state_main_skill_level: 0,
+            state_current_job: 0,
             command_slot_recast_time: [0; 32],
         }
     }

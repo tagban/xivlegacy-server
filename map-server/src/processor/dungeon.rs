@@ -51,7 +51,10 @@ impl PacketProcessor {
         let function = if arg == "leave" {
             "leave"
         } else {
-            match DUNGEONS.iter().find(|(n, _)| arg.starts_with(n) || n.starts_with(arg.as_str())) {
+            match DUNGEONS
+                .iter()
+                .find(|(n, _)| arg.starts_with(n) || n.starts_with(arg.as_str()))
+            {
                 Some((_, f)) => *f,
                 None => return Some(Err(usage())),
             }

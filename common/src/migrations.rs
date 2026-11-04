@@ -40,7 +40,10 @@ fn inflate(name: &str, gz: &[u8]) -> String {
 }
 
 fn files(set: &'static [(&'static str, &'static [u8])]) -> impl Iterator<Item = SqlFile> {
-    set.iter().map(|(name, gz)| SqlFile { name, sql: inflate(name, gz) })
+    set.iter().map(|(name, gz)| SqlFile {
+        name,
+        sql: inflate(name, gz),
+    })
 }
 
 /// The baseline schema, for an empty database.

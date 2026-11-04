@@ -33,9 +33,9 @@ use std::time::Instant;
 
 use anyhow::{Context, Result, bail};
 
+use crate::migrations;
 pub use crate::sql::Connection;
 use crate::sql::{self, Conn, OptionalExtension, named_params};
-use crate::migrations;
 
 const BOOKKEEPING_DDL: &str = r#"
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -141,24 +141,6 @@ async fn setup_locked(conn: &Connection) -> Result<()> {
     conn.call(|c| c.execute_batch(BOOKKEEPING_DDL))
         .await
         .context("creating schema_migrations and static_data_versions")?;
-    if fresh {
-        // The baseline already holds every change up to now, so the
-        // numbered migrations bundled with it count as applied.
-        let names: Vec<(String, String)> = migrations::iter()
-            .map(|m| (m.name.to_string(), migrations::checksum(&m.sql)))
-            .collect();
-        conn.call(move |c| {
-            for (n, sum) in &names {
-                c.execute(
-                    "INSERT INTO schema_migrations (name, checksum) VALUES (:n, :c)",
-                    named_params! { ":n": n, ":c": sum },
-                )?;
-            }
-            Ok(())
-        })
-        .await?;
-    }
-
     reload_data(conn).await?;
     apply_migrations(conn).await?;
 
@@ -260,7 +242,11 @@ pub async fn apply_migrations(conn: &Connection) -> Result<usize> {
         })
         .await
         .context("applying migrations")?;
-    tracing::info!(total_bundled = total, newly_applied = applied_now, "migration pass complete");
+    tracing::info!(
+        total_bundled = total,
+        newly_applied = applied_now,
+        "migration pass complete"
+    );
     Ok(applied_now)
 }
 
@@ -288,15 +274,123 @@ impl ConnCallExt for Connection {
 mod tests {
     use super::*;
 
+    async fn count(conn: &Connection, sql: &'static str) -> i64 {
+        conn.call(move |c| c.query_row(sql, (), |r| r.get(0)))
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn setup_lays_down_an_empty_database() {
+        let url = crate::test_db::empty().await.unwrap();
+        let conn = open_or_create(&url).await.unwrap();
+
+        let migrations = count(&conn, "SELECT COUNT(*) FROM schema_migrations").await;
+        assert_eq!(
+            migrations as usize,
+            migrations::count(),
+            "every bundled migration recorded"
+        );
+        let data = count(&conn, "SELECT COUNT(*) FROM static_data_versions").await;
+        assert_eq!(
+            data as usize,
+            migrations::data().count(),
+            "every data file loaded"
+        );
+        assert!(count(&conn, "SELECT COUNT(*) FROM gamedata_items").await > 0);
+        // Migration 001 ran on top of the baseline.
+        let job_col = count(
+            &conn,
+            "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() \
+             AND table_name = 'characters_parametersave' AND column_name = 'currentJob'",
+        )
+        .await;
+        assert_eq!(job_col, 1);
+
+        // A second boot finds nothing to do.
+        assert_eq!(reload_data(&conn).await.unwrap(), 0);
+        assert_eq!(apply_migrations(&conn).await.unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn a_changed_data_file_is_reloaded() {
+        let conn = crate::test_db::open_fresh().await.unwrap();
+        let file = migrations::data().next().unwrap();
+        let table = file.name.trim_end_matches(".sql").to_string();
+        let name = file.name.to_string();
+        let before: i64 = {
+            let t = table.clone();
+            conn.call(move |c| {
+                c.query_row(&format!("SELECT COUNT(*) FROM \"{t}\""), (), |r| r.get(0))
+            })
+            .await
+            .unwrap()
+        };
+        assert!(before > 0, "{table} has rows to lose");
+        {
+            let t = table.clone();
+            conn.call(move |c| {
+                c.execute_batch(&format!("DELETE FROM \"{t}\""))?;
+                c.execute(
+                    "UPDATE static_data_versions SET checksum = 'stale' WHERE name = :n",
+                    named_params! { ":n": name },
+                )
+            })
+            .await
+            .unwrap();
+        }
+
+        assert_eq!(
+            reload_data(&conn).await.unwrap(),
+            1,
+            "only the changed file reloads"
+        );
+        let after: i64 = conn
+            .call(move |c| {
+                c.query_row(&format!("SELECT COUNT(*) FROM \"{table}\""), (), |r| {
+                    r.get(0)
+                })
+            })
+            .await
+            .unwrap();
+        assert_eq!(after, before);
+    }
+
+    #[tokio::test]
+    async fn an_edited_migration_is_refused() {
+        let conn = crate::test_db::open_fresh().await.unwrap();
+        let name = migrations::iter().next().unwrap().name.to_string();
+        let n2 = name.clone();
+        conn.call(move |c| {
+            c.execute(
+                "UPDATE schema_migrations SET checksum = 'edited' WHERE name = :n",
+                named_params! { ":n": n2 },
+            )
+        })
+        .await
+        .unwrap();
+        let err = format!("{:#}", apply_migrations(&conn).await.unwrap_err());
+        assert!(
+            err.contains(&name) && err.contains("changed after it was applied"),
+            "{err}"
+        );
+    }
+
     #[test]
     fn server_url_splits_off_the_database() {
         assert_eq!(
             server_url("mysql://u:p@127.0.0.1:3306/xivlegacy"),
-            ("mysql://u:p@127.0.0.1:3306/".to_string(), "xivlegacy".to_string())
+            (
+                "mysql://u:p@127.0.0.1:3306/".to_string(),
+                "xivlegacy".to_string()
+            )
         );
         assert_eq!(
             server_url("mysql://u:p@h/db?socket=/tmp/m.sock"),
-            ("mysql://u:p@h/?socket=/tmp/m.sock".to_string(), "db".to_string())
+            (
+                "mysql://u:p@h/?socket=/tmp/m.sock".to_string(),
+                "db".to_string()
+            )
         );
     }
 }

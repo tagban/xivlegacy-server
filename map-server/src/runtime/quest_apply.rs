@@ -8025,8 +8025,8 @@ mod tests {
     }
 
     pub(crate) fn tempdb() -> String {
-    common::test_db::fresh_blocking()
-}
+        common::test_db::fresh_blocking()
+    }
 
     /// `apply_quest_on_notice` resolves the script, fires
     /// `onNotice(player, quest, target)`, and drains any commands the

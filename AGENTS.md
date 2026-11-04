@@ -16,7 +16,7 @@ Garlemald Server is a **Rust port of a FINAL FANTASY XIV v1.23b server emulator*
 (the original 2010 1.0 release, not A Realm Reborn) — a from-scratch port of the
 C# [Project Meteor Server](https://bitbucket.org/Ioncannon/project-meteor-server/).
 It is a single Cargo workspace (edition 2024, Rust 1.95) of four service binaries
-plus a shared library, backed by SQLite, hosting ~1,142 Lua content scripts.
+plus a shared library, backed by MariaDB, hosting ~1,142 Lua content scripts.
 
 ---
 
@@ -40,9 +40,10 @@ Each binary also runs standalone: `./target/release/<name> (settings: settings/d
 Ports (localhost defaults): web **54993**, lobby **54994**, world **54992**, map
 **1989**. Full detail: [`docs/dev-environment.md`](docs/dev-environment.md).
 
-First boot creates `./data/garlemald.db` from the bundled schema; no external DB
-or web server is needed (SQLite is bundled, Lua 5.4 is vendored — a C toolchain
-is required to compile them).
+First boot sets up the MariaDB database named in `[database] url` (or
+`XIVLEGACY_DB_URL`): the bundled schema, game data and migrations from
+`common/sql/` (see `docs/database.md`). Lua 5.4 is vendored, so a C toolchain
+is needed; tests need a MariaDB server (`XIVLEGACY_TEST_DB_URL`).
 
 ### Logging & packet capture
 
