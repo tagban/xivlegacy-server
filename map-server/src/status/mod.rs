@@ -244,6 +244,7 @@ impl StatusEffect {
             tier: self.tier,
             extra: self.extra,
             duration: self.duration,
+            source: self.source_actor_id,
         }
     }
 

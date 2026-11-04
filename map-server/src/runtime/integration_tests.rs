@@ -18265,3 +18265,143 @@ async fn session_end_confirms_without_error_and_echoes_destination() {
         assert_eq!(&reply.data[6..10], &destination.to_le_bytes());
     }
 }
+
+/// A three-actor zone for the party status tests: player 1, monster 2 and
+/// paladin 3, standing together.
+async fn party_hook_zone() -> (Arc<WorldManager>, Arc<ActorRegistry>, Arc<RwLock<Zone>>) {
+    let world = Arc::new(WorldManager::new());
+    let registry = Arc::new(ActorRegistry::new());
+    let zone = Zone::new(
+        100,
+        "test",
+        1,
+        "/Area/Zone/Test",
+        0,
+        0,
+        0,
+        false,
+        false,
+        false,
+        false,
+        false,
+        Some(&StubNavmeshLoader),
+    );
+    world.register_zone(zone).await;
+    for (id, kind) in [
+        (1, ActorKindTag::Player),
+        (2, ActorKindTag::BattleNpc),
+        (3, ActorKindTag::Player),
+    ] {
+        let mut c = Character::new(id);
+        c.chara.hp = 1000;
+        c.chara.max_hp = 1000;
+        c.chara.level = 50;
+        registry.insert(ActorHandle::new(id, kind, 100, 0, c)).await;
+    }
+    let zone = world.zone(100).await.unwrap();
+    (world, registry, zone)
+}
+
+async fn put_status(
+    registry: &ActorRegistry,
+    owner: u32,
+    id: u32,
+    name: &str,
+    flags: u32,
+    source: u32,
+) {
+    let h = registry.get(owner).await.unwrap();
+    let mut c = h.character.write().await;
+    let mut e =
+        crate::status::StatusEffect::from_template(id, name, flags, 2, 0, false, true, true, 0, 0);
+    e.duration = 600;
+    let mut ob = crate::status::StatusOutbox::new();
+    assert!(
+        c.status_effects
+            .add_status_effect(e, source, 1_000, 0, &mut ob)
+    );
+}
+
+async fn hp_of(registry: &ActorRegistry, id: u32) -> i16 {
+    registry
+        .get(id)
+        .await
+        .unwrap()
+        .character
+        .read()
+        .await
+        .chara
+        .hp
+}
+
+/// Cover: the monster's swings at a Covered player land on the paladin
+/// who covered them.
+#[tokio::test]
+async fn covered_players_melee_hits_land_on_their_paladin() {
+    let (world, registry, zone) = party_hook_zone().await;
+    put_status(&registry, 1, 223173, "covered", 4105, 3).await;
+    for _ in 0..30 {
+        dispatch_battle_event(
+            &BattleEvent::ResolveAutoAttack {
+                attacker_actor_id: 2,
+                defender_actor_id: 1,
+            },
+            &registry,
+            &world,
+            &zone,
+            None,
+            None,
+        )
+        .await;
+    }
+    assert_eq!(
+        hp_of(&registry, 1).await,
+        1000,
+        "the covered player takes nothing"
+    );
+    assert!(
+        hp_of(&registry, 3).await < 1000,
+        "the paladin takes the hits"
+    );
+}
+
+/// Collusion: the next hit's enmity goes on the warrior who used it, and
+/// the hit uses Collusion up.
+#[tokio::test]
+async fn collusion_puts_the_hits_enmity_on_its_warrior() {
+    let (world, registry, zone) = party_hook_zone().await;
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../scripts/lua");
+    let lua = Arc::new(crate::lua::LuaEngine::new(&root));
+    put_status(&registry, 1, 223097, "collusion", 1_048_601, 3).await;
+    for _ in 0..30 {
+        if hp_of(&registry, 2).await < 1000 {
+            break;
+        }
+        dispatch_battle_event(
+            &BattleEvent::ResolveAutoAttack {
+                attacker_actor_id: 1,
+                defender_actor_id: 2,
+            },
+            &registry,
+            &world,
+            &zone,
+            Some(&lua),
+            None,
+        )
+        .await;
+    }
+    assert!(hp_of(&registry, 2).await < 1000, "a swing landed");
+    let mob = registry.get(2).await.unwrap();
+    let c = mob.character.read().await;
+    let warrior = c.hate.get(3).map_or(0, |e| e.cumulative_enmity);
+    let attacker = c.hate.get(1).map_or(0, |e| e.cumulative_enmity);
+    assert!(warrior > 0, "the warrior holds the hit's enmity");
+    // An entry starts at 1 (base hate); the hit added nothing to it.
+    assert!(attacker <= 1, "the attacker holds none of the hit: {attacker}");
+    drop(c);
+    let p = registry.get(1).await.unwrap();
+    assert!(
+        !p.character.read().await.status_effects.has(223097),
+        "Collusion is used up"
+    );
+}
