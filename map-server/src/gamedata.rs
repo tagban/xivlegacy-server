@@ -352,6 +352,10 @@ fn tribe_default_model(tribe: u8) -> u32 {
 #[derive(Debug, Clone, Default)]
 pub struct StatusEffectEntry {
     pub status_id: u32,
+    /// Unix seconds the effect started; 0 = not known (saved before seed 298).
+    pub start_time: u32,
+    /// Unix seconds it was last saved; 0 = not known. Set by the save itself.
+    pub saved_at: u32,
     pub duration: u32,
     pub magnitude: u64,
     pub tick: u32,

@@ -715,6 +715,30 @@ impl StatusEffectContainer {
         }
     }
 
+    /// How long a saved effect still has to run at login: `None` when it ran
+    /// out. Its clock stopped when it was saved (`saved_at`), unless it
+    /// ticks offline, in which case it ran until now. Effects with no start
+    /// time (saved before seed 298), no duration or one that never runs out
+    /// (`u32::MAX`: Rampage, stances) keep their full duration.
+    pub fn time_left_at_login(
+        start_time: u32,
+        duration: u32,
+        saved_at: u32,
+        now_s: u32,
+        ticks_offline: bool,
+    ) -> Option<u32> {
+        if start_time == 0 || duration == 0 || duration == u32::MAX {
+            return Some(duration);
+        }
+        let end = start_time.saturating_add(duration);
+        let stopped = if ticks_offline || saved_at == 0 {
+            now_s
+        } else {
+            saved_at.max(start_time)
+        };
+        (stopped < end).then(|| end - stopped)
+    }
+
     /// Trigger a player-side DB save.
     pub fn save_to_db(&self, outbox: &mut StatusOutbox) {
         outbox.push(StatusEvent::DbSave {
@@ -729,11 +753,15 @@ impl StatusEffectContainer {
     /// reads it back the same way so `StatusEffect::new` recomputes the
     /// 16-bit short id via `status_id_of`. Mirrors the C#
     /// `Database.SavePlayerStatusEffects` row projection.
+    /// Effects that end at logout aren't saved (LandSandBoat skips them too).
     pub fn to_db_entries(&self) -> Vec<crate::gamedata::StatusEffectEntry> {
         self.effects
             .values()
+            .filter(|e| !e.flags.contains(StatusEffectFlags::LOSE_ON_LOGOUT))
             .map(|e| crate::gamedata::StatusEffectEntry {
                 status_id: e.id,
+                start_time: e.start_time,
+                saved_at: 0,
                 duration: e.duration,
                 magnitude: e.magnitude as u64,
                 tick: e.tick_ms,
@@ -1018,5 +1046,24 @@ mod tests {
         assert!(any);
         assert!(!c.has(STATUS_POISON));
         assert!(c.has(STATUS_STUN));
+    }
+
+    #[test]
+    fn saved_effects_keep_only_the_time_they_have_left() {
+        let left = StatusEffectContainer::time_left_at_login;
+        // Started at 1000 with 600 s, saved at logout 100 s in: 500 s left
+        // however long the player was away.
+        assert_eq!(left(1_000, 600, 1_100, 9_000, false), Some(500));
+        // An effect that ticks offline ran on: 500 s left 100 s later...
+        assert_eq!(left(1_000, 600, 1_100, 1_100, true), Some(500));
+        assert_eq!(left(1_000, 600, 1_100, 1_200, true), Some(400));
+        // ...and is gone once its time is up.
+        assert_eq!(left(1_000, 600, 1_100, 1_600, true), None);
+        // Saved with no time left.
+        assert_eq!(left(1_000, 600, 1_600, 1_700, false), None);
+        // No start time (saved before seed 298), no duration, never ends.
+        assert_eq!(left(0, 600, 0, 9_000, false), Some(600));
+        assert_eq!(left(1_000, 0, 1_100, 9_000, false), Some(0));
+        assert_eq!(left(1_000, u32::MAX, 1_100, 9_000, true), Some(u32::MAX));
     }
 }
