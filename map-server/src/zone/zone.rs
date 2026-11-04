@@ -623,6 +623,7 @@ mod tests {
             target_hpp: None,
             target_has_stealth: false,
             is_close_to_spawn: true,
+            spawn_position: None,
             target_is_locked: false,
             attack_delay_ms: 2500,
             attack_range: 3.0,
