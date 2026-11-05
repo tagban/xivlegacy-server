@@ -142,7 +142,9 @@ pub struct BattleNpcControllerState {
     /// its level at spawn (`Catalogs::monster_commands`).
     pub skills: Vec<BattleCommand>,
     /// A move the `usemove` GM command queued: used on the next combat
-    /// tick whatever the TP, gap or reach, then cleared.
+    /// tick whatever the TP, gap or reach. The container clears it when the
+    /// move readies (not when it is picked), so a move or cast already in
+    /// flight delays it rather than dropping it.
     pub forced_skill: Option<BattleCommand>,
     /// Spells from the pool's spell list, same level filter. A caster
     /// picks one per cast; empty keeps the single `spell`.
@@ -615,7 +617,10 @@ impl Controller {
         dist: f32,
     ) -> Option<ControllerDecision> {
         let owner_id = owner.actor.actor_id;
-        if let Some(cmd) = self.battle.forced_skill.take() {
+        // Peek, don't take: the container clears it once the move readies,
+        // so a forced move that lands while another move or cast is in
+        // flight waits for it instead of being dropped.
+        if let Some(cmd) = self.battle.forced_skill.clone() {
             let skill_index = match self.battle.skills.iter().position(|s| s.id == cmd.id) {
                 Some(i) => i,
                 None => {
@@ -989,7 +994,8 @@ mod tests {
     }
 
     /// A queued `usemove` fires on the next combat tick even at 0 TP and
-    /// out of reach, joins the monster's list, and is used only once.
+    /// out of reach, joins the monster's list, and is used only once
+    /// (the container clears it when the move readies).
     #[test]
     fn forced_move_fires_once_without_tp() {
         let mut c = BattleNpcController::new_for(1);
@@ -1005,8 +1011,11 @@ mod tests {
                 skill_index: 1
             }
         );
-        assert!(c.battle.forced_skill.is_none());
+        // Still queued until the container readies it; picking it again
+        // doesn't add a second copy to the list.
+        assert!(c.battle.forced_skill.is_some());
         assert_eq!(c.battle.skills.len(), 2);
+        c.battle.forced_skill = None; // what the container does on ready
         assert!(!matches!(
             c.tick(200, v, &arena),
             ControllerDecision::UseSkill { .. }

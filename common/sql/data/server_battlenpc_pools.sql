@@ -1,4 +1,4 @@
--- server_battlenpc_pools: game data, 332 rows. Reloaded whole when this file changes.
+-- server_battlenpc_pools: game data, 342 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_pools`;
 INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId`, `currentJob`, `combatSkill`, `combatDelay`, `combatDmgMult`, `aggroType`, `immunity`, `linkType`, `spellListId`, `skillListId`) VALUES
@@ -270,6 +270,16 @@ INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId
 (30040, 2309901, 'Gaoler''s Lantern', 53, 0, 1, 4200, 1.0, 1, 0, 0, 0, 53),
 (30041, 2303401, 'Prison Pudding', 63, 0, 1, 4200, 1.0, 0, 0, 0, 0, 63),
 (30042, 2301101, 'Cell Mite', 35, 0, 1, 4200, 1.0, 1, 0, 0, 0, 35),
+(30043, 2301102, 'Antares', 35, 0, 1, 4000, 1.5, 1, 0, 0, 0, 30043),
+(30044, 2301103, 'Sargas', 35, 0, 1, 4000, 1.5, 1, 0, 0, 0, 30044),
+(30045, 2301104, 'Shaula', 35, 0, 1, 4000, 1.5, 1, 0, 0, 0, 30045),
+(30046, 2303501, 'Batraal', 51, 0, 1, 3600, 1.5, 1, 0, 0, 0, 30046),
+(30047, 2301701, 'All-seeing Eye', 51, 0, 1, 3600, 1.3, 1, 0, 0, 0, 30047),
+(30048, 2301702, 'Soulgazer', 51, 0, 1, 3600, 1.3, 1, 0, 0, 0, 30048),
+(30049, 2310701, 'Coincounter', 60, 0, 1, 4200, 1.6, 1, 0, 0, 0, 30049),
+(30050, 2301001, 'Miser''s Mistress', 16, 0, 1, 4000, 1.5, 1, 0, 0, 0, 30050),
+(30051, 2303003, 'Myrmidon Princess', 33, 0, 1, 3600, 1.5, 1, 0, 0, 0, 30051),
+(30052, 2308701, 'Chimera', 30, 0, 1, 3600, 1.5, 1, 0, 0, 0, 30052),
 (30100, 2107301, 'Ifrit', 54, 0, 1, 3600, 1.5, 1, 0, 0, 0, 30100),
 (30101, 2103005, 'Nest Commander', 33, 0, 1, 4200, 1.0, 1, 0, 0, 0, 33),
 (30102, 2100114, 'Pyrausta', 45, 0, 1, 4200, 1.0, 0, 0, 0, 0, 45),

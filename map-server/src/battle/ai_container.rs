@@ -653,6 +653,16 @@ impl AIContainer {
                 else {
                     return;
                 };
+                // A `usemove` queued move is used now: clear it.
+                if let Some(ctrl) = self.controller.as_mut()
+                    && ctrl
+                        .battle
+                        .forced_skill
+                        .as_ref()
+                        .is_some_and(|f| f.id == cmd.id)
+                {
+                    ctrl.battle.forced_skill = None;
+                }
                 tracing::debug!(
                     owner = format!("0x{owner_id:08X}"),
                     target = format!("0x{target_actor_id:08X}"),
@@ -1102,6 +1112,71 @@ mod tests {
             "chant teardown ahead of damage, no re-cast inside the recast window",
         );
         assert!(!ai.is_current(BattleStateKind::Magic));
+    }
+
+    /// A `usemove` queued while the monster is mid-move waits for that
+    /// move instead of being dropped (client: the Myrmidon Princess kept
+    /// using her own moves and every queued one was lost).
+    #[test]
+    fn forced_move_waits_for_a_move_in_flight() {
+        use crate::battle::controller::BattleNpcController;
+        use crate::battle::target_find::ValidTarget as V;
+        let mut ai = AIContainer::new(1, Some(BattleNpcController::new_for(1)), None);
+        ai.internal_engage(2, 0, 2000);
+        assert!(ai.internal_weapon_skill(2, BattleCommand::new(23229, "own"), 100));
+        let mut forced = BattleCommand::new(23226, "forced");
+        forced.main_target = V(768);
+        forced.valid_target = V(17152);
+        forced.range = 10.0;
+        ai.controller.as_mut().unwrap().battle.forced_skill = Some(forced);
+        let arena: HashMap<u32, ActorView> =
+            [(1, arena_view(1, 0.0, 2)), (2, arena_view(2, 2.0, 1))]
+                .into_iter()
+                .collect();
+        let readied = |ob: &BattleOutbox| {
+            ob.events.iter().any(|e| {
+                matches!(
+                    e,
+                    BattleEvent::SkillReady {
+                        command_id: 23226,
+                        ..
+                    }
+                )
+            })
+        };
+
+        let mut ob = BattleOutbox::new();
+        ai.update(150, engaged_owner_view(2), &arena, &mut ob);
+        assert!(!readied(&ob), "the move in flight wins: {:?}", ob.events);
+        assert!(
+            ai.controller
+                .as_ref()
+                .unwrap()
+                .battle
+                .forced_skill
+                .is_some(),
+            "still queued"
+        );
+
+        // Once the own move is done, the queued one readies and clears.
+        let mut seen = false;
+        for t in (1_000..20_000).step_by(500) {
+            let mut ob = BattleOutbox::new();
+            ai.update(t, engaged_owner_view(2), &arena, &mut ob);
+            if readied(&ob) {
+                seen = true;
+                break;
+            }
+        }
+        assert!(seen, "queued move never readied");
+        assert!(
+            ai.controller
+                .as_ref()
+                .unwrap()
+                .battle
+                .forced_skill
+                .is_none()
+        );
     }
 
     /// #28 S2.2 — MoveTo/FaceTarget decisions land on `pending_movement`
