@@ -1122,6 +1122,7 @@ async fn action_targets(
             aoe = ?command.aoe_type,
             range = command.aoe_range,
             height = command.range_height,
+            candidates = ?arena.keys().collect::<Vec<_>>(),
             "battle: area action found no targets",
         );
     }
