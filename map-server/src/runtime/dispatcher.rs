@@ -745,6 +745,7 @@ async fn resolve_auto_attack(
 
     let mut container = CommandResultContainer::new();
     let mut dmg_request;
+    let procs;
     let mut wake_outbox = crate::status::StatusOutbox::new();
     {
         let mut d = defender_handle.character.write().await;
@@ -773,18 +774,20 @@ async fn resolve_auto_attack(
             max_hp: def_max_hp,
             mods: &def_mods_snapshot,
             status: &def_status,
-            has_aegis_boon: false,
-            has_protect: false,
-            has_shell: false,
-            has_stoneskin: false,
+            has_aegis_boon: d.status_effects.has(crate::status::ids::STATUS_AEGIS_BOON),
+            has_protect: has_any(&d, &PROTECT_IDS),
+            has_shell: has_any(&d, &SHELL_IDS),
+            has_stoneskin: has_any(&d, &STONESKIN_IDS),
         };
 
-        battle_utils::calc_rates(&atk_view, &def_view, None, &mut result);
         let direction = crate::status::hooks::hit_direction(
             common::Vector3::new(d.base.position_x, d.base.position_y, d.base.position_z),
             d.base.rotation,
             atk_pos,
         );
+        // The side the swing comes from (no parry or block from behind).
+        result.param = direction;
+        battle_utils::calc_rates(&atk_view, &def_view, None, &mut result);
         if let (Some(root), Some(atk)) = (&root, &attacker_side) {
             use crate::status::StatusEffectFlags as F;
             use crate::status::hooks::{HookSide, run};
@@ -838,6 +841,7 @@ async fn resolve_auto_attack(
             &mut container,
             &mut rng,
         );
+        procs = procs_for(result.hit_type, attacker_actor_id, defender_actor_id);
 
         if let (Some(root), Some(atk)) = (&root, &attacker_side) {
             let (amount, enmity) = dmg_request.map_or((0, 0), |dr| (dr.amount, dr.enmity));
@@ -903,6 +907,7 @@ async fn resolve_auto_attack(
     flush_wake_outbox(wake_outbox, registry, world, lua, db).await;
     flush_wake_outbox(hook_outbox, registry, world, lua, db).await;
     apply_party_statuses(party_statuses, registry, world, lua, db).await;
+    Box::pin(set_procs(&procs, registry, world, lua, db)).await;
 
     // #28 S3.3 — attacker TP per landed swing (pmeteor
     // `Character.OnAttack`, Character.cs:886-895): delay-seconds × 100.
@@ -1157,6 +1162,64 @@ async fn action_targets(
 /// `server_statuseffects` template when the catalog has one (flags such
 /// as Stance and the overwrite rule come from there) and from the row's
 /// own duration / magnitude / tier.
+/// Tests: one auto-attack swing from `attacker` at `defender`.
+#[cfg(test)]
+pub(crate) async fn test_auto_attack(
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    lua: Option<&Arc<crate::lua::LuaEngine>>,
+    db: Option<&Arc<crate::database::Database>>,
+    zone_id: u32,
+    attacker: u32,
+    defender: u32,
+) {
+    let zone = world.zone(zone_id).await.expect("zone");
+    resolve_auto_attack(attacker, defender, registry, world, &zone, lua, db).await;
+}
+
+/// Tests: resolve `command` from `attacker` on `defender` as a landed
+/// command does (no hotbar gate, no costs).
+#[cfg(test)]
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn test_resolve(
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    lua: Option<&Arc<crate::lua::LuaEngine>>,
+    db: Option<&Arc<crate::database::Database>>,
+    zone_id: u32,
+    attacker: u32,
+    defender: u32,
+    command: &BattleCommand,
+) {
+    let zone = world.zone(zone_id).await.expect("zone");
+    resolve_action(attacker, defender, command, registry, world, &zone, lua, db).await;
+}
+
+/// Tests: put `command`'s status on `actor_id` the way a landed command
+/// does (catalog rules, onGain stat changes, icons).
+#[cfg(test)]
+pub(crate) async fn test_add_status(
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    lua: Option<&Arc<crate::lua::LuaEngine>>,
+    db: Option<&Arc<crate::database::Database>>,
+    actor_id: u32,
+    command: &BattleCommand,
+) {
+    let Some(h) = registry.get(actor_id).await else {
+        return;
+    };
+    let now_ms = (common::utils::unix_timestamp() as u64).saturating_mul(1000);
+    let mut outbox = crate::status::StatusOutbox::new();
+    {
+        let mut c = h.character.write().await;
+        let effect = command_status_effect(command, actor_id, lua, now_ms);
+        c.status_effects
+            .add_status_effect(effect, actor_id, now_ms, 0, &mut outbox);
+    }
+    flush_wake_outbox(outbox, registry, world, lua, db).await;
+}
+
 fn command_status_effect(
     command: &BattleCommand,
     target_actor_id: u32,
@@ -1255,6 +1318,168 @@ const HOLY_SUCCOR_RECOVER_TEXT: u16 = 33012;
 /// The Combo status (pmeteor `StatusEffectId.Combo`): up for 13 s while a
 /// combo can continue.
 pub(crate) const STATUS_COMBO: u32 = 223205;
+
+/// Defender statuses that change how a hit lands or looks: Aegis Boon
+/// blocks it whole, Protect / Shell / Stoneskin add their shimmer.
+const PROTECT_IDS: [u32; 2] = [223129, 223239];
+const SHELL_IDS: [u32; 1] = [223130];
+const STONESKIN_IDS: [u32; 1] = [223133];
+
+fn has_any(c: &crate::actor::Character, ids: &[u32]) -> bool {
+    ids.iter().any(|id| c.status_effects.has(*id))
+}
+
+/// The hidden proc statuses, by `procRequirement - 1` (Miss, Evade, Parry,
+/// Block) — the index of `charaWork.battleTemp.timingCommandFlag` too.
+pub(crate) const PROC_STATUSES: [u32; 4] = [
+    crate::status::ids::STATUS_MISS_PROC,
+    crate::status::ids::STATUS_EVADE_PROC,
+    crate::status::ids::STATUS_PARRY_PROC,
+    crate::status::ids::STATUS_BLOCK_PROC,
+];
+/// How long an evade, parry, block or miss keeps its weaponskill open
+/// (pmeteor `SetProc`: 5 s).
+const PROC_SECONDS: u32 = 5;
+
+/// The procs a physical swing's outcome hands out (pmeteor `OnEvade` /
+/// `OnParry` / `OnBlock` / `OnMiss` → `SetProc`): a miss opens the
+/// attacker's Feint and the defender's Haymaker, a parry Fracture, a block
+/// Phalanx. `(actor, proc index)`.
+fn procs_for(
+    hit: crate::battle::effects::HitType,
+    attacker: u32,
+    defender: u32,
+) -> Vec<(u32, usize)> {
+    use crate::battle::effects::HitType as H;
+    match hit {
+        H::Miss | H::Evade => vec![(attacker, 0), (defender, 1)],
+        H::Parry => vec![(defender, 2)],
+        H::Block => vec![(defender, 3)],
+        _ => Vec::new(),
+    }
+}
+
+/// Open the procs on the players among them for [`PROC_SECONDS`].
+async fn set_procs(
+    procs: &[(u32, usize)],
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    lua: Option<&Arc<crate::lua::LuaEngine>>,
+    db: Option<&Arc<crate::database::Database>>,
+) {
+    for &(actor_id, idx) in procs {
+        let Some(h) = registry.get(actor_id).await else {
+            continue;
+        };
+        if !h.is_player() {
+            continue;
+        }
+        let now_ms = (common::utils::unix_timestamp() as u64).saturating_mul(1000);
+        let mut outbox = crate::status::StatusOutbox::new();
+        {
+            let mut c = h.character.write().await;
+            if !c.is_alive() {
+                continue;
+            }
+            let mut cmd = BattleCommand::new(0, "");
+            cmd.status_id = PROC_STATUSES[idx];
+            cmd.status_duration = PROC_SECONDS;
+            let mut effect = command_status_effect(&cmd, actor_id, lua, now_ms);
+            effect.overwrite = crate::status::StatusEffectOverwrite::Always;
+            effect.silent_on_gain = true;
+            effect.silent_on_loss = true;
+            c.status_effects
+                .add_status_effect(effect, actor_id, now_ms, 0, &mut outbox);
+        }
+        flush_wake_outbox(outbox, registry, world, lua, db).await;
+        send_timing_flags(actor_id, registry, world).await;
+    }
+}
+
+/// Test hook: open the proc a `procRequirement` (1-4) asks for.
+#[cfg(test)]
+pub(crate) async fn test_open_proc(
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    lua: Option<&Arc<crate::lua::LuaEngine>>,
+    db: Option<&Arc<crate::database::Database>>,
+    actor_id: u32,
+    requirement: u8,
+) {
+    if let Some(i) = usize::from(requirement).checked_sub(1) {
+        Box::pin(set_procs(&[(actor_id, i)], registry, world, lua, db)).await;
+    }
+}
+
+/// Whether the player holds the proc a `procRequirement` (1 Miss, 2 Evade,
+/// 3 Parry, 4 Block) asks for. No requirement is always met.
+pub(crate) fn has_proc(c: &crate::actor::Character, requirement: u8) -> bool {
+    match requirement {
+        0 => true,
+        r => PROC_STATUSES
+            .get(usize::from(r) - 1)
+            .is_some_and(|s| c.status_effects.has(*s)),
+    }
+}
+
+/// Use up the proc a weaponskill needed (one Haymaker per evade).
+pub(crate) async fn spend_proc(
+    actor_id: u32,
+    requirement: u8,
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    lua: Option<&Arc<crate::lua::LuaEngine>>,
+    db: Option<&Arc<crate::database::Database>>,
+) {
+    let Some(&status) = usize::from(requirement)
+        .checked_sub(1)
+        .and_then(|i| PROC_STATUSES.get(i))
+    else {
+        return;
+    };
+    let Some(h) = registry.get(actor_id).await else {
+        return;
+    };
+    let mut outbox = crate::status::StatusOutbox::new();
+    {
+        let mut c = h.character.write().await;
+        if c.status_effects.has(status) {
+            c.status_effects.remove_status_effect(
+                status,
+                crate::status::DEFAULT_LOSS_TEXT_ID,
+                false,
+                &mut outbox,
+            );
+        }
+    }
+    flush_wake_outbox(outbox, registry, world, lua, db).await;
+    send_timing_flags(actor_id, registry, world).await;
+}
+
+/// pmeteor `SetProc`'s `charaWork/timingCommand` property: which proc
+/// weaponskills the client lights up on the hotbar.
+async fn send_timing_flags(actor_id: u32, registry: &ActorRegistry, world: &WorldManager) {
+    let Some(h) = registry.get(actor_id).await else {
+        return;
+    };
+    if !h.is_player() {
+        return;
+    }
+    let flags = {
+        let c = h.character.read().await;
+        PROC_STATUSES.map(|s| c.status_effects.has(s))
+    };
+    let mut b = tx::actor::ActorPropertyPacketBuilder::new(actor_id, "charaWork/timingCommand");
+    for (i, on) in flags.iter().enumerate() {
+        b.add_byte(
+            &format!("charaWork.battleTemp.timingCommandFlag[{i}]"),
+            u8::from(*on),
+        );
+    }
+    for sub in b.done() {
+        send_to_self_if_player(registry, world, actor_id, sub.to_bytes()).await;
+    }
+}
 const COMBO_SECONDS: u32 = 13;
 /// pmeteor `SetCombos`: `playerWork.comboCostBonusRate = 1`, so a link
 /// that continues a combo costs no MP or TP.
@@ -1978,6 +2203,7 @@ async fn resolve_action(
     let scripted;
     let mut setup_removed: Vec<(u32, u16)> = Vec::new();
     let mut setup_toggled_off = false;
+    let mut setup_enmity: Option<f64> = None;
     let command = match (command.status_id, lua) {
         (status_id, Some(l)) if status_id != 0 => {
             let root = l
@@ -2024,6 +2250,7 @@ async fn resolve_action(
                     );
                     setup_removed = set.removed;
                     setup_toggled_off = set.toggled_off;
+                    setup_enmity = set.enmity;
                     scripted = c;
                     &scripted
                 }
@@ -2150,6 +2377,7 @@ async fn resolve_action(
     let mut rng = ThreadRng;
     let mut container = CommandResultContainer::new();
     let mut hits: Vec<ActionHit> = Vec::new();
+    let mut all_procs: Vec<(u32, usize)> = Vec::new();
     let mut wake_outbox = crate::status::StatusOutbox::new();
     for target_id in targets {
         let Some(defender_handle) = registry.get(target_id).await else {
@@ -2183,10 +2411,12 @@ async fn resolve_action(
             max_hp: def_max_hp,
             mods: &def_mods_snapshot,
             status: &def_status,
-            has_aegis_boon: false,
-            has_protect: false,
-            has_shell: false,
-            has_stoneskin: false,
+            has_aegis_boon: d_write
+                .status_effects
+                .has(crate::status::ids::STATUS_AEGIS_BOON),
+            has_protect: has_any(&d_write, &PROTECT_IDS),
+            has_shell: has_any(&d_write, &SHELL_IDS),
+            has_stoneskin: has_any(&d_write, &STONESKIN_IDS),
         };
 
         // Skill power from seed 291 (`battle_utils::skill_amount`). A row
@@ -2206,7 +2436,6 @@ async fn resolve_action(
         result.enmity = result.amount;
 
         let mut skill = command.clone();
-        battle_utils::calc_rates(&atk_view, &def_view, Some(&skill), &mut result);
         let direction = crate::status::hooks::hit_direction(
             common::Vector3::new(
                 d_write.base.position_x,
@@ -2216,6 +2445,8 @@ async fn resolve_action(
             d_write.base.rotation,
             atk_pos,
         );
+        result.param = direction;
+        battle_utils::calc_rates(&atk_view, &def_view, Some(&skill), &mut result);
         if let (Some(root), Some(atk)) = (&root, &attacker_side)
             && target_id != attacker_actor_id
         {
@@ -2283,6 +2514,7 @@ async fn resolve_action(
                 let mut last = result.clone();
                 for h in 1..=n {
                     let mut part = CommandResult::from_command(target_id, command, h);
+                    part.param = direction;
                     part.amount =
                         total / u16::from(n) + if h == 1 { total % u16::from(n) } else { 0 };
                     part.enmity = part.amount;
@@ -2370,9 +2602,11 @@ async fn resolve_action(
                 // Status commands on a monster (Provoke, Flash, Sleep) still
                 // draw its attention.
                 if defender_handle.kind == crate::runtime::actor_registry::ActorKindTag::BattleNpc {
-                    d_write
-                        .hate
-                        .update_hate(attacker_actor_id, i32::from(command.base_potency.max(1)));
+                    // The script's flat figure when it sets one (Provoke
+                    // 750, Flash 400), else the row's potency.
+                    let enmity =
+                        setup_enmity.map_or(i32::from(command.base_potency.max(1)), |e| e as i32);
+                    d_write.hate.update_hate(attacker_actor_id, enmity);
                 }
                 None
             }
@@ -2469,6 +2703,9 @@ async fn resolve_action(
             container.add_action(row.to_result(target_id));
         }
         hit.landed = result.action_landed();
+        if command.action_type == ActionType::Physical && target_id != attacker_actor_id {
+            all_procs.extend(procs_for(result.hit_type, attacker_actor_id, target_id));
+        }
         if !is_status_row && command.status_id != 0 {
             hit.status_roll =
                 battle_utils::try_status(&atk_view, &def_view, &result, &skill, &mut rng);
@@ -2532,6 +2769,7 @@ async fn resolve_action(
     flush_wake_outbox(wake_outbox, registry, world, lua, db).await;
     flush_wake_outbox(hook_outbox, registry, world, lua, db).await;
     apply_party_statuses(party_statuses, registry, world, lua, db).await;
+    Box::pin(set_procs(&all_procs, registry, world, lua, db)).await;
 
     // Pugilist fists (1.23b: "Effect ends upon reuse. Cannot be used
     // simultaneously with..."): using one ends whichever fists are up, and
@@ -3870,6 +4108,9 @@ async fn apply_status_script(
             c.remove_status_mods(status_effect_id);
             drop(c);
             sync_status_speed(registry, world, owner_actor_id).await;
+            if PROC_STATUSES.contains(&status_effect_id) {
+                Box::pin(send_timing_flags(owner_actor_id, registry, world)).await;
+            }
         }
         _ => {}
     }

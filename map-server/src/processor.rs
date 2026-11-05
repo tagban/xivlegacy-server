@@ -178,6 +178,10 @@ impl crate::group::GroupResolver for RetainerMeetingResolver {
     }
 }
 
+/// `server_battle_commands.requirements` bit for "needs a shield" (pmeteor
+/// `BattleCommandRequirements.Shield`): Shield Bash.
+const BATTLE_REQUIRES_SHIELD: u16 = 16;
+
 impl PacketProcessor {
     pub async fn process_packet(
         &self,
@@ -9176,12 +9180,25 @@ impl PacketProcessor {
                 _ => F::NONE,
             }
         };
+        // Haymaker, Phalanx, Fracture, Feint: only right after an evade,
+        // block, parry or miss. Shield Bash and the like need a shield.
+        let (proc_ready, has_shield) = {
+            let c = handle.character.read().await;
+            (
+                crate::runtime::dispatcher::has_proc(&c, command.proc_requirement),
+                c.chara.mods.get(crate::actor::modifier::Modifier::CanBlock) > 0.0,
+            )
+        };
         let error_text = if !can_change
             || recast_end > now_unix
             || (prevent != crate::status::StatusEffectFlags::NONE
                 && status_flags.intersects(prevent))
         {
             Some(32535) // "Please wait a moment and try again."
+        } else if !proc_ready {
+            Some(32556) // "Unable to execute <command>. Conditions for use are not met."
+        } else if command.requirements & BATTLE_REQUIRES_SHIELD != 0 && !has_shield {
+            Some(32557) // "Unable to execute <command>. No shield equipped."
         } else if dist_xz > command.range {
             Some(32539) // "The target is too far away."
         } else if dist_xz < command.min_range {
@@ -9252,6 +9269,17 @@ impl PacketProcessor {
                 }
             }
         };
+        if pushed && command.proc_requirement != 0 {
+            crate::runtime::dispatcher::spend_proc(
+                actor_id,
+                command.proc_requirement,
+                &self.registry,
+                &self.world,
+                self.lua.as_ref(),
+                Some(&self.db),
+            )
+            .await;
+        }
         if !pushed {
             // State-push raced (stack filled between the gate read and
             // the lock) — same feedback pmeteor gives.

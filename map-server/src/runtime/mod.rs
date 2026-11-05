@@ -42,6 +42,8 @@ mod integration_tests;
 
 #[cfg(test)]
 mod battle_audit_tests;
+#[cfg(test)]
+mod battle_behavior_tests;
 
 pub use actor_registry::{ActorHandle, ActorKindTag, ActorRegistry};
 pub use broadcast::broadcast_around_actor;
