@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1707 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1728 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -1711,4 +1711,25 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (29033, 1090515, 'pgl300_mizzenmast_trigger', 133, '', 0, -437.4, 40.0, 207.95, 0.0, 0, 0, NULL),
 (29034, 1090516, 'pgl300_misery_gangway_trigger', 230, '', 0, -413.0, 41.1, 437.5, 0.0, 0, 0, NULL),
 (29035, 1001076, 'gla300_yoyobina_barracks', 206, '', 0, 187.0, 27.5, -1583.5, -1.57, 0, 0, NULL),
-(29036, 1001076, 'gla300_yoyobina_past', 209, 'PrivateAreaMasterPast', 5, -189.0, 195.0, 182.0, 0.9, 0, 0, NULL);
+(29036, 1001076, 'gla300_yoyobina_past', 209, 'PrivateAreaMasterPast', 5, -189.0, 195.0, 182.0, 0.9, 0, 0, NULL),
+(27894, 1000843, 'man406_minfilia', 181, 'PrivateAreaMasterPast', 4, -119.3, 1.2, -160.0, -1.57, 0, 0, NULL),
+(27895, 1001046, 'man406_tataru', 181, 'PrivateAreaMasterPast', 4, -139.4, 1.0, -163.6, -0.79, 0, 0, NULL),
+(27896, 1001228, 'man406_satzfloh', 181, 'PrivateAreaMasterPast', 4, -145.4, 1.0, -157.0, 3.08, 0, 0, NULL),
+(27897, 1001229, 'man406_percevains', 181, 'PrivateAreaMasterPast', 4, -145.0, 1.0, -163.0, -0.07, 0, 0, NULL),
+(27898, 1001230, 'man406_una_tayuun', 181, 'PrivateAreaMasterPast', 4, -153.5, 0.1, -161.5, 1.43, 0, 0, NULL),
+(27899, 1001378, 'man406_seranelien', 181, 'PrivateAreaMasterPast', 4, -199.7, 0.0, -156.0, 1.57, 0, 0, NULL),
+(27900, 1001375, 'man406_godfrey', 181, 'PrivateAreaMasterPast', 4, -198.3, 0.0, -156.0, -1.57, 0, 0, NULL),
+(27901, 1001373, 'man406_sahja_zhwan', 181, 'PrivateAreaMasterPast', 4, -199.7, 0.0, -164.0, 1.57, 0, 0, NULL),
+(27902, 1001374, 'man406_nenekani', 181, 'PrivateAreaMasterPast', 4, -198.3, 0.0, -164.0, -1.57, 0, 0, NULL),
+(27903, 1001376, 'man406_fenana', 181, 'PrivateAreaMasterPast', 4, -195.1, 0.1, -152.0, 1.57, 0, 0, NULL),
+(27904, 1001377, 'man406_nonoru', 181, 'PrivateAreaMasterPast', 4, -193.7, 0.1, -152.0, -1.57, 0, 0, NULL),
+(27905, 1090160, 'man406_door_exit', 181, 'PrivateAreaMasterPast', 4, -209.5, 0.0, -160.0, 0.0, 0, 0, NULL),
+(27906, 1090161, 'man406_door_office_w', 181, 'PrivateAreaMasterPast', 4, -135.5, 1.0, -160.0, 0.0, 0, 0, NULL),
+(27907, 1090162, 'man406_door_office_e', 181, 'PrivateAreaMasterPast', 4, -132.5, 1.2, -160.0, 0.0, 0, 0, NULL),
+(27908, 1000477, 'man406_resistance_captain', 181, 'PrivateAreaMasterPast', 4, -122.5, 1.2, -157.0, 1.57, 0, 0, NULL),
+(27909, 1000479, 'man406_strapping_member', 181, 'PrivateAreaMasterPast', 4, -125.5, 1.2, -156.0, 1.57, 0, 0, NULL),
+(27910, 1000478, 'man406_brutish_member', 181, 'PrivateAreaMasterPast', 4, -128.0, 1.2, -157.0, 1.57, 0, 0, NULL),
+(27911, 1000480, 'man406_dispassionate_member', 181, 'PrivateAreaMasterPast', 4, -125.5, 1.2, -164.0, 1.57, 0, 0, NULL),
+(27912, 1000482, 'man406_unbloodied_member', 181, 'PrivateAreaMasterPast', 4, -128.0, 1.2, -163.0, 1.57, 0, 0, NULL),
+(27913, 1090369, 'man406_revenants_toll', 190, '', 0, -220.0, 18.6, -690.0, 0.0, 0, 0, NULL),
+(27914, 1090370, 'man406_imperials_stop', 190, '', 0, -60.0, 20.0, -705.0, 0.0, 0, 0, NULL);
