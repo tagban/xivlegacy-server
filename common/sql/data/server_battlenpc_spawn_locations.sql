@@ -1,4 +1,4 @@
--- server_battlenpc_spawn_locations: game data, 3902 rows. Reloaded whole when this file changes.
+-- server_battlenpc_spawn_locations: game data, 3909 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_spawn_locations`;
 INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `groupId`, `positionX`, `positionY`, `positionZ`, `rotation`) VALUES
@@ -3910,4 +3910,11 @@ INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `
 (4106, 'etc2u5_clever_dodo', 30403, 1214.0, 279.9, -712.0, 0.0),
 (4107, 'etc1u9_rabid_dodo', 30404, 1330.0, 279.99, -1104.0, 0.0),
 (4108, 'etc1u9_rabid_dodo', 30404, 1340.0, 280.21, -1104.0, 0.0),
-(4109, 'etc1u9_rabid_dodo', 30404, 1330.0, 280.52, -1084.0, 0.0);
+(4109, 'etc1u9_rabid_dodo', 30404, 1330.0, 280.52, -1084.0, 0.0),
+(4110, 'etc3l1_imperial_veles', 30405, -172.0, 25.07, -122.0, 1.57),
+(4111, 'etc3l1_imperial_veles', 30405, -178.0, 25.58, -132.0, 1.57),
+(4112, 'etc3l1_imperial_veles', 30405, -184.0, 24.85, -124.0, 1.57),
+(4116, 'etc2l1_aldgoat_nanny', 30407, 838.0, 54.1, -1100.0, 0.0),
+(4117, 'etc2l1_aldgoat_nanny', 30407, 842.0, 54.37, -1092.0, 0.0),
+(4118, 'etc2l1_moraby_mole', 30408, 826.0, 54.15, -1104.0, 0.0),
+(4119, 'etc2l1_black_bat', 30409, 834.0, 53.11, -1112.0, 0.0);

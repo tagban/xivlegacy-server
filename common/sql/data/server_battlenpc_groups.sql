@@ -1,4 +1,4 @@
--- server_battlenpc_groups: game data, 633 rows. Reloaded whole when this file changes.
+-- server_battlenpc_groups: game data, 637 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_groups`;
 INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLevel`, `maxLevel`, `respawnTime`, `hp`, `mp`, `dropListId`, `allegiance`, `spawnType`, `animationId`, `actorState`, `privateAreaName`, `privateAreaLevel`, `zoneId`) VALUES
@@ -635,4 +635,8 @@ INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLe
 (30401, 30401, 'etc2u0_spriggan', 20, 20, 0, 250, 0, 0, 0, 16, 0, 0, '', 0, 172),
 (30402, 30402, 'etc2u0_feral_dodo', 18, 18, 0, 250, 0, 0, 0, 16, 0, 0, '', 0, 172),
 (30403, 30403, 'etc2u5_clever_dodo', 15, 15, 0, 220, 0, 0, 0, 16, 0, 0, '', 0, 171),
-(30404, 30404, 'etc1u9_rabid_dodo', 10, 10, 0, 150, 0, 0, 0, 16, 0, 0, '', 0, 171);
+(30404, 30404, 'etc1u9_rabid_dodo', 10, 10, 0, 150, 0, 0, 0, 16, 0, 0, '', 0, 171),
+(30405, 30405, 'etc3l1_imperial_veles', 16, 16, 0, 260, 0, 0, 0, 16, 0, 0, '', 0, 128),
+(30407, 30407, 'etc2l1_aldgoat_nanny', 19, 19, 0, 300, 0, 0, 0, 16, 0, 0, '', 0, 130),
+(30408, 30408, 'etc2l1_moraby_mole', 19, 19, 0, 280, 0, 0, 0, 16, 0, 0, '', 0, 130),
+(30409, 30409, 'etc2l1_black_bat', 19, 19, 0, 260, 0, 0, 0, 16, 0, 0, '', 0, 130);
