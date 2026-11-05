@@ -18334,6 +18334,40 @@ async fn hp_of(registry: &ActorRegistry, id: u32) -> i16 {
         .hp
 }
 
+/// A swing that misses still puts the attacker on the monster's hate list,
+/// so a monster the player can't hit (far above their level) fights back.
+#[tokio::test]
+async fn a_missed_swing_still_pulls_the_monster() {
+    let (world, registry, zone) = party_hook_zone().await;
+    {
+        let m = registry.get(2).await.unwrap();
+        let mut c = m.character.write().await;
+        c.chara
+            .mods
+            .set(crate::actor::modifier::Modifier::RawEvadeRate, 1000.0);
+    }
+    dispatch_battle_event(
+        &BattleEvent::ResolveAutoAttack {
+            attacker_actor_id: 1,
+            defender_actor_id: 2,
+        },
+        &registry,
+        &world,
+        &zone,
+        None,
+        None,
+    )
+    .await;
+    let m = registry.get(2).await.unwrap();
+    let c = m.character.read().await;
+    assert_eq!(c.chara.hp, 1000, "the swing missed");
+    assert_eq!(
+        c.hate.most_hated(),
+        Some(1),
+        "but the monster hates the player"
+    );
+}
+
 /// Cover: the monster's swings at a Covered player land on the paladin
 /// who covered them.
 #[tokio::test]

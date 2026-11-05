@@ -886,6 +886,11 @@ async fn resolve_auto_attack(
                     .ceil() as i32;
                 d.add_tp(gain);
             }
+        } else if d.is_alive() && attacker_actor_id != defender_actor_id {
+            // A miss still pulls the monster (skills add their hate either
+            // way): without this a target the attacker can't hit, such as
+            // one far above their level, never fights back.
+            d.hate.add_base_hate(attacker_actor_id);
         }
     }
 
@@ -1108,6 +1113,18 @@ async fn action_targets(
     }
     find.find_within_area(main, flags, command.aoe_target, &arena);
     let mut out: Vec<u32> = find.targets().iter().map(|v| v.actor_id).collect();
+    if out.is_empty() {
+        tracing::debug!(
+            command = command.id,
+            owner = ?owner.position,
+            owner_rot = owner.rotation,
+            main = ?main.position,
+            aoe = ?command.aoe_type,
+            range = command.aoe_range,
+            height = command.range_height,
+            "battle: area action found no targets",
+        );
+    }
     // The finder has no party ids, so party-only AoEs (Enhanced Rampart)
     // keep to the party here: other players are left out, duty allies
     // (who fight beside the party without joining it) stay in.
