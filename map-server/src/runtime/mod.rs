@@ -34,6 +34,7 @@ pub mod dispatcher;
 pub mod gc_apply;
 pub mod quest_apply;
 pub mod quest_hook;
+pub mod summon;
 pub mod ticker;
 
 #[cfg(test)]

@@ -1,4 +1,4 @@
--- server_battlenpc_pools: game data, 342 rows. Reloaded whole when this file changes.
+-- server_battlenpc_pools: game data, 361 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_pools`;
 INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId`, `currentJob`, `combatSkill`, `combatDelay`, `combatDmgMult`, `aggroType`, `immunity`, `linkType`, `spellListId`, `skillListId`) VALUES
@@ -280,6 +280,25 @@ INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId
 (30050, 2301001, 'Miser''s Mistress', 16, 0, 1, 4000, 1.5, 1, 0, 0, 0, 30050),
 (30051, 2303003, 'Myrmidon Princess', 33, 0, 1, 3600, 1.5, 1, 0, 0, 0, 30051),
 (30052, 2308701, 'Chimera', 30, 0, 1, 3600, 1.5, 1, 0, 0, 0, 30052),
+(30053, 2301105, 'Bastard Mite', 35, 0, 1, 4200, 1.0, 1, 0, 0, 0, 35),
+(30054, 2301106, 'Widow''s Suitor', 35, 0, 1, 4200, 1.0, 1, 0, 0, 0, 35),
+(30055, 2301107, 'Horde Mite', 35, 0, 1, 4200, 1.0, 1, 0, 0, 0, 35),
+(30056, 2301108, 'Horde Mite', 35, 0, 1, 4200, 1.0, 1, 0, 0, 0, 35),
+(30057, 2301109, 'Widow''s Suitor', 35, 0, 1, 4200, 1.0, 1, 0, 0, 0, 35),
+(30058, 2301902, 'Purgatory Knight', 47, 0, 1, 4200, 1.0, 1, 0, 0, 0, 125),
+(30059, 2302501, 'Deepvoid Slave', 60, 0, 1, 4200, 1.0, 1, 0, 0, 0, 60),
+(30060, 2302703, 'Giltrap', 15, 0, 1, 4200, 1.0, 1, 0, 0, 0, 15),
+(30061, 2302705, 'Aloes Rosetrap', 15, 0, 1, 4200, 1.0, 1, 0, 0, 0, 15),
+(30062, 2303001, 'Myrmidon Soldier', 33, 0, 1, 4200, 1.0, 1, 0, 0, 0, 33),
+(30063, 2303002, 'Myrmidon Guard', 33, 0, 1, 4200, 1.0, 1, 0, 0, 0, 33),
+(30064, 2303006, 'Myrmidon Marshal', 33, 0, 1, 4200, 1.0, 1, 0, 0, 0, 33),
+(30065, 2303007, 'Myrmidon Scavenger', 33, 0, 1, 4200, 1.0, 1, 0, 0, 0, 33),
+(30066, 2304202, 'Hearty Victual', 21, 0, 1, 4200, 1.0, 1, 0, 0, 0, 21),
+(30067, 2304203, 'Tender Victual', 21, 0, 1, 4200, 1.0, 1, 0, 0, 0, 21),
+(30068, 2304204, 'Scale Slug', 21, 0, 1, 4200, 1.0, 1, 0, 0, 0, 21),
+(30069, 2304205, 'Abacus Slug', 21, 0, 1, 4200, 1.0, 1, 0, 0, 0, 21),
+(30070, 2304302, 'Chain Bearer', 46, 0, 1, 4200, 1.0, 1, 0, 0, 0, 46),
+(30071, 2304303, 'Purgatory Mage', 46, 0, 1, 4200, 1.0, 1, 0, 0, 0, 46),
 (30100, 2107301, 'Ifrit', 54, 0, 1, 3600, 1.5, 1, 0, 0, 0, 30100),
 (30101, 2103005, 'Nest Commander', 33, 0, 1, 4200, 1.0, 1, 0, 0, 0, 33),
 (30102, 2100114, 'Pyrausta', 45, 0, 1, 4200, 1.0, 0, 0, 0, 0, 45),
