@@ -379,7 +379,9 @@ impl CommandProcessor {
             Err(_) => match self.nearest_monster(me).await {
                 Some(t) => t,
                 None => {
-                    return format!("no monster targeted or within {USEMOVE_RANGE} yalms ({usage})");
+                    return format!(
+                        "no monster targeted or within {USEMOVE_RANGE} yalms ({usage})"
+                    );
                 }
             },
         };
