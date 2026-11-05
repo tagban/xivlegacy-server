@@ -67,8 +67,13 @@ function onUpdate(tick, area)
 			end
 		end
 	end
+	-- The roster can lag the spawns by a tick or two: Siward counts as down
+	-- only once he has been seen.
+	if siwardUp then
+		state.siwardSeen = true;
+	end
 	-- Siward down: the yarzons go with him, and battleComplete follows.
-	if not siwardUp then
+	if state.siwardSeen and not siwardUp then
 		state.done = true;
 		for i = 1, #foes do
 			foes[i]:Die();

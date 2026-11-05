@@ -47,12 +47,14 @@ describe("There Can Be Only One (Arc306)", function()
             :expectZoneChangeContent()
     end)
 
-    it("SEQ_020: after a lost fight, straight back in", function()
+    it("SEQ_020: after a lost fight, the scene and the fight again", function()
         local w = walkthrough.start("Arc306", 20)
 
         w:stateChange(20):expectEnpc(KEELTY_WOOD, QFLAG_PUSH)
         w:expectMarkers(11016203)
-        w:push(KEELTY_WOOD):expectCreateContentArea():expectZoneChangeContent()
+        w:push(KEELTY_WOOD):expectDelegate("processEvent020"):ack()
+            :expectCreateContentArea()
+            :expectZoneChangeContent()
     end)
 
     it("SEQ_040: the Quiver's Hold, and Keelty's story", function()

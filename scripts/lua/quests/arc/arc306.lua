@@ -165,15 +165,13 @@ function onPush(player, quest, npc, eventName)
 		player:EndEvent();
 		warpTo(player, WOOD_ZONE, SORREL_HAVEN);
 		return;
-	elseif (npcClassId == ENPC_KEELTY_WOOD and seq == SEQ_010) then
-		-- arc30620: Keelty cornered by Siward. It ends on an after-warp
-		-- fade, which the move into the fight lifts.
+	elseif (npcClassId == ENPC_KEELTY_WOOD and (seq == SEQ_010 or seq == SEQ_020)) then
+		-- arc30620: Keelty cornered by Siward (again, after a loss). It ends
+		-- on an after-warp fade, which the move into the fight lifts.
 		callClientFunction(player, "delegateEvent", player, quest, "processEvent020");
-		quest:StartSequence(SEQ_020);
-		startArc306Fight(player, quest);
-		return;
-	elseif (npcClassId == ENPC_KEELTY_WOOD and seq == SEQ_020) then
-		-- Straight back in after a loss.
+		if (seq == SEQ_010) then
+			quest:StartSequence(SEQ_020);
+		end
 		startArc306Fight(player, quest);
 		return;
 	elseif (npcClassId == ENPC_KEELTY_GUILD and seq == SEQ_040) then
