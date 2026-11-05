@@ -289,6 +289,9 @@ pub const AGGRO_SCAN_RADIUS: f32 = 50.0;
 pub const AGGRO_LEVEL_CAP: i16 = 10;
 /// TP a monster needs before it readies a TP move.
 pub const MONSTER_SKILL_TP: u16 = 1000;
+/// How far past its stop ring a target may stand before a melee
+/// monster steps after it (yalms).
+pub const CHASE_SLACK: f32 = 0.1;
 /// Least time between two TP moves from one monster.
 pub const MONSTER_SKILL_GAP_MS: u64 = 10_000;
 /// Maximum detection distance regardless of detection type.
@@ -544,7 +547,10 @@ impl Controller {
             } else {
                 owner.attack_range - 0.2
             };
-            if dist > stop && !owner.has_prevent_movement {
+            // A little slack past the ring: a step shorter than float
+            // precision never lands, and chasing it every tick left the
+            // monster running in place, never facing or swinging.
+            if dist > stop + CHASE_SLACK && !owner.has_prevent_movement {
                 // Destination = the stop-ring point on the owner→target
                 // line, so the step integrator can never overshoot.
                 let t = (dist - stop) / dist;
@@ -939,6 +945,25 @@ mod tests {
         assert!(matches!(
             c.tick(3_100, v, &arena),
             ControllerDecision::LuaCombatTick { .. }
+        ));
+    }
+
+    /// A target just past the stop ring (the player stepped back a hair)
+    /// gets faced, not chased: the step would be too short to land.
+    #[test]
+    fn target_a_hair_past_the_ring_is_faced_not_chased() {
+        let mut c = BattleNpcController::new_for(1);
+        // attack_range 3.0 -> stop ring 2.8
+        let arena = arena_with(&[view(1, 0.0, 0.0, 2, true), view(10, 2.8001, 0.0, 1, true)]);
+        let v = owner_view(true, true, Some(10), Some(10));
+        assert!(matches!(
+            c.tick(100, v, &arena),
+            ControllerDecision::FaceTarget { .. }
+        ));
+        let far = arena_with(&[view(1, 0.0, 0.0, 2, true), view(10, 3.5, 0.0, 1, true)]);
+        assert!(matches!(
+            c.tick(200, v, &far),
+            ControllerDecision::MoveTo { .. }
         ));
     }
 

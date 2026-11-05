@@ -904,7 +904,14 @@ async fn apply_npc_movement_step(
                 } else {
                     (pos.x, pos.y, pos.z)
                 };
-                let rot = look_at_rotation(pos.x, pos.z, destination.x, destination.z);
+                // A step that goes nowhere has no direction: keep facing
+                // (look_at of the same point is 0.0, which turned
+                // monsters away from their target).
+                let rot = if dist > f32::EPSILON {
+                    look_at_rotation(pos.x, pos.z, destination.x, destination.z)
+                } else {
+                    chara.base.rotation
+                };
                 chara.base.position_x = nx;
                 chara.base.position_y = ny;
                 chara.base.position_z = nz;

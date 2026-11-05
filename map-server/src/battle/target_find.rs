@@ -589,6 +589,32 @@ mod tests {
     }
 
     #[test]
+    fn caster_cone_hits_an_enemy_straight_ahead() {
+        // Live Morbol Bad Breath: aimed at itself, player 1.09 y ahead.
+        let mut a = HashMap::new();
+        let mut owner = view(1, 779.763, -1150.3644, 2);
+        owner.position.y = 6.285;
+        let mut player = view(9, 779.763, -1149.278, 1);
+        player.position.y = 6.285;
+        a.insert(1, owner);
+        a.insert(9, player);
+        let mut tf = TargetFind::new(owner, Some(owner));
+        tf.set_aoe_type(
+            ValidTarget(17152),
+            TargetFindAOEType::Cone,
+            TargetFindAOETarget::Self_,
+            15.0,
+            0.0,
+            10.0,
+            0.0,
+            0.5 * std::f32::consts::PI,
+        );
+        tf.find_within_area(owner, ValidTarget(17152), TargetFindAOETarget::Self_, &a);
+        let ids: Vec<u32> = tf.targets().iter().map(|v| v.actor_id).collect();
+        assert_eq!(ids, vec![9]);
+    }
+
+    #[test]
     fn cone_always_hits_the_selected_target() {
         let mut a = arena();
         a.insert(5, view(5, 0.0, -5.0, 2)); // selected, behind the owner
