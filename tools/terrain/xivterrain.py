@@ -31,7 +31,7 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent.parent
-ZONES_SQL = REPO / "common" / "sql" / "seed" / "033_server_zones.sql"
+ZONES_SQL = REPO / "common" / "sql" / "data" / "server_zones.sql"
 DEFAULT_CLIENT = os.environ.get("XIV_CLIENT", "/Volumes/AppStorage/ffxiv-scratch/FINAL FANTASY XIV 1.23b")
 
 CACHE = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "xivlegacy" / "terrain_layouts.json"

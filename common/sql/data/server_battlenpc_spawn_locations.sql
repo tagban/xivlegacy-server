@@ -1,4 +1,4 @@
--- server_battlenpc_spawn_locations: game data, 3892 rows. Reloaded whole when this file changes.
+-- server_battlenpc_spawn_locations: game data, 3902 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_spawn_locations`;
 INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `groupId`, `positionX`, `positionY`, `positionZ`, `rotation`) VALUES
@@ -3900,4 +3900,14 @@ INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `
 (3952, 'arc306_siward', 30329, -412.0, 4.33, -450.0, -1.57),
 (3953, 'arc306_yarzon', 30330, -408.0, 3.73, -446.0, -1.57),
 (3954, 'arc306_yarzon', 30330, -416.0, 5.0, -454.0, -1.57),
-(3955, 'arc306_yarzon', 30330, -404.0, 4.0, -448.0, -1.57);
+(3955, 'arc306_yarzon', 30330, -404.0, 4.0, -448.0, -1.57),
+(4100, 'etc2u0_coblyn', 30400, -1340.0, 56.0, -262.0, 0.0),
+(4101, 'etc2u0_coblyn', 30400, -1352.0, 55.84, -260.0, 0.0),
+(4102, 'etc2u0_spriggan', 30401, -1352.0, 55.68, -250.0, 0.0),
+(4103, 'etc2u0_feral_dodo', 30402, -1330.0, 55.9, -262.0, 0.0),
+(4104, 'etc2u5_clever_dodo', 30403, 1220.0, 280.0, -702.0, 0.0),
+(4105, 'etc2u5_clever_dodo', 30403, 1210.0, 279.84, -700.0, 0.0),
+(4106, 'etc2u5_clever_dodo', 30403, 1214.0, 279.9, -712.0, 0.0),
+(4107, 'etc1u9_rabid_dodo', 30404, 1330.0, 279.99, -1104.0, 0.0),
+(4108, 'etc1u9_rabid_dodo', 30404, 1340.0, 280.21, -1104.0, 0.0),
+(4109, 'etc1u9_rabid_dodo', 30404, 1330.0, 280.52, -1084.0, 0.0);
