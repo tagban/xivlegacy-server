@@ -1,4 +1,4 @@
--- server_battlenpc_groups: game data, 617 rows. Reloaded whole when this file changes.
+-- server_battlenpc_groups: game data, 621 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_groups`;
 INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLevel`, `maxLevel`, `respawnTime`, `hp`, `mp`, `dropListId`, `allegiance`, `spawnType`, `animationId`, `actorState`, `privateAreaName`, `privateAreaLevel`, `zoneId`) VALUES
@@ -619,4 +619,8 @@ INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLe
 (30323, 30223, 'pgl300_kraken_deckhand', 25, 25, 0, 650, 0, 0, 0, 16, 0, 0, '', 0, 192),
 (30324, 30224, 'pgl300_kraken_deckhand', 25, 25, 0, 650, 0, 0, 0, 16, 0, 0, '', 0, 192),
 (30325, 30225, 'pgl300_kraken_deckhand', 25, 25, 0, 650, 0, 0, 0, 16, 0, 0, '', 0, 192),
-(30326, 30226, 'gla300_jmoldva', 30, 30, 0, 1400, 0, 0, 0, 16, 0, 0, '', 0, 206);
+(30326, 30226, 'gla300_jmoldva', 30, 30, 0, 1400, 0, 0, 0, 16, 0, 0, '', 0, 206),
+(30150, 30133, 'man406_imperial_hoplomachus', 46, 46, 0, 1300, 0, 0, 0, 1, 0, 0, '', 0, 190),
+(30151, 30134, 'man406_imperial_signifer', 46, 46, 0, 1100, 0, 0, 0, 1, 0, 0, '', 0, 190),
+(30152, 30135, 'man406_imperial_laquearius', 46, 46, 0, 1300, 0, 0, 0, 1, 0, 0, '', 0, 190),
+(30153, 30136, 'man406_imperial_centurion', 47, 47, 0, 2200, 0, 0, 0, 1, 0, 0, '', 0, 190);

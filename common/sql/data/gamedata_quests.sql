@@ -20,7 +20,7 @@ INSERT INTO `gamedata_quests` (`id`, `questName`, `className`, `prerequisite`, `
 (110016, 'Forever Taken', 'Man304', 110015, 34),
 (110017, 'Lord Errant', 'Man308', 110016, 38),
 (110018, 'Of Men They Sing', 'Man402', 110017, 42),
-(110019, 'Futures Perfect', 'Man406', 0, 46),
+(110019, 'Futures Perfect', 'Man406', 110018, 46),
 (110020, '[en]', 'Man502', 0, 52),
 (110021, '[en]', 'Man504', 0, 54),
 (110060, 'The House Always Wins', 'Pgl200', 0, 20),

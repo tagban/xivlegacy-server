@@ -1,4 +1,4 @@
--- server_battlenpc_pools: game data, 328 rows. Reloaded whole when this file changes.
+-- server_battlenpc_pools: game data, 332 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_pools`;
 INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId`, `currentJob`, `combatSkill`, `combatDelay`, `combatDmgMult`, `aggroType`, `immunity`, `linkType`, `spellListId`, `skillListId`) VALUES
@@ -329,4 +329,8 @@ INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId
 (30223, 2280213, 'pgl300_kraken_deckhand_1', 29, 3, 1, 4800, 0.6, 0, 0, 0, 0, 125),
 (30224, 2280214, 'pgl300_kraken_deckhand_2', 29, 3, 1, 4800, 0.6, 0, 0, 0, 0, 125),
 (30225, 2280215, 'pgl300_kraken_deckhand_3', 29, 3, 1, 4800, 0.6, 0, 0, 0, 0, 125),
-(30226, 2289009, 'gla300_jmoldva', 29, 8, 1, 4500, 0.45, 0, 0, 0, 0, 124);
+(30226, 2289009, 'gla300_jmoldva', 29, 8, 1, 4500, 0.45, 0, 0, 0, 0, 124),
+(30133, 2280040, 'man406_imperial_hoplomachus', 29, 0, 1, 4200, 1.0, 1, 0, 0, 0, 104),
+(30134, 2280041, 'man406_imperial_signifer', 29, 0, 1, 4200, 1.0, 1, 0, 0, 120, 104),
+(30135, 2280042, 'man406_imperial_laquearius', 29, 0, 1, 4200, 1.0, 1, 0, 0, 0, 104),
+(30136, 2207006, 'man406_imperial_centurion', 29, 0, 1, 4200, 1.1, 1, 0, 0, 0, 104);

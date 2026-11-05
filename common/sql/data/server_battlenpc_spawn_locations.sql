@@ -1,4 +1,4 @@
--- server_battlenpc_spawn_locations: game data, 3879 rows. Reloaded whole when this file changes.
+-- server_battlenpc_spawn_locations: game data, 3883 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_spawn_locations`;
 INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `groupId`, `positionX`, `positionY`, `positionZ`, `rotation`) VALUES
@@ -3887,4 +3887,8 @@ INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `
 (103189, 'young_galago', 10462, -1548.808, 22.165, -1843.853, 0.239),
 (103190, 'young_galago', 10462, -1563.014, 22.163, -1852.486, -1.0249),
 (103191, 'young_galago', 10462, -1543.237, 22.163, -1864.894, 2.7229),
-(103192, 'young_galago', 10462, -1534.148, 22.164, -1858.254, 1.3564);
+(103192, 'young_galago', 10462, -1534.148, 22.164, -1858.254, 1.3564),
+(3594, 'man406_imperial_hoplomachus', 30150, -32.0, 18.5, -711.0, -1.57),
+(3595, 'man406_imperial_signifer', 30151, -28.0, 17.9, -706.0, -1.57),
+(3596, 'man406_imperial_laquearius', 30152, -32.0, 17.9, -701.0, -1.57),
+(3597, 'man406_imperial_centurion', 30153, -24.0, 18.6, -706.0, -1.57);
