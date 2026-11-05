@@ -29,7 +29,7 @@ INSERT INTO `gamedata_quests` (`id`, `questName`, `className`, `prerequisite`, `
 (110063, '[en]', 'Pgl400', 0, 40),
 (110080, 'All Bark and No Bite', 'Gla200', 0, 20),
 (110081, 'Unalienable Rights', 'Gla300', 110080, 30),
-(110082, 'Thrill of the Fight', 'Gla306', 0, 36),
+(110082, 'Thrill of the Fight', 'Gla306', 110081, 36),
 (110083, '[en]', 'Gla400', 0, 40),
 (110100, 'Bloody Baptism', 'Exc200', 0, 20),
 (110101, 'Two-man Crew', 'Exc300', 0, 30),
