@@ -141,6 +141,9 @@ pub struct BattleNpcControllerState {
     /// TP moves this monster may use: its pool's skill list filtered to
     /// its level at spawn (`Catalogs::monster_commands`).
     pub skills: Vec<BattleCommand>,
+    /// A move the `usemove` GM command queued: used on the next combat
+    /// tick whatever the TP, gap or reach, then cleared.
+    pub forced_skill: Option<BattleCommand>,
     /// Spells from the pool's spell list, same level filter. A caster
     /// picks one per cast; empty keeps the single `spell`.
     pub spells: Vec<BattleCommand>,
@@ -611,6 +614,25 @@ impl Controller {
         target_id: u32,
         dist: f32,
     ) -> Option<ControllerDecision> {
+        let owner_id = owner.actor.actor_id;
+        if let Some(cmd) = self.battle.forced_skill.take() {
+            let skill_index = match self.battle.skills.iter().position(|s| s.id == cmd.id) {
+                Some(i) => i,
+                None => {
+                    self.battle.skills.push(cmd);
+                    self.battle.skills.len() - 1
+                }
+            };
+            self.battle.next_skill_ms = now_ms + MONSTER_SKILL_GAP_MS;
+            return Some(ControllerDecision::UseSkill {
+                target_actor_id: command_target(
+                    &self.battle.skills[skill_index],
+                    owner_id,
+                    target_id,
+                ),
+                skill_index,
+            });
+        }
         if !self.weapon_skill_enabled
             || self.battle.skills.is_empty()
             || owner.tp < MONSTER_SKILL_TP
@@ -621,7 +643,6 @@ impl Controller {
         {
             return None;
         }
-        let owner_id = owner.actor.actor_id;
         let reach = owner.attack_range;
         let usable: Vec<usize> = (0..self.battle.skills.len())
             .filter(|&i| command_reaches(&self.battle.skills[i], dist, reach))
@@ -964,6 +985,31 @@ mod tests {
         assert!(matches!(
             c.tick(200, v, &far),
             ControllerDecision::MoveTo { .. }
+        ));
+    }
+
+    /// A queued `usemove` fires on the next combat tick even at 0 TP and
+    /// out of reach, joins the monster's list, and is used only once.
+    #[test]
+    fn forced_move_fires_once_without_tp() {
+        let mut c = BattleNpcController::new_for(1);
+        c.battle.skills = vec![monster_move(23012, false, 5.0, 0.0)];
+        c.battle.forced_skill = Some(monster_move(23285, true, 0.0, 15.0));
+        // 0 TP (owner_view's default)
+        let arena = arena_with(&[view(1, 0.0, 0.0, 2, true), view(10, 2.0, 0.0, 1, true)]);
+        let v = owner_view(true, true, Some(10), Some(10));
+        assert_eq!(
+            c.tick(100, v, &arena),
+            ControllerDecision::UseSkill {
+                target_actor_id: 1,
+                skill_index: 1
+            }
+        );
+        assert!(c.battle.forced_skill.is_none());
+        assert_eq!(c.battle.skills.len(), 2);
+        assert!(!matches!(
+            c.tick(200, v, &arena),
+            ControllerDecision::UseSkill { .. }
         ));
     }
 

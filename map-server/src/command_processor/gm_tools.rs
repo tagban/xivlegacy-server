@@ -104,7 +104,7 @@ impl CommandProcessor {
     // --- moving players ------------------------------------------------------------------------
 
     /// The invoker's current target, or an error line.
-    async fn my_target(&self, me: u32) -> Result<u32, String> {
+    pub(super) async fn my_target(&self, me: u32) -> Result<u32, String> {
         let handle = self
             .registry
             .get(me)
@@ -160,7 +160,7 @@ impl CommandProcessor {
 
     /// "name (actor 0x…)" for replies; a monster's class (its name is
     /// client text).
-    async fn actor_label(&self, actor_id: u32) -> String {
+    pub(super) async fn actor_label(&self, actor_id: u32) -> String {
         let Some(h) = self.registry.get(actor_id).await else {
             return format!("actor 0x{actor_id:08X}");
         };
