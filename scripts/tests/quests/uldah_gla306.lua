@@ -7,7 +7,7 @@
 
 -- Actor class ids (from scripts/lua/quests/gla/gla306.lua).
 local LULUTSU      = 1000863
-local COYNACH      = 1000631
+local GALEREN      = 1000963
 local JAJANZO      = 1000654
 local YOYOBINA     = 1000927
 local CHALLENGER   = 1000601
@@ -34,7 +34,7 @@ describe("Thrill of the Fight (Gla306)", function()
 
         w:stateChange(3):expectEnpc(YOYOBINA, QFLAG_TALK)
         w:talk(JAJANZO):expectDelegate("processEvent003_3"):ack()
-        w:talk(COYNACH):expectDelegate("processEvent003_10"):ack()
+        w:talk(GALEREN):expectDelegate("processEvent003_10"):ack()
         w:talk(YOYOBINA):expectDelegate("processEvent005"):answer(1):expectStartSequence(5)
     end)
 

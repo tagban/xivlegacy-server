@@ -49,11 +49,12 @@ SEQ_050	= 50;  -- Lulutsu has your reward.
 
 -- Actor Class Ids
 ENPC_LULUTSU		= 1000863;
-ENPC_COYNACH		= 1000631;
 ENPC_LYNGWAEK		= 1000647;
 ENPC_JAJANZO		= 1000654;
 ENPC_UBOKHN			= 1000668;
 ENPC_YOYOBINA		= 1000927;
+ENPC_GALEREN		= 1000963;
+ENPC_FRUHYBOLG		= 1000964;
 ENPC_QMHALAWI		= 1000969;
 ENPC_SINGLETON		= 1001445;
 ENPC_VANNES			= 1001464;
@@ -89,7 +90,8 @@ BAZAAR_AREA = 5;
 BAZAAR_ARRIVAL = { -1345.0, 55.6, 501.0, 2.5 };
 
 -- What people say between steps. The client script names no speaker; these
--- follow the lines' content and where each step stands.
+-- follow the lines' content and where each step stands. Coynach is left
+-- out: his shop greeting runs instead of the quest line.
 TALKS_BEFORE_BOUT = {
 	[ENPC_LULUTSU] = "processEvent003_2",
 	[ENPC_JAJANZO] = "processEvent003_3",
@@ -99,7 +101,7 @@ TALKS_BEFORE_BOUT = {
 	[ENPC_VANNES] = "processEvent003_7",
 	[ENPC_UBOKHN] = "processEvent003_8",
 	[ENPC_QMHALAWI] = "processEvent003_9",
-	[ENPC_COYNACH] = "processEvent003_10", -- repair and buy: the guild shop
+	[ENPC_GALEREN] = "processEvent003_10",
 };
 TALKS = {
 	[SEQ_000] = {
@@ -109,7 +111,7 @@ TALKS = {
 	[SEQ_005] = TALKS_BEFORE_BOUT,
 	[SEQ_010] = {
 		-- After a lost bout.
-		[ENPC_COYNACH] = "processEvent003_11",
+		[ENPC_FRUHYBOLG] = "processEvent003_11",
 		[ENPC_LULUTSU] = "processEvent003_12",
 	},
 	[SEQ_020] = {
@@ -138,7 +140,7 @@ TALKS = {
 	},
 	[SEQ_050] = {
 		[ENPC_JAJANZO] = "processEvent050_3",
-		[ENPC_COYNACH] = "processEvent050_4",
+		[ENPC_GALEREN] = "processEvent050_4",
 		[ENPC_SINGLETON] = "processEvent050_5",
 		[ENPC_LYNGWAEK] = "processEvent050_6",
 		[ENPC_VANNES] = "processEvent050_7",
