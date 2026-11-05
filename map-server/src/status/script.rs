@@ -1372,6 +1372,17 @@ mod tests {
     }
 
     #[test]
+    fn monster_poison_and_slow_without_a_size_get_one() {
+        // Digestive Ooze and Sticky Web leave the magnitude at 0.
+        let out = run_on_gain(&root(), "poison", &owner(), fx(0.0)).unwrap();
+        assert_eq!(out.mod_deltas, vec![(Modifier::RegenDown.as_u32(), 10.0)]);
+        let out = run_on_gain(&root(), "slow", &owner(), fx(0.0)).unwrap();
+        let (k, d) = out.mod_deltas[0];
+        assert_eq!(k, Modifier::Delay.as_u32());
+        assert!((d - 0.75).abs() < 1e-9, "3.0 delay x1.25: {d}");
+    }
+
+    #[test]
     fn cleric_stance_records_potency_deltas() {
         let mut o = owner();
         o.mods.set(Modifier::AttackMagicPotency, 25.0);
