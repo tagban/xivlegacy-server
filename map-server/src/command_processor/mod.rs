@@ -194,6 +194,7 @@ impl CommandProcessor {
             "sethome" => self.handle_set_home(&args).await,
             "die" => self.handle_die(&args).await,
             "settp" => self.handle_settp(&args).await,
+            "usemove" => self.handle_usemove(&args).await,
             "givegil" => self.handle_givegil(&args).await,
             "giveexp" => self.handle_giveexp(&args).await,
             "hireretainer" => self.handle_hire_retainer(&args).await,
@@ -290,6 +291,7 @@ impl CommandProcessor {
             "dream <id> [name]",
             "die [name]",
             "settp <tp 0-3000> [name]",
+            "usemove <command id>",
             "setgm <level 0-4> <name>",
             "reload",
             "talkto <actor_class_id> [name]",
@@ -355,6 +357,44 @@ impl CommandProcessor {
             }
             TargetLookup::Err(e) => e,
         }
+    }
+
+    /// `usemove <command id>` — your targeted monster uses that move on
+    /// its next combat tick, whatever its TP (for checking moves one by
+    /// one in the client). The move joins that monster's list.
+    async fn handle_usemove(&self, args: &Args<'_>) -> String {
+        let usage = "usage: usemove <command id> (target a monster you are fighting)";
+        let Some(id) = args.rest().first().and_then(|t| t.parse::<u16>().ok()) else {
+            return usage.into();
+        };
+        let me = match self.invoker_id(args).await {
+            Ok(id) => id,
+            Err(e) => return e,
+        };
+        let target = match self.my_target(me).await {
+            Ok(t) => t,
+            Err(e) => return format!("{e} ({usage})"),
+        };
+        let cmd = {
+            let Ok(cmds) = self.lua.catalogs().battle_commands.read() else {
+                return "the command catalog is busy, try again".into();
+            };
+            match cmds.get(&id) {
+                Some(gd) => gd.to_battle_command(),
+                None => return format!("no battle command {id}"),
+            }
+        };
+        let name = cmd.name.clone();
+        let label = self.actor_label(target).await;
+        let Some(handle) = self.registry.get(target).await else {
+            return "that actor is gone".into();
+        };
+        let mut c = handle.character.write().await;
+        let Some(ctrl) = c.ai_container.controller.as_mut() else {
+            return "your target has no battle AI".into();
+        };
+        ctrl.battle.forced_skill = Some(cmd);
+        format!("{label} will use {name} ({id}) next")
     }
 
     /// `home <name>` — server-driven home-point revive. Restores HP/MP
