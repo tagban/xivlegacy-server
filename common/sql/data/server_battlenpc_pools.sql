@@ -1,4 +1,4 @@
--- server_battlenpc_pools: game data, 363 rows. Reloaded whole when this file changes.
+-- server_battlenpc_pools: game data, 365 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_pools`;
 INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId`, `currentJob`, `combatSkill`, `combatDelay`, `combatDmgMult`, `aggroType`, `immunity`, `linkType`, `spellListId`, `skillListId`) VALUES
@@ -364,4 +364,6 @@ INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId
 (30135, 2280042, 'man406_imperial_laquearius', 29, 0, 1, 4200, 1.0, 1, 0, 0, 0, 104),
 (30136, 2207006, 'man406_imperial_centurion', 29, 0, 1, 4200, 1.1, 1, 0, 0, 0, 104),
 (30227, 2289010, 'gla306_ala_mhigan_bladedancer', 29, 0, 1, 4500, 0.45, 0, 0, 0, 0, 0),
-(30228, 2289012, 'gla306_ala_mhigan_challenger', 29, 0, 1, 4800, 0.35, 0, 0, 0, 0, 0);
+(30228, 2289012, 'gla306_ala_mhigan_challenger', 29, 0, 1, 4800, 0.35, 0, 0, 0, 0, 0),
+(30229, 2289010, 'arc306_siward', 29, 0, 1, 4200, 0.5, 0, 0, 0, 0, 0),
+(30230, 2205514, 'arc306_yarzon', 12, 0, 1, 4800, 0.3, 0, 0, 0, 0, 39);

@@ -1,4 +1,4 @@
--- server_battlenpc_spawn_locations: game data, 3888 rows. Reloaded whole when this file changes.
+-- server_battlenpc_spawn_locations: game data, 3892 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_spawn_locations`;
 INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `groupId`, `positionX`, `positionY`, `positionZ`, `rotation`) VALUES
@@ -3896,4 +3896,8 @@ INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `
 (3596, 'man406_imperial_laquearius', 30152, -32.0, 17.9, -701.0, -1.57),
 (3597, 'man406_imperial_centurion', 30153, -24.0, 18.6, -706.0, -1.57),
 (3950, 'gla306_ala_mhigan_bladedancer', 30327, -205.4, 192.0, 150.9, 0.0),
-(3951, 'gla306_ala_mhigan_challenger', 30328, -205.4, 192.0, 150.9, 0.0);
+(3951, 'gla306_ala_mhigan_challenger', 30328, -205.4, 192.0, 150.9, 0.0),
+(3952, 'arc306_siward', 30329, -412.0, 4.33, -450.0, -1.57),
+(3953, 'arc306_yarzon', 30330, -408.0, 3.73, -446.0, -1.57),
+(3954, 'arc306_yarzon', 30330, -416.0, 5.0, -454.0, -1.57),
+(3955, 'arc306_yarzon', 30330, -404.0, 4.0, -448.0, -1.57);
