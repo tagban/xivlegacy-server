@@ -1,9 +1,10 @@
 -- Main story: "Futures Perfect" (Man406).
 --
--- Quest-hook legs only (the `walkthrough` bridge). The patrol fight and the
--- move into the children's cave run on the content substrate
--- (SimpleContentMan40601 / QuestDirectorMan40601); the leg after it is
--- seeded at SEQ_045.
+-- Quest-hook legs only (the `walkthrough` bridge). The patrol fight, the
+-- airship scenes and the move into the children's cave run on the content
+-- substrate (SimpleContentMan40601, then SimpleContentMan40602, both
+-- directed by QuestDirectorMan40601); the leg after it is seeded at
+-- SEQ_045.
 
 -- Actor class ids (from scripts/lua/quests/man/man406.lua).
 local MINFILIA             = 1000843
