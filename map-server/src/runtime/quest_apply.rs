@@ -1119,7 +1119,7 @@ async fn warp_origin(
 /// engaged — re-engaging the same target would clobber the existing
 /// state's swing clock, restarting the swing window. The C# engage
 /// path has the same gate (`if (IsEngaged) return false`).
-async fn apply_actor_engage(
+pub(crate) async fn apply_actor_engage(
     actor_id: u32,
     target_actor_id: u32,
     registry: &ActorRegistry,

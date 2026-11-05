@@ -36,6 +36,19 @@ the sea-level plane at y=0 in La Noscea, or a lower cliff layer.
 layouts too, but the server's town and dungeon coordinates do not line up with them (NPC
 positions miss by tens of yalms), so their answers should not be trusted yet.
 
+**Dungeons** line up after one constant offset each (server = layout + offset), found by
+sliding the dungeon's monster spawns over the layout's floor until every one lands on it:
+
+| Zone | Layout | Offset x, y, z | Spawns on floor |
+| --- | --- | --- | --- |
+| 159 Toto-Rak | `fst_f0_dun03` | 1216.5, -40.0, 737.0 | 138 / 138 |
+| 231 Dzemael Darkhold | `roc_r0_dun01` | -12.0, 187.7, 34.0 | 140 / 140 |
+| 245 Aurum Vale | `roc_r0_dun04` | -938.5, 195.5, 1377.5 | 91 / 91 |
+| 246 Cutter's Cry | `wil_w0_dun05` | -1213.0, 251.4, -1627.5 | 87 / 87 |
+
+The y offset is the median (multi-level dungeons spread a few yalms). This is how Toto-Rak's
+three boss chambers were found: round rooms by the chamber doors with no monsters in them.
+
 ## Validation
 
 `validate.py` compares the floor nearest each known height:

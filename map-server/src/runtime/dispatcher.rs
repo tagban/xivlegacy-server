@@ -2110,6 +2110,16 @@ async fn resolve_action(
         None => command,
     };
 
+    // A boss's summoning move hits nobody: only its adds fight.
+    let summoning;
+    let command = match crate::runtime::summon::harmless_row(command) {
+        Some(c) if !attacker_handle.is_player() => {
+            summoning = c;
+            &summoning
+        }
+        _ => command,
+    };
+
     let is_heal = command.action_type == ActionType::Heal;
     let is_status_row = matches!(command.action_type, ActionType::Status | ActionType::None);
     // Raise-style rows (mainTarget CorpseOnly) act on a KO'd target.
@@ -2936,6 +2946,36 @@ async fn resolve_action(
         zone,
     )
     .await;
+
+    // A boss's summoning move calls its adds once it lands.
+    if !attacker_handle.is_player()
+        && let Some(db) = db
+    {
+        // whoever the boss is fighting: its target, else its most hated, else
+        // the move's target unless that's the boss itself (a self-cast move)
+        let target = {
+            let a = attacker_handle.character.read().await;
+            [
+                a.chara.current_target,
+                a.hate.most_hated().unwrap_or(0),
+                defender_actor_id,
+            ]
+            .into_iter()
+            .find(|&t| t != 0 && t != attacker_actor_id)
+            .unwrap_or(0)
+        };
+        crate::runtime::summon::on_move(
+            attacker_actor_id,
+            command.id,
+            target,
+            registry,
+            world,
+            zone,
+            db,
+            lua,
+        )
+        .await;
+    }
 
     // Raise: back on their feet after the row lands.
     if revives {

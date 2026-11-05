@@ -898,7 +898,7 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (913, 5900016, 'rocdun4_barrier_coincnterschest', 245, '', 0, -1083.28, 193.835, 1264.69, 0.0, 0, 0, NULL),
 (914, 5900016, 'rocdun4_barrier_map3enter', 245, '', 0, -1163.0, 188.093, 1167.11, 0.0, 0, 0, NULL),
 (915, 5900001, 'fstdun3_door_entrance', 159, '', 0, 880.116, -22.89, 648.988, 0.0, 0, 0, NULL),
-(916, 5900001, 'fstdun3_door_confessionchamber', 159, '', 0, 1216.05, -47.89, -912.021, 0.0, 0, 0, NULL),
+(916, 5900001, 'fstdun3_door_confessionchamber', 159, '', 0, 1216.05, -47.89, 912.021, 0.0, 0, 0, NULL),
 (917, 5900001, 'fstdun3_door_interrogatiochamber', 159, '', 0, 1312.07, -63.89, 560.007, 0.0, 0, 0, NULL),
 (918, 5900001, 'fstdun3_door_executionchamber', 159, '', 0, 1456.01, -59.89, 671.623, 0.0, 0, 0, NULL),
 (919, 5900016, 'fstdun3_barrier_tornsrest', 159, '', 0, 1119.88, -44.125, 880.115, 0.0, 0, 0, NULL),

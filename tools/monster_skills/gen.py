@@ -88,7 +88,7 @@ KINDS = [
     (18, 'Gigantoad', [18], '', [], [(23262, 23269, 'name', [])], ['Gigantoad', 'Toad']),
     (30, 'Drake', [30], '', [], [(23270, 23278, 'ge', [])], ['Drake']),
     (16, 'Morbol', [16], '', [], [(23281, 23286, 'zam', [2101001])], ['Morbol']),
-    (35, 'Diremite', [35], r'diremite|miteling|banemite|cell mite', [], [(23288, 23294, 'ge', [])], ['Diremite']),
+    (35, 'Diremite', [35], r"diremite|miteling|banemite|cell mite|bastard mite|horde mite|widow's suitor", [], [(23288, 23294, 'ge', [])], ['Diremite']),
     (8, 'Buffalo', [8], '', [], [(23296, 23299, 'modern', [])], ['Buffalo']),
     (63, 'Flan', [63], '', [], [(23306, 23308, 'name', [])], ['Flan', 'Pudding']),
     (26, 'Goblin', [26], '', [], [(23311, 23315, 'name', [2110301])], ['Goblin']),
@@ -103,8 +103,30 @@ KINDS = [
     (30100, 'Ifrit', [], '', [30100], [(23361, 23376, 'modern', []), (23408, 23409, 'name', []), (23577, 23583, 'modern', []), (23592, 23595, 'modern', [])], ['Primal']),
     (30109, 'Garuda', [], '', [30109], [(23537, 23559, 'modern', []), (23568, 23573, 'modern', [])], ['Primal']),
     (30115, 'Nael van Darnus', [], '', [30115], [(23603, 23615, 'name', []), (23627, 23627, 'name', []), (23631, 23631, 'name', [])], []),
+    # Dungeon bosses: each its own list, holding the unplaced moves its
+    # dungeon's data points to; BOSS_SHARES adds its family's moves.
+    (30043, 'Antares', [], '', [30043], [], []),
+    (30044, 'Sargas', [], '', [30044], [], []),
+    (30045, 'Shaula', [], '', [30045], [], []),
+    (30046, 'Batraal', [], '', [30046], [(23355, 23357, 'name', []), (23587, 23588, 'name', []), (23590, 23591, 'name', []), (23302, 23302, 'name', [])], []),
+    (30047, 'All-seeing Eye', [], '', [30047], [], []),
+    (30048, 'Soulgazer', [], '', [30048], [], []),
+    (30049, 'Coincounter', [], '', [30049], [(23340, 23342, 'name', [])], []),
+    (30050, "Miser's Mistress", [], '', [30050], [(23343, 23343, 'name', []), (23347, 23348, 'name', [])], []),
+    (30051, 'Myrmidon Princess', [], '', [30051], [(23560, 23560, 'name', [])], []),
+    (30052, 'Chimera', [], '', [30052], [], []),
 ]
+# A boss list also takes these family lists' moves (the family keeps them).
+BOSS_SHARES = {
+    30043: [35], 30044: [35], 30045: [35],   # Toto-Rak's diremites
+    30046: [107], 30047: [51], 30048: [51],  # Dzemael: Gargoyle, Ahriman
+    30049: [112], 30050: [16],               # Aurum Vale: Cyclops, Morbol
+    30051: [33], 30052: [110],               # Cutter's Cry: Ant, Chimera
+}
 BOSS_LISTS = {k[0] for k in KINDS if k[4]}
+# Pools whose move and spell lists were set by hand (quest enemies picked
+# for a scene): the generator keeps whatever their rows say.
+PINNED = {30133, 30134, 30135, 30136, 30227, 30228}  # Man406's Imperials (Garlean list 104); Gla306's tourney bout (no moves)
 # Class move lists for human and beastman enemies with no kind list,
 # matched by the pool's currentJob or its name: (list id, family, jobs,
 # pool-name regex, blocks). The client keeps these copies of player class
@@ -153,7 +175,7 @@ KNOCKBACK = {'Drop Kick': 1, 'Tender Thrust': 1, 'Dream Bubble': 1,
 
 # Inside a block but known to belong elsewhere (a stray copy of another
 # family's move): left out of the block's kind.
-SKIP = {23560}  # Formic Pheromones inside Garuda's block
+SKIP = {23560: 30109}  # Formic Pheromones sits inside Garuda's block (it is the Myrmidon Princess's)
 
 STATUS = [  # (word in the move name, status id) for moves whose effect the name gives away
     ('Slumber', 228001), ('Lullaby', 228001), ('Yawn', 228001),
@@ -208,7 +230,7 @@ for lid, fam, genera, rx, named, blocks, aliases in KINDS:
             if blank(n):
                 continue
             slot += 1
-            if i in SKIP:
+            if SKIP.get(i) == lid:
                 continue
             assert i not in fam_of, (i, fam, fam_of[i])
             fam_of[i] = (lid, fam, ev, anchors, slot, aliases)
@@ -354,6 +376,9 @@ for l in open(f'{REPO}/common/sql/data/server_battle_commands.sql'):
             list_rows.append([lid, cid, clvl, 'class', 'class'])
             stats['player_ws'] += 1
 POOL_RE = re.compile(r"^(\((\d+), (\d+), '((?:[^']|'')*)', (\d+), (\d+), .*, )(\d+), (\d+)\)([,;])$", re.M)
+for boss, fams in BOSS_SHARES.items():
+    for r in [r for r in list_rows if r[0] in fams]:
+        list_rows.append([boss, r[1], 1, '', r[4]])
 listed = {r[0] for r in list_rows}
 def list_for(pool, name, genus, job):
     name = name.replace("''", "'")
@@ -394,6 +419,8 @@ for mo in POOL_RE.finditer(open(ppath).read()):
             stats['by_weapon'] += 1
     pool_list[pid] = lid if lid in listed else 0
     pool_spells[pid] = spells
+    if pid in PINNED:  # lists set by hand: keep them
+        pool_spells[pid], pool_list[pid] = int(mo.group(7)), int(mo.group(8))
 
 # levels: spawn level range of the pools using each list
 span = collections.defaultdict(lambda: [999, 0])
