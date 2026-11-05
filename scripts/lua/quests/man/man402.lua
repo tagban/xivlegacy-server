@@ -115,6 +115,14 @@ function companionLine(player, base)
 	return base + (PERSONALITY_ROW[player:GetSNpcPersonality()] or 0);
 end
 
+-- The Resistance fighter your companion learns has fallen at the camp
+-- (pE10's last argument, which the scene's text macros read twice):
+-- 1 father, 2 mother, 3 brother, 4 sister. Retail's choice isn't known;
+-- here it follows the character's id, so it never changes.
+function fallenKin(player)
+	return 1 + (player.actorId % 4);
+end
+
 function warpTo(player, spot)
 	GetWorldManager():DoZoneChange(player, spot[1], nil, 0, 15, spot[2], spot[3], spot[4], spot[5]);
 end
@@ -162,7 +170,7 @@ function onPush(player, quest, npc)
 		-- your companion and the Resistance captain
 		-- (companionArgs must come last in a call or Lua keeps only its first value)
 		local nickname, skin, personality, coordinate, town = companionArgs(player);
-		callClientFunction(player, "delegateEvent", player, quest, "pE10", nickname, skin, personality, coordinate, town, false);
+		callClientFunction(player, "delegateEvent", player, quest, "pE10", nickname, skin, personality, coordinate, town, fallenKin(player));
 		player:EndEvent();
 		quest:StartSequence(SEQ_010);
 		return;
