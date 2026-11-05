@@ -32,16 +32,29 @@ pub struct Summon {
     pub cap: u32,
 }
 
-/// Myrmidon Princess (Cutter's Cry): Formic Pheromones, her self-targeted
-/// move with a 4.5 s wind-up, calls Myrmidon Soldiers (level 45 in the 1.0
-/// records).
-pub const SUMMONS: &[Summon] = &[Summon {
-    command_id: 23560,
-    class_id: 2303001,
-    level: 45,
-    count: 3,
-    cap: 6,
-}];
+pub const SUMMONS: &[Summon] = &[
+    // Myrmidon Princess (Cutter's Cry): Formic Pheromones, her self-targeted
+    // move with a 4.5 s wind-up, calls Myrmidon Soldiers (level 45 in the 1.0
+    // records).
+    Summon {
+        command_id: 23560,
+        class_id: 2303001,
+        level: 45,
+        count: 3,
+        cap: 6,
+    },
+    // Batraal (Dzemael Darkhold): Chthonic Call raises Purgatory Knights, the
+    // skeleton adds 2012 guides describe for his fight. The move is
+    // self-targeted with no model motion of its own (it belongs to no
+    // monster family); the knights are the dungeon's unplaced skeleton class.
+    Summon {
+        command_id: 23302,
+        class_id: 2301902,
+        level: 50,
+        count: 2,
+        cap: 4,
+    },
+];
 
 pub fn summon_for(command_id: u16) -> Option<Summon> {
     SUMMONS.iter().copied().find(|s| s.command_id == command_id)
@@ -214,6 +227,13 @@ mod tests {
         assert_eq!(s.class_id, 2303001);
         // the ant family's own Formic Pheromones calls nobody
         assert!(summon_for(23229).is_none());
+    }
+
+    #[test]
+    fn batraal_calls_purgatory_knights() {
+        let s = summon_for(23302).expect("Chthonic Call summons");
+        assert_eq!(s.class_id, 2301902);
+        assert!(s.count <= s.cap);
     }
 
     #[test]

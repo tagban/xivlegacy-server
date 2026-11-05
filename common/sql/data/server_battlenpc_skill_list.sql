@@ -1,4 +1,4 @@
--- server_battlenpc_skill_list: game data, 514 rows. Reloaded whole when this file changes.
+-- server_battlenpc_skill_list: game data, 515 rows. Reloaded whole when this file changes.
 -- One list per monster kind (skillListId = genusId, 101+ for kinds with no genus, poolId for a named boss); minLevel gates each move.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_skill_list`;
@@ -241,6 +241,7 @@ INSERT INTO `server_battlenpc_skill_list` (`skillListId`, `skillId`, `minLevel`,
 (8, 23297, 52, 'spawn', 'block'),
 (8, 23298, 52, 'spawn', 'modern'),
 (8, 23299, 52, 'spawn', 'block'),
+(30046, 23302, 1, 'boss', 'name'),
 (63, 23306, 35, 'spawn', 'name'),
 (63, 23307, 35, 'spawn', 'name'),
 (63, 23308, 35, 'spawn', 'name'),
