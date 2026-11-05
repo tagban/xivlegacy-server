@@ -16878,7 +16878,17 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
     }
   ]
 }'),
-(1090518, '', 0, 0, NULL),
+(1090518, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "4.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
 (1090519, '', 0, 0, NULL),
 (1090520, '', 0, 0, NULL),
 (1090521, '', 0, 0, NULL),

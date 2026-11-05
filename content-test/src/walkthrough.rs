@@ -552,6 +552,7 @@ fn resolve_quest(code: &str) -> Option<(u32, u32)> {
         "Man0u1" => (110_010, 0),
         "Man406" => (110_019, 0),
         "Gla306" => (110_082, 0),
+        "Arc306" => (110_162, 0),
         _ => return None,
     })
 }
