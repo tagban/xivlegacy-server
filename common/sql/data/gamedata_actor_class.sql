@@ -5089,7 +5089,22 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
   ]
 }'),
 (1000600, '', 1900046, 0, NULL),
-(1000601, '', 4000191, 0, NULL),
+(1000601, '/Chara/Npc/Populace/PopulaceStandard', 4000191, 19, '{
+  "talkEventConditions": [
+    {
+      "unknown1": 4,
+      "unknown2": 0,
+      "conditionName": "talkDefault"
+    }
+  ],
+  "noticeEventConditions": [
+    {
+      "unknown1": 0,
+      "unknown2": 1,
+      "conditionName": "noticeEvent"
+    }
+  ]
+}'),
 (1000602, '', 4000414, 0, NULL),
 (1000603, '', 2200172, 0, NULL),
 (1000604, '', 1500080, 0, NULL),
@@ -13184,10 +13199,70 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
 (1001975, '', 3202504, 0, NULL),
 (1001976, '', 3201708, 0, NULL),
 (1001977, '', 3202209, 0, NULL),
-(1001978, '', 3280322, 0, NULL),
-(1001979, '', 3280323, 0, NULL),
-(1001980, '', 3280324, 0, NULL),
-(1001981, '', 3280325, 0, NULL),
+(1001978, '/Chara/Npc/Populace/PopulaceStandard', 3280322, 19, '{
+  "talkEventConditions": [
+    {
+      "unknown1": 4,
+      "unknown2": 0,
+      "conditionName": "talkDefault"
+    }
+  ],
+  "noticeEventConditions": [
+    {
+      "unknown1": 0,
+      "unknown2": 1,
+      "conditionName": "noticeEvent"
+    }
+  ]
+}'),
+(1001979, '/Chara/Npc/Populace/PopulaceStandard', 3280323, 19, '{
+  "talkEventConditions": [
+    {
+      "unknown1": 4,
+      "unknown2": 0,
+      "conditionName": "talkDefault"
+    }
+  ],
+  "noticeEventConditions": [
+    {
+      "unknown1": 0,
+      "unknown2": 1,
+      "conditionName": "noticeEvent"
+    }
+  ]
+}'),
+(1001980, '/Chara/Npc/Populace/PopulaceStandard', 3280324, 19, '{
+  "talkEventConditions": [
+    {
+      "unknown1": 4,
+      "unknown2": 0,
+      "conditionName": "talkDefault"
+    }
+  ],
+  "noticeEventConditions": [
+    {
+      "unknown1": 0,
+      "unknown2": 1,
+      "conditionName": "noticeEvent"
+    }
+  ]
+}'),
+(1001981, '/Chara/Npc/Populace/PopulaceStandard', 3280325, 19, '{
+  "talkEventConditions": [
+    {
+      "unknown1": 4,
+      "unknown2": 0,
+      "conditionName": "talkDefault"
+    }
+  ],
+  "noticeEventConditions": [
+    {
+      "unknown1": 0,
+      "unknown2": 1,
+      "conditionName": "noticeEvent"
+    }
+  ]
+}'),
 (1001982, '', 3201209, 0, NULL),
 (1001983, '', 1000126, 0, NULL),
 (1001984, '', 3280318, 0, NULL),
@@ -16792,7 +16867,17 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
     }
   ]
 }'),
-(1090517, '', 0, 0, NULL),
+(1090517, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "4.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
 (1090518, '', 0, 0, NULL),
 (1090519, '', 0, 0, NULL),
 (1090520, '', 0, 0, NULL),
@@ -30730,9 +30815,9 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
 (2289007, '', 4000191, 0, NULL),
 (2289008, '', 4000191, 0, NULL),
 (2289009, '/Chara/Npc/Monster/Pirate/PirateStandard', 1900046, 0, NULL),
-(2289010, '', 4000597, 0, NULL),
+(2289010, '/Chara/Npc/Monster/Pirate/PirateStandard', 4000597, 0, NULL),
 (2289011, '', 4000191, 0, NULL),
-(2289012, '', 4000191, 0, NULL),
+(2289012, '/Chara/Npc/Monster/Pirate/PirateStandard', 4000191, 0, NULL),
 (2289013, '', 4000598, 0, NULL),
 (2289014, '', 4000192, 0, NULL),
 (2289015, '', 4000189, 0, NULL),

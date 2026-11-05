@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1728 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1736 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -1732,4 +1732,12 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (27911, 1000480, 'man406_dispassionate_member', 181, 'PrivateAreaMasterPast', 4, -125.5, 1.2, -164.0, 1.57, 0, 0, NULL),
 (27912, 1000482, 'man406_unbloodied_member', 181, 'PrivateAreaMasterPast', 4, -128.0, 1.2, -163.0, 1.57, 0, 0, NULL),
 (27913, 1090369, 'man406_revenants_toll', 190, '', 0, -220.0, 18.6, -690.0, 0.0, 0, 0, NULL),
-(27914, 1090370, 'man406_imperials_stop', 190, '', 0, -60.0, 20.0, -705.0, 0.0, 0, 0, NULL);
+(27914, 1090370, 'man406_imperials_stop', 190, '', 0, -60.0, 20.0, -705.0, 0.0, 0, 0, NULL),
+(29037, 1000601, 'gla306_ala_mhigan_challenger', 209, '', 0, -186.0, 195.0, 171.0, 0.0, 0, 0, NULL),
+(29038, 1001978, 'gla306_ala_mhigan_pikeman', 209, '', 0, -184.0, 195.0, 169.5, 0.0, 0, 0, NULL),
+(29039, 1001979, 'gla306_ala_mhigan_axeman', 209, '', 0, -188.0, 195.0, 169.5, 0.0, 0, 0, NULL),
+(29040, 1001978, 'gla306_bazaar_pikeman', 172, 'PrivateAreaMasterPast', 5, -1340.0, 55.8, 506.0, 0.0, 0, 0, NULL),
+(29041, 1001979, 'gla306_bazaar_axeman', 172, 'PrivateAreaMasterPast', 5, -1351.0, 55.9, 510.0, 0.0, 0, 0, NULL),
+(29042, 1001980, 'gla306_bazaar_bowman', 172, 'PrivateAreaMasterPast', 5, -1355.0, 55.7, 517.0, 0.0, 0, 0, NULL),
+(29043, 1001981, 'gla306_bazaar_shaman', 172, 'PrivateAreaMasterPast', 5, -1347.0, 56.0, 516.0, 0.0, 0, 0, NULL),
+(29044, 1090517, 'gla306_bazaar_crowd_trigger', 172, 'PrivateAreaMasterPast', 5, -1364.0, 56.0, 529.0, 0.0, 0, 0, NULL);
