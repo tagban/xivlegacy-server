@@ -175,6 +175,27 @@ def modern_match(name):
     rows = [r for r in rows if r.get('Name', '').lower() == name.lower() and not r.get('IsPlayerAction')]
     return rows[0] if rows else None
 
+# 1.0 facts from the archived 1.0 Gamer Escape / Eorzeapedia pages (2012-13):
+# name -> (actionType 1 physical / 2 magic, ActionProperty, status id or 0).
+# They win over the modern match and the name guess.
+FIRE, ICE, WIND, EARTH, LIGHTNING, WATER, ASTRAL, UMBRAL = 5, 6, 7, 8, 9, 10, 11, 12
+POISON, SLOW, STUN, SLEEP, BIND = 223011, 223003, 223015, 228001, 228011
+PAGE_1_0 = {
+    'Aural Vacuum': (2, WIND, 0), 'Bone Breaker': (1, 3, 0), 'Booming Bellow': (2, LIGHTNING, STUN),
+    'Cloud of Pestilence': (2, WATER, POISON), 'Corrosive Spit': (2, WATER, BIND),
+    'Deadly Thrust': (1, 2, POISON), 'Digestive Ooze': (2, WATER, POISON), 'Innernova': (2, 0, 0),
+    'Lullaby': (2, ASTRAL, SLEEP), 'Mine Dust': (2, 0, 0), 'Queasy Cloud': (2, WATER, POISON),
+    'Slumber Spores': (2, UMBRAL, SLEEP), 'Sticky Web': (1, 0, SLOW), 'Tender Thrust': (1, 3, 0),
+    'Bombardier': (1, 4, 0), 'Cermet Drill': (1, 2, 0), 'Cliff Cry': (1, 4, 0),
+    'Flames of Defiance': (2, FIRE, 0), 'Frenetic Flurry': (1, 3, 0), 'Gale Switch': (2, WIND, 0),
+    'Hair Ball': (1, 3, 0), 'Impish Incantations': (2, UMBRAL, 0), 'Memento Moogle': (2, UMBRAL, 0),
+    'Mogdive': (1, 3, 0), 'Mognesia': (2, UMBRAL, 0), 'Mortal Mist': (2, WATER, 0),
+    'Pom Flare': (2, UMBRAL, 0), 'Prickle': (1, 2, 0), 'Sand Breath': (2, EARTH, 0),
+    'Seismic Scream': (2, EARTH, 0), 'Snort': (2, WIND, 0), 'Soil Smear': (2, EARTH, 0),
+    'Sphere of Cold': (2, ICE, 0), 'Stellar Flame': (2, FIRE, 0), 'Tendril Spines': (1, 4, 0),
+    'Viscous Discharge': (2, WATER, 0), 'Vorpal Roar': (1, 4, 0),
+}
+
 ASPECT = {1: 5, 2: 6, 3: 7, 4: 8, 5: 9, 6: 10}  # modern Aspect -> ActionProperty
 PHYS = {'Slashing': 1, 'Piercing': 2, 'Blunt': 3, 'Shot': 4}
 
@@ -272,8 +293,11 @@ for k in sorted(sheet, key=int):
         notes.append(f'modern Action {m["row_id"]}')
         stats['modern'] += 1
     status = next((s for w, s in STATUS if w.lower() in n.lower()), 0)
-    if status:
+    if status and n not in PAGE_1_0:
         notes.append('status from the move name')
+    if n in PAGE_1_0:
+        action_type, prop, status = PAGE_1_0[n]
+        notes.append('type, element and status from its 1.0 page')
     if i not in existing:
         anim = (19 << 24) | (slot << 12)
         is_ranged = 1 if rng > 5 else 0

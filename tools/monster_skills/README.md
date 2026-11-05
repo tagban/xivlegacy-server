@@ -82,3 +82,15 @@ KnockbackImmune modifier.
 Animations are a guess to be checked in the client: animation type 19 with
 the move's slot in its block as the model animation, the same encoding the
 Chimera rows (23456-23464) use.
+
+## 1.0 pages
+
+`PAGE_1_0` in gen.py holds what the archived 1.0 Gamer Escape / Eorzeapedia
+page of a move says: physical or magic, its element, and the status it
+inflicts (Digestive Ooze poisons, Corrosive Spit binds, Sticky Web slows,
+Booming Bellow stuns). It wins over the modern match and over `STATUS`,
+which only guesses from the move name. Monster moves give their status no
+size: the Poison and Slow effect scripts pick a default when it is 0.
+Drain (Sanguine Bite), hate resets (Booming Bellow, Cermet Drill) and
+self-buffs (Claw Guard, Stardust, Bark to Arms) are not modeled; those
+moves still deal damage.
