@@ -126,7 +126,7 @@ BOSS_SHARES = {
 BOSS_LISTS = {k[0] for k in KINDS if k[4]}
 # Pools whose move and spell lists were set by hand (quest enemies picked
 # for a scene): the generator keeps whatever their rows say.
-PINNED = {30133, 30134, 30135, 30136}  # Man406's Imperials: Garlean list 104
+PINNED = {30133, 30134, 30135, 30136, 30227, 30228}  # Man406's Imperials (Garlean list 104); Gla306's tourney bout (no moves)
 # Class move lists for human and beastman enemies with no kind list,
 # matched by the pool's currentJob or its name: (list id, family, jobs,
 # pool-name regex, blocks). The client keeps these copies of player class
