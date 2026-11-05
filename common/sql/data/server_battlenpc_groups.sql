@@ -1,4 +1,4 @@
--- server_battlenpc_groups: game data, 625 rows. Reloaded whole when this file changes.
+-- server_battlenpc_groups: game data, 628 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_groups`;
 INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLevel`, `maxLevel`, `respawnTime`, `hp`, `mp`, `dropListId`, `allegiance`, `spawnType`, `animationId`, `actorState`, `privateAreaName`, `privateAreaLevel`, `zoneId`) VALUES
@@ -543,6 +543,9 @@ INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLe
 (30040, 30040, 'gaoler_s_lantern', 39, 39, 0, 1725, 0, 0, 0, 1, 0, 0, '', 0, 159),
 (30041, 30041, 'prison_pudding', 35, 35, 0, 1379, 0, 0, 0, 1, 0, 0, '', 0, 159),
 (30042, 30042, 'cell_mite', 39, 39, 0, 1725, 0, 0, 0, 1, 0, 0, '', 0, 159),
+(30043, 30043, 'antares', 38, 38, 0, 9000, 0, 0, 0, 1, 0, 0, '', 0, 159),
+(30044, 30044, 'sargas', 40, 40, 0, 9500, 0, 0, 0, 1, 0, 0, '', 0, 159),
+(30045, 30045, 'shaula', 39, 39, 0, 9200, 0, 0, 0, 1, 0, 0, '', 0, 159),
 (30100, 30100, 'ifrit', 30, 30, 0, 8000, 0, 0, 0, 1, 0, 0, '', 0, 240),
 (30101, 30101, 'nest_commander', 36, 36, 90, 1077, 0, 0, 0, 0, 0, 0, '', 0, 172),
 (30102, 30102, 'pyrausta', 36, 36, 90, 1077, 0, 0, 0, 0, 0, 0, '', 0, 172),
