@@ -2110,6 +2110,16 @@ async fn resolve_action(
         None => command,
     };
 
+    // A boss's summoning move hits nobody: only its adds fight.
+    let summoning;
+    let command = match crate::runtime::summon::harmless_row(command) {
+        Some(c) if !attacker_handle.is_player() => {
+            summoning = c;
+            &summoning
+        }
+        _ => command,
+    };
+
     let is_heal = command.action_type == ActionType::Heal;
     let is_status_row = matches!(command.action_type, ActionType::Status | ActionType::None);
     // Raise-style rows (mainTarget CorpseOnly) act on a KO'd target.

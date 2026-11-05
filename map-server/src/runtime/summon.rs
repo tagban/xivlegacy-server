@@ -60,6 +60,23 @@ pub fn summon_for(command_id: u16) -> Option<Summon> {
     SUMMONS.iter().copied().find(|s| s.command_id == command_id)
 }
 
+/// A summoning move does no harm itself: the adds are the threat. For a
+/// monster using one, returns the command as a no-damage row (type None,
+/// no status), which still announces the move and plays its animation.
+pub fn harmless_row(
+    command: &crate::battle::command::BattleCommand,
+) -> Option<crate::battle::command::BattleCommand> {
+    use crate::battle::effects::ActionType;
+    summon_for(command.id)?;
+    if command.action_type == ActionType::None && command.status_id == 0 {
+        return None;
+    }
+    let mut c = command.clone();
+    c.action_type = ActionType::None;
+    c.status_id = 0;
+    Some(c)
+}
+
 /// Adds each boss has called, by boss actor id.
 static CALLED: Mutex<Option<HashMap<u32, Vec<u32>>>> = Mutex::new(None);
 
@@ -227,6 +244,22 @@ mod tests {
         assert_eq!(s.class_id, 2303001);
         // the ant family's own Formic Pheromones calls nobody
         assert!(summon_for(23229).is_none());
+    }
+
+    #[test]
+    fn summoning_rows_do_no_damage() {
+        use crate::battle::command::BattleCommand;
+        use crate::battle::effects::ActionType;
+        let mut cmd = BattleCommand::new(23560, "formic_pheromones");
+        cmd.action_type = ActionType::Physical;
+        cmd.status_id = 1;
+        let row = harmless_row(&cmd).expect("a summon becomes harmless");
+        assert_eq!(row.action_type, ActionType::None);
+        assert_eq!(row.status_id, 0);
+        // other moves keep their damage
+        let mut jaws = BattleCommand::new(23226, "trap_jaws");
+        jaws.action_type = ActionType::Physical;
+        assert!(harmless_row(&jaws).is_none());
     }
 
     #[test]
