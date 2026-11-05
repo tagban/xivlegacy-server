@@ -49,6 +49,9 @@ pub struct CommandProcessor {
     pub final_days: bool,
 }
 
+/// How far `!usemove` looks for a monster when nothing is targeted.
+const USEMOVE_RANGE: f32 = 30.0;
+
 impl CommandProcessor {
     pub fn new(
         world: Arc<WorldManager>,
@@ -291,7 +294,7 @@ impl CommandProcessor {
             "dream <id> [name]",
             "die [name]",
             "settp <tp 0-3000> [name]",
-            "usemove <command id>",
+            "usemove <command id> (target, else nearest monster)",
             "setgm <level 0-4> <name>",
             "reload",
             "talkto <actor_class_id> [name]",
@@ -363,7 +366,7 @@ impl CommandProcessor {
     /// its next combat tick, whatever its TP (for checking moves one by
     /// one in the client). The move joins that monster's list.
     async fn handle_usemove(&self, args: &Args<'_>) -> String {
-        let usage = "usage: usemove <command id> (target a monster you are fighting)";
+        let usage = "usage: usemove <command id> (your target, else the nearest monster)";
         let Some(id) = args.rest().first().and_then(|t| t.parse::<u16>().ok()) else {
             return usage.into();
         };
@@ -373,7 +376,12 @@ impl CommandProcessor {
         };
         let target = match self.my_target(me).await {
             Ok(t) => t,
-            Err(e) => return format!("{e} ({usage})"),
+            Err(_) => match self.nearest_monster(me).await {
+                Some(t) => t,
+                None => {
+                    return format!("no monster targeted or within {USEMOVE_RANGE} yalms ({usage})");
+                }
+            },
         };
         let cmd = {
             let Ok(cmds) = self.lua.catalogs().battle_commands.read() else {
@@ -394,7 +402,42 @@ impl CommandProcessor {
             return "your target has no battle AI".into();
         };
         ctrl.battle.forced_skill = Some(cmd);
+        // An idle monster only acts once it has a foe: point it at the GM.
+        if !c.hate.has_hate_for(me) {
+            c.hate.add_base_hate(me);
+        }
         format!("{label} will use {name} ({id}) next")
+    }
+
+    /// The nearest living monster (not an ally) within [`USEMOVE_RANGE`] of `me`.
+    async fn nearest_monster(&self, me: u32) -> Option<u32> {
+        let handle = self.registry.get(me).await?;
+        let pos = handle.character.read().await.base.position();
+        let zone_arc = self.world.zone(handle.zone_id).await?;
+        let mut near: Vec<(f32, u32)> = {
+            let zone = zone_arc.read().await;
+            zone.core
+                .actors_around(me, USEMOVE_RANGE)
+                .into_iter()
+                .filter(|a| a.is_alive && a.kind == crate::zone::area::ActorKind::BattleNpc)
+                .map(|a| {
+                    let (dx, dz) = (a.position.x - pos.x, a.position.z - pos.z);
+                    (dx * dx + dz * dz, a.actor_id)
+                })
+                .collect()
+        };
+        near.sort_by(|a, b| a.0.total_cmp(&b.0));
+        for (_, id) in near {
+            let ally = self
+                .registry
+                .get(id)
+                .await
+                .is_some_and(|h| h.kind == crate::runtime::actor_registry::ActorKindTag::Ally);
+            if !ally {
+                return Some(id);
+            }
+        }
+        None
     }
 
     /// `home <name>` — server-driven home-point revive. Restores HP/MP
