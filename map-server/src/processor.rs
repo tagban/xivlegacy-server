@@ -8108,6 +8108,18 @@ impl PacketProcessor {
                     return Ok(());
                 }
             }
+            let push_during_other_event = match parked_owner {
+                Some(parked)
+                    if pkt.event_type == 2
+                        && parked != owner_actor_id
+                        && parked != crate::lua::scheduler::EVENT_OWNER_UNKNOWN =>
+                {
+                    let c = handle.character.read().await;
+                    c.event_session.current_event_owner == parked
+                        && c.event_session.current_event_type != 2
+                }
+                _ => false,
+            };
             match parked_owner {
                 Some(parked) if parked == owner_actor_id => {
                     // pmeteor `Player.StartEvent` (Player.cs:2174) stamps
@@ -8141,6 +8153,25 @@ impl PacketProcessor {
                     if let Some(cmds) = resumed {
                         self.apply_resumed_event_commands(&handle, cmds).await;
                     }
+                    return Ok(());
+                }
+                // A silent push circle the client reports while it is still
+                // inside another actor's talk or notice event. Man0l0's Hob
+                // talk starts Man0l1, whose onStart waits on the Echo scene
+                // (processEvent010) before it closes the talk and warps; the
+                // scene trips the port's PrivateAreaPastExit circles ("exit",
+                // then "caution"). Discarding the parked talk for that push
+                // dropped the warp and left the client on Now Loading. The
+                // client is in an event, so the push is noise: drop it and
+                // keep the park.
+                Some(parked) if push_during_other_event => {
+                    tracing::info!(
+                        player = actor_id,
+                        parked_owner = format!("0x{parked:08X}"),
+                        push_owner = format!("0x{owner_actor_id:08X}"),
+                        event_name = %pkt.event_name,
+                        "push during another actor's event — ignored, park kept",
+                    );
                     return Ok(());
                 }
                 Some(parked) if parked != crate::lua::scheduler::EVENT_OWNER_UNKNOWN => {
