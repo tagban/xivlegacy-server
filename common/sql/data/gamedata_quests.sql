@@ -19,7 +19,7 @@ INSERT INTO `gamedata_quests` (`id`, `questName`, `className`, `prerequisite`, `
 (110015, 'Toll of the Warden', 'Man300', 110014, 30),
 (110016, 'Forever Taken', 'Man304', 110015, 34),
 (110017, 'Lord Errant', 'Man308', 110016, 38),
-(110018, 'Of Men They Sing', 'Man402', 0, 42),
+(110018, 'Of Men They Sing', 'Man402', 110017, 42),
 (110019, 'Futures Perfect', 'Man406', 0, 46),
 (110020, '[en]', 'Man502', 0, 52),
 (110021, '[en]', 'Man504', 0, 54),

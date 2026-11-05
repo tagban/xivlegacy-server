@@ -1,4 +1,4 @@
--- server_battlenpc_pools: game data, 327 rows. Reloaded whole when this file changes.
+-- server_battlenpc_pools: game data, 328 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_pools`;
 INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId`, `currentJob`, `combatSkill`, `combatDelay`, `combatDmgMult`, `aggroType`, `immunity`, `linkType`, `spellListId`, `skillListId`) VALUES
@@ -302,6 +302,7 @@ INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId
 (30129, 2289001, 'tempered_captive_1', 3, 0, 1, 4200, 1.0, 1, 0, 0, 0, 0),
 (30130, 2289002, 'tempered_captive_2', 3, 0, 1, 4200, 1.0, 1, 0, 0, 0, 0),
 (30131, 2289003, 'tempered_captive_3', 3, 0, 1, 4200, 1.0, 1, 0, 0, 120, 0),
+(30132, 2201417, 'man402_bloodhound', 3, 0, 1, 4200, 1.0, 1, 0, 0, 0, 3),
 (30200, 2100801, 'Great Buffalo', 8, 0, 1, 4500, 1.5, 1, 0, 0, 0, 8),
 (30201, 2206606, 'Kobold Cragsman', 29, 0, 1, 4200, 1.0, 1, 0, 0, 0, 27),
 (30202, 2206607, 'Kobold Roundsman', 29, 0, 1, 4200, 1.0, 1, 0, 0, 0, 27),

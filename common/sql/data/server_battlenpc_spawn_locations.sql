@@ -1,4 +1,4 @@
--- server_battlenpc_spawn_locations: game data, 3877 rows. Reloaded whole when this file changes.
+-- server_battlenpc_spawn_locations: game data, 3879 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_spawn_locations`;
 INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `groupId`, `positionX`, `positionY`, `positionZ`, `rotation`) VALUES
@@ -637,6 +637,8 @@ INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `
 (3589, 'paglthan_amaljaa', 30146, 993.1, 312.0, 956.9, 0.0),
 (3590, 'paglthan_amaljaa', 30147, 993.0, 311.4, 951.6, 0.0),
 (3591, 'paglthan_amaljaa', 30148, 987.3, 311.8, 952.8, 0.0),
+(3592, 'man402_bloodhound', 30149, 1872.0, 19.9, -1729.0, 2.0),
+(3593, 'man402_bloodhound', 30149, 1876.0, 20.0, -1733.0, 2.0),
 (3900, 'gcl702_great_buffalo', 30300, -1712.0, 50.5, -1484.0, 2.4),
 (3901, 'gcl701_cragsman', 30301, -668.0, 63.5, -1636.0, 1.0),
 (3902, 'gcl701_cragsman', 30301, -678.0, 64.5, -1628.0, 1.6),
