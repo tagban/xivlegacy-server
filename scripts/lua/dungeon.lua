@@ -118,9 +118,11 @@ end
 -- A content script's onCreate: the dungeon's monsters, into this copy.
 function spawnDungeon(player, contentArea, director, zoneId)
 	director:AddMember(player);
-	local range = DUNGEON_SPAWNS[zoneId];
-	if range == nil then return end
-	for id = range[1], range[2] do
-		GetWorldManager().SpawnBattleNpcById(id, contentArea);
+	local ranges = DUNGEON_SPAWNS[zoneId];
+	if ranges == nil then return end
+	for _, range in ipairs(ranges) do
+		for id = range[1], range[2] do
+			GetWorldManager().SpawnBattleNpcById(id, contentArea);
+		end
 	end
 end
