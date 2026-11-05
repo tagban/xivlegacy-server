@@ -1,4 +1,4 @@
--- server_battlenpc_groups: game data, 616 rows. Reloaded whole when this file changes.
+-- server_battlenpc_groups: game data, 617 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_groups`;
 INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLevel`, `maxLevel`, `respawnTime`, `hp`, `mp`, `dropListId`, `allegiance`, `spawnType`, `animationId`, `actorState`, `privateAreaName`, `privateAreaLevel`, `zoneId`) VALUES
@@ -592,6 +592,7 @@ INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLe
 (30146, 10061, 'paglthan_amaljaa', 37, 38, 0, 900, 0, 0, 0, 1, 0, 0, '', 0, 174),
 (30147, 10060, 'paglthan_amaljaa', 37, 38, 0, 900, 0, 0, 0, 1, 0, 0, '', 0, 174),
 (30148, 10059, 'paglthan_amaljaa', 37, 38, 0, 900, 0, 0, 0, 1, 0, 0, '', 0, 174),
+(30149, 30132, 'man402_bloodhound', 42, 43, 0, 1100, 0, 0, 0, 1, 0, 0, '', 0, 151),
 (30300, 30200, 'gcl702_great_buffalo', 52, 52, 300, 9000, 0, 0, 0, 0, 0, 0, '', 0, 129),
 (30301, 30201, 'gcl701_cragsman', 44, 45, 0, 1800, 0, 0, 0, 1, 0, 0, '', 0, 135),
 (30302, 30202, 'gcl701_roundsman', 46, 47, 0, 2200, 0, 0, 0, 1, 0, 0, '', 0, 135),

@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1705 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1707 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -1680,6 +1680,8 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (27889, 1090366, 'man308_paglthan_clearing', 174, '', 0, 993.3, 310.0, 976.8, 0.0, 0, 0, NULL),
 (27890, 1001390, 'man308_cloudy_eyed_prisoner', 174, '', 0, 993.3, 312.0, 988.8, 3.14, 0, 0, NULL),
 (27891, 1001391, 'man308_emotionless_prisoner', 174, '', 0, 995.7, 308.4, 990.3, 3.14, 0, 0, NULL),
+(27892, 1090367, 'man402_nine_ivies_camp', 151, '', 0, 1694.0, 20.0, -860.0, 0.0, 0, 0, NULL),
+(27893, 1090368, 'man402_scout_clearing', 151, '', 0, 1870.0, 19.9, -1730.0, 0.0, 0, 0, NULL),
 (29000, 1001833, 'gc701_alain', 135, '', 0, -655.0, 66.3, -1650.0, -1.6, 0, 0, NULL),
 (29001, 1001835, 'gc701_vorsaile', 152, '', 0, -1221.56, 35.12, -2244.03, -1.57, 0, 0, NULL),
 (29002, 1001834, 'gc701_ashdale', 171, '', 0, 1414.0, 247.84, 253.64, 1.57, 0, 0, NULL),
