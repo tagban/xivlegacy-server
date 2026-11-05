@@ -210,6 +210,8 @@ for lid, fam, jobs, rx, ids in SPELL_LISTS:
 def genus_of(lid):
     return lid if lid in GENUS else 0
 
+# damageMultiplier of magic moves: the server's physical move default (2.5x a hit)
+MAGIC_MOVE_MULTIPLIER = 2.5
 existing = set(range(23456, 23465))  # Chimera rows already in the commands data
 cmd_rows, info_rows, list_rows = [], [], []
 HITBOX = 3.0  # rough monster radius, yalms
@@ -282,7 +284,9 @@ for k in sorted(sheet, key=int):
         cmd_rows.append((i, snake(n), 0, 1, 0, main_target, 17152, aoe_type, aoe_range, 0.0, cone, 0.0, 1 if centered else 0,
                          100, 1, 0, 0, rng, 0, 0, 10, 2, status, 15 if status else 0, 1.0 if status else 0.0,
                          11 if cast else 0, cast, recast, 0, 0, 19, 0, slot, 3, anim, 0, 0, 0, 3, 0.0, 30301,
-                         2, action_type, prop, is_ranged, 0, -1, 0.0, -1, 0.0, 0.0))
+                         2, action_type, prop, is_ranged, 0, -1, 0.0, -1, 0.0,
+                         # magic moves scale off the monster's hit too (no 1.0 potency data)
+                         MAGIC_MOVE_MULTIPLIER if action_type == 2 else 0.0))
     if n in KNOCKBACK:
         notes.append(f'knockback {KNOCKBACK[n]} (1.0 page)')
     info_rows.append([i, n, genus_of(lid), lid, fam, evidence, slot, m['row_id'] if m else 0, KNOCKBACK.get(n, 0), notes])

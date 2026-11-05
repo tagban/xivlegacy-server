@@ -906,7 +906,11 @@ pub fn skill_amount(
         let amount = f64::from(skill.magic_potency) / 1000.0 * base * dev;
         return Some(amount.round().clamp(1.0, 9999.0) as u16);
     }
-    if skill.action_type == ActionType::Physical {
+    // A magic move with no magic potency but a damage multiplier (the
+    // monster moves) scales off the user's own hit like a physical one;
+    // magic defense, not physical, still mitigates it.
+    let magic_by_hit = skill.action_type == ActionType::Magic && skill.damage_multiplier > 0.0;
+    if skill.action_type == ActionType::Physical || magic_by_hit {
         let mult = if skill.damage_multiplier > 0.0 {
             f64::from(skill.damage_multiplier)
         } else {
@@ -1302,6 +1306,31 @@ mod tests {
         assert_eq!(
             skill_amount(&atk, &provoke, &mut FixedRng::new(&[0.5])),
             None
+        );
+    }
+
+    #[test]
+    fn magic_monster_moves_scale_off_the_users_hit() {
+        let mods = with(&[(Modifier::Strength, 120.0), (Modifier::Attack, 60.0)]);
+        let goblin = stub_view(52, 3000, &mods, 1);
+        let mut toss = BattleCommand::new(23311, "bomb_toss");
+        toss.action_type = ActionType::Magic;
+        toss.base_potency = 100;
+        // no multiplier: no power data, the caller keeps base_potency
+        assert_eq!(
+            skill_amount(&goblin, &toss, &mut FixedRng::new(&[0.5])),
+            None
+        );
+        toss.damage_multiplier = 2.5;
+        let mut swipe = toss.clone();
+        swipe.action_type = ActionType::Physical;
+        let rolls = [0.5, 0.5, 0.5, 0.5];
+        let magic = skill_amount(&goblin, &toss, &mut FixedRng::new(&rolls)).unwrap();
+        let physical = skill_amount(&goblin, &swipe, &mut FixedRng::new(&rolls)).unwrap();
+        assert_eq!(magic, physical);
+        assert!(
+            magic > 100,
+            "a level 52 move must beat the flat 100: {magic}"
         );
     }
 
