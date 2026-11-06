@@ -18931,3 +18931,159 @@ async fn kills_and_deaths_are_logged() {
         ]
     );
 }
+
+/// A zone with players at the given x positions and a loaded catalog.
+async fn party_scene(
+    actors: &[(u32, f32, u8)],
+) -> (
+    Arc<WorldManager>,
+    Arc<ActorRegistry>,
+    Arc<RwLock<Zone>>,
+    Arc<crate::lua::LuaEngine>,
+    Arc<crate::database::Database>,
+    std::collections::HashMap<u16, crate::gamedata::BattleCommand>,
+) {
+    let world = Arc::new(WorldManager::new());
+    let registry = Arc::new(ActorRegistry::new());
+    let zone = Zone::new(
+        100,
+        "test",
+        1,
+        "/Area/Zone/Test",
+        0,
+        0,
+        0,
+        false,
+        false,
+        false,
+        false,
+        false,
+        Some(&StubNavmeshLoader),
+    );
+    world.register_zone(zone).await;
+    let zone = world.zone(100).await.unwrap();
+    for &(id, x, class) in actors {
+        let mut c = Character::new(id);
+        c.chara.hp = 500;
+        c.chara.max_hp = 1000;
+        c.chara.mp = 1000;
+        c.chara.max_mp = 1000;
+        c.chara.level = 50;
+        c.chara.class = class.into();
+        c.base.position_x = x;
+        c.base.zone_id = 100;
+        registry
+            .insert(ActorHandle::new(id, ActorKindTag::Player, 100, 0, c))
+            .await;
+        let mut ob = crate::zone::outbox::AreaOutbox::new();
+        zone.write().await.core.add_actor(
+            StoredActor {
+                actor_id: id,
+                kind: ActorKind::Player,
+                position: Vector3::new(x, 0.0, 0.0),
+                grid: (0, 0),
+                is_alive: true,
+            },
+            &mut ob,
+        );
+    }
+    let db = Arc::new(crate::database::Database::open(tempdb()).await.expect("db"));
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../scripts/lua");
+    let lua = Arc::new(crate::lua::LuaEngine::new(&root));
+    let (catalog, by_level) = db.load_global_battle_command_list().await.unwrap();
+    let statuses = db.load_global_status_effect_list().await.unwrap();
+    lua.catalogs()
+        .install_battle_commands_with_level_index(catalog.clone(), by_level);
+    lua.catalogs().install_status_effects(statuses);
+    (world, registry, zone, lua, db, catalog)
+}
+
+async fn has_status_id(registry: &ActorRegistry, id: u32, status: u32) -> bool {
+    registry
+        .get(id)
+        .await
+        .unwrap()
+        .character
+        .read()
+        .await
+        .status_effects
+        .has(status)
+}
+
+/// Cover: the ally gets Covered and the paladin gets Cover (the script's
+/// `caster.statusEffects.AddStatusEffect`, which the setup sandbox lacked).
+#[tokio::test]
+async fn cover_puts_cover_on_the_paladin_and_covered_on_the_ally() {
+    let (pld, ally) = (9321u32, 9322u32);
+    crate::parties::join_for_test(pld, ally).expect("party");
+    let (world, registry, zone, lua, db, catalog) =
+        party_scene(&[(pld, 0.0, 16), (ally, 2.0, 3)]).await;
+    dispatch_battle_event(
+        &BattleEvent::ResolveAction {
+            attacker_actor_id: pld,
+            defender_actor_id: ally,
+            command: catalog[&27146].to_battle_command(),
+        },
+        &registry,
+        &world,
+        &zone,
+        Some(&lua),
+        Some(&db),
+    )
+    .await;
+    assert!(has_status_id(&registry, ally, 223173).await, "ally Covered");
+    assert!(
+        has_status_id(&registry, pld, 223063).await,
+        "paladin has Cover"
+    );
+}
+
+/// Divine Veil: someone else's Cure on the paladin gives Divine Regen to
+/// the paladin and the party members within 8 yalms, not to strangers or
+/// members farther out.
+#[tokio::test]
+async fn divine_veil_regens_the_party_on_a_real_cure() {
+    let (pld, cnj, near, far, stranger) = (9331u32, 9332u32, 9333u32, 9334u32, 9335u32);
+    for m in [cnj, near, far] {
+        crate::parties::join_for_test(pld, m).expect("party");
+    }
+    let (world, registry, zone, lua, db, catalog) = party_scene(&[
+        (pld, 0.0, 16),
+        (cnj, 4.0, 23),
+        (near, 5.0, 3),
+        (far, 20.0, 3),
+        (stranger, 3.0, 3),
+    ])
+    .await;
+    put_status(&registry, pld, 223248, "divine_veil", 36889, pld).await;
+    dispatch_battle_event(
+        &BattleEvent::ResolveAction {
+            attacker_actor_id: cnj,
+            defender_actor_id: pld,
+            command: catalog[&27346].to_battle_command(),
+        },
+        &registry,
+        &world,
+        &zone,
+        Some(&lua),
+        Some(&db),
+    )
+    .await;
+    assert!(hp_of(&registry, pld).await > 500, "the Cure healed");
+    assert!(
+        has_status_id(&registry, pld, 223264).await,
+        "paladin regens"
+    );
+    assert!(
+        has_status_id(&registry, near, 223264).await,
+        "near member regens"
+    );
+    assert!(
+        !has_status_id(&registry, far, 223264).await,
+        "far member doesn't"
+    );
+    assert!(
+        !has_status_id(&registry, stranger, 223264).await,
+        "a stranger doesn't"
+    );
+}

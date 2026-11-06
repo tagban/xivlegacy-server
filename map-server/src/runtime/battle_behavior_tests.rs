@@ -471,6 +471,11 @@ async fn band_numbers(lo: u8, hi: u8, count: usize) {
     for cmd in &cmds {
         let rcpt = recipient(cmd);
         let mut sc = real_scene(&env, cmd, rcpt).await;
+        // At exactly the TP it costs: the surplus bonus has its own test
+        // (battle_behavior_ws_tp_surplus).
+        if cmd.tp_cost > 0 {
+            sc.press_tp = cmd.tp_cost as u16;
+        }
         let level = i16::from(cmd.level.max(1));
         let (player_max, player_max_mp) = {
             let h = sc.registry.get(PLAYER).await.unwrap();
@@ -2296,4 +2301,308 @@ async fn battle_behavior_l21_50_procs() {
         }
     }
     assert!(problems.is_empty(), "level 21-50 procs:\n{problems:#?}");
+}
+
+/// Rage of Halone (GLA 46, five hits at -40% accuracy outside its combo):
+/// alone, after Riot Blade, and with every hit forced, next to the other
+/// level 46-50 gladiator weaponskills.
+#[tokio::test]
+async fn battle_behavior_rage_of_halone() {
+    let env = env().await;
+    let roh = by_name(&env, "rage_of_halone").clone();
+    let riot = by_name(&env, "riot_blade").clone();
+    let goring = by_name(&env, "goring_blade").clone();
+    let spirits = by_name(&env, "spirits_within").clone();
+    let mut sc = real_scene_at(&env, &roh, Recipient::Enemy, 50, 3).await;
+    stand_at(&sc, "rear").await;
+    let alone = median_damage(&mut sc, &roh, None, 15).await;
+    let combo = median_damage(&mut sc, &roh, Some(&riot), 15).await;
+    let goring_d = median_damage(&mut sc, &goring, None, 15).await;
+    let spirits_d = median_damage(&mut sc, &spirits, None, 15).await;
+    {
+        let h = sc.registry.get(PLAYER).await.unwrap();
+        h.character
+            .write()
+            .await
+            .chara
+            .mods
+            .set(Modifier::RawHitRate, 100.0);
+    }
+    let forced = median_damage(&mut sc, &roh, None, 15).await;
+    let hp = mob_hp(50);
+    println!(
+        "L50 GLA vs L50 ({hp} HP): rage_of_halone alone {alone}, after riot_blade {combo}, all hits {forced}; goring_blade {goring_d}, spirits_within {spirits_d}"
+    );
+    assert!(
+        f64::from(combo) >= 0.8 * f64::from(goring_d),
+        "Rage of Halone in combo {combo} vs Goring Blade {goring_d}"
+    );
+}
+
+/// TP above a weaponskill's cost adds WS_BONUS_PER_1000_TP_OVER_COST per
+/// 1000 (Heavy Swing, 1000 TP: ×1.10 at 3000).
+#[tokio::test]
+async fn battle_behavior_ws_tp_surplus() {
+    let env = env().await;
+    let ws = by_name(&env, "heavy_swing").clone();
+    let mut sc = real_scene_at(&env, &ws, Recipient::Enemy, 20, 4).await;
+    {
+        let h = sc.registry.get(PLAYER).await.unwrap();
+        h.character
+            .write()
+            .await
+            .chara
+            .mods
+            .set(Modifier::RawHitRate, 100.0);
+    }
+    let low = median_at_tp(&mut sc, &ws, 1000).await;
+    let high = median_at_tp(&mut sc, &ws, 3000).await;
+    let r = f64::from(high) / f64::from(low.max(1));
+    println!("heavy_swing at 1000 TP {low}, at 3000 TP {high} ({r:.3}x)");
+    let want = crate::runtime::dispatcher::ws_tp_bonus(2000);
+    assert!(
+        (r - want).abs() < 0.04,
+        "TP surplus ratio {r:.3}, want {want:.3}"
+    );
+}
+
+async fn median_at_tp(sc: &mut Scene, ws: &BattleCommand, tp: u16) -> i32 {
+    let mut v = Vec::new();
+    for _ in 0..21 {
+        reset_enemy(sc).await;
+        let o = press_at_tp(sc, ws, tp).await;
+        if o.damage_main > 0 {
+            v.push(o.damage_main);
+        }
+    }
+    median(&mut v)
+}
+
+async fn press_at_tp(
+    sc: &mut Scene,
+    cmd: &BattleCommand,
+    tp: u16,
+) -> super::battle_audit_tests::Outcome {
+    sc.press_tp = tp;
+    let o = press(sc, cmd).await;
+    sc.press_tp = 3000;
+    o
+}
+
+/// The player's hit rate on the enemy as a swing computes it (the real
+/// characters' mods and status share, `get_hit_rate`).
+async fn player_hit_rate(sc: &Scene) -> f64 {
+    let (p, e) = (
+        sc.registry.get(PLAYER).await.unwrap(),
+        sc.registry.get(ENEMY).await.unwrap(),
+    );
+    let (p, e) = (p.character.read().await, e.character.read().await);
+    let (pm, ps, em, es) = (
+        p.chara.mods.clone(),
+        p.bonus_mod_totals(),
+        e.chara.mods.clone(),
+        e.bonus_mod_totals(),
+    );
+    let view = |id, c: &crate::actor::Character, mods, status| crate::battle::utils::CombatView {
+        actor_id: id,
+        level: c.chara.level,
+        max_hp: c.chara.max_hp,
+        mods,
+        status,
+        has_aegis_boon: false,
+        has_protect: false,
+        has_shell: false,
+        has_stoneskin: false,
+    };
+    crate::battle::utils::get_hit_rate(
+        &view(PLAYER, &p, &pm, &ps),
+        &view(ENEMY, &e, &em, &es),
+        None,
+    )
+}
+
+/// Share of `n` player swings on the enemy that land.
+async fn player_hit_share(env: &Env, sc: &Scene, n: usize) -> f64 {
+    let mut hits = 0;
+    for _ in 0..n {
+        {
+            let h = sc.registry.get(ENEMY).await.unwrap();
+            let mut c = h.character.write().await;
+            c.chara.max_hp = 30000;
+            c.chara.hp = 30000;
+        }
+        Box::pin(crate::runtime::dispatcher::test_auto_attack(
+            &sc.registry,
+            &sc.processor.world,
+            Some(&env.lua),
+            Some(&env.db),
+            super::battle_audit_tests::ZONE,
+            PLAYER,
+            ENEMY,
+        ))
+        .await;
+        if hp(&sc.registry, ENEMY).await < 30000 {
+            hits += 1;
+        }
+    }
+    hits as f64 / n as f64
+}
+
+/// The monster statuses a player meets, at a level in every band: what
+/// each really changes for the player (swing timing, run speed, landed
+/// swings, refused commands, HP), and that it all comes back after.
+#[tokio::test]
+async fn battle_behavior_monster_statuses_every_band() {
+    const POISON: u32 = 223011;
+    const SLOW: u32 = 223003;
+    const HEAVY: u32 = 228021;
+    const BLIND: u32 = 223007;
+    const PARALYSIS: u32 = 223005;
+    const SILENCE: u32 = 223006;
+    const SLEEP: u32 = 228001;
+    let env = env().await;
+    let fast_blade = by_name(&env, "fast_blade").clone();
+    let thunder = by_name(&env, "thunder").clone();
+    let mut problems = Vec::new();
+    for level in [10i16, 25, 35, 45] {
+        let mut sc = real_scene_at(&env, &fast_blade, Recipient::Enemy, level, 3).await;
+        reset_enemy(&sc).await;
+        // Poison: HP each tick; none once it ends.
+        {
+            give_status(&env, &sc, PLAYER, POISON, 30, 0.0).await;
+            let h0 = hp(&sc.registry, PLAYER).await;
+            tick_for(&sc, 9_100).await;
+            let h1 = hp(&sc.registry, PLAYER).await;
+            clear_status(&sc, PLAYER, POISON).await;
+            tick_for(&sc, 6_100).await;
+            let h2 = hp(&sc.registry, PLAYER).await;
+            println!("L{level} poison: {h0} -> {h1}, then {h2}");
+            if h1 >= h0 || h2 < h1 {
+                problems.push(format!("L{level} poison: {h0} -> {h1} -> {h2}"));
+            }
+        }
+        // Slow: a longer swing delay. Heavy: a slower run.
+        {
+            let delay = |sc: &Scene| {
+                let registry = sc.registry.clone();
+                async move {
+                    let h = registry.get(PLAYER).await.unwrap();
+                    let c = h.character.read().await;
+                    (c.get_attack_delay_ms(), c.speed_sent)
+                }
+            };
+            let (d0, _) = delay(&sc).await;
+            give_status(&env, &sc, PLAYER, SLOW, 30, 0.0).await;
+            let (d1, _) = delay(&sc).await;
+            clear_status(&sc, PLAYER, SLOW).await;
+            give_status(&env, &sc, PLAYER, HEAVY, 30, 0.0).await;
+            let (_, s1) = delay(&sc).await;
+            clear_status(&sc, PLAYER, HEAVY).await;
+            let (d2, s2) = delay(&sc).await;
+            println!("L{level} slow: delay {d0} -> {d1} -> {d2}; heavy: speed {s1} -> {s2}");
+            if d1 <= d0 || d2 != d0 || !(s1 > 0.0 && s1 < 1.0) || (s2 - 1.0).abs() > 1e-3 {
+                problems.push(format!("L{level} slow {d0}/{d1}/{d2} heavy {s1}/{s2}"));
+            }
+        }
+        // Blind: a lower hit rate (by its Accuracy down, 0.5% a point; the
+        // status takes the level as its size). Paralysis: a quarter of the
+        // swings and weaponskills fail.
+        {
+            let base = player_hit_rate(&sc).await;
+            give_status(&env, &sc, PLAYER, BLIND, 60, 0.0).await;
+            let blind = player_hit_rate(&sc).await;
+            clear_status(&sc, PLAYER, BLIND).await;
+            let after = player_hit_rate(&sc).await;
+            let want = crate::battle::utils::HIT_RATE_PER_ACCURACY * f64::from(level);
+            println!("L{level} hit rate {base:.1} -> blind {blind:.1} -> {after:.1}");
+            if (base - blind - want).abs() > 1.0 && blind > 0.0 || after != base {
+                problems.push(format!(
+                    "L{level} blind: hit rate {base:.1} -> {blind:.1} (want -{want}) -> {after:.1}"
+                ));
+            }
+            {
+                let h = sc.registry.get(PLAYER).await.unwrap();
+                h.character
+                    .write()
+                    .await
+                    .chara
+                    .mods
+                    .set(Modifier::RawHitRate, 100.0);
+            }
+            give_status(&env, &sc, PLAYER, PARALYSIS, 60, 0.0).await;
+            let para = player_hit_share(&env, &sc, 200).await;
+            let mut ws_fails = 0;
+            for _ in 0..40 {
+                reset_enemy(&sc).await;
+                let o = press(&mut sc, &fast_blade).await;
+                if o.errors.is_empty() && o.damage_main <= 0 {
+                    ws_fails += 1;
+                }
+            }
+            clear_status(&sc, PLAYER, PARALYSIS).await;
+            let clean = player_hit_share(&env, &sc, 50).await;
+            {
+                let h = sc.registry.get(PLAYER).await.unwrap();
+                h.character
+                    .write()
+                    .await
+                    .chara
+                    .mods
+                    .set(Modifier::RawHitRate, 0.0);
+            }
+            println!(
+                "L{level} paralysis: {para:.2} of sure swings land, {ws_fails}/40 WS fail, {clean:.2} after"
+            );
+            if !(0.6..=0.9).contains(&para) || !(3..=20).contains(&ws_fails) || clean < 0.99 {
+                problems.push(format!(
+                    "L{level} paralysis: {para:.2} land, WS fails {ws_fails}/40, after {clean:.2}"
+                ));
+            }
+        }
+        // Silence: no spells (a thaumaturge). Sleep: no swings, no commands.
+        {
+            let mut cs = real_scene_at(&env, &thunder, Recipient::Enemy, level, 22).await;
+            give_status(&env, &cs, PLAYER, SILENCE, 30, 0.0).await;
+            let o = press(&mut cs, &thunder).await;
+            if !o.errors.contains(&32535) || o.damage_main > 0 {
+                problems.push(format!(
+                    "L{level} silence: {:?} dmg {}",
+                    o.errors, o.damage_main
+                ));
+            }
+            clear_status(&cs, PLAYER, SILENCE).await;
+            let o = press(&mut cs, &thunder).await;
+            if !o.errors.is_empty() {
+                problems.push(format!("L{level} after silence: {:?}", o.errors));
+            }
+        }
+        {
+            reset_enemy(&sc).await;
+            give_status(&env, &sc, PLAYER, SLEEP, 30, 0.0).await;
+            let o = press(&mut sc, &fast_blade).await;
+            {
+                let h = sc.registry.get(PLAYER).await.unwrap();
+                let now = crate::runtime::clock::server_now_ms();
+                h.character
+                    .write()
+                    .await
+                    .ai_container
+                    .internal_engage(ENEMY, now, 2500);
+            }
+            let e0 = hp(&sc.registry, ENEMY).await;
+            tick_for(&sc, 8_000).await;
+            let e1 = hp(&sc.registry, ENEMY).await;
+            println!("L{level} sleep: WS {:?}, enemy HP {e0} -> {e1}", o.errors);
+            if !o.errors.contains(&32535) || e1 != e0 {
+                problems.push(format!(
+                    "L{level} sleep: WS {:?}, swings {e0} -> {e1}",
+                    o.errors
+                ));
+            }
+        }
+    }
+    assert!(
+        problems.is_empty(),
+        "monster statuses by band:\n{problems:#?}"
+    );
 }

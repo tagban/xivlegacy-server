@@ -258,6 +258,24 @@ The Lua side settles the status a command applies; Rust does the rolls.
 - **Command specials in Rust**: Benediction restores the target's full HP;
   Piercing Arrow's combo (longer Shadowbind) counts only from 8 yalms or more
   (`PIERCING_ARROW_COMBO_YALMS`, the client text's rule).
+- **TP above the cost** (**ours**, no source): a physical weaponskill used
+  with more TP than it costs deals `WS_BONUS_PER_1000_TP_OVER_COST` (5%) more
+  per 1000 TP over. 1.0 spends only the cost, so the surplus stays.
+- **Knockback**: a landed hit from a knockback move (level 1-3 in
+  `server_battlenpc_skill_info.knockback`, #152) pushes the target
+  `KNOCKBACK_YALMS_PER_LEVEL` (2, **ours**) yalms a level, straight away from
+  the attacker (along its facing if they share a spot). The push walks the
+  path in 0.5-yalm steps over the client's own collision floors
+  (`map-server/src/terrain.rs`, a port of `tools/terrain/xivterrain.py`;
+  field zones only) and stops before a step that climbs over 0.75 or drops
+  over 2 yalms, or leaves the mesh. Without a 1.23b install
+  (`XIVLEGACY_CLIENT_DIR` or `XIV_CLIENT`) it keeps the height. The player is
+  sent the in-zone warp SetActorPosition; others see a 0x00CF move.
+  KnockbackImmune (Tempered Will, Enduring March) stops both the push and
+  the hit-effect bits.
+- **Command scripts can add a status to the caster**
+  (`caster.statusEffects.AddStatusEffect`): Cover gives the paladin Cover,
+  so Enhanced Cover's MP on damage taken works.
 - **Raging Strike** (`raging_strike2.lua`): each Light Shot hit adds
   `RAGING_STRIKE_ATTACK_PER_STACK` (10%, **ours**, no source) of the archer's
   Attack, up to 3 stacks; a missed Light Shot drops them all.
@@ -284,9 +302,8 @@ The audit of all 103 effects, with what each one changes, is the table in
 
 - Accuracy, evasion and potency from base stats and gear (see "Status share
   only" above). Monsters have no accuracy, evasion or potency of their own.
-- Knockback, so KnockbackImmune (Tempered Will) does nothing.
 - Ammo use, so Refill has nothing to refill.
-- Party and enmity bindings for hooks: Cover/Covered, Collusion and Divine
-  Veil's party Regen are partial.
+- Cover redirects only auto-attacks and single-target melee commands;
+  multi-hit and AoE interactions are untested (pmeteor's own notes doubt them).
 - Real player growth curves (the stat table above is a placeholder).
 - Crit potency and crit resilience (pmeteor has them commented out).

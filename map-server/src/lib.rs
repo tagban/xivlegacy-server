@@ -69,6 +69,7 @@ mod runtime;
 mod server;
 mod social;
 mod status;
+mod terrain;
 // Opt-in headless test-harness facade for the `content-test` runner, gated
 // behind the `testkit` cargo feature so it never ships in the server build.
 #[cfg(feature = "testkit")]

@@ -8,7 +8,9 @@ function onPreAction(effect, caster, target, skill, action, actionContainer)
     if  target.allegiance ~= caster.allegiance and (skill.isRanged or skill.GetActionType() == ActionType.Magic or skill.GetActionType() == ActionType.Physical) then
         --Set action's hit rate to 0
         action.hitRate = 0.0;
-        action.resistRate = 400;
+        --Resist rates are percent and halve each roll: 1600 is a sure
+        --full resist (750 left a triple resist, with damage, 6% of the time)
+        action.resistRate = 1600;
         --Remove status and add message
         target.statusEffects.RemoveStatusEffect(effect, actionContainer, 30331, false);
     end

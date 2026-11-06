@@ -390,6 +390,10 @@ pub struct CommandStatus {
     /// (`caster.statusEffects.RemoveStatusEffect`), with the loss text it
     /// asked for (0: none given).
     pub removed: Vec<(u32, u16)>,
+    /// Statuses the script put on the caster
+    /// (`caster.statusEffects.AddStatusEffect(id, tier, magnitude,
+    /// duration)`: Cover's own Cover status), for the caller to install.
+    pub added: Vec<SetupAddedStatus>,
     /// The script ended a buff instead of calling `action.DoAction`: a
     /// toggle used with its buff up (Rampage, Berserk, Cleric Stance…), so
     /// the command lands no status.
@@ -401,12 +405,22 @@ pub struct CommandStatus {
     pub enmity: Option<f64>,
 }
 
+/// One `caster.statusEffects.AddStatusEffect` call in a command script.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct SetupAddedStatus {
+    pub status_id: u32,
+    pub tier: u8,
+    pub magnitude: f64,
+    pub duration: u32,
+}
+
 /// The `statusEffects` a command script sees on its caster: what the
-/// caster holds, and a record of what the script removes.
+/// caster holds, and a record of what the script removes and adds.
 #[derive(Default)]
 struct SetupStatus {
     held: Vec<u32>,
     removed: Vec<(u32, u16)>,
+    added: Vec<SetupAddedStatus>,
     did_action: bool,
 }
 
@@ -480,6 +494,35 @@ fn build_setup_status(lua: &Lua, st: &Arc<Mutex<SetupStatus>>) -> mlua::Result<T
                 s.removed.push((id, text));
             }
             Ok(Value::Nil)
+        })?,
+    )?;
+    // pmeteor `AddStatusEffect(id, tier, magnitude, duration, tickMs)`.
+    let s = st.clone();
+    t.set(
+        "AddStatusEffect",
+        lua.create_function(move |_, args: Variadic<Value>| {
+            let nums: Vec<f64> = args
+                .iter()
+                .filter_map(|v| match v {
+                    Value::Integer(i) => Some(*i as f64),
+                    Value::Number(n) => Some(*n),
+                    _ => None,
+                })
+                .collect();
+            let Some(&id) = nums.first() else {
+                return Ok(false);
+            };
+            let at = |i: usize| nums.get(i).copied().unwrap_or(0.0);
+            s.lock()
+                .map_err(|_| mlua::Error::runtime("status state poisoned"))?
+                .added
+                .push(SetupAddedStatus {
+                    status_id: id as u32,
+                    tier: at(1).clamp(0.0, 255.0) as u8,
+                    magnitude: at(2),
+                    duration: at(3).max(0.0) as u32,
+                });
+            Ok(true)
         })?,
     )?;
     t.set_metatable(Some(stub_meta(lua)?))?;
@@ -691,11 +734,12 @@ pub fn run_command_setup(
         tracing::debug!(command = command_name, error = %e, "command setup stopped early");
     }
     let num = |k: &str, d: f64| skill.get::<Option<f64>>(k).ok().flatten().unwrap_or(d);
-    let (removed, did_action) = setup
+    let (removed, added, did_action) = setup
         .lock()
-        .map(|s| (s.removed.clone(), s.did_action))
+        .map(|s| (s.removed.clone(), s.added.clone(), s.did_action))
         .unwrap_or_default();
     Ok(Some(CommandStatus {
+        added,
         toggled_off: has_finish && failed.is_none() && !did_action && !removed.is_empty(),
         removed,
         status_id: num("statusId", start.status_id as f64) as u32,

@@ -1483,6 +1483,139 @@ async fn send_timing_flags(actor_id: u32, registry: &ActorRegistry, world: &Worl
 const COMBO_SECONDS: u32 = 13;
 /// Piercing Arrow's minimum distance for a combo.
 const PIERCING_ARROW_COMBO_YALMS: f32 = 8.0;
+
+/// How far each knockback level pushes (ours, no 1.0 source: STUCK.md
+/// 2026-11-06). Level 1 = 2 yalms, 3 = 6.
+pub(crate) const KNOCKBACK_YALMS_PER_LEVEL: f32 = 2.0;
+/// The push walks the path in steps this long and stops where the
+/// ground drops or rises too much (a wall or a cliff).
+const KNOCKBACK_STEP_YALMS: f32 = 0.5;
+/// Most a step may climb, and drop, onto the next floor.
+const KNOCKBACK_MAX_CLIMB: f32 = 0.75;
+const KNOCKBACK_MAX_DROP: f32 = 2.0;
+/// The in-zone quick move a player's client accepts (the GM warp's
+/// SetActorPosition: spawn type 0x11, embedded id 0xC0000000).
+const KNOCKBACK_SPAWN_TYPE: u16 = 0x11;
+const KNOCKBACK_EMBEDDED_ID: i32 = 0xC000_0000_u32 as i32;
+
+/// Where a knockback of `level` from `from` leaves an actor at `at`:
+/// straight away from the attacker (along `facing` if they stand on the
+/// same spot), walked in short steps over `ground` (the floor under a
+/// point nearest a height, `None` off the mesh, `Err` when unknown), and
+/// stopped at the last step a wall or cliff doesn't block.
+pub(crate) fn knockback_destination(
+    from: common::Vector3,
+    at: common::Vector3,
+    facing: f32,
+    level: u8,
+    mut ground: impl FnMut(f32, f32, f32) -> Result<Option<f32>, ()>,
+) -> common::Vector3 {
+    let (mut dx, mut dz) = (at.x - from.x, at.z - from.z);
+    let len = (dx * dx + dz * dz).sqrt();
+    if len < 0.01 {
+        // 1.0 rotation: 0 faces +z, π/2 faces +x (`look_at_rotation`).
+        (dx, dz) = (facing.sin(), facing.cos());
+    } else {
+        (dx, dz) = (dx / len, dz / len);
+    }
+    let distance = KNOCKBACK_YALMS_PER_LEVEL * f32::from(level.max(1));
+    let steps = (distance / KNOCKBACK_STEP_YALMS).ceil() as u32;
+    let mut pos = at;
+    for k in 1..=steps {
+        let d = (KNOCKBACK_STEP_YALMS * k as f32).min(distance);
+        let (x, z) = (at.x + dx * d, at.z + dz * d);
+        match ground(x, z, pos.y) {
+            // No terrain for this zone: keep the height.
+            Err(()) => pos = common::Vector3::new(x, pos.y, z),
+            Ok(Some(y)) if y - pos.y <= KNOCKBACK_MAX_CLIMB && pos.y - y <= KNOCKBACK_MAX_DROP => {
+                pos = common::Vector3::new(x, y, z);
+            }
+            // A wall, a cliff or the edge of the mesh: stop here.
+            _ => break,
+        }
+    }
+    pos
+}
+
+/// Push `target_id` away from `attacker_id` (a landed knockback hit).
+async fn apply_knockback(
+    attacker_id: u32,
+    target_id: u32,
+    level: u8,
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    zone: &Arc<RwLock<Zone>>,
+) {
+    let (Some(a), Some(t)) = (
+        registry.get(attacker_id).await,
+        registry.get(target_id).await,
+    ) else {
+        return;
+    };
+    let (from, facing) = {
+        let c = a.character.read().await;
+        (c.base.position(), c.base.rotation)
+    };
+    let (at, rotation, alive) = {
+        let c = t.character.read().await;
+        (c.base.position(), c.base.rotation, c.is_alive())
+    };
+    if !alive {
+        return;
+    }
+    let zone_name = zone.read().await.core.zone_name.clone();
+    let to =
+        knockback_destination(
+            from,
+            at,
+            facing,
+            level,
+            |x, z, near| match crate::terrain::floors(&zone_name, x, z) {
+                crate::terrain::Floors::Known(f) => Ok(f
+                    .into_iter()
+                    .min_by(|a, b| (a - near).abs().total_cmp(&(b - near).abs()))),
+                crate::terrain::Floors::Unknown => Err(()),
+            },
+        );
+    if (to.x - at.x).abs() < 1e-3 && (to.z - at.z).abs() < 1e-3 {
+        return;
+    }
+    tracing::debug!(target = target_id, level, from = ?at, to = ?to, "knockback");
+    // Stored position, zone grid and the 0x00CF move for everyone around.
+    crate::runtime::quest_apply::apply_move_actor_to_position(
+        target_id, to.x, to.y, to.z, rotation, 0, registry, world,
+    )
+    .await;
+    if t.is_player() {
+        if let Some(mut session) = world.session(t.session_id).await {
+            session.destination_x = to.x;
+            session.destination_y = to.y;
+            session.destination_z = to.z;
+            session.destination_rot = rotation;
+            world.upsert_session(session).await;
+        }
+        let pkt = tx::actor::build_set_actor_position(
+            target_id,
+            KNOCKBACK_EMBEDDED_ID,
+            to.x,
+            to.y,
+            to.z,
+            rotation,
+            KNOCKBACK_SPAWN_TYPE,
+            false,
+        );
+        send_to_self_if_player(registry, world, target_id, pkt.to_bytes()).await;
+    }
+}
+
+/// Weaponskill damage bonus per 1000 TP above its cost (ours: no 1.0 source;
+/// STUCK.md 2026-11-06). 3000 TP on a 1000-TP weaponskill: ×1.10.
+pub(crate) const WS_BONUS_PER_1000_TP_OVER_COST: f64 = 0.05;
+
+/// The damage factor for `surplus` TP above a weaponskill's cost.
+pub(crate) fn ws_tp_bonus(surplus: i32) -> f64 {
+    1.0 + WS_BONUS_PER_1000_TP_OVER_COST * f64::from(surplus.max(0)) / 1000.0
+}
 /// pmeteor `SetCombos`: `playerWork.comboCostBonusRate = 1`, so a link
 /// that continues a combo costs no MP or TP.
 const COMBO_COST_BONUS_RATE: f32 = 1.0;
@@ -2198,6 +2331,33 @@ async fn resolve_action(
         command
     };
 
+    // TP above the cost (ours, no 1.0 source): a weaponskill used with
+    // more TP than it spends hits a little harder. 1.0 spends only the
+    // fixed cost, so the surplus stays and the bonus is kept small.
+    let tp_scaled;
+    let command = if command.command_type == CommandType::WEAPON_SKILL
+        && command.action_type == ActionType::Physical
+        && command.tp_cost > 0
+    {
+        let tp = i32::from(attacker_handle.character.read().await.chara.tp);
+        let surplus = (tp - i32::from(command.tp_cost)).max(0);
+        if surplus > 0 {
+            let mut c = command.clone();
+            let m = if c.damage_multiplier > 0.0 {
+                f64::from(c.damage_multiplier)
+            } else {
+                battle_utils::DEFAULT_PHYSICAL_SKILL_MULTIPLIER
+            };
+            c.damage_multiplier = (m * ws_tp_bonus(surplus)) as f32;
+            tp_scaled = c;
+            &tp_scaled
+        } else {
+            command
+        }
+    } else {
+        command
+    };
+
     // Positionals (pmeteor `WeaponSkillState.OnStart`): a weaponskill used
     // from the side its row names (front, rear or flank of the target)
     // runs its script's `onPositional` (Fast Blade's power, Goring
@@ -2229,6 +2389,7 @@ async fn resolve_action(
     // comes from the caster's enhancing potency, Invigorate's from gear…).
     let scripted;
     let mut setup_removed: Vec<(u32, u16)> = Vec::new();
+    let mut setup_added: Vec<crate::status::script::SetupAddedStatus> = Vec::new();
     let mut setup_toggled_off = false;
     let mut setup_enmity: Option<f64> = None;
     let command = match (command.status_id, lua) {
@@ -2276,6 +2437,7 @@ async fn resolve_action(
                         "command setup"
                     );
                     setup_removed = set.removed;
+                    setup_added = set.added;
                     setup_toggled_off = set.toggled_off;
                     setup_enmity = set.enmity;
                     scripted = c;
@@ -2406,6 +2568,7 @@ async fn resolve_action(
     let mut hits: Vec<ActionHit> = Vec::new();
     let mut all_procs: Vec<(u32, usize)> = Vec::new();
     let mut wake_outbox = crate::status::StatusOutbox::new();
+    let mut knockbacks: Vec<(u32, u8)> = Vec::new();
     for target_id in targets {
         let Some(defender_handle) = registry.get(target_id).await else {
             continue;
@@ -2704,6 +2867,7 @@ async fn resolve_action(
                 .find(|r| r.target_actor_id == target_id)
         {
             row.effect_id |= knockback_hit_effect(command.knockback);
+            knockbacks.push((target_id, command.knockback));
         }
         if is_heal && let (Some(root), Some(atk)) = (&root, &attacker_side) {
             use crate::status::StatusEffectFlags as F;
@@ -2832,6 +2996,34 @@ async fn resolve_action(
             for hit in hits.iter_mut() {
                 hit.status_roll = false;
             }
+        }
+    }
+
+    // What the command's script put on the caster (Cover gives the
+    // paladin Cover, whose Enhanced tier turns damage taken into MP).
+    if !setup_added.is_empty()
+        && let Some(db) = db
+    {
+        let now_ms = (common::utils::unix_timestamp() as u64).saturating_mul(1000);
+        for add in setup_added {
+            let mut cmd = BattleCommand::new(0, "");
+            cmd.status_id = add.status_id;
+            cmd.status_duration = add.duration;
+            cmd.status_magnitude = add.magnitude;
+            cmd.status_tier = add.tier.max(1);
+            let effect = command_status_effect(&cmd, attacker_actor_id, lua, now_ms);
+            let gain_text = effect.status_gain_text_id;
+            crate::runtime::quest_apply::install_status_effect(
+                attacker_actor_id,
+                attacker_actor_id,
+                effect,
+                gain_text,
+                registry,
+                db,
+                world,
+                lua,
+            )
+            .await;
         }
     }
 
@@ -3220,6 +3412,12 @@ async fn resolve_action(
         zone,
     )
     .await;
+
+    // Knockback: push each target the hit knocked back, after the hit
+    // shows (the server owns positions; a player's client is sent there).
+    for (target_id, level) in knockbacks {
+        apply_knockback(attacker_actor_id, target_id, level, registry, world, zone).await;
+    }
 
     // A boss's summoning move calls its adds once it lands.
     if !attacker_handle.is_player()
@@ -5513,6 +5711,56 @@ pub(crate) async fn send_to_self_if_player(
         let mut bytes = bytes;
         common::subpacket::SubPacket::stamp_target_id_if_zero(&mut bytes, handle.session_id);
         client.send_bytes(bytes).await;
+    }
+}
+
+#[cfg(test)]
+mod knockback_tests {
+    use super::*;
+    use common::Vector3;
+
+    #[test]
+    fn pushes_straight_away_from_the_attacker() {
+        let to = knockback_destination(
+            Vector3::new(0.0, 0.0, 0.0),
+            Vector3::new(1.0, 0.0, 0.0),
+            0.0,
+            2,
+            |_, _, y| Ok(Some(y)),
+        );
+        assert!((to.x - (1.0 + 2.0 * KNOCKBACK_YALMS_PER_LEVEL)).abs() < 1e-4 && to.z.abs() < 1e-4);
+    }
+
+    #[test]
+    fn same_spot_uses_the_attackers_facing() {
+        let p = Vector3::new(5.0, 0.0, 5.0);
+        let to = knockback_destination(p, p, std::f32::consts::FRAC_PI_2, 1, |_, _, y| Ok(Some(y)));
+        assert!(
+            (to.x - (5.0 + KNOCKBACK_YALMS_PER_LEVEL)).abs() < 1e-4,
+            "{to:?}"
+        );
+    }
+
+    #[test]
+    fn walls_cliffs_and_slopes() {
+        let (from, at) = (Vector3::new(0.0, 10.0, 0.0), Vector3::new(0.0, 10.0, 1.0));
+        // A wall 1 yalm behind: the ground jumps up 3.
+        let to = knockback_destination(from, at, 0.0, 3, |_, z, _| {
+            Ok(Some(if z > 2.0 { 13.0 } else { 10.0 }))
+        });
+        assert!((to.z - 2.0).abs() < 1e-4, "stops at the wall: {to:?}");
+        // A gentle slope down: follows it.
+        let to = knockback_destination(from, at, 0.0, 1, |_, z, _| Ok(Some(10.0 - 0.2 * z)));
+        assert!(
+            (to.y - (10.0 - 0.2 * to.z)).abs() < 1e-4 && to.z > 2.9,
+            "{to:?}"
+        );
+        // Off the mesh: stops at the edge.
+        let to = knockback_destination(from, at, 0.0, 2, |_, z, _| Ok((z <= 2.5).then_some(10.0)));
+        assert!((to.z - 2.5).abs() < 1e-4, "{to:?}");
+        // No terrain for the zone: full push, same height.
+        let to = knockback_destination(from, at, 0.0, 1, |_, _, _| Err(()));
+        assert!((to.z - 3.0).abs() < 1e-4 && to.y == 10.0, "{to:?}");
     }
 }
 

@@ -221,6 +221,8 @@ pub(super) struct Scene {
     pub(super) processor: crate::processor::PacketProcessor,
     pub(super) rx: mpsc::Receiver<Vec<u8>>,
     _rx_friend: mpsc::Receiver<Vec<u8>>,
+    /// The TP a press starts from.
+    pub(super) press_tp: u16,
 }
 
 fn actor_at(id: u32, kind: ActorKind, x: f32, z: f32, alive: bool) -> StoredActor {
@@ -383,6 +385,7 @@ pub(super) async fn scene(
         processor,
         rx,
         _rx_friend: rx_friend,
+        press_tp: 3000,
     }
 }
 
@@ -473,7 +476,7 @@ pub(super) async fn press_once(sc: &mut Scene, cmd: &BattleCommand, rcpt: Recipi
         } else {
             9999
         };
-        c.chara.tp = 3000;
+        c.chara.tp = sc.press_tp;
     }
     let mp_before = i32::from(
         sc.registry
@@ -555,7 +558,7 @@ pub(super) async fn press_once(sc: &mut Scene, cmd: &BattleCommand, rcpt: Recipi
         let h = sc.registry.get(PLAYER).await.unwrap();
         let c = h.character.read().await;
         o.mp_spent = mp_before - i32::from(c.chara.mp);
-        o.tp_spent = 3000 - i32::from(c.chara.tp);
+        o.tp_spent = i32::from(sc.press_tp) - i32::from(c.chara.tp);
         o.recast_set = c.chara.hotbar.first().is_some_and(|e| e.recast_time != 0);
     }
     o

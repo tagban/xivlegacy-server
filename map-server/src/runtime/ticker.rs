@@ -2226,7 +2226,18 @@ mod tests {
                     .mods
                     .set(crate::actor::modifier::Modifier::KnockbackImmune, 1.0);
             }
+            let pos_of = |id: u32| {
+                let registry = ticker.registry.clone();
+                async move {
+                    let h = registry.get(id).await.unwrap();
+                    let c = h.character.read().await;
+                    c.base.position()
+                }
+            };
+            let start = pos_of(1).await;
             let mut landed: Option<u32> = None;
+            let mut pushed_to = start;
+            let mut set_position_sent = false;
             for attempt in 0..10u64 {
                 {
                     let handle = ticker.registry.get(2).await.unwrap();
@@ -2240,7 +2251,12 @@ mod tests {
                 for i in 1..=40u64 {
                     ticker.tick_once(attempt * 4_000 + i * 100).await;
                 }
-                landed = drain_subpackets(&mut rx)
+                let subs = drain_subpackets(&mut rx);
+                set_position_sent |= subs.iter().any(|s| {
+                    s.game_message.opcode == crate::packets::opcodes::OP_SET_ACTOR_POSITION
+                        && s.header.source_id == 1
+                });
+                landed = subs
                     .iter()
                     .filter(|s| {
                         s.game_message.opcode == crate::packets::opcodes::OP_COMMAND_RESULT_X01
@@ -2251,10 +2267,29 @@ mod tests {
                     .map(|s| u32::from_le_bytes(s.data[0x30..0x34].try_into().unwrap()))
                     .next();
                 if landed.is_some() {
+                    pushed_to = pos_of(1).await;
                     break;
                 }
             }
             let effect = landed.expect("Drop Kick must land within ten tries");
+            let mob = pos_of(2).await;
+            let dist = |a: common::Vector3, b: common::Vector3| {
+                ((a.x - b.x).powi(2) + (a.z - b.z).powi(2)).sqrt()
+            };
+            let moved = dist(start, pushed_to);
+            if immune {
+                assert!(moved < 0.01, "immune target stays put, moved {moved}");
+            } else {
+                let want = crate::runtime::dispatcher::KNOCKBACK_YALMS_PER_LEVEL;
+                assert!(
+                    (moved - want).abs() < 0.3 && dist(mob, pushed_to) > dist(mob, start),
+                    "pushed {moved} y away from the monster (want {want})"
+                );
+                assert!(
+                    set_position_sent,
+                    "the player's client is sent the new spot"
+                );
+            }
             let kb = crate::runtime::dispatcher::knockback_hit_effect(1);
             if immune {
                 assert_ne!(
