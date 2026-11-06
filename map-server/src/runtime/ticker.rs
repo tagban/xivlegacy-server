@@ -524,6 +524,30 @@ impl GameTicker {
                 apply_npc_movement_step(&self.world, &self.registry, zone, &handle, step).await;
             }
 
+            // A knockback's sped-up run is over: others get the usual
+            // speed again (dispatcher `apply_knockback`).
+            let restore = {
+                let mut chara = handle.character.write().await;
+                if chara.knockback_speed_until_ms != 0 && now_ms >= chara.knockback_speed_until_ms {
+                    chara.knockback_speed_until_ms = 0;
+                    Some(chara.speed_sent)
+                } else {
+                    None
+                }
+            };
+            if let Some(multiplier) = restore {
+                let sub =
+                    crate::packets::send::actor::build_set_actor_speed_scaled(handle.actor_id, multiplier);
+                crate::runtime::broadcast::broadcast_around_actor(
+                    &self.world,
+                    &self.registry,
+                    zone,
+                    handle.actor_id,
+                    sub.to_bytes(),
+                )
+                .await;
+            }
+
             // Chocobo rental expiry — port of Meteor commit `8687e431`'s
             // `Player.Update` arm. If the actor has an active rental
             // whose expire timestamp has elapsed, dismount and
@@ -2238,6 +2262,7 @@ mod tests {
             let mut landed: Option<u32> = None;
             let mut pushed_to = start;
             let mut set_position_sent = false;
+            let mut warp: Option<common::subpacket::SubPacket> = None;
             for attempt in 0..10u64 {
                 {
                     let handle = ticker.registry.get(2).await.unwrap();
@@ -2252,10 +2277,13 @@ mod tests {
                     ticker.tick_once(attempt * 4_000 + i * 100).await;
                 }
                 let subs = drain_subpackets(&mut rx);
-                set_position_sent |= subs.iter().any(|s| {
+                if let Some(w) = subs.iter().find(|s| {
                     s.game_message.opcode == crate::packets::opcodes::OP_SET_ACTOR_POSITION
                         && s.header.source_id == 1
-                });
+                }) {
+                    set_position_sent = true;
+                    warp = Some(w.clone());
+                }
                 landed = subs
                     .iter()
                     .filter(|s| {
@@ -2289,6 +2317,27 @@ mod tests {
                     set_position_sent,
                     "the player's client is sent the new spot"
                 );
+                // The warp carries the knockback note: push direction,
+                // distance and start, facing the monster.
+                let w = warp.unwrap();
+                let d = &w.data;
+                let f = |o: usize| f32::from_le_bytes(d[o..o + 4].try_into().unwrap());
+                assert_eq!(d.len(), 0x48, "warp body + note");
+                assert_eq!(&d[0x28..0x2C], b"XKB1");
+                assert!((f(0x08) - pushed_to.x).abs() < 1e-3 && (f(0x10) - pushed_to.z).abs() < 1e-3);
+                let (dir_x, dir_z) = (f(0x2C), f(0x30));
+                assert!(((pushed_to.x - start.x) - dir_x * f(0x34)).abs() < 1e-3);
+                assert!(((pushed_to.z - start.z) - dir_z * f(0x34)).abs() < 1e-3);
+                assert_eq!(
+                    u16::from_le_bytes([d[0x38], d[0x39]]),
+                    crate::runtime::dispatcher::knockback_slide_ms(f(0x34))
+                );
+                assert!((f(0x3C) - start.x).abs() < 1e-3 && (f(0x44) - start.z).abs() < 1e-3);
+                let face = (mob.x - pushed_to.x).atan2(mob.z - pushed_to.z);
+                assert!((f(0x14) - face).abs() < 1e-3, "faces the monster: {} vs {face}", f(0x14));
+                // The sped-up run for onlookers is over by now.
+                let h = ticker.registry.get(1).await.unwrap();
+                assert_eq!(h.character.read().await.knockback_speed_until_ms, 0);
             }
             let kb = crate::runtime::dispatcher::knockback_hit_effect(1);
             if immune {
