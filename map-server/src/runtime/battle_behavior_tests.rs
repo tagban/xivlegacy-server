@@ -54,10 +54,47 @@ use crate::gamedata::BattleCommand;
 
 const CLASSES: [u8; 7] = [2, 3, 4, 7, 8, 22, 23];
 
-/// HP of a level-`level` monster in `server_battlenpc_groups` (median by
-/// level: 80 at 1, 210 at 10, 410 at 20).
+/// Each job and the class it is built on (MNK, PLD, WAR, BRD, DRG, BLM, WHM).
+const JOBS: [(u8, u8); 7] = [
+    (15, 2),
+    (16, 3),
+    (17, 4),
+    (18, 7),
+    (19, 8),
+    (26, 22),
+    (27, 23),
+];
+
+/// The class a command's class or job is played on.
+fn base_class(job: u8) -> u8 {
+    JOBS.iter()
+        .find(|(j, _)| *j == job)
+        .map_or(job, |(_, c)| *c)
+}
+
+/// HP of a level-`level` monster: the retail capture medians
+/// (`tools/world_spawns/data/xivl_mob_level_hp.csv`, the curve the spawn
+/// groups use), log-linear between them. 80 at 1, 210 at 10, 723 at 30,
+/// 1946 at 41; 50 follows the 41-67 slope.
 fn mob_hp(level: i16) -> i32 {
-    80 + 16 * i32::from(level)
+    const PTS: [(f64, f64); 8] = [
+        (1.0, 80.0),
+        (10.0, 210.0),
+        (20.0, 410.0),
+        (25.0, 565.0),
+        (30.0, 723.0),
+        (36.0, 1077.0),
+        (41.0, 1946.0),
+        (50.0, 3216.0),
+    ];
+    let l = f64::from(level.clamp(1, 50));
+    let i = PTS
+        .windows(2)
+        .position(|w| l <= w[1].0)
+        .unwrap_or(PTS.len() - 2);
+    let ((l0, h0), (l1, h1)) = (PTS[i], PTS[i + 1]);
+    let t = (l - l0) / (l1 - l0);
+    (h0.ln() + t * (h1.ln() - h0.ln())).exp().round() as i32
 }
 
 /// The best weapon of the class at or below `level` (item data).
@@ -69,25 +106,114 @@ fn weapon_for(class: u8, level: i16) -> u32 {
             (12, 4020206),
             (16, 4020207),
             (19, 4020108),
+            (23, 4020208),
+            (26, 4020109),
+            (29, 4020302),
+            (32, 4020006),
+            (35, 4020110),
+            (38, 4020307),
+            (40, 4020306),
+            (43, 4020209),
+            (46, 4020111),
+            (49, 4020309),
         ],
-        3 => &[(1, 4030010), (7, 4030001), (10, 4030706), (18, 4030006)],
+        3 => &[
+            (1, 4030010),
+            (7, 4030001),
+            (10, 4030706),
+            (18, 4030006),
+            (21, 4030203),
+            (23, 4030008),
+            (26, 4030115),
+            (28, 4030707),
+            (30, 4030015),
+            (31, 4030304),
+            (34, 4030708),
+            (36, 4030405),
+            (40, 4030305),
+            (43, 4030204),
+            (46, 4030506),
+            (49, 4030406),
+        ],
         4 => &[
             (1, 4040001),
             (5, 4040004),
             (10, 4040007),
             (15, 4040009),
             (20, 4040010),
+            (23, 4040405),
+            (25, 4040012),
+            (28, 4040107),
+            (30, 4040110),
+            (31, 4040304),
+            (34, 4040205),
+            (35, 4040303),
+            (38, 4040108),
+            (40, 4040407),
+            (45, 4040305),
+            (48, 4040207),
         ],
-        7 => &[(1, 4070001), (8, 4070204), (16, 4070010), (19, 4070208)],
+        7 => &[
+            (1, 4070001),
+            (8, 4070204),
+            (16, 4070010),
+            (19, 4070208),
+            (24, 4070210),
+            (28, 4070306),
+            (30, 4070305),
+            (32, 4070302),
+            (35, 4070212),
+            (38, 4070207),
+            (40, 4070215),
+            (43, 4070203),
+            (46, 4070213),
+            (49, 4070308),
+        ],
         8 => &[
             (1, 4080201),
             (8, 4080205),
             (12, 4080008),
             (16, 4080206),
             (20, 4080104),
+            (23, 4080406),
+            (26, 4080208),
+            (29, 4080304),
+            (30, 4080110),
+            (34, 4080105),
+            (38, 4080102),
+            (40, 4080408),
+            (43, 4080305),
+            (46, 4080210),
+            (49, 4080407),
         ],
-        22 => &[(1, 5020001), (5, 5020106), (12, 5020108), (15, 5020102)],
-        _ => &[(1, 5030101), (6, 5030102), (11, 5030103), (17, 5030107)],
+        22 => &[
+            (1, 5020001),
+            (5, 5020106),
+            (12, 5020108),
+            (15, 5020102),
+            (25, 5020103),
+            (30, 5020114),
+            (35, 5020105),
+            (39, 5020109),
+            (40, 5020112),
+            (44, 5020303),
+            (49, 5020110),
+        ],
+        _ => &[
+            (1, 5030101),
+            (6, 5030102),
+            (11, 5030103),
+            (17, 5030107),
+            (21, 5030306),
+            (25, 5030207),
+            (30, 5030305),
+            (32, 5030208),
+            (35, 5030112),
+            (38, 5030109),
+            (40, 5030307),
+            (45, 5030209),
+            (48, 5030205),
+        ],
     };
     table
         .iter()
@@ -146,15 +272,21 @@ async fn real_scene_at(
     class: u8,
 ) -> Scene {
     let sc = scene(&env.db, &env.lua, cmd, rcpt).await;
+    // A job plays on its class; its gear is kept under the job's id (the
+    // server equips by the current job).
+    let job = class;
+    let class = base_class(job);
     {
         let h = sc.registry.get(PLAYER).await.unwrap();
         let mut c = h.character.write().await;
         c.chara.level = level;
         c.chara.class = i16::from(class);
+        c.chara.current_job = if job != class { u16::from(job) } else { 0 };
     }
+    let gear_class = job;
     // Real gear in the DB, so every stat rebuild (status gain/loss) keeps it.
-    let _ = env.db.unequip_item(PLAYER, class, 0).await;
-    let _ = env.db.unequip_item(PLAYER, class, 1).await;
+    let _ = env.db.unequip_item(PLAYER, gear_class, 0).await;
+    let _ = env.db.unequip_item(PLAYER, gear_class, 1).await;
     let w = env
         .db
         .create_item(weapon_for(class, level), 1, 1, None)
@@ -163,7 +295,7 @@ async fn real_scene_at(
     env.db
         .equip_item(
             PLAYER,
-            class,
+            gear_class,
             crate::actor::player::SLOT_MAINHAND,
             w.unique_id,
             false,
@@ -175,7 +307,7 @@ async fn real_scene_at(
         env.db
             .equip_item(
                 PLAYER,
-                class,
+                gear_class,
                 crate::actor::player::SLOT_OFFHAND,
                 s.unique_id,
                 false,
@@ -280,13 +412,21 @@ fn median(v: &mut [i32]) -> i32 {
 
 /// Every level 1-20 command of the seven classes.
 fn l20_commands(env: &Env) -> Vec<BattleCommand> {
+    band_commands(env, 1, 20)
+}
+
+/// The seven classes' and their jobs' commands from level `lo` to `hi`.
+fn band_commands(env: &Env, lo: u8, hi: u8) -> Vec<BattleCommand> {
     let mut v: Vec<BattleCommand> = env
         .catalog
         .values()
-        .filter(|c| CLASSES.contains(&c.job) && c.level <= 20)
+        .filter(|c| {
+            (CLASSES.contains(&c.job) || JOBS.iter().any(|(j, _)| *j == c.job))
+                && (lo..=hi).contains(&c.level)
+        })
         .cloned()
         .collect();
-    v.sort_by_key(|c| (c.job, c.level, c.id));
+    v.sort_by_key(|c| (base_class(c.job), c.level, c.id));
     v
 }
 
@@ -294,9 +434,35 @@ fn l20_commands(env: &Env) -> Vec<BattleCommand> {
 /// 1-20 command, with the real stat pipeline. Prints a table.
 #[tokio::test]
 async fn battle_behavior_l20_numbers() {
+    band_numbers(1, 20, 51).await;
+}
+
+/// The same for levels 21-30 (classes, and the jobs' level 30 actions).
+#[tokio::test]
+async fn battle_behavior_l30_numbers() {
+    band_numbers(21, 30, 28).await;
+}
+
+/// The same for levels 31-40.
+#[tokio::test]
+async fn battle_behavior_l40_numbers() {
+    band_numbers(31, 40, 28).await;
+}
+
+/// The same for levels 41-50.
+#[tokio::test]
+async fn battle_behavior_l50_numbers() {
+    band_numbers(41, 50, 35).await;
+}
+
+async fn band_numbers(lo: u8, hi: u8, count: usize) {
     let env = env().await;
-    let cmds = l20_commands(&env);
-    assert_eq!(cmds.len(), 51, "level 1-20 commands of the seven classes");
+    let cmds = band_commands(&env, lo, hi);
+    assert_eq!(
+        cmds.len(),
+        count,
+        "level {lo}-{hi} commands of the seven classes and jobs"
+    );
     let mut problems = Vec::new();
     println!(
         "\n{:<6} {:<18} {:>3} {:>3} {:>7} {:>6} {:>6} {:>5} {:>5} {:>5} {:>6}",
@@ -390,9 +556,17 @@ async fn battle_behavior_l20_numbers() {
             continue;
         }
         if damaging {
-            // A weaponskill or attack spell takes 4-75% of a same-level
-            // monster: none ends a fight on its own.
-            if !(0.04..=0.75).contains(&share) {
+            // A weaponskill or attack spell takes 4-80% of a same-level
+            // monster: none ends a fight on its own. (PUG's retail 5-6x
+            // multipliers are at the top.) Rage of Halone's five hits each
+            // take -40% accuracy outside its combo (its script), so most
+            // miss here: 2% is its floor.
+            let floor = if cmd.name == "rage_of_halone" {
+                0.02
+            } else {
+                0.04
+            };
+            if !(floor..=0.80).contains(&share) {
                 problems.push(format!(
                     "{} dmg median {med} = {:.0}% of a level {level} monster ({})",
                     cmd.name,
@@ -401,7 +575,9 @@ async fn battle_behavior_l20_numbers() {
                 ));
             }
         }
-        if cmd.action_type == 3 && !(0.05..=0.70).contains(&share) {
+        // Benediction restores all HP.
+        let heal_cap = if cmd.name == "benediction" { 1.0 } else { 0.70 };
+        if cmd.action_type == 3 && !(0.05..=heal_cap).contains(&share) {
             problems.push(format!(
                 "{} heal median {heal_med} = {:.0}% of max HP {player_max}",
                 cmd.name,
@@ -448,7 +624,10 @@ async fn battle_behavior_l20_numbers() {
             ));
         }
     }
-    assert!(problems.is_empty(), "level 1-20 numbers:\n{problems:#?}");
+    assert!(
+        problems.is_empty(),
+        "level {lo}-{hi} numbers:\n{problems:#?}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -892,6 +1071,33 @@ async fn battle_behavior_combos() {
             problems.push(format!("{a} -> {b}: status lasts {got:?} s, want {secs}"));
         }
     }
+    // Inside 8 yalms Piercing Arrow starts no combo: Shadowbind keeps its
+    // plain duration.
+    {
+        let opener = by_name(&env, "piercing_arrow").clone();
+        let fin = by_name(&env, "shadowbind").clone();
+        let mut sc = real_scene(&env, &fin, Recipient::Enemy).await;
+        let mut got = None;
+        for _ in 0..12 {
+            end_combo(&sc).await;
+            reset_enemy(&sc).await;
+            clear_status(&sc, ENEMY, fin.status_id).await;
+            if press(&mut sc, &opener).await.damage_main <= 0 {
+                continue;
+            }
+            press(&mut sc, &fin).await;
+            let h = sc.registry.get(ENEMY).await.unwrap();
+            let c = h.character.read().await;
+            if let Some(e) = c.status_effects.get(fin.status_id) {
+                got = Some(e.duration);
+                break;
+            }
+        }
+        println!("piercing_arrow -> shadowbind at 3 yalms: status lasts {got:?} s");
+        if got == Some(30) {
+            problems.push("piercing_arrow combo from 3 yalms".to_string());
+        }
+    }
     // Skull Sunder in combo draws more enmity.
     {
         let opener = by_name(&env, "heavy_swing").clone();
@@ -1113,15 +1319,18 @@ async fn battle_behavior_crowd_control_on_monsters() {
     // Pacification: no monster weaponskills, still swings.
     {
         let (catalog, _) = (env.catalog.clone(), ());
+        // The lowest id, not the first a HashMap yields: a different move
+        // each run made this flaky.
         let skill = catalog
             .values()
-            .find(|c| {
+            .filter(|c| {
                 c.job == 0
                     && c.action_type == 1
                     && c.id >= 23000
                     && c.aoe_type == 0
                     && c.status_id == 0
             })
+            .min_by_key(|c| c.id)
             .cloned()
             .expect("a single-target monster attack move");
         for pacified in [false, true] {
@@ -1646,7 +1855,13 @@ async fn battle_behavior_toggles_enmity_and_decoy() {
         let ls = by_name(&env, "light_shot").clone();
         let mut sc = real_scene_at(&env, &rs, Recipient::Enemy, 14, 7).await;
         reset_enemy(&sc).await;
+        let atk0 = mod_of(&sc, PLAYER, Modifier::Attack).await;
         land_self_buff(&mut sc, &rs).await;
+        {
+            let h = sc.registry.get(PLAYER).await.unwrap();
+            let mut c = h.character.write().await;
+            c.chara.mods.set(Modifier::RawHitRate, 100.0);
+        }
         for _ in 0..5 {
             press(&mut sc, &ls).await;
         }
@@ -1655,9 +1870,28 @@ async fn battle_behavior_toggles_enmity_and_decoy() {
             let c = h.character.read().await;
             c.status_effects.get(rs.status_id).map(|e| e.tier)
         };
-        println!("raging_strike: tier after 5 light shots {tier:?}");
-        if !matches!(tier, Some(2..=3)) {
+        let atk3 = mod_of(&sc, PLAYER, Modifier::Attack).await;
+        // A miss drops the stacks.
+        {
+            let h = sc.registry.get(PLAYER).await.unwrap();
+            let mut c = h.character.write().await;
+            c.chara.mods.set(Modifier::RawHitRate, -100.0);
+        }
+        press(&mut sc, &ls).await;
+        let atk_miss = mod_of(&sc, PLAYER, Modifier::Attack).await;
+        println!(
+            "raging_strike: tier after 5 light shots {tier:?}, attack {atk0} -> {atk3} -> {atk_miss} after a miss"
+        );
+        // Lands at tier 1; three stacks make tier 4.
+        if tier != Some(4) {
             problems.push(format!("raging_strike stacks: {tier:?}"));
+        }
+        // +10% a stack (RAGING_STRIKE_ATTACK_PER_STACK), three stacks.
+        let want = 3.0 * (0.1 * atk0).round().max(1.0);
+        if (atk3 - atk0 - want).abs() > 1.0 || (atk_miss - atk0).abs() > 0.5 {
+            problems.push(format!(
+                "raging_strike attack {atk0} -> {atk3} (want +{want}) -> {atk_miss} after a miss"
+            ));
         }
     }
 
@@ -1843,7 +2077,19 @@ async fn battle_balance_auto_attacks() {
     println!("\ncls lvl mob  pHP mobHP p->m m->p  p%mob   m%p");
     for class in CLASSES {
         let cmd = cmds.iter().find(|c| c.job == class).unwrap().clone();
-        for (lvl, mlvl) in [(1i16, 1i16), (5, 5), (10, 10), (15, 15), (20, 20), (27, 30)] {
+        for (lvl, mlvl) in [
+            (1i16, 1i16),
+            (5, 5),
+            (10, 10),
+            (15, 15),
+            (20, 20),
+            (27, 30),
+            (30, 30),
+            (35, 35),
+            (40, 40),
+            (45, 45),
+            (50, 50),
+        ] {
             let sc = real_scene_at(&env, &cmd, Recipient::Enemy, lvl, class).await;
             set_mob_level(&sc, mlvl).await;
             let php = {
@@ -1862,8 +2108,11 @@ async fn battle_balance_auto_attacks() {
                 100.0 * p_share,
                 100.0 * m_share
             );
+            // Retail monster HP climbs fast from 40 and these players wear
+            // no armor: 3% is the floor there.
+            let p_floor = if lvl >= 40 { 0.03 } else { 0.05 };
             if lvl == mlvl {
-                if !(0.05..=0.15).contains(&p_share) {
+                if !(p_floor..=0.15).contains(&p_share) {
                     problems.push(format!(
                         "class {class} L{lvl}: swing {pm} = {:.0}% of the monster's {mobhp}",
                         100.0 * p_share
@@ -1886,4 +2135,165 @@ async fn battle_balance_auto_attacks() {
         }
     }
     assert!(problems.is_empty(), "balance:\n{problems:#?}");
+}
+
+/// Every level 21-50 command's status: its stat changes go on when it
+/// lands and all come off when it ends (none left behind). A self status is
+/// landed by pressing the command, so the command script sizes it; a stance
+/// (no timer) is ended by pressing it again, anything else by expiry. Prints
+/// what each one changes.
+#[tokio::test]
+async fn battle_behavior_l21_50_statuses_revert() {
+    // Set by the engine, not the status: MovementSpeed gets the default run
+    // speed before a speed effect multiplies it, HitCount by a swing.
+    const ENGINE_SET: [u32; 2] = [61, 119];
+    let env = env().await;
+    let mut problems = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for cmd in band_commands(&env, 21, 50) {
+        if cmd.status_id == 0 || !seen.insert(cmd.status_id) {
+            continue;
+        }
+        let rcpt = recipient(&cmd);
+        let mut sc = real_scene(&env, &cmd, rcpt).await;
+        reset_enemy(&sc).await;
+        let rid = super::battle_audit_tests::status_recipient_id(&cmd, rcpt);
+        let snapshot = |c: &crate::actor::Character| {
+            let mut v: Vec<(u32, f64)> = c
+                .chara
+                .mods
+                .iter()
+                .filter(|(k, x)| *x != 0.0 && !ENGINE_SET.contains(k))
+                .collect();
+            v.sort_by_key(|(k, _)| *k);
+            v
+        };
+        let before = snapshot(&*sc.registry.get(rid).await.unwrap().character.read().await);
+        let by_press = rid == PLAYER && cmd.proc_requirement == 0;
+        if by_press {
+            for _ in 0..6 {
+                {
+                    let h = sc.registry.get(PLAYER).await.unwrap();
+                    let mut c = h.character.write().await;
+                    for e in c.chara.hotbar.iter_mut() {
+                        e.recast_time = 0;
+                    }
+                }
+                press(&mut sc, &cmd).await;
+                if has_status(&sc, PLAYER, cmd.status_id).await {
+                    break;
+                }
+            }
+        } else {
+            let bc = cmd.to_battle_command();
+            give_status(&env, &sc, rid, cmd.status_id, 30, bc.status_magnitude).await;
+        }
+        let (on, stance, during) = {
+            let h = sc.registry.get(rid).await.unwrap();
+            let c = h.character.read().await;
+            let e = c.status_effects.get(cmd.status_id);
+            (e.is_some(), e.is_some_and(|e| e.is_stance()), snapshot(&c))
+        };
+        if stance && by_press {
+            {
+                let h = sc.registry.get(PLAYER).await.unwrap();
+                let mut c = h.character.write().await;
+                for e in c.chara.hotbar.iter_mut() {
+                    e.recast_time = 0;
+                }
+            }
+            press(&mut sc, &cmd).await;
+        } else {
+            clear_status(&sc, rid, cmd.status_id).await;
+        }
+        let still_on = has_status(&sc, rid, cmd.status_id).await;
+        let after = snapshot(&*sc.registry.get(rid).await.unwrap().character.read().await);
+        let changed: Vec<(u32, f64)> = during
+            .iter()
+            .filter(|(k, v)| before.iter().find(|(b, _)| b == k).map(|(_, x)| x) != Some(v))
+            .copied()
+            .collect();
+        println!(
+            "{:<18} status {} on={on} stance={stance} changes {changed:?}",
+            cmd.name, cmd.status_id
+        );
+        if !on {
+            problems.push(format!("{} status {} didn't land", cmd.name, cmd.status_id));
+            continue;
+        }
+        if still_on {
+            problems.push(format!("{} status {} didn't end", cmd.name, cmd.status_id));
+        }
+        // An ally's stats load on its first update, so there is nothing
+        // before to compare with; its statuses here (Cover, Collusion) are
+        // hooks only, so nothing may change while it's on.
+        let leftover = if before.is_empty() {
+            after != during
+        } else {
+            after != before
+        };
+        if leftover {
+            problems.push(format!(
+                "{} status {}: mods {before:?} -> {after:?} after it ended",
+                cmd.name, cmd.status_id
+            ));
+        }
+    }
+    assert!(problems.is_empty(), "level 21-50 statuses:\n{problems:#?}");
+}
+
+/// Every proc-gated command at 21-50 (War Drum, Overpower, Full Thrust...):
+/// refused without its evade/block/parry/miss, allowed once with it.
+#[tokio::test]
+async fn battle_behavior_l21_50_procs() {
+    let env = env().await;
+    let mut problems = Vec::new();
+    for cmd in band_commands(&env, 21, 50) {
+        if cmd.proc_requirement == 0 {
+            continue;
+        }
+        let mut sc = real_scene(&env, &cmd, Recipient::Enemy).await;
+        reset_enemy(&sc).await;
+        if cmd.requirements & 16 != 0 {
+            let h = sc.registry.get(PLAYER).await.unwrap();
+            h.character
+                .write()
+                .await
+                .chara
+                .mods
+                .set(Modifier::CanBlock, 1.0);
+        }
+        let without = press(&mut sc, &cmd).await;
+        crate::runtime::dispatcher::test_open_proc(
+            &sc.registry,
+            &sc.processor.world,
+            sc.processor.lua.as_ref(),
+            Some(&sc.processor.db),
+            PLAYER,
+            cmd.proc_requirement,
+        )
+        .await;
+        {
+            let h = sc.registry.get(PLAYER).await.unwrap();
+            let mut c = h.character.write().await;
+            for e in c.chara.hotbar.iter_mut() {
+                e.recast_time = 0;
+            }
+        }
+        let with = press(&mut sc, &cmd).await;
+        println!(
+            "{} (proc {}): without {:?}, with {:?} dmg {}",
+            cmd.name, cmd.proc_requirement, without.errors, with.errors, with.damage_main
+        );
+        if !without.errors.contains(&32556) {
+            problems.push(format!(
+                "{} without its proc: {:?}",
+                cmd.name, without.errors
+            ));
+        }
+        if !with.errors.is_empty() {
+            problems.push(format!("{} with its proc: {:?}", cmd.name, with.errors));
+        }
+    }
+    assert!(problems.is_empty(), "level 21-50 procs:\n{problems:#?}");
 }
