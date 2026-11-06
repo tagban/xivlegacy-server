@@ -221,6 +221,8 @@ pub(super) struct Scene {
     pub(super) processor: crate::processor::PacketProcessor,
     pub(super) rx: mpsc::Receiver<Vec<u8>>,
     _rx_friend: mpsc::Receiver<Vec<u8>>,
+    /// The TP a press starts from.
+    pub(super) press_tp: u16,
 }
 
 fn actor_at(id: u32, kind: ActorKind, x: f32, z: f32, alive: bool) -> StoredActor {
@@ -383,6 +385,7 @@ pub(super) async fn scene(
         processor,
         rx,
         _rx_friend: rx_friend,
+        press_tp: 3000,
     }
 }
 
@@ -473,7 +476,7 @@ pub(super) async fn press_once(sc: &mut Scene, cmd: &BattleCommand, rcpt: Recipi
         } else {
             9999
         };
-        c.chara.tp = 3000;
+        c.chara.tp = sc.press_tp;
     }
     let mp_before = i32::from(
         sc.registry
