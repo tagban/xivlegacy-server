@@ -369,6 +369,9 @@ function onTalk(player, quest, npc)
 		if (classId == MIOUNNE) then
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent080_01", 1);
 			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 500, 1, 1, 2);
+			-- Completion reward from the client's quest reward sheet: 500 EXP + 30,000 gil.
+			player:AddExp(500, player.charaWork.parameterSave.state_mainSkill[0], 0);
+			player:AddGil(30000);
 			player:EndEvent();
 			player:CompleteQuest(quest);
 			return;
