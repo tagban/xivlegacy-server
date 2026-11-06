@@ -8114,9 +8114,11 @@ impl PacketProcessor {
                         && parked != owner_actor_id
                         && parked != crate::lua::scheduler::EVENT_OWNER_UNKNOWN =>
                 {
-                    let c = handle.character.read().await;
-                    c.event_session.current_event_owner == parked
-                        && c.event_session.current_event_type != 2
+                    // Only while the client is really still inside the
+                    // parked owner's event. A talk the quest fan-out
+                    // already ended can leave a stale park behind; that
+                    // one must not swallow the next push.
+                    crate::event::dispatcher::event_awaiting_client(actor_id, parked)
                 }
                 _ => false,
             };
