@@ -2107,7 +2107,16 @@ async fn resolve_action(
         return;
     }
 
-    let (atk_level, atk_max_hp, atk_mods, atk_status, atk_pos, atk_status_ids, atk_traits) = {
+    let (
+        atk_level,
+        atk_max_hp,
+        atk_mods,
+        atk_status,
+        atk_effects,
+        atk_pos,
+        atk_status_ids,
+        atk_traits,
+    ) = {
         let a = attacker_handle.character.read().await;
         if !a.is_alive() {
             return;
@@ -2117,6 +2126,7 @@ async fn resolve_action(
             a.chara.max_hp,
             a.chara.mods.clone(),
             a.bonus_mod_totals(),
+            a.status_mod_totals(),
             common::Vector3::new(a.base.position_x, a.base.position_y, a.base.position_z),
             a.status_effects.iter().map(|e| e.id).collect::<Vec<u32>>(),
             a.traits.clone(),
@@ -2431,8 +2441,12 @@ async fn resolve_action(
             },
         );
         // Cleric Stance and other potency statuses scale spells and heals.
-        result.amount =
-            battle_utils::apply_magic_potency(&atk_view, command.action_type, result.amount);
+        result.amount = battle_utils::apply_magic_potency(
+            &atk_view,
+            command.action_type,
+            result.amount,
+            &atk_effects,
+        );
         result.enmity = result.amount;
 
         let mut skill = command.clone();
