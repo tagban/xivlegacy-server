@@ -2343,7 +2343,12 @@ mod tests {
                     "faces the monster: {} vs {face}",
                     f(0x14)
                 );
-                // The sped-up run for onlookers is over by now.
+                // The sped-up run for onlookers ends on the server clock
+                // (the dispatcher arms it there; this test's ticks run on
+                // their own small clock).
+                ticker
+                    .tick_once(crate::runtime::clock::server_now_ms() + 1000)
+                    .await;
                 let h = ticker.registry.get(1).await.unwrap();
                 assert_eq!(h.character.read().await.knockback_speed_until_ms, 0);
             }
