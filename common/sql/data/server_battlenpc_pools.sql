@@ -1,4 +1,4 @@
--- server_battlenpc_pools: game data, 392 rows. Reloaded whole when this file changes.
+-- server_battlenpc_pools: game data, 394 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_pools`;
 INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId`, `currentJob`, `combatSkill`, `combatDelay`, `combatDmgMult`, `aggroType`, `immunity`, `linkType`, `spellListId`, `skillListId`) VALUES
@@ -393,4 +393,6 @@ INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId
 (30423, 2106524, 'etc1u8_amaljaa_augur', 23, 0, 1, 4800, 0.25, 0, 0, 0, 0, 23),
 (30424, 2106530, 'etc1u8_amaljaa_warrior', 23, 0, 1, 4800, 0.25, 0, 0, 0, 0, 23),
 (30425, 2202711, 'etc2g4_sourleaf_roselet', 15, 0, 1, 4800, 0.25, 0, 0, 0, 0, 15),
-(30426, 2206606, 'etc2l5_kobold_cragsman', 29, 0, 1, 4200, 1.0, 1, 0, 0, 0, 27);
+(30426, 2206606, 'etc2l5_kobold_cragsman', 29, 0, 1, 4200, 1.0, 1, 0, 0, 0, 27),
+(30450, 2104801, 'cnj300_wind_elemental', 59, 0, 1, 4200, 0.4, 0, 0, 0, 0, 102),
+(30451, 2104901, 'cnj300_earth_elemental', 56, 0, 1, 4800, 0.4, 0, 0, 0, 0, 102);

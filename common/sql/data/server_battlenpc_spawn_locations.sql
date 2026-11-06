@@ -1,4 +1,4 @@
--- server_battlenpc_spawn_locations: game data, 3939 rows. Reloaded whole when this file changes.
+-- server_battlenpc_spawn_locations: game data, 3942 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_spawn_locations`;
 INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `groupId`, `positionX`, `positionY`, `positionZ`, `rotation`) VALUES
@@ -3947,4 +3947,7 @@ INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `
 (4092, 'etc2l5_kobold_cragsman', 30426, -640.0, 62.5, -1600.0, 0.6),
 (4093, 'etc2l5_kobold_cragsman', 30426, -630.0, 61.95, -1610.0, 0.6),
 (4094, 'etc2l5_kobold_cragsman', 30426, -650.0, 61.95, -1590.0, 0.6),
-(4095, 'etc2l5_kobold_cragsman', 30426, -625.0, 61.08, -1595.0, 0.6);
+(4095, 'etc2l5_kobold_cragsman', 30426, -625.0, 61.08, -1595.0, 0.6),
+(4046, 'cnj300_wind_elemental', 30450, -590.0, -25.39, -438.0, 2.4),
+(4047, 'cnj300_wind_elemental', 30450, -578.0, -25.31, -438.0, -2.4),
+(4048, 'cnj300_earth_elemental', 30451, -584.0, -25.47, -432.0, 3.14);
