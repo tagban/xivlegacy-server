@@ -536,8 +536,10 @@ impl GameTicker {
                 }
             };
             if let Some(multiplier) = restore {
-                let sub =
-                    crate::packets::send::actor::build_set_actor_speed_scaled(handle.actor_id, multiplier);
+                let sub = crate::packets::send::actor::build_set_actor_speed_scaled(
+                    handle.actor_id,
+                    multiplier,
+                );
                 crate::runtime::broadcast::broadcast_around_actor(
                     &self.world,
                     &self.registry,
@@ -2324,7 +2326,9 @@ mod tests {
                 let f = |o: usize| f32::from_le_bytes(d[o..o + 4].try_into().unwrap());
                 assert_eq!(d.len(), 0x48, "warp body + note");
                 assert_eq!(&d[0x28..0x2C], b"XKB1");
-                assert!((f(0x08) - pushed_to.x).abs() < 1e-3 && (f(0x10) - pushed_to.z).abs() < 1e-3);
+                assert!(
+                    (f(0x08) - pushed_to.x).abs() < 1e-3 && (f(0x10) - pushed_to.z).abs() < 1e-3
+                );
                 let (dir_x, dir_z) = (f(0x2C), f(0x30));
                 assert!(((pushed_to.x - start.x) - dir_x * f(0x34)).abs() < 1e-3);
                 assert!(((pushed_to.z - start.z) - dir_z * f(0x34)).abs() < 1e-3);
@@ -2334,7 +2338,11 @@ mod tests {
                 );
                 assert!((f(0x3C) - start.x).abs() < 1e-3 && (f(0x44) - start.z).abs() < 1e-3);
                 let face = (mob.x - pushed_to.x).atan2(mob.z - pushed_to.z);
-                assert!((f(0x14) - face).abs() < 1e-3, "faces the monster: {} vs {face}", f(0x14));
+                assert!(
+                    (f(0x14) - face).abs() < 1e-3,
+                    "faces the monster: {} vs {face}",
+                    f(0x14)
+                );
                 // The sped-up run for onlookers is over by now.
                 let h = ticker.registry.get(1).await.unwrap();
                 assert_eq!(h.character.read().await.knockback_speed_until_ms, 0);

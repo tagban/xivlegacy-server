@@ -154,9 +154,18 @@ pub fn build_knockback_warp(
     spawn_type: u16,
     note: &KnockbackNote,
 ) -> SubPacket {
-    let mut pkt =
-        build_set_actor_position(actor_id, target_actor_id, x, y, z, rotation, spawn_type, false);
-    pkt.data.resize(KNOCKBACK_NOTE_OFFSET + KNOCKBACK_NOTE_SIZE, 0);
+    let mut pkt = build_set_actor_position(
+        actor_id,
+        target_actor_id,
+        x,
+        y,
+        z,
+        rotation,
+        spawn_type,
+        false,
+    );
+    pkt.data
+        .resize(KNOCKBACK_NOTE_OFFSET + KNOCKBACK_NOTE_SIZE, 0);
     pkt.header.subpacket_size += KNOCKBACK_NOTE_SIZE as u16;
     let mut c = Cursor::new(&mut pkt.data[KNOCKBACK_NOTE_OFFSET..]);
     c.write_u32::<LittleEndian>(KNOCKBACK_NOTE_MAGIC).unwrap();
@@ -1574,7 +1583,8 @@ mod move_actor_to_position_tests {
             start: [1.0, 2.0, 3.0],
         };
         let pkt = build_knockback_warp(9, 0xC000_0000_u32 as i32, 3.4, 2.0, -0.2, 1.5, 0x11, &note);
-        let plain = build_set_actor_position(9, 0xC000_0000_u32 as i32, 3.4, 2.0, -0.2, 1.5, 0x11, false);
+        let plain =
+            build_set_actor_position(9, 0xC000_0000_u32 as i32, 3.4, 2.0, -0.2, 1.5, 0x11, false);
         let d = &pkt.data;
         assert_eq!(d.len(), 0x48);
         // Everything a client without the hook reads is the plain warp.
@@ -1582,7 +1592,11 @@ mod move_actor_to_position_tests {
         assert_eq!(d[..KNOCKBACK_NOTE_OFFSET], plain.data[..]);
         let bytes = pkt.to_bytes();
         assert_eq!(bytes.len(), 0x68);
-        assert_eq!(u16::from_le_bytes([bytes[0], bytes[1]]), 0x68, "subpacket size covers the note");
+        assert_eq!(
+            u16::from_le_bytes([bytes[0], bytes[1]]),
+            0x68,
+            "subpacket size covers the note"
+        );
         let f = |o: usize| f32::from_le_bytes(d[o..o + 4].try_into().unwrap());
         assert_eq!(&d[0x28..0x2C], b"XKB1");
         assert_eq!((f(0x2C), f(0x30), f(0x34)), (0.6, -0.8, 4.0));
