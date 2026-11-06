@@ -15,8 +15,8 @@
 //! QFLAG_TALK)`), the marker goes up on that NPC, and talking to them runs
 //! the quest's `onTalk` at `SEQ_ACCEPT`, which shows the offer and calls
 //! `player:AcceptQuest(quest)` on a yes. Here the offers live on the
-//! character (`Character::quest_offers`), rebuilt at zone-in and whenever
-//! the journal changes.
+//! character (`Character::quest_offers`), rebuilt at zone-in, whenever
+//! the journal changes and when the player's level changes.
 
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
@@ -60,6 +60,13 @@ fn prerequisites(quest_id: u32, prerequisite: u32) -> Vec<u32> {
         None if prerequisite != 0 => vec![prerequisite],
         None => Vec::new(),
     }
+}
+
+/// Whether offers built at `built_at` are out of date for a player now at
+/// `level`. Offers never built (before the zone-in builds them) aren't
+/// rebuilt here.
+fn offers_stale(built_at: Option<i16>, level: i16) -> bool {
+    built_at.is_some_and(|built| built != level)
 }
 
 /// Grand Company quests by the company's standing. `com0x1`-`com0x6` and
@@ -199,6 +206,7 @@ impl PacketProcessor {
                 .flat_map(|q| q.state.current.keys().copied())
                 .collect();
             c.quest_offers = offers.clone();
+            c.quest_offers_level = Some(c.chara.level);
             (removed, claimed)
         };
         // An NPC a taken quest now uses keeps that quest's marker.
@@ -218,6 +226,20 @@ impl PacketProcessor {
             offers = offers.len(),
             "quest offers refreshed"
         );
+    }
+
+    /// Rebuild the offers if the player's level moved since they were
+    /// built. Level-ups happen on paths that can't reach the processor (a
+    /// kill's EXP in the battle runtime, `!giveexp`), so the processor
+    /// checks on the player's next position update instead.
+    pub(super) async fn refresh_quest_offers_if_level_changed(&self, handle: &ActorHandle) {
+        let stale = {
+            let c = handle.character.read().await;
+            offers_stale(c.quest_offers_level, c.chara.level)
+        };
+        if stale {
+            self.refresh_quest_offers(handle).await;
+        }
     }
 
     pub(super) async fn refresh_quest_offers_for(&self, player_id: u32) {
@@ -341,6 +363,13 @@ mod tests {
         assert!(!is_offerable("trl0l1", false));
         assert!(is_offerable("etc1l1", false));
         assert!(is_offerable("wld0l1", false));
+    }
+
+    #[test]
+    fn offers_rebuild_after_a_level_change() {
+        assert!(!offers_stale(None, 8));
+        assert!(!offers_stale(Some(8), 8));
+        assert!(offers_stale(Some(7), 8));
     }
 
     #[test]

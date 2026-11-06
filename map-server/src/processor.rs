@@ -10354,6 +10354,9 @@ impl PacketProcessor {
                 .set_position(Vector3::new(pkt.x, pkt.y, pkt.z), pkt.rot);
             c.base.move_state = pkt.move_state;
         }
+        // A level-up since the offers were built (a kill, a reward) can
+        // unlock a level-gated quest such as the level 8 story quest.
+        self.refresh_quest_offers_if_level_changed(&handle).await;
 
         // TEMP (#41 stand-and-mark): echo the client-reported position so
         // scene-NPC floor heights can be read straight off the log —
