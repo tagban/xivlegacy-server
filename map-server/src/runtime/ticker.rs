@@ -1044,10 +1044,16 @@ pub(crate) fn build_owner_view(
     );
     let spawn_position = (spawn.x != 0.0 || spawn.y != 0.0 || spawn.z != 0.0).then_some(spawn);
     let pos = chara.base.position();
-    let is_close_to_spawn = spawn_position.is_none_or(|sp| {
-        let (dx, dz) = (pos.x - sp.x, pos.z - sp.z);
-        dx * dx + dz * dz <= LEASH_DISTANCE * LEASH_DISTANCE
-    });
+    // Monsters a duty or quest script spawned (no respawn) aren't
+    // leashed: they follow the fight wherever it goes. Leashed, an escort
+    // monster pulled near the edge of its 50 yalms gave up at once, the
+    // script engaged it again the next tick, and it sat at the line
+    // while the player walked on (Man0u1 chinchillas).
+    let is_close_to_spawn = chara.chara.respawn_disabled
+        || spawn_position.is_none_or(|sp| {
+            let (dx, dz) = (pos.x - sp.x, pos.z - sp.z);
+            dx * dx + dz * dz <= LEASH_DISTANCE * LEASH_DISTANCE
+        });
     ControllerOwnerView {
         actor: ActorView {
             actor_id,
@@ -2486,6 +2492,57 @@ mod tests {
             c.base.position_x
         );
         assert!(!c.ai_container.is_engaged());
+    }
+
+    /// A monster a duty spawned (no respawn) follows the fight past the
+    /// leash: it keeps fighting and closes on the player.
+    #[tokio::test]
+    async fn duty_monster_is_not_leashed() {
+        let (ticker, _zone, _rx) = setup_engaged_npc_vs_player(2.0, |_| {}).await;
+        {
+            let handle = ticker.registry.get(2).await.unwrap();
+            let mut c = handle.character.write().await;
+            c.chara.spawn_x = 2.0 + LEASH_DISTANCE + 5.0;
+            c.chara.respawn_disabled = true;
+        }
+        for i in 1..=10u64 {
+            ticker.tick_once(i * 100).await;
+        }
+        let handle = ticker.registry.get(2).await.unwrap();
+        let c = handle.character.read().await;
+        assert!(c.ai_container.is_engaged(), "a duty monster keeps fighting");
+        assert_eq!(c.hate.most_hated(), Some(1));
+    }
+
+    /// The zone grid still has the player beside the monster, but the
+    /// player is really 40 yalms off: the swing gate passes on the grid,
+    /// the swing itself must not land.
+    #[tokio::test]
+    async fn monster_swing_out_of_real_reach_does_not_land() {
+        let (ticker, _zone, _rx) = setup_engaged_npc_vs_player(2.0, |_| {}).await;
+        let player = ticker.registry.get(1).await.unwrap();
+        let hp_before = {
+            let mut c = player.character.write().await;
+            c.base.position_x = 40.0;
+            c.get_hp()
+        };
+        for i in 1..=100u64 {
+            ticker.tick_once(i * 100).await;
+        }
+        assert_eq!(
+            player.character.read().await.get_hp(),
+            hp_before,
+            "no hit from 38 yalms"
+        );
+        // Back beside it: the swings land again.
+        player.character.write().await.base.position_x = 0.0;
+        for i in 101..=200u64 {
+            ticker.tick_once(i * 100).await;
+        }
+        assert!(
+            player.character.read().await.get_hp() < hp_before,
+            "hit at 2 yalms"
+        );
     }
 
     /// Inside the leash a monster keeps fighting.
