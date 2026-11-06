@@ -1,4 +1,4 @@
--- server_battlenpc_groups: game data, 638 rows. Reloaded whole when this file changes.
+-- server_battlenpc_groups: game data, 648 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_groups`;
 INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLevel`, `maxLevel`, `respawnTime`, `hp`, `mp`, `dropListId`, `allegiance`, `spawnType`, `animationId`, `actorState`, `privateAreaName`, `privateAreaLevel`, `zoneId`) VALUES
@@ -640,4 +640,14 @@ INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLe
 (30407, 30407, 'etc2l1_aldgoat_nanny', 19, 19, 0, 300, 0, 0, 0, 16, 0, 0, '', 0, 130),
 (30408, 30408, 'etc2l1_moraby_mole', 19, 19, 0, 280, 0, 0, 0, 16, 0, 0, '', 0, 130),
 (30409, 30409, 'etc2l1_black_bat', 19, 19, 0, 260, 0, 0, 0, 16, 0, 0, '', 0, 130),
-(30406, 30406, 'etc3g1_imperial_hoplomachus', 16, 16, 0, 260, 0, 0, 0, 16, 0, 0, '', 0, 150);
+(30406, 30406, 'etc3g1_imperial_hoplomachus', 16, 16, 0, 260, 0, 0, 0, 16, 0, 0, '', 0, 150),
+(30410, 30410, 'etc2g3_ixali_bravo', 24, 24, 0, 380, 0, 0, 0, 16, 0, 0, '', 0, 154),
+(30411, 30411, 'etc2g5_goblin_mugger', 25, 25, 0, 400, 0, 0, 0, 16, 0, 0, '', 0, 154),
+(30412, 30412, 'etc2g5_goblin_bushwhacker', 25, 25, 0, 400, 0, 0, 0, 16, 0, 0, '', 0, 154),
+(30413, 30413, 'etc3u2_coliseum_yarzon', 23, 23, 0, 1100, 0, 0, 0, 16, 0, 0, '', 0, 171),
+(30414, 30414, 'etc3g2_colbert_the_cunning', 22, 22, 0, 420, 0, 0, 0, 16, 0, 0, '', 0, 150),
+(30415, 30415, 'etc3g2_bryce_the_bold', 21, 21, 0, 360, 0, 0, 0, 16, 0, 0, '', 0, 150),
+(30416, 30416, 'etc3g2_hellbringer_ckepaga', 21, 21, 0, 360, 0, 0, 0, 16, 0, 0, '', 0, 150),
+(30417, 30417, 'etc3l2_bandit_butcher', 21, 21, 0, 360, 0, 0, 0, 16, 0, 0, '', 0, 130),
+(30418, 30418, 'etc3l2_bandit_lancer', 21, 21, 0, 360, 0, 0, 0, 16, 0, 0, '', 0, 130),
+(30419, 30419, 'etc3l2_bandit_archer', 21, 21, 0, 320, 0, 0, 0, 16, 0, 0, '', 0, 130);

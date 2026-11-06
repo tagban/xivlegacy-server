@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1763 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1774 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -1767,4 +1767,15 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (29222, 1080070, 'etc1g1_hearth_1', 150, '', 0, -190.8, 3.43, -628.2, 0.0, 0, 0, NULL),
 (29223, 1080071, 'etc1g1_hearth_2', 150, '', 0, -446.0, 5.28, -460.0, 0.0, 0, 0, NULL),
 (29224, 1080072, 'etc1g1_hearth_3', 150, '', 0, 543.0, 16.11, -195.5, 0.0, 0, 0, NULL),
-(29225, 1000512, 'etc1g1_maroile', 206, '', 0, -338.5, 6.82, -1698.0, -1.4, 0, 0, NULL);
+(29225, 1000512, 'etc1g1_maroile', 206, '', 0, -338.5, 6.82, -1698.0, -1.4, 0, 0, NULL),
+(29226, 1090606, 'etc2g3_clearing_trigger', 154, '', 0, 1285.0, -11.71, 860.0, 0.0, 0, 0, NULL),
+(29227, 1090607, 'etc2g5_hollow_trigger', 154, '', 0, 885.0, -12.23, 1090.0, 0.0, 0, 0, NULL),
+(29228, 1090608, 'etc3u2_path_trigger', 171, '', 0, 1200.0, 250.78, 205.0, 0.0, 0, 0, NULL),
+(29229, 1001718, 'etc3u2_rycharde', 171, '', 0, 1208.0, 248.42, 202.0, -1.57, 0, 0, NULL),
+(29230, 1090609, 'etc3g2_stump_trigger', 150, '', 0, -790.0, 20.19, -1060.0, 0.0, 0, 0, NULL),
+(29231, 1001692, 'etc3g2_colbert', 150, '', 0, -791.0, 20.67, -1069.0, 0.0, 0, 0, NULL),
+(29232, 1001690, 'etc3g2_bryce', 150, '', 0, -797.0, 20.25, -1068.0, 0.3, 0, 0, NULL),
+(29233, 1001691, 'etc3g2_ckepaga', 150, '', 0, -785.0, 21.67, -1070.0, -0.3, 0, 0, NULL),
+(29234, 1001570, 'etc3g2_raya_o_senna', 150, '', 0, -705.0, 21.29, -1170.0, 2.4, 0, 0, NULL),
+(29235, 1090610, 'etc3l2_beach_trigger', 130, '', 0, 1305.0, 1.05, -775.0, 0.0, 0, 0, NULL),
+(29236, 1001634, 'etc3l2_malin', 130, '', 0, 1308.0, 0.87, -790.0, 0.0, 0, 0, NULL);

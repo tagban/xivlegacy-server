@@ -1,4 +1,4 @@
--- server_battlenpc_spawn_locations: game data, 3912 rows. Reloaded whole when this file changes.
+-- server_battlenpc_spawn_locations: game data, 3926 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_spawn_locations`;
 INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `groupId`, `positionX`, `positionY`, `positionZ`, `rotation`) VALUES
@@ -3920,4 +3920,18 @@ INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `
 (4119, 'etc2l1_black_bat', 30409, 834.0, 53.11, -1112.0, 0.0),
 (4113, 'etc3g1_imperial_hoplomachus', 30406, 260.0, 3.5, -380.0, 0.0),
 (4114, 'etc3g1_imperial_hoplomachus', 30406, 266.0, 3.21, -372.0, 0.0),
-(4115, 'etc3g1_imperial_hoplomachus', 30406, 258.0, 3.75, -366.0, 0.0);
+(4115, 'etc3g1_imperial_hoplomachus', 30406, 258.0, 3.75, -366.0, 0.0),
+(4120, 'etc2g3_ixali_bravo', 30410, 1280.0, -12.0, 852.0, 0.0),
+(4121, 'etc2g3_ixali_bravo', 30410, 1290.0, -12.12, 850.0, 0.0),
+(4122, 'etc2g3_ixali_bravo', 30410, 1288.0, -11.99, 856.0, 0.0),
+(4123, 'etc2g3_ixali_bravo', 30410, 1285.0, -11.71, 860.0, 0.0),
+(4124, 'etc2g5_goblin_mugger', 30411, 895.0, -12.64, 1086.0, 1.57),
+(4125, 'etc2g5_goblin_mugger', 30411, 885.0, -10.55, 1100.0, 1.57),
+(4126, 'etc2g5_goblin_bushwhacker', 30412, 890.0, -11.67, 1096.0, 1.57),
+(4127, 'etc3u2_coliseum_yarzon', 30413, 1196.0, 250.62, 196.0, 0.0),
+(4128, 'etc3g2_colbert_the_cunning', 30414, -790.0, 21.48, -1078.0, 0.0),
+(4129, 'etc3g2_bryce_the_bold', 30415, -795.0, 20.36, -1070.0, 0.0),
+(4130, 'etc3g2_hellbringer_ckepaga', 30416, -785.0, 21.8, -1072.0, 0.0),
+(4131, 'etc3l2_bandit_butcher', 30417, 1303.0, 0.86, -786.0, 0.0),
+(4132, 'etc3l2_bandit_lancer', 30418, 1308.0, 0.87, -790.0, 0.0),
+(4133, 'etc3l2_bandit_archer', 30419, 1302.0, 0.26, -794.0, 0.0);

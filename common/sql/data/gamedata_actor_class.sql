@@ -1,4 +1,4 @@
--- gamedata_actor_class: game data, 7993 rows. Reloaded whole when this file changes.
+-- gamedata_actor_class: game data, 7998 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `gamedata_actor_class`;
 INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propertyFlags`, `eventConditions`) VALUES
@@ -11392,7 +11392,22 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
     }
   ]
 }'),
-(1001570, '', 2700007, 0, NULL),
+(1001570, '/Chara/Npc/Populace/PopulaceStandard', 2700007, 19, '{
+  "talkEventConditions": [
+    {
+      "unknown1": 4,
+      "unknown2": 0,
+      "conditionName": "talkDefault"
+    }
+  ],
+  "noticeEventConditions": [
+    {
+      "unknown1": 0,
+      "unknown2": 1,
+      "conditionName": "noticeEvent"
+    }
+  ]
+}'),
 (1001571, '/Chara/Npc/Populace/PopulaceStandard', 2700008, 19, '{
   "talkEventConditions": [
     {
@@ -11711,7 +11726,22 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
 (1001631, '', 1400176, 0, NULL),
 (1001632, '', 1900086, 0, NULL),
 (1001633, '', 1200161, 0, NULL),
-(1001634, '', 1100375, 0, NULL),
+(1001634, '/Chara/Npc/Populace/PopulaceStandard', 1100375, 19, '{
+  "talkEventConditions": [
+    {
+      "unknown1": 4,
+      "unknown2": 0,
+      "conditionName": "talkDefault"
+    }
+  ],
+  "noticeEventConditions": [
+    {
+      "unknown1": 0,
+      "unknown2": 1,
+      "conditionName": "noticeEvent"
+    }
+  ]
+}'),
 (1001635, '/Chara/Npc/Populace/PopulaceStandard', 1300060, 19, '{
   "talkEventConditions": [
     {
@@ -12048,9 +12078,54 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
   ]
 }'),
 (1001689, '', 1200221, 0, NULL),
-(1001690, '', 1000059, 0, NULL),
-(1001691, '', 1900188, 0, NULL),
-(1001692, '', 1000071, 0, NULL),
+(1001690, '/Chara/Npc/Populace/PopulaceStandard', 1000059, 19, '{
+  "talkEventConditions": [
+    {
+      "unknown1": 4,
+      "unknown2": 0,
+      "conditionName": "talkDefault"
+    }
+  ],
+  "noticeEventConditions": [
+    {
+      "unknown1": 0,
+      "unknown2": 1,
+      "conditionName": "noticeEvent"
+    }
+  ]
+}'),
+(1001691, '/Chara/Npc/Populace/PopulaceStandard', 1900188, 19, '{
+  "talkEventConditions": [
+    {
+      "unknown1": 4,
+      "unknown2": 0,
+      "conditionName": "talkDefault"
+    }
+  ],
+  "noticeEventConditions": [
+    {
+      "unknown1": 0,
+      "unknown2": 1,
+      "conditionName": "noticeEvent"
+    }
+  ]
+}'),
+(1001692, '/Chara/Npc/Populace/PopulaceStandard', 1000071, 19, '{
+  "talkEventConditions": [
+    {
+      "unknown1": 4,
+      "unknown2": 0,
+      "conditionName": "talkDefault"
+    }
+  ],
+  "noticeEventConditions": [
+    {
+      "unknown1": 0,
+      "unknown2": 1,
+      "conditionName": "noticeEvent"
+    }
+  ]
+}'),
 (1001693, '', 1200059, 0, NULL),
 (1001694, '', 1600012, 0, NULL),
 (1001695, '', 1400153, 0, NULL),
@@ -31104,9 +31179,9 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
 (2289016, '', 1000342, 0, NULL),
 (2289017, '', 1000342, 0, NULL),
 (2289018, '', 1000342, 0, NULL),
-(2289019, '', 3280308, 0, NULL),
-(2289020, '', 3280309, 0, NULL),
-(2289021, '', 3280310, 0, NULL),
+(2289019, '/Chara/Npc/Monster/Pirate/PirateStandard', 3280308, 0, NULL),
+(2289020, '/Chara/Npc/Monster/Pirate/PirateStandard', 3280309, 0, NULL),
+(2289021, '/Chara/Npc/Monster/Pirate/PirateStandard', 3280310, 0, NULL),
 (2289022, '', 3280301, 0, NULL),
 (2289023, '', 3280302, 0, NULL),
 (2289024, '', 3280303, 0, NULL),
@@ -31115,10 +31190,10 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
 (2289027, '', 3280305, 0, NULL),
 (2289028, '', 3280306, 0, NULL),
 (2289029, '', 3280307, 0, NULL),
-(2289030, '', 3280312, 0, NULL),
-(2289031, '', 3280313, 0, NULL),
+(2289030, '/Chara/Npc/Monster/Pirate/PirateStandard', 3280312, 0, NULL),
+(2289031, '/Chara/Npc/Monster/Pirate/PirateStandard', 3280313, 0, NULL),
 (2289032, '', 3280314, 0, NULL),
-(2289033, '', 3280315, 0, NULL),
+(2289033, '/Chara/Npc/Monster/Pirate/PirateStandard', 3280315, 0, NULL),
 (2289034, '', 3280316, 0, NULL),
 (2289035, '', 3280317, 0, NULL),
 (2289036, '', 3280318, 0, NULL),
@@ -34007,6 +34082,61 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
     {
       "isEnabled": "false",
       "radius": "4.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090606, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "5.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090607, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "5.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090608, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "5.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090609, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "4.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090610, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "5.0",
       "outwards": "false",
       "silent": "false",
       "conditionName": "pushDefault"
