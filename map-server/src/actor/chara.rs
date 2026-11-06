@@ -280,7 +280,8 @@ impl Character {
         let primary = base + level * per_level;
 
         // Same shape for Hp/Mp/Tp so combat pools exist from L1.
-        let hp = 250.0 + level * 30.0;
+        // Fitted to retail captures (see `player_base_hp`).
+        let hp = crate::battle::utils::player_base_hp(self.chara.level);
         let tp = 1000.0;
         let is_caster = matches!(
             class,

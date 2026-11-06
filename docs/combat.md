@@ -86,14 +86,50 @@ Every amount is clamped to 0–9999.
 
 ### Auto-attack
 
-`base = WeaponDamagePower + 0.85 × STR + Attack`, times a random `0.96–1.04`,
-clamped 1–9999 (`attack_calculate_base_damage`).
+`base = 0.4 × (WeaponDamagePower + 0.85 × STR + Attack)`, times a random
+`0.96–1.04`, clamped 1–9999 (`attack_calculate_base_damage`).
 
-Source: **pmeteor, fixed**. pmeteor's live auto-attack is a placeholder
-(`Random.Next(10) * 10`). This is the formula it sketched in a comment in
-`weaponskill.lua`. That comment's spread reads `* 8`, a typo for `* 0.08` (the
-text beside it says "~8% max deviation"). Our derived `Attack` stands in for
-pmeteor's `0.65 × capped secondary stat`.
+Source: **pmeteor, fixed**, scaled to **retail**. pmeteor's live auto-attack is
+a placeholder (`Random.Next(10) * 10`). This is the formula it sketched in a
+comment in `weaponskill.lua`. That comment's spread reads `* 8`, a typo for
+`* 0.08` (the text beside it says "~8% max deviation"). Our derived `Attack`
+stands in for pmeteor's `0.65 × capped secondary stat`.
+
+The `0.4` (`PHYSICAL_DAMAGE_SCALE`) is fitted to the retail 1.23b
+`party_battle_leve` capture (xivl-captures `battle-result-actor-join`). There,
+a level 27 gladiator's swings on level 30 monsters did 18–23, and the unscaled
+sum gave about 3× that. Before it, a level 1–20 swing took 20–30% of a
+same-level monster's HP and weaponskills one-shot them. Weaponskills scale off
+this hit, so they shrink with it.
+
+### Balance targets (levels 1–20)
+
+`battle_balance_auto_attacks` checks these at levels 1, 5, 10, 15 and 20 for
+all seven classes, with real weapons and no armor:
+
+| Fight | Target | Now |
+|---|---|---|
+| A player's swing on a same-level monster | 5–15% of its HP | 6–13% (casters 6–7%, LNC and MRD 10–13%) |
+| A monster's swing on a same-level player | 4–10% of the player's HP | 6–7% |
+| Level 27 GLA on a level 30 monster | retail 18–23 | 17 |
+| Level 30 monster on a level 27 GLA | retail 56–63 | 64 |
+| A weaponskill or attack spell (`battle_behavior_l20_numbers`) | 4–75% of a same-level monster's HP | 18–65% (PUG's retail 5× multipliers are at the top) |
+
+A monster's TP move takes 17–24% of a same-level player's HP.
+
+### Monster melee stats
+
+Monsters whose pool and genus rows give no stats get fallback stats
+(`monster_melee_stats`, **ours**, sized to retail):
+
+- Melee power `0.07 × player HP at that level + 1.5 + 0.3 × level` is split a
+  quarter, a half and a quarter over WeaponDamagePower, STR (÷ 0.85) and
+  Attack, before the 0.4 scale. A same-level swing then takes about 7% of a
+  player's HP. Retail: a level 30 monster took 56–63 off a gladiator with 750
+  HP.
+- Defense equals the level. With the full level modifier, a level 30 monster
+  takes about 30 off a level 27 player's swing. At the same level it takes
+  0.225 × level.
 
 ### Skill power (seed 291, #111)
 
@@ -114,11 +150,18 @@ pmeteor's `0.65 × capped secondary stat`.
 ### Magic potency (#128)
 
 `apply_magic_potency` scales damage spells by AttackMagicPotency and heals by
-HealingMagicPotency, using the ratio of the current value to the value
-without statuses. Cleric Stance (×1.2 to one, ×0.8 to the other) gives exactly
-those factors. An actor whose potency without statuses is 0, such as a
-monster, takes 1% per point instead. The scale is clamped to 0.25–4. Source:
-**ours**.
+HealingMagicPotency:
+
+- Status effects use the ratio of the current value to the value without
+  them. Cleric Stance (×1.2 to one, ×0.8 to the other) gives exactly those
+  factors. An actor whose potency without effects is 0, such as a monster,
+  takes 1% per point instead.
+- Gear and traits add 1% per point. Before, they went into the ratio too, so
+  the level 8 thaumaturge trait's +8 over an INT-derived 7 doubled every spell
+  (Fire took 63% of a level 10 monster), and conjurer traits made a level 18
+  Cure ×2.6.
+
+The scale is clamped to 0.25–4. Source: **ours**.
 
 ## Stats and pools
 
@@ -129,7 +172,7 @@ leaves players at zero (`apply_player_stat_baseline`):
 | Value | Formula |
 |---|---|
 | STR, VIT, DEX, INT, MND, PIE | `8 + 2 × level`, +2 to the two the class emphasizes |
-| Max HP | `250 + 30 × level` |
+| Max HP | `110 + 3.5 × level + 0.82 × level²` (**retail** fit: 126 at 3, 148 at 5, 758 at 26 and 750 at 27 in the captures; 2634 at 50 with gear) |
 | Max MP | Casters (THM, CNJ): `80 + 20 × level`. Others: `50 + 12 × level`, enough for the ~280 MP abilities at 50 (#116) |
 | TP | Max 3000 |
 

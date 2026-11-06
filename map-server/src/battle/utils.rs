@@ -155,34 +155,41 @@ pub const HIT_RATE_PER_ACCURACY: f64 = 0.5;
 /// the 15% base.
 pub const RESIST_RATE_PER_MAGIC_ACCURACY: f64 = 0.25;
 
-/// How much a potency modifier's status share scales a spell. Cleric Stance
-/// multiplies AttackMagicPotency by 1.2 and HealingMagicPotency by 0.8, so
-/// the ratio to the unbuffed value is exactly that. Actors with no potency
-/// of their own (monsters) take a flat 1% per point instead.
-pub fn potency_scale(view: &CombatView<'_>, m: Modifier) -> f64 {
-    let delta = view.status_delta(m);
-    if delta == 0.0 {
-        return 1.0;
-    }
+/// How much a potency modifier scales a spell. `effects` is the share the
+/// actor's status effects alone put on (`Character::status_mod_totals`).
+/// Cleric Stance multiplies AttackMagicPotency by 1.2 and
+/// HealingMagicPotency by 0.8, so the ratio to the value without effects is
+/// exactly that; an actor with no potency of its own (a monster) takes 1% per
+/// point instead. Gear and traits add a flat 1% per point: the level 8
+/// thaumaturge trait's +8 over an INT-derived 7 used to double every spell.
+pub fn potency_scale(view: &CombatView<'_>, m: Modifier, effects: &ModifierMap) -> f64 {
     let now = view.get_mod(m);
-    let base = now - delta;
-    let scale = if base > 0.0 {
-        now / base
+    let from_effects = effects.get(m);
+    let from_gear_and_traits = view.status_delta(m) - from_effects;
+    let by_effects = if from_effects == 0.0 {
+        1.0
+    } else if now - from_effects > 0.0 {
+        now / (now - from_effects)
     } else {
-        1.0 + delta / 100.0
+        1.0 + from_effects / 100.0
     };
-    scale.clamp(0.25, 4.0)
+    (by_effects * (1.0 + from_gear_and_traits / 100.0)).clamp(0.25, 4.0)
 }
 
 /// Scale a damage spell by AttackMagicPotency or a heal by
-/// HealingMagicPotency (their status share; see [`potency_scale`]).
-pub fn apply_magic_potency(caster: &CombatView<'_>, action_type: ActionType, amount: u16) -> u16 {
+/// HealingMagicPotency (see [`potency_scale`]).
+pub fn apply_magic_potency(
+    caster: &CombatView<'_>,
+    action_type: ActionType,
+    amount: u16,
+    effects: &ModifierMap,
+) -> u16 {
     let m = match action_type {
         ActionType::Magic => Modifier::AttackMagicPotency,
         ActionType::Heal => Modifier::HealingMagicPotency,
         _ => return amount,
     };
-    let scale = potency_scale(caster, m);
+    let scale = potency_scale(caster, m, effects);
     if scale == 1.0 {
         return amount;
     }
@@ -832,13 +839,53 @@ pub fn hit_dir_to_position(dir: HitDirection) -> super::command::BattleCommandPo
 // clear typo for `* 0.08`. We use the corrected 0.96..=1.04 range.
 // ---------------------------------------------------------------------------
 
+/// The share of `WeaponDamagePower + 0.85 × STR + Attack` a physical hit
+/// deals, fitted to retail 1.23b captures: a level 27 gladiator's swing on a
+/// level 30 monster did 18-23 and a level 26 marauder's 42-53, where the
+/// unscaled sum (with the monster's Defense) gave about 3x that. Monster
+/// melee stats ([`monster_melee_stats`]) are sized against it.
+pub const PHYSICAL_DAMAGE_SCALE: f64 = 0.4;
+
 pub fn attack_calculate_base_damage(attacker: &CombatView<'_>, rng: &mut dyn Rng) -> i32 {
     let str_v = attacker.get_mod(Modifier::Strength);
     let attack_v = attacker.get_mod(Modifier::Attack);
     let weapon_dmg = attacker.get_mod(Modifier::WeaponDamagePower);
-    let base = weapon_dmg + 0.85 * str_v + attack_v;
+    let base = (weapon_dmg + 0.85 * str_v + attack_v) * PHYSICAL_DAMAGE_SCALE;
     let dev = 0.96 + rng.next_f64() * 0.08;
     ((base * dev).round() as i32).clamp(1, 9999)
+}
+
+/// A player's max HP before gear, fitted to retail 1.23b captures: 126 at
+/// level 3, 148 at 5, 758 at 26 and 750 at 27 (2634 at 50 with gear).
+pub fn player_base_hp(level: i16) -> f64 {
+    let l = f64::from(level.max(1));
+    (110.0 + 3.5 * l + 0.82 * l * l).round()
+}
+
+/// What a monster's melee swing should deal to a same-level player before
+/// Defense: about 7% of that player's HP (retail: a level 30 monster hit a
+/// level 27 gladiator with 750 HP for 56-63), plus what the player's own
+/// Defense takes off at the same level.
+pub fn monster_melee_power(level: i16) -> f64 {
+    let l = f64::from(level.max(1));
+    0.07 * player_base_hp(level) + 1.5 + 0.3 * l
+}
+
+/// Fallback melee stats for a monster with none of its own: WeaponDamagePower,
+/// Strength, Attack and Defense. The first three split
+/// [`monster_melee_power`] a quarter, a half and a quarter (after
+/// [`PHYSICAL_DAMAGE_SCALE`]), so its weaponskills, which scale off its own
+/// hit, keep their size. Defense equals the level: with the full level
+/// modifier a level 30 monster takes about 30 off a level 27 player's hit,
+/// which brings the gladiator's 47 down to the retail 18-23.
+pub fn monster_melee_stats(level: i16) -> [(Modifier, f64); 4] {
+    let t = monster_melee_power(level) / PHYSICAL_DAMAGE_SCALE;
+    [
+        (Modifier::WeaponDamagePower, (0.25 * t).round()),
+        (Modifier::Strength, (0.5 * t / 0.85).round()),
+        (Modifier::Attack, (0.25 * t).round()),
+        (Modifier::Defense, f64::from(level.max(1))),
+    ]
 }
 
 pub fn attack_calculate_damage(
@@ -1185,14 +1232,14 @@ mod tests {
     fn base_damage_scales_with_str_and_weapon_power() {
         // Minimum-deviation point (rng = 0.0 → dev = 0.96) so the math
         // is deterministic. Weapon power 20 + STR 30 + Attack 10 →
-        // base = 20 + 0.85*30 + 10 = 55.5, × 0.96 = 53.28, rounds to 53.
+        // (20 + 0.85*30 + 10) × 0.4 = 22.2, × 0.96 = 21.31, rounds to 21.
         let mut mods = ModifierMap::default();
         mods.set(Modifier::Strength, 30.0);
         mods.set(Modifier::Attack, 10.0);
         mods.set(Modifier::WeaponDamagePower, 20.0);
         let atk = stub_view(10, 1000, &mods, 1);
         let mut rng = FixedRng::new(&[0.0]);
-        assert_eq!(attack_calculate_base_damage(&atk, &mut rng), 53);
+        assert_eq!(attack_calculate_base_damage(&atk, &mut rng), 21);
     }
 
     #[test]
@@ -1201,18 +1248,18 @@ mod tests {
         // bracket the center value. Catches a drift if someone
         // "restores" Meteor's 800% typo.
         let mut mods = ModifierMap::default();
-        mods.set(Modifier::Strength, 100.0);
+        mods.set(Modifier::Strength, 400.0);
         let atk = stub_view(10, 1000, &mods, 1);
 
-        // rng = 0.0 → dev = 0.96 → 85.0 * 0.96 = 81.6 → 82
+        // rng = 0.0 → dev = 0.96 → 340 × 0.4 = 136 → 130.56 → 131
         let mut rng_lo = FixedRng::new(&[0.0]);
         let low = attack_calculate_base_damage(&atk, &mut rng_lo);
 
-        // rng = 0.9999 → dev ≈ 1.04 → 85.0 * 1.04 ≈ 88.4 → 88
+        // rng = 0.9999 → dev ≈ 1.04 → 136 × 1.04 ≈ 141.4 → 141
         let mut rng_hi = FixedRng::new(&[0.9999]);
         let high = attack_calculate_base_damage(&atk, &mut rng_hi);
 
-        let center = 85.0f64; // 0.85 * 100.0
+        let center = 136.0f64; // 0.85 * 400.0 * PHYSICAL_DAMAGE_SCALE
         assert!(
             (low as f64) < center && (high as f64) > center,
             "expected {center} to be inside (low={low}, high={high})"
@@ -1289,12 +1336,12 @@ mod tests {
         let mut fast_blade = BattleCommand::new(27150, "fast_blade");
         fast_blade.action_type = ActionType::Physical;
         fast_blade.damage_multiplier = 3.1;
-        // auto-attack hit at dev 1.0: 0.85 * 40 = 34; x 3.1 = 105.4
+        // auto-attack hit at dev 1.0: 0.85 * 40 * 0.4 = 13.6 -> 14; x 3.1 = 43.4
         let mut rng = FixedRng::new(&[0.5, 0.5]);
-        assert_eq!(skill_amount(&atk, &fast_blade, &mut rng), Some(105));
+        assert_eq!(skill_amount(&atk, &fast_blade, &mut rng), Some(43));
         fast_blade.damage_multiplier = 0.0;
         let mut rng = FixedRng::new(&[0.5, 0.5]);
-        assert_eq!(skill_amount(&atk, &fast_blade, &mut rng), Some(85));
+        assert_eq!(skill_amount(&atk, &fast_blade, &mut rng), Some(35));
     }
 
     #[test]
@@ -1494,17 +1541,37 @@ mod tests {
             (Modifier::HealingMagicPotency, -5.0),
         ]);
         let caster = status_view(50, &mods, &status, 1);
-        assert_eq!(apply_magic_potency(&caster, ActionType::Magic, 278), 334);
-        assert_eq!(apply_magic_potency(&caster, ActionType::Heal, 160), 128);
+        assert_eq!(
+            apply_magic_potency(&caster, ActionType::Magic, 278, &status),
+            334
+        );
+        assert_eq!(
+            apply_magic_potency(&caster, ActionType::Heal, 160, &status),
+            128
+        );
         // Physical skills don't read magic potency.
-        assert_eq!(apply_magic_potency(&caster, ActionType::Physical, 200), 200);
+        assert_eq!(
+            apply_magic_potency(&caster, ActionType::Physical, 200, &status),
+            200
+        );
         // Without statuses the tuned amounts are untouched.
         let plain = status_view(50, &mods, no_status(), 1);
-        assert_eq!(apply_magic_potency(&plain, ActionType::Magic, 278), 278);
+        assert_eq!(
+            apply_magic_potency(&plain, ActionType::Magic, 278, no_status()),
+            278
+        );
         // A monster with no potency of its own takes 1% per point.
         let up = with(&[(Modifier::AttackMagicPotency, 20.0)]);
         let mob = status_view(30, &up, &up, 3);
-        assert_eq!(apply_magic_potency(&mob, ActionType::Magic, 100), 120);
+        assert_eq!(apply_magic_potency(&mob, ActionType::Magic, 100, &up), 120);
+        // A trait's +8 over an INT-derived 7 adds 8%, not x2.1.
+        let thm = with(&[(Modifier::AttackMagicPotency, 15.0)]);
+        let trait_share = with(&[(Modifier::AttackMagicPotency, 8.0)]);
+        let thm_view = status_view(10, &thm, &trait_share, 1);
+        assert_eq!(
+            apply_magic_potency(&thm_view, ActionType::Magic, 100, no_status()),
+            108
+        );
     }
 
     #[test]

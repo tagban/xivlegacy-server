@@ -202,10 +202,9 @@ async fn real_scene_at(
         let mut c = h.character.write().await;
         c.chara.level = level;
         // The live spawn's fallback stats (`BattleNpc::apply_spawn_metadata`).
-        let l = f64::from(level);
-        c.chara.mods.set(Modifier::Strength, 5.0 + 2.0 * l);
-        c.chara.mods.set(Modifier::Attack, 2.0 + l);
-        c.chara.mods.set(Modifier::WeaponDamagePower, 2.0 + l);
+        for (m, v) in crate::battle::utils::monster_melee_stats(level) {
+            c.chara.mods.set(m, v);
+        }
         c.chara.mods.set(Modifier::MovementSpeed, 5.0);
     }
     sc
@@ -391,10 +390,9 @@ async fn battle_behavior_l20_numbers() {
             continue;
         }
         if damaging {
-            // A weaponskill or attack spell takes 4-200% of a same-level
-            // monster. (Low-level weaponskills one-shot: the multipliers
-            // are fitted to level 26 captures; see battle-1-20.md.)
-            if !(0.04..=2.0).contains(&share) {
+            // A weaponskill or attack spell takes 4-75% of a same-level
+            // monster: none ends a fight on its own.
+            if !(0.04..=0.75).contains(&share) {
                 problems.push(format!(
                     "{} dmg median {med} = {:.0}% of a level {level} monster ({})",
                     cmd.name,
@@ -947,7 +945,8 @@ async fn battle_behavior_positionals() {
     // Damage: (command, bonus side, other side, min ratio)
     for (name, good, bad, ratio) in [
         ("fast_blade", "front", "rear", 1.15),
-        ("pummel", "front", "rear", 1.15),
+        // Pummel's front bonus is +15%; whole-number hits round it down.
+        ("pummel", "front", "rear", 1.10),
         ("brutal_swing", "flank", "front", 1.35),
         ("impulse_drive", "flank", "front", 1.15),
     ] {
@@ -1138,6 +1137,8 @@ async fn battle_behavior_crowd_control_on_monsters() {
                 // Only the move can hurt the player.
                 ctrl.auto_attack_enabled = false;
             }
+            // A missed move doesn't show, and the next one is 10 s away.
+            sure_hits(&sc).await;
             if pacified {
                 give_status(&env, &sc, ENEMY, 223013, 30, 0.0).await;
             }
@@ -1757,4 +1758,132 @@ async fn battle_behavior_toggles_enmity_and_decoy() {
         problems.is_empty(),
         "toggles, enmity and decoy:\n{problems:#?}"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Balance: auto-attacks both ways against the retail 1.23b captures.
+// ---------------------------------------------------------------------------
+
+/// Put a monster at `level` with the live spawn's fallback stats.
+async fn set_mob_level(sc: &Scene, level: i16) {
+    let h = sc.registry.get(ENEMY).await.unwrap();
+    let mut c = h.character.write().await;
+    c.chara.level = level;
+    for (m, v) in crate::battle::utils::monster_melee_stats(level) {
+        c.chara.mods.set(m, v);
+    }
+}
+
+/// Median HP an auto-attack from `from` takes off `to` over `n` swings
+/// that connect without a crit, block or parry.
+async fn autos(sc: &Scene, env: &Env, from: u32, to: u32, n: usize) -> i32 {
+    let rates = [
+        Modifier::RawHitRate,
+        Modifier::RawCritRate,
+        Modifier::RawParryRate,
+        Modifier::RawBlockRate,
+    ];
+    for id in [from, to] {
+        let h = sc.registry.get(id).await.unwrap();
+        let mut c = h.character.write().await;
+        if id == from {
+            c.chara.mods.set(Modifier::RawHitRate, 100.0);
+            c.chara.mods.set(Modifier::RawCritRate, -100.0);
+        } else {
+            c.chara.mods.set(Modifier::RawParryRate, -100.0);
+            c.chara.mods.set(Modifier::RawBlockRate, -100.0);
+        }
+    }
+    let mut v = Vec::new();
+    for _ in 0..n {
+        {
+            let h = sc.registry.get(to).await.unwrap();
+            let mut c = h.character.write().await;
+            c.chara.max_hp = 30000;
+            c.chara.hp = 30000;
+        }
+        Box::pin(crate::runtime::dispatcher::test_auto_attack(
+            &sc.registry,
+            &sc.processor.world,
+            Some(&env.lua),
+            Some(&env.db),
+            super::battle_audit_tests::ZONE,
+            from,
+            to,
+        ))
+        .await;
+        v.push(30000 - hp(&sc.registry, to).await);
+    }
+    for id in [from, to] {
+        let h = sc.registry.get(id).await.unwrap();
+        let mut c = h.character.write().await;
+        for m in rates {
+            c.chara.mods.set(m, 0.0);
+        }
+    }
+    median(&mut v)
+}
+
+/// Same-level fights at 1-20 for every class: a player's swing takes 5-15%
+/// of the monster's HP and the monster's swing 4-10% of the player's, so no
+/// side ends a fight in a few hits. Retail anchors (party_battle_leve
+/// capture): a level 27 gladiator swung 18-23 on level 30 monsters and took
+/// 56-63 from them; player HP was 126 at level 3, 148 at 5 and 758 at 26.
+#[tokio::test]
+async fn battle_balance_auto_attacks() {
+    let env = env().await;
+    let cmds = l20_commands(&env);
+    let mut problems = Vec::new();
+    for (level, want) in [(3i16, 126.0), (5, 148.0), (26, 758.0)] {
+        let got = crate::battle::utils::player_base_hp(level);
+        if (got - want).abs() > want * 0.05 {
+            problems.push(format!("player HP at {level}: {got}, retail {want}"));
+        }
+    }
+    println!("\ncls lvl mob  pHP mobHP p->m m->p  p%mob   m%p");
+    for class in CLASSES {
+        let cmd = cmds.iter().find(|c| c.job == class).unwrap().clone();
+        for (lvl, mlvl) in [(1i16, 1i16), (5, 5), (10, 10), (15, 15), (20, 20), (27, 30)] {
+            let sc = real_scene_at(&env, &cmd, Recipient::Enemy, lvl, class).await;
+            set_mob_level(&sc, mlvl).await;
+            let php = {
+                let h = sc.registry.get(PLAYER).await.unwrap();
+                i32::from(h.character.read().await.chara.max_hp)
+            };
+            let pm = autos(&sc, &env, PLAYER, ENEMY, 9).await;
+            let mp = autos(&sc, &env, ENEMY, PLAYER, 9).await;
+            let mobhp = mob_hp(mlvl);
+            let (p_share, m_share) = (
+                f64::from(pm) / f64::from(mobhp),
+                f64::from(mp) / f64::from(php),
+            );
+            println!(
+                "{class:>3} {lvl:>3} {mlvl:>3} {php:>4} {mobhp:>5} {pm:>4} {mp:>4} {:>5.1}% {:>5.1}%",
+                100.0 * p_share,
+                100.0 * m_share
+            );
+            if lvl == mlvl {
+                if !(0.05..=0.15).contains(&p_share) {
+                    problems.push(format!(
+                        "class {class} L{lvl}: swing {pm} = {:.0}% of the monster's {mobhp}",
+                        100.0 * p_share
+                    ));
+                }
+                if !(0.04..=0.10).contains(&m_share) {
+                    problems.push(format!(
+                        "class {class} L{lvl}: monster swing {mp} = {:.0}% of {php} HP",
+                        100.0 * m_share
+                    ));
+                }
+            } else if class == 3 {
+                if !(14..=26).contains(&pm) {
+                    problems.push(format!("L27 GLA on a L30 monster: {pm}, retail 18-23"));
+                }
+                if !(45..=80).contains(&mp) {
+                    problems.push(format!("L30 monster on a L27 GLA: {mp}, retail 56-63"));
+                }
+            }
+        }
+    }
+    assert!(problems.is_empty(), "balance:\n{problems:#?}");
 }

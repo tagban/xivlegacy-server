@@ -3850,10 +3850,10 @@ async fn equipped_mainhand_weapon_populates_modifiers_and_damage() {
         has_shell: false,
         has_stoneskin: false,
     };
-    // rng=0.0 → minimum deviation (0.96). base = 20 + 0.85*30 + 23
-    // = 20 + 25.5 + 23 = 68.5; × 0.96 = 65.76 → rounds to 66.
+    // rng=0.0 → minimum deviation (0.96). base = (20 + 0.85*30 + 23)
+    // × 0.4 = 27.4; × 0.96 = 26.3 → rounds to 26.
     let mut rng = FixedRng::new(&[0.0]);
-    assert_eq!(attack_calculate_base_damage(&atk_view, &mut rng), 66);
+    assert_eq!(attack_calculate_base_damage(&atk_view, &mut rng), 26);
 }
 
 /// Regression guard for the "derivation ran on zeros" gap — with a fresh
