@@ -1,4 +1,5 @@
 require ("global")
+require ("contenttimer")
 require ("modifiers")
 -- onUpdate drives ally/mob engagement through allyGlobal.EngageTarget;
 -- without this require the global is nil and every tick errors
@@ -401,6 +402,7 @@ function onUpdate(tick, area)
 			owner:SendGameMessage(GetWorldMaster(), TEXT_PROTECT_SISIPU, 0x20, escort.actorId);
 			owner:SendGameMessage(GetWorldMaster(), TEXT_BOUND_BY_DUTY, 0x20);
 			owner:SendGameMessage(GetWorldMaster(), TEXT_TIME_REMAINING, 0x20, ESCORT_LIMIT_MINUTES);
+			ShowContentTimer(owner, (ESCORT_LIMIT_TICKS - elapsed) / TICKS_PER_SECOND);
 			emitBark(owner, BARKS.dutyStart);
 		end
 		state.sawEscort = true;
