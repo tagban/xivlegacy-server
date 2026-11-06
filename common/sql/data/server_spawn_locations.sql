@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1752 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1763 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -1756,4 +1756,15 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (29215, 1080063, 'etc1l9_shell_1', 130, '', 0, 1215.0, 4.05, -770.0, 0.0, 0, 0, NULL),
 (29216, 1080064, 'etc1l9_shell_2', 130, '', 0, 1232.0, 3.41, -758.0, 0.0, 0, 0, NULL),
 (29217, 1080065, 'etc1l9_shell_3', 130, '', 0, 1248.0, 1.42, -776.0, 0.0, 0, 0, NULL),
-(29218, 1080066, 'etc1l9_shell_4', 130, '', 0, 1240.0, 3.31, -748.0, 0.0, 0, 0, NULL);
+(29218, 1080066, 'etc1l9_shell_4', 130, '', 0, 1240.0, 3.31, -748.0, 0.0, 0, 0, NULL),
+(29209, 1090604, 'etc3g1_tree_trigger', 150, '', 0, 264.0, 4.34, -390.0, 0.0, 0, 0, NULL),
+(29210, 1000737, 'etc3g1_biddy', 206, '', 0, -337.5, 6.82, -1703.0, -1.4, 0, 0, NULL),
+(29211, 1001580, 'etc3g1_bardo', 150, '', 0, 262.0, 3.69, -362.0, 3.14, 0, 0, NULL),
+(29212, 1001581, 'etc3g1_yayatu', 150, '', 0, 258.0, 3.75, -366.0, 3.14, 0, 0, NULL),
+(29219, 1080067, 'etc1g0_watcher_1', 150, '', 0, 392.0, 5.07, -531.8, 0.0, 0, 0, NULL),
+(29220, 1080068, 'etc1g0_watcher_2', 150, '', 0, 57.1, 20.44, -708.8, 0.0, 0, 0, NULL),
+(29221, 1080069, 'etc1g0_watcher_3', 150, '', 0, -193.1, 7.2, -977.5, 0.0, 0, 0, NULL),
+(29222, 1080070, 'etc1g1_hearth_1', 150, '', 0, -190.8, 3.43, -628.2, 0.0, 0, 0, NULL),
+(29223, 1080071, 'etc1g1_hearth_2', 150, '', 0, -446.0, 5.28, -460.0, 0.0, 0, 0, NULL),
+(29224, 1080072, 'etc1g1_hearth_3', 150, '', 0, 543.0, 16.11, -195.5, 0.0, 0, 0, NULL),
+(29225, 1000512, 'etc1g1_maroile', 206, '', 0, -338.5, 6.82, -1698.0, -1.4, 0, 0, NULL);

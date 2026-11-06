@@ -1,4 +1,4 @@
--- server_battlenpc_pools: game data, 374 rows. Reloaded whole when this file changes.
+-- server_battlenpc_pools: game data, 375 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_pools`;
 INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId`, `currentJob`, `combatSkill`, `combatDelay`, `combatDmgMult`, `aggroType`, `immunity`, `linkType`, `spellListId`, `skillListId`) VALUES
@@ -375,4 +375,5 @@ INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId
 (30405, 2380001, 'etc3l1_imperial_veles', 29, 0, 1, 4800, 0.2, 0, 0, 0, 0, 104),
 (30407, 2102305, 'etc2l1_aldgoat_nanny', 1, 0, 1, 4800, 0.25, 0, 0, 0, 0, 1),
 (30408, 2105703, 'etc2l1_moraby_mole', 11, 0, 1, 4800, 0.25, 0, 0, 0, 0, 11),
-(30409, 2104103, 'etc2l1_black_bat', 43, 0, 1, 4800, 0.25, 0, 0, 0, 0, 43);
+(30409, 2104103, 'etc2l1_black_bat', 43, 0, 1, 4800, 0.25, 0, 0, 0, 0, 43),
+(30406, 2380004, 'etc3g1_imperial_hoplomachus', 29, 0, 1, 4800, 0.2, 0, 0, 0, 0, 104);
