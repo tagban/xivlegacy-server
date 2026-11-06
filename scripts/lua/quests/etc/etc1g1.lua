@@ -13,7 +13,7 @@ Prereq: Level 15, any class
 Maroile of Stillglade Fane has sealed a raging fire elemental in a heated
 gallipot (key item 11000141). Carry it to three extinguished hearths in
 the Central Shroud and let it light them; the work calms it. Then return
-to Maroile. Reward a rope belt and 500 experience (ZAM, after 1.20).
+to Maroile. Reward a Rope Belt and 500 experience.
 
 Maroile had no spawn or class script; she stands at Stillglade Fane
 beside Biddy. The hearths are map objects: the three lone bonfires
@@ -46,7 +46,7 @@ MRKR_MAROILE		= 11065504;
 
 -- Rewards
 REWARD_EXP			= 500;
-REWARD_BELT			= 8090401;
+REWARD_BELT			= 8090402;	-- Rope Belt (the client's reward table, data/01/03/05/61.DAT)
 
 function onStart(player, quest)
 	player:GetItemPackage(INVENTORY_KEYITEMS):AddItem(ITEM_GALLIPOT, 1, 1);

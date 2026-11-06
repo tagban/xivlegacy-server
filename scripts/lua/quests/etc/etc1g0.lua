@@ -13,7 +13,7 @@ Prereq: Level 10, any class
 Sandre, a botanist at Greatloam Growery, is tired of bumping into the
 Watchers in the dark. He gives you a flask of ceruleum compound (key item
 11000140) to feed the flames of three Watchers on the road from Gridania
-to Camp Bentbranch. Then return to him. Reward Dated Dodoskin Shoes and
+to Camp Bentbranch. Then return to him. Reward Dodoskin Shoes and
 300 experience (ZAM).
 
 The Watchers are map objects (the client's t0lmp4 lamps), so each one
@@ -44,7 +44,7 @@ MRKR_SANDRE			= 11065404;
 
 -- Rewards
 REWARD_EXP			= 300;
-REWARD_SHOES		= 8080606;
+REWARD_SHOES		= 8080617;	-- Dodoskin Shoes (the client's reward table, data/01/03/05/61.DAT)
 
 function onStart(player, quest)
 	player:GetItemPackage(INVENTORY_KEYITEMS):AddItem(ITEM_CERULEUM, 1, 1);
