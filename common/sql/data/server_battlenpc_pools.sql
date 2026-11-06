@@ -1,4 +1,4 @@
--- server_battlenpc_pools: game data, 385 rows. Reloaded whole when this file changes.
+-- server_battlenpc_pools: game data, 391 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_pools`;
 INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId`, `currentJob`, `combatSkill`, `combatDelay`, `combatDmgMult`, `aggroType`, `immunity`, `linkType`, `spellListId`, `skillListId`) VALUES
@@ -386,4 +386,10 @@ INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId
 (30416, 2289021, 'etc3g2_hellbringer_ckepaga', 29, 0, 1, 4800, 0.25, 0, 0, 0, 0, 0),
 (30417, 2289030, 'etc3l2_bandit_butcher', 29, 0, 1, 4800, 0.25, 0, 0, 0, 0, 0),
 (30418, 2289031, 'etc3l2_bandit_lancer', 29, 0, 1, 4800, 0.25, 0, 0, 0, 0, 0),
-(30419, 2289033, 'etc3l2_bandit_archer', 29, 0, 1, 4800, 0.25, 0, 0, 0, 0, 0);
+(30419, 2289033, 'etc3l2_bandit_archer', 29, 0, 1, 4800, 0.25, 0, 0, 0, 0, 0),
+(30420, 2106529, 'etc1u7_amaljaa_warrior', 23, 0, 1, 4800, 0.25, 0, 0, 0, 0, 23),
+(30421, 2106522, 'etc1u7_amaljaa_shaman', 23, 0, 1, 4800, 0.25, 0, 0, 0, 0, 23),
+(30422, 2106510, 'etc1u8_amaljaa_impaler', 23, 0, 1, 4800, 0.25, 0, 0, 0, 0, 23),
+(30423, 2106524, 'etc1u8_amaljaa_augur', 23, 0, 1, 4800, 0.25, 0, 0, 0, 0, 23),
+(30424, 2106530, 'etc1u8_amaljaa_warrior', 23, 0, 1, 4800, 0.25, 0, 0, 0, 0, 23),
+(30425, 2202711, 'etc2g4_sourleaf_roselet', 15, 0, 1, 4800, 0.25, 0, 0, 0, 0, 15);

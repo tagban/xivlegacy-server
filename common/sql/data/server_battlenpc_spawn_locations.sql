@@ -1,4 +1,4 @@
--- server_battlenpc_spawn_locations: game data, 3926 rows. Reloaded whole when this file changes.
+-- server_battlenpc_spawn_locations: game data, 3935 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_spawn_locations`;
 INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `groupId`, `positionX`, `positionY`, `positionZ`, `rotation`) VALUES
@@ -3934,4 +3934,13 @@ INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `
 (4130, 'etc3g2_hellbringer_ckepaga', 30416, -785.0, 21.8, -1072.0, 0.0),
 (4131, 'etc3l2_bandit_butcher', 30417, 1303.0, 0.86, -786.0, 0.0),
 (4132, 'etc3l2_bandit_lancer', 30418, 1308.0, 0.87, -790.0, 0.0),
-(4133, 'etc3l2_bandit_archer', 30419, 1302.0, 0.26, -794.0, 0.0);
+(4133, 'etc3l2_bandit_archer', 30419, 1302.0, 0.26, -794.0, 0.0),
+(4134, 'etc1u7_amaljaa_warrior', 30420, 1535.0, 255.84, -262.0, 3.14),
+(4135, 'etc1u7_amaljaa_warrior', 30420, 1545.0, 255.74, -262.0, 3.14),
+(4136, 'etc1u7_amaljaa_shaman', 30421, 1540.0, 256.0, -256.0, 3.14),
+(4137, 'etc1u8_amaljaa_impaler', 30422, 1714.0, 256.65, -372.0, 3.14),
+(4138, 'etc1u8_amaljaa_augur', 30423, 1720.0, 256.82, -366.0, 3.14),
+(4139, 'etc1u8_amaljaa_warrior', 30424, 1726.0, 255.62, -372.0, 3.14),
+(4140, 'etc2g4_sourleaf_roselet', 30425, -42.0, 4.72, -508.0, -1.57),
+(4141, 'etc2g4_sourleaf_roselet', 30425, -40.0, 5.23, -518.0, -1.57),
+(4142, 'etc2g4_sourleaf_roselet', 30425, -52.0, 7.13, -504.0, -1.57);
