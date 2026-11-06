@@ -1119,7 +1119,7 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (2112, 1000183, 'man2l0_echo_cuda1', 192, 'PrivateAreaMasterPast', 0, 1819.43, 11.85, 1831.84, -2.11, 0, 1031, NULL),
 (2113, 1000184, 'man2l0_echo_cuda2', 192, 'PrivateAreaMasterPast', 0, 1819.05, 11.85, 1829.44, -1.085, 0, 1009, NULL),
 (2114, 5900001, 'man2l0_echo_doormapob', 192, 'PrivateAreaMasterPast', 0, 1824.0, 11.85, 1824.77, 0.0, 0, 0, NULL),
-(2115, 1090098, 'man2l0_echo_eventdoor1', 192, 'PrivateAreaMasterPast', 0, 1821.42, 10.352, 1816.84, 0.0, 0, 0, NULL),
+(2115, 1090098, 'man2l0_echo_eventdoor1', 192, 'PrivateAreaMasterPast', 0, 1821.42, 14.85, 1816.84, 0.0, 0, 0, NULL),
 (2116, 1090099, 'man2l0_echo_eventdoor2', 192, 'PrivateAreaMasterPast', 1, 1823.96, -60.0, 1798.72, 0.0, 0, 0, NULL),
 (2117, 1090085, 'man2l0_echo_push_dutystart', 192, 'PrivateAreaMasterPast', 0, 1824.0, 11.85, 1824.77, 0.0, 0, 0, NULL),
 (2119, 1090087, 'man2l0_seafld1_push2', 128, 'PrivateAreaMasterPast', 3, 221.01, 19.2, 1177.62, 0.0, 0, 0, NULL),
