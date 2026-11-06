@@ -2035,6 +2035,8 @@ impl WorldManager {
         };
 
         let actor_id = actor_handle.actor_id;
+        // The zone-in ends any scene the client had open.
+        crate::event::dispatcher::clear_event_awaiting_client(actor_id);
         let (
             actor_name,
             display_name_id,

@@ -41,6 +41,32 @@ use crate::world_manager::WorldManager;
 
 use super::outbox::EventEvent;
 
+/// Per player: the owner whose `RunEventFunction` the client is still
+/// playing (set on TX RunEventFunction, cleared on TX EndEvent). The
+/// player's `EventSession` can't answer this: Lua's `player:EndEvent()`
+/// goes out through a session snapshot and never clears the real one.
+static AWAITING_CLIENT: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<u32, u32>>> =
+    std::sync::LazyLock::new(Default::default);
+
+/// True while the client is still inside an event that `owner` started
+/// for `player` (a scene or dialog the server sent and hasn't ended).
+pub(crate) fn event_awaiting_client(player: u32, owner: u32) -> bool {
+    AWAITING_CLIENT
+        .lock()
+        .map(|m| m.get(&player) == Some(&owner))
+        .unwrap_or(false)
+}
+
+/// Forget the event the client was playing for `player`. A zone-in (login,
+/// warp, private-area change) tears down whatever scene or dialog the client
+/// had open without an EndEvent, e.g. a client that crashed or zoned out
+/// mid-dialog. Left set, it would swallow every later quest push.
+pub(crate) fn clear_event_awaiting_client(player: u32) {
+    if let Ok(mut m) = AWAITING_CLIENT.lock() {
+        m.remove(&player);
+    }
+}
+
 /// Dispatch one `EventEvent`. The `lua` argument is optional so callers
 /// that don't (yet) have a Lua engine wired in can still process events
 /// — the Lua-flavoured events degrade gracefully to `tracing::debug!`.
@@ -128,6 +154,9 @@ pub async fn dispatch_event_event(
             function_name,
             lua_params,
         } => {
+            if let Ok(mut m) = AWAITING_CLIENT.lock() {
+                m.insert(*player_actor_id, *owner_actor_id);
+            }
             let mut sub = tx::build_run_event_function(
                 *trigger_actor_id,
                 *owner_actor_id,
@@ -155,6 +184,10 @@ pub async fn dispatch_event_event(
             event_name,
             event_type,
         } => {
+            // The client has one event at a time; EndEvent closes it.
+            if let Ok(mut m) = AWAITING_CLIENT.lock() {
+                m.remove(player_actor_id);
+            }
             let mut sub =
                 tx::build_end_event(*player_actor_id, *owner_actor_id, event_name, *event_type);
             sub.set_target_id(*player_actor_id);
@@ -2272,5 +2305,15 @@ mod tests {
         dispatch_event_event(&event, &registry, &world, &db, Some(&lua)).await;
 
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn zone_in_clears_the_awaiting_client_marker() {
+        // A player id no other test uses: the marker map is process-wide.
+        let player = 0x7FFF_0091;
+        AWAITING_CLIENT.lock().unwrap().insert(player, 0x4428_0003);
+        assert!(event_awaiting_client(player, 0x4428_0003));
+        clear_event_awaiting_client(player);
+        assert!(!event_awaiting_client(player, 0x4428_0003));
     }
 }
