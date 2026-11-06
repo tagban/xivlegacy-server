@@ -45,9 +45,8 @@ use super::outbox::EventEvent;
 /// playing (set on TX RunEventFunction, cleared on TX EndEvent). The
 /// player's `EventSession` can't answer this: Lua's `player:EndEvent()`
 /// goes out through a session snapshot and never clears the real one.
-static AWAITING_CLIENT: std::sync::LazyLock<
-    std::sync::Mutex<std::collections::HashMap<u32, u32>>,
-> = std::sync::LazyLock::new(Default::default);
+static AWAITING_CLIENT: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<u32, u32>>> =
+    std::sync::LazyLock::new(Default::default);
 
 /// True while the client is still inside an event that `owner` started
 /// for `player` (a scene or dialog the server sent and hasn't ended).
