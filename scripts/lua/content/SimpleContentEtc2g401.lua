@@ -6,7 +6,7 @@ require ("quests/etc/etc2g4")
 -- When every foe is down the content has no hostiles left, which fires
 -- "battleComplete" to QuestDirectorEtc2g401 (see questbattle.lua).
 
-BNPCS = { 4140, 4141, 4142 };
+BNPCS = { 4089, 4090, 4091 };
 FIGHT_LIMIT_SECONDS = 360;
 
 function onCreate(player, contentArea, director)
