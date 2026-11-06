@@ -57,6 +57,16 @@ pub(crate) fn event_awaiting_client(player: u32, owner: u32) -> bool {
         .unwrap_or(false)
 }
 
+/// Forget the event the client was playing for `player`. A zone-in (login,
+/// warp, private-area change) tears down whatever scene or dialog the client
+/// had open without an EndEvent, e.g. a client that crashed or zoned out
+/// mid-dialog. Left set, it would swallow every later quest push.
+pub(crate) fn clear_event_awaiting_client(player: u32) {
+    if let Ok(mut m) = AWAITING_CLIENT.lock() {
+        m.remove(&player);
+    }
+}
+
 /// Dispatch one `EventEvent`. The `lua` argument is optional so callers
 /// that don't (yet) have a Lua engine wired in can still process events
 /// — the Lua-flavoured events degrade gracefully to `tracing::debug!`.
@@ -2295,5 +2305,15 @@ mod tests {
         dispatch_event_event(&event, &registry, &world, &db, Some(&lua)).await;
 
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn zone_in_clears_the_awaiting_client_marker() {
+        // A player id no other test uses: the marker map is process-wide.
+        let player = 0x7FFF_0091;
+        AWAITING_CLIENT.lock().unwrap().insert(player, 0x4428_0003);
+        assert!(event_awaiting_client(player, 0x4428_0003));
+        clear_event_awaiting_client(player);
+        assert!(!event_awaiting_client(player, 0x4428_0003));
     }
 }
