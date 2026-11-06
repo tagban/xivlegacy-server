@@ -1,4 +1,4 @@
--- server_battlenpc_pools: game data, 375 rows. Reloaded whole when this file changes.
+-- server_battlenpc_pools: game data, 385 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_pools`;
 INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId`, `currentJob`, `combatSkill`, `combatDelay`, `combatDmgMult`, `aggroType`, `immunity`, `linkType`, `spellListId`, `skillListId`) VALUES
@@ -376,4 +376,14 @@ INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId
 (30407, 2102305, 'etc2l1_aldgoat_nanny', 1, 0, 1, 4800, 0.25, 0, 0, 0, 0, 1),
 (30408, 2105703, 'etc2l1_moraby_mole', 11, 0, 1, 4800, 0.25, 0, 0, 0, 0, 11),
 (30409, 2104103, 'etc2l1_black_bat', 43, 0, 1, 4800, 0.25, 0, 0, 0, 0, 43),
-(30406, 2380004, 'etc3g1_imperial_hoplomachus', 29, 0, 1, 4800, 0.2, 0, 0, 0, 0, 104);
+(30406, 2380004, 'etc3g1_imperial_hoplomachus', 29, 0, 1, 4800, 0.2, 0, 0, 0, 0, 104),
+(30410, 2206401, 'etc2g3_ixali_bravo', 24, 0, 1, 4800, 0.25, 0, 0, 0, 0, 24),
+(30411, 2110309, 'etc2g5_goblin_mugger', 26, 0, 1, 4800, 0.25, 0, 0, 0, 0, 26),
+(30412, 2110310, 'etc2g5_goblin_bushwhacker', 26, 0, 1, 4800, 0.25, 0, 0, 0, 0, 26),
+(30413, 2205517, 'etc3u2_coliseum_yarzon', 12, 0, 1, 4800, 0.35, 0, 0, 0, 0, 39),
+(30414, 2289019, 'etc3g2_colbert_the_cunning', 29, 0, 1, 4800, 0.25, 0, 0, 0, 0, 0),
+(30415, 2289020, 'etc3g2_bryce_the_bold', 29, 0, 1, 4800, 0.25, 0, 0, 0, 0, 0),
+(30416, 2289021, 'etc3g2_hellbringer_ckepaga', 29, 0, 1, 4800, 0.25, 0, 0, 0, 0, 0),
+(30417, 2289030, 'etc3l2_bandit_butcher', 29, 0, 1, 4800, 0.25, 0, 0, 0, 0, 0),
+(30418, 2289031, 'etc3l2_bandit_lancer', 29, 0, 1, 4800, 0.25, 0, 0, 0, 0, 0),
+(30419, 2289033, 'etc3l2_bandit_archer', 29, 0, 1, 4800, 0.25, 0, 0, 0, 0, 0);
