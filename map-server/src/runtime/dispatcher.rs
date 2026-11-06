@@ -1481,6 +1481,8 @@ async fn send_timing_flags(actor_id: u32, registry: &ActorRegistry, world: &Worl
     }
 }
 const COMBO_SECONDS: u32 = 13;
+/// Piercing Arrow's minimum distance for a combo.
+const PIERCING_ARROW_COMBO_YALMS: f32 = 8.0;
 /// pmeteor `SetCombos`: `playerWork.comboCostBonusRate = 1`, so a link
 /// that continues a combo costs no MP or TP.
 const COMBO_COST_BONUS_RATE: f32 = 1.0;
@@ -2137,7 +2139,22 @@ async fn resolve_action(
     // starts or continues the player's combo carries the combo step on
     // its hit, a link that continues one runs its script's `onCombo`
     // (Thundara's potency, Bloodletter's status…) and costs nothing.
-    let combo = player_combo(&attacker_handle, command).await;
+    let mut combo = player_combo(&attacker_handle, command).await;
+    // Piercing Arrow counts toward a combo only from at least 8 yalms
+    // (its command description).
+    if combo.is_combo && command.name == "piercing_arrow" {
+        let near = match registry.get(defender_actor_id).await {
+            Some(d) => {
+                let d = d.character.read().await;
+                let (dx, dz) = (d.base.position_x - atk_pos.x, d.base.position_z - atk_pos.z);
+                dx * dx + dz * dz < PIERCING_ARROW_COMBO_YALMS * PIERCING_ARROW_COMBO_YALMS
+            }
+            None => false,
+        };
+        if near {
+            combo = ComboUse::default();
+        }
+    }
     // Whirlwind in combo spends the warrior's Berserk stacks for ×1.5
     // power (its script looks for an old Berserk id; the stacks' Attack
     // and Defense live with the effect here).
@@ -2440,6 +2457,11 @@ async fn resolve_action(
                 (15 + 5 * i32::from(atk_level.max(1))).min(9999) as u16
             },
         );
+        // Benediction (WHM 50) restores all of each target's HP; it has no
+        // power data or script of its own.
+        if command.name == "benediction" {
+            result.amount = def_max_hp.max(0) as u16;
+        }
         // Cleric Stance and other potency statuses scale spells and heals.
         result.amount = battle_utils::apply_magic_potency(
             &atk_view,

@@ -102,6 +102,12 @@ sum gave about 3× that. Before it, a level 1–20 swing took 20–30% of a
 same-level monster's HP and weaponskills one-shot them. Weaponskills scale off
 this hit, so they shrink with it.
 
+Past level 30 the scale grows 2% a level (`physical_damage_scale`: 0.4 up to
+30, 0.56 at 50; **ours**). Without it, retail's steep monster HP curve (723
+at 30, about 3216 at 50) left a level 50 swing at 2–4% of a same-level
+monster. A level 50 pugilist now swings for about 162 (retail capture: 165).
+Monster fallback stats divide by the same scale, so monster hits don't change.
+
 ### Balance targets (levels 1–20)
 
 `battle_balance_auto_attacks` checks these at levels 1, 5, 10, 15 and 20 for
@@ -116,6 +122,12 @@ all seven classes, with real weapons and no armor:
 | A weaponskill or attack spell (`battle_behavior_l20_numbers`) | 4–75% of a same-level monster's HP | 18–65% (PUG's retail 5× multipliers are at the top) |
 
 A monster's TP move takes 17–24% of a same-level player's HP.
+
+From 30 to 50 the same test (levels 30, 35 … 50) holds same-level swings at
+4–10% (casters 3–6%) and monster swings at about 7%. The per-band command
+tests (`battle_behavior_l30_numbers`, `_l40_`, `_l50_`) keep each weaponskill
+and attack spell at 4–80% of a same-level monster's HP, and heals at most
+70% of max HP (Benediction: all of it).
 
 ### Monster melee stats
 
@@ -243,6 +255,12 @@ The Lua side settles the status a command applies; Rust does the rolls.
   - `onPreAction` changes the rates (as the attacker or the target);
   - `onHit`, `onCrit`, `onMiss`, `onEvade`, `onParry`, `onBlock`, `onDamageTaken` and `onHealed` react to the outcome;
   - `onCommandFinish` runs after the command resolves.
+- **Command specials in Rust**: Benediction restores the target's full HP;
+  Piercing Arrow's combo (longer Shadowbind) counts only from 8 yalms or more
+  (`PIERCING_ARROW_COMBO_YALMS`, the client text's rule).
+- **Raging Strike** (`raging_strike2.lua`): each Light Shot hit adds
+  `RAGING_STRIKE_ATTACK_PER_STACK` (10%, **ours**, no source) of the archer's
+  Attack, up to 3 stacks; a missed Light Shot drops them all.
 - **PREVENT_*** flags refuse the owner's own commands (text 32535), interrupt
   a cast in progress and stop movement or turning (#126).
 - **Speed effects** scale MovementSpeed, and the client is sent the new run

@@ -846,11 +846,25 @@ pub fn hit_dir_to_position(dir: HitDirection) -> super::command::BattleCommandPo
 /// melee stats ([`monster_melee_stats`]) are sized against it.
 pub const PHYSICAL_DAMAGE_SCALE: f64 = 0.4;
 
+/// How much [`PHYSICAL_DAMAGE_SCALE`] grows per level above 30. Retail
+/// monster HP rises about 4.4x from level 30 to 50 (723 to ~3200) and a
+/// level 50 pugilist's swing was 106-296 (median 165, war_quest_update2
+/// capture), but the placeholder stat curve only doubles a hit over those
+/// levels: without this a level 50 swing took 2-4% of a same-level monster.
+pub const PHYSICAL_SCALE_PER_LEVEL_OVER_30: f64 = 0.02;
+
+/// The physical scale at an attacker's level: 0.4 to level 30, then +2% a
+/// level (x1.4 at 50).
+pub fn physical_damage_scale(level: i16) -> f64 {
+    let over = f64::from((level - 30).max(0));
+    PHYSICAL_DAMAGE_SCALE * (1.0 + PHYSICAL_SCALE_PER_LEVEL_OVER_30 * over)
+}
+
 pub fn attack_calculate_base_damage(attacker: &CombatView<'_>, rng: &mut dyn Rng) -> i32 {
     let str_v = attacker.get_mod(Modifier::Strength);
     let attack_v = attacker.get_mod(Modifier::Attack);
     let weapon_dmg = attacker.get_mod(Modifier::WeaponDamagePower);
-    let base = (weapon_dmg + 0.85 * str_v + attack_v) * PHYSICAL_DAMAGE_SCALE;
+    let base = (weapon_dmg + 0.85 * str_v + attack_v) * physical_damage_scale(attacker.level);
     let dev = 0.96 + rng.next_f64() * 0.08;
     ((base * dev).round() as i32).clamp(1, 9999)
 }
@@ -874,12 +888,12 @@ pub fn monster_melee_power(level: i16) -> f64 {
 /// Fallback melee stats for a monster with none of its own: WeaponDamagePower,
 /// Strength, Attack and Defense. The first three split
 /// [`monster_melee_power`] a quarter, a half and a quarter (after
-/// [`PHYSICAL_DAMAGE_SCALE`]), so its weaponskills, which scale off its own
+/// [`physical_damage_scale`]), so its weaponskills, which scale off its own
 /// hit, keep their size. Defense equals the level: with the full level
 /// modifier a level 30 monster takes about 30 off a level 27 player's hit,
 /// which brings the gladiator's 47 down to the retail 18-23.
 pub fn monster_melee_stats(level: i16) -> [(Modifier, f64); 4] {
-    let t = monster_melee_power(level) / PHYSICAL_DAMAGE_SCALE;
+    let t = monster_melee_power(level) / physical_damage_scale(level.max(1));
     [
         (Modifier::WeaponDamagePower, (0.25 * t).round()),
         (Modifier::Strength, (0.5 * t / 0.85).round()),
@@ -1325,6 +1339,25 @@ mod tests {
         assert_eq!(
             skill_amount(&lv50, &firaga, &mut FixedRng::new(&[0.5])),
             Some(616)
+        );
+    }
+
+    #[test]
+    fn physical_scale_grows_past_level_30() {
+        assert_eq!(physical_damage_scale(1), 0.4);
+        assert_eq!(physical_damage_scale(30), 0.4);
+        assert!((physical_damage_scale(50) - 0.56).abs() < 1e-9);
+        // Monster stats divide the scale back out: a level 50 monster's
+        // hit stays at its melee power.
+        let mut mods = ModifierMap::default();
+        for (m, v) in monster_melee_stats(50) {
+            mods.set(m, v);
+        }
+        let mob = stub_view(50, 1000, &mods, 2);
+        let hit = attack_calculate_base_damage(&mob, &mut FixedRng::new(&[0.5]));
+        assert!(
+            (f64::from(hit) - monster_melee_power(50)).abs() <= 2.0,
+            "{hit}"
         );
     }
 
