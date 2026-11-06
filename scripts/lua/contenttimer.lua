@@ -17,6 +17,11 @@ duty only opens it.
 contentId is a row of the client's content list, the widget's title.
 0 shows no title.
 
+The client won't build the widget while it is still building another one
+(the duty's opening banner, the zone-in desktop), so a duty queues its
+countdown with QueueContentTimer and calls UpdateContentTimer every tick:
+the packet goes out a few seconds later.
+
 --]]
 
 -- Opens (or moves) the player's duty countdown: `seconds` left from now.
@@ -25,4 +30,23 @@ function ShowContentTimer(player, seconds, contentId)
 		return;
 	end
 	player:SendDataPacket("xlContentTimer", contentId or 0, os.time() + math.floor(seconds));
+end
+
+-- Ticks between QueueContentTimer and the packet (4 s at 2 ticks a second).
+CONTENT_TIMER_DELAY_TICKS = 8;
+
+-- Queues the countdown on a duty's state table; finishTick is the tick the
+-- duty runs out.
+function QueueContentTimer(state, tick, finishTick, contentId)
+	state.contentTimer = { at = tick + CONTENT_TIMER_DELAY_TICKS, finish = finishTick, contentId = contentId };
+end
+
+-- Sends a queued countdown once its delay has passed.
+function UpdateContentTimer(player, state, tick, ticksPerSecond)
+	local t = state.contentTimer;
+	if (t == nil or tick < t.at) then
+		return;
+	end
+	state.contentTimer = nil;
+	ShowContentTimer(player, (t.finish - tick) / ticksPerSecond, t.contentId);
 end

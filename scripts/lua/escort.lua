@@ -189,6 +189,7 @@ function escortGlobal.Update(duty, tick, area)
 			owner:SendGameMessage(GetWorldMaster(), TEXT_TIME_REMAINING, 0x20, left);
 		end
 	end
+	UpdateContentTimer(owner, state, tick, TICKS_PER_SECOND);
 
 	-- Escortees: the rosters are live-only, so a fallen one just vanishes.
 	local escortees = {};
@@ -228,7 +229,7 @@ function escortGlobal.Update(duty, tick, area)
 		-- "You are now bound by duty." is the client's own, on joining the
 		-- content group.
 		owner:SendGameMessage(GetWorldMaster(), TEXT_TIME_REMAINING, 0x20, duty.minutes or 30);
-		ShowContentTimer(owner, (limit - elapsed) / TICKS_PER_SECOND, duty.contentId);
+		QueueContentTimer(state, tick, state.startTick + limit, duty.contentId);
 		bark(owner, duty, "start");
 	end
 
