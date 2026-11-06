@@ -1,4 +1,4 @@
--- server_battlenpc_groups: game data, 648 rows. Reloaded whole when this file changes.
+-- server_battlenpc_groups: game data, 654 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_groups`;
 INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLevel`, `maxLevel`, `respawnTime`, `hp`, `mp`, `dropListId`, `allegiance`, `spawnType`, `animationId`, `actorState`, `privateAreaName`, `privateAreaLevel`, `zoneId`) VALUES
@@ -650,4 +650,10 @@ INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLe
 (30416, 30416, 'etc3g2_hellbringer_ckepaga', 21, 21, 0, 360, 0, 0, 0, 16, 0, 0, '', 0, 150),
 (30417, 30417, 'etc3l2_bandit_butcher', 21, 21, 0, 360, 0, 0, 0, 16, 0, 0, '', 0, 130),
 (30418, 30418, 'etc3l2_bandit_lancer', 21, 21, 0, 360, 0, 0, 0, 16, 0, 0, '', 0, 130),
-(30419, 30419, 'etc3l2_bandit_archer', 21, 21, 0, 320, 0, 0, 0, 16, 0, 0, '', 0, 130);
+(30419, 30419, 'etc3l2_bandit_archer', 21, 21, 0, 320, 0, 0, 0, 16, 0, 0, '', 0, 130),
+(30420, 30420, 'etc1u7_amaljaa_warrior', 34, 34, 0, 650, 0, 0, 0, 16, 0, 0, '', 0, 171),
+(30421, 30421, 'etc1u7_amaljaa_shaman', 34, 34, 0, 560, 0, 0, 0, 16, 0, 0, '', 0, 171),
+(30422, 30422, 'etc1u8_amaljaa_impaler', 36, 36, 0, 700, 0, 0, 0, 16, 0, 0, '', 0, 171),
+(30423, 30423, 'etc1u8_amaljaa_augur', 36, 36, 0, 600, 0, 0, 0, 16, 0, 0, '', 0, 171),
+(30424, 30424, 'etc1u8_amaljaa_warrior', 36, 36, 0, 700, 0, 0, 0, 16, 0, 0, '', 0, 171),
+(30425, 30425, 'etc2g4_sourleaf_roselet', 31, 31, 0, 550, 0, 0, 0, 16, 0, 0, '', 0, 150);
