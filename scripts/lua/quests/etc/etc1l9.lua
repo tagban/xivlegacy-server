@@ -14,7 +14,8 @@ Little Fupepe of Aleport may not leave the hamlet, so she asks you to
 bring her four conch shells from the beach below Camp Bloodshore (ZAM: map
 (37,22)). Click each of the four "???" on the sand; each one is a shell
 (key item 11000174, the conch shells). Fupepe trades her best treasure for
-them. Reward 12 boiled crayfish (ZAM).
+them. Reward a Cotton Coif (the client's reward table, data/01/03/05/61.DAT;
+ZAM's 12 boiled crayfish are older).
 
 The shells use free "???" classes 1080063-1080066. They stand in the open
 world, so others see them too; a picked shell hides for you.
@@ -41,8 +42,7 @@ MRKR_BEACH			= 11064201;
 MRKR_FUPEPE			= 11064202;
 
 -- Rewards
-REWARD_CRAYFISH		= 3010103;
-REWARD_CRAYFISH_QTY	= 12;
+REWARD_COIF			= 8010523;
 
 function onStart(player, quest)
 	quest:StartSequence(SEQ_000);
@@ -130,7 +130,7 @@ function onTalk(player, quest, npc)
 		callClientFunction(player, "delegateEvent", player, quest, "processEventClear");
 		callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 0, 1, 1);
 		player:GetItemPackage(INVENTORY_KEYITEMS):RemoveItem(ITEM_CONCH_SHELLS, 1);
-		player:GetItemPackage(INVENTORY_NORMAL):AddItem(REWARD_CRAYFISH, REWARD_CRAYFISH_QTY, 1);
+		player:GetItemPackage(INVENTORY_NORMAL):AddItem(REWARD_COIF, 1, 1);
 		player:EndEvent();
 		player:CompleteQuest(quest);
 		return;

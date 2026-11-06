@@ -14,14 +14,16 @@ The merchant Aistan has a delivery he daren't make himself, the Brass
 Blades watching the goblins as they are: a fragment of fossil-fused dark
 matter for his client, the goblin Mutamix Bubblypots, who has made camp
 halfway up a cliff north of Ul'dah. Mutamix takes it ("now catalysts are
-complete"), tells you of materia, and pays you the rest of Aistan's fee.
+complete"), tells you of materia, and pays you the rest of Aistan's fee:
+1,000 gil and Leather Leggings.
 
 This quest opens the materia lessons (Etc102-Etc104), which need materia
 creation and melding on the server and aren't scripted yet.
 
 Mutamix had no spawn or class script; he stands on the cliff in Central
-Thanalan at the position noted in quests/dft/DftWil.lua. ZAM has no page
-for this quest, so the fee is an estimate.
+Thanalan at the position noted in quests/dft/DftWil.lua. The reward comes
+from the client's reward table (data/01/03/05/61.DAT); it gives the
+experience only as a rank, so that amount is an estimate.
 
 Client script etc101: processEventAistanStart (offer), processEvent_000
 (Aistan, while you deliver), processEvent_005 (Mutamix, the reward).
@@ -41,7 +43,8 @@ MRKR_MUTAMIX		= 11081101;
 
 -- Rewards
 REWARD_EXP			= 500;
-REWARD_GIL			= 3000;
+REWARD_GIL			= 1000;
+REWARD_LEGGINGS		= 8081120;
 
 function onStart(player, quest)
 	quest:StartSequence(SEQ_000);
@@ -77,6 +80,7 @@ function onTalk(player, quest, npc)
 		callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
 		player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
 		player:AddGil(REWARD_GIL);
+		player:GetItemPackage(INVENTORY_NORMAL):AddItem(REWARD_LEGGINGS, 1, 1);
 		player:EndEvent();
 		player:CompleteQuest(quest);
 		return;
