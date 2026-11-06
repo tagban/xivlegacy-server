@@ -397,6 +397,8 @@ pub struct CommandStatus {
     /// `aoeType` (0 none, 1 circle, 2 cone, 3 box): traits widen
     /// Rampart and Flash.
     pub aoe_type: f64,
+    /// A flat `action.enmity` the script set (Provoke 750, Flash 400).
+    pub enmity: Option<f64>,
 }
 
 /// The `statusEffects` a command script sees on its caster: what the
@@ -647,6 +649,7 @@ pub fn run_command_setup(
     skill.set("statusChance", start.chance)?;
     skill.set("aoeType", start.aoe_type)?;
     let action = lua.create_table()?;
+    let action_t = action.clone();
     let s = setup.clone();
     action.set(
         "DoAction",
@@ -701,6 +704,7 @@ pub fn run_command_setup(
         tier: num("statusTier", start.tier as f64) as u8,
         chance: num("statusChance", start.chance),
         aoe_type: num("aoeType", start.aoe_type),
+        enmity: action_t.raw_get::<Option<f64>>("enmity").ok().flatten(),
     }))
 }
 
@@ -722,6 +726,9 @@ pub struct HookActor {
     pub tp: i32,
     pub status_ids: Vec<u32>,
     pub traits: Vec<u32>,
+    /// Which side it fights on: 1 players and their allies, 2 monsters
+    /// (pmeteor `Character.allegiance`; Decoy only dodges a foe's attack).
+    pub allegiance: u32,
 }
 
 /// What a hook did to one actor.
@@ -933,6 +940,13 @@ fn build_side(lua: &Lua, st: &Arc<Mutex<Side>>, fx: &Arc<Mutex<Fx>>) -> mlua::Re
         .actor
         .actor_id;
     t.set("actorId", actor_id)?;
+    t.set(
+        "allegiance",
+        st.lock()
+            .map_err(|_| mlua::Error::runtime("status state poisoned"))?
+            .actor
+            .allegiance,
+    )?;
     method(lua, &t, "AddMod", st, |s, n| {
         if let Some(k) = key(n) {
             s.mods.add_raw(k, arg(n, 1));
@@ -1614,6 +1628,7 @@ mod tests {
             tp: 0,
             status_ids: Vec::new(),
             traits: Vec::new(),
+            allegiance: 1,
         }
     }
 

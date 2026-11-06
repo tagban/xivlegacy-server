@@ -52,27 +52,27 @@ use crate::zone::zone::Zone;
 use common::Vector3;
 use common::luaparam::LuaParam;
 
-const PLAYER: u32 = 1;
-const ENEMY: u32 = 2;
-const ENEMY2: u32 = 3;
-const FRIEND: u32 = 4;
-const PLAYER_SESSION: u32 = 42;
+pub(super) const PLAYER: u32 = 1;
+pub(super) const ENEMY: u32 = 2;
+pub(super) const ENEMY2: u32 = 3;
+pub(super) const FRIEND: u32 = 4;
+pub(super) const PLAYER_SESSION: u32 = 42;
 const FRIEND_SESSION: u32 = 43;
-const ZONE: u32 = 100;
-const ENEMY_HP: i16 = 5000;
-const PLAYER_HP: i16 = 2000;
+pub(super) const ZONE: u32 = 100;
+pub(super) const ENEMY_HP: i16 = 5000;
+pub(super) const PLAYER_HP: i16 = 2000;
 
-fn tempdb() -> String {
+pub(super) fn tempdb() -> String {
     common::test_db::fresh_blocking()
 }
 
-fn script_root() -> PathBuf {
+pub(super) fn script_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../scripts/lua")
 }
 
 /// Who the row says the command lands on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Recipient {
+pub(super) enum Recipient {
     /// The player themself (self-only buffs, and friendly spells pressed
     /// with an enemy selected).
     Caster,
@@ -83,7 +83,7 @@ enum Recipient {
     DeadFriend,
 }
 
-fn recipient(cmd: &BattleCommand) -> Recipient {
+pub(super) fn recipient(cmd: &BattleCommand) -> Recipient {
     use crate::battle::target_find::ValidTarget as V;
     let mt = V(cmd.main_target);
     if mt.intersects(V::SELF_ONLY) {
@@ -101,7 +101,7 @@ fn recipient(cmd: &BattleCommand) -> Recipient {
 
 /// Who carries the row's status: offensive rows put it on the monsters
 /// they hit (Flare and Holy center on the caster but debuff enemies).
-fn status_recipient_id(cmd: &BattleCommand, r: Recipient) -> u32 {
+pub(super) fn status_recipient_id(cmd: &BattleCommand, r: Recipient) -> u32 {
     use crate::battle::target_find::ValidTarget as V;
     if V(cmd.valid_target).intersects(V::ENEMY) {
         ENEMY
@@ -110,7 +110,7 @@ fn status_recipient_id(cmd: &BattleCommand, r: Recipient) -> u32 {
     }
 }
 
-fn recipient_id(r: Recipient) -> u32 {
+pub(super) fn recipient_id(r: Recipient) -> u32 {
     match r {
         Recipient::Caster => PLAYER,
         Recipient::Enemy => ENEMY,
@@ -215,11 +215,11 @@ fn static_checks(
     s
 }
 
-struct Scene {
-    registry: Arc<ActorRegistry>,
-    ticker: GameTicker,
-    processor: crate::processor::PacketProcessor,
-    rx: mpsc::Receiver<Vec<u8>>,
+pub(super) struct Scene {
+    pub(super) registry: Arc<ActorRegistry>,
+    pub(super) ticker: GameTicker,
+    pub(super) processor: crate::processor::PacketProcessor,
+    pub(super) rx: mpsc::Receiver<Vec<u8>>,
     _rx_friend: mpsc::Receiver<Vec<u8>>,
 }
 
@@ -233,7 +233,7 @@ fn actor_at(id: u32, kind: ActorKind, x: f32, z: f32, alive: bool) -> StoredActo
     }
 }
 
-async fn scene(
+pub(super) async fn scene(
     db: &Arc<crate::database::Database>,
     lua: &Arc<crate::lua::LuaEngine>,
     cmd: &BattleCommand,
@@ -386,7 +386,7 @@ async fn scene(
     }
 }
 
-fn event_start_body(owner: u32, target: u32) -> Vec<u8> {
+pub(super) fn event_start_body(owner: u32, target: u32) -> Vec<u8> {
     let mut v = Vec::new();
     v.extend_from_slice(&PLAYER.to_le_bytes());
     v.extend_from_slice(&owner.to_le_bytes());
@@ -402,7 +402,7 @@ fn event_start_body(owner: u32, target: u32) -> Vec<u8> {
 }
 
 /// Error texts (32xxx) the hotbar gate sent back on the X01 error row.
-fn error_texts(rx: &mut mpsc::Receiver<Vec<u8>>, own_text: u16) -> Vec<u16> {
+pub(super) fn error_texts(rx: &mut mpsc::Receiver<Vec<u8>>, own_text: u16) -> Vec<u16> {
     let mut out = Vec::new();
     while let Ok(bytes) = rx.try_recv() {
         let mut offset = 0;
@@ -425,25 +425,25 @@ fn error_texts(rx: &mut mpsc::Receiver<Vec<u8>>, own_text: u16) -> Vec<u16> {
 }
 
 #[derive(Default, Debug)]
-struct Outcome {
-    errors: Vec<u16>,
-    damage_main: i32,
-    damage_splash: i32,
-    heal: i32,
-    self_damage: i32,
-    friend_damage: i32,
-    status_on: Option<u32>,
-    revived: bool,
-    mp_spent: i32,
-    tp_spent: i32,
-    recast_set: bool,
+pub(super) struct Outcome {
+    pub(super) errors: Vec<u16>,
+    pub(super) damage_main: i32,
+    pub(super) damage_splash: i32,
+    pub(super) heal: i32,
+    pub(super) self_damage: i32,
+    pub(super) friend_damage: i32,
+    pub(super) status_on: Option<u32>,
+    pub(super) revived: bool,
+    pub(super) mp_spent: i32,
+    pub(super) tp_spent: i32,
+    pub(super) recast_set: bool,
 }
 
-async fn hp(reg: &ActorRegistry, id: u32) -> i32 {
+pub(super) async fn hp(reg: &ActorRegistry, id: u32) -> i32 {
     i32::from(reg.get(id).await.unwrap().character.read().await.chara.hp)
 }
 
-async fn max_hp(reg: &ActorRegistry, id: u32) -> i32 {
+pub(super) async fn max_hp(reg: &ActorRegistry, id: u32) -> i32 {
     i32::from(
         reg.get(id)
             .await
@@ -456,7 +456,7 @@ async fn max_hp(reg: &ActorRegistry, id: u32) -> i32 {
     )
 }
 
-async fn press_once(sc: &mut Scene, cmd: &BattleCommand, rcpt: Recipient) -> Outcome {
+pub(super) async fn press_once(sc: &mut Scene, cmd: &BattleCommand, rcpt: Recipient) -> Outcome {
     let mut o = Outcome::default();
     // Re-arm between attempts: recast clear, pools full, a clean state
     // stack (keeps the far-future engage).
@@ -466,9 +466,26 @@ async fn press_once(sc: &mut Scene, cmd: &BattleCommand, rcpt: Recipient) -> Out
         for e in c.chara.hotbar.iter_mut() {
             e.recast_time = 0;
         }
-        c.chara.mp = 9999;
+        // A full pool (the audit's own scene has 9999; a real character
+        // its own max, which every stat rebuild clamps to).
+        c.chara.mp = if c.chara.max_mp > 0 {
+            c.chara.max_mp
+        } else {
+            9999
+        };
         c.chara.tp = 3000;
     }
+    let mp_before = i32::from(
+        sc.registry
+            .get(PLAYER)
+            .await
+            .unwrap()
+            .character
+            .read()
+            .await
+            .chara
+            .mp,
+    );
     let max_before = max_hp(&sc.registry, PLAYER).await;
     let before: HashMap<u32, i32> = {
         let mut m = HashMap::new();
@@ -537,7 +554,7 @@ async fn press_once(sc: &mut Scene, cmd: &BattleCommand, rcpt: Recipient) -> Out
     {
         let h = sc.registry.get(PLAYER).await.unwrap();
         let c = h.character.read().await;
-        o.mp_spent = 9999 - i32::from(c.chara.mp);
+        o.mp_spent = mp_before - i32::from(c.chara.mp);
         o.tp_spent = 3000 - i32::from(c.chara.tp);
         o.recast_set = c.chara.hotbar.first().is_some_and(|e| e.recast_time != 0);
     }
@@ -545,7 +562,7 @@ async fn press_once(sc: &mut Scene, cmd: &BattleCommand, rcpt: Recipient) -> Out
 }
 
 /// Force the landed status past its end time and tick: it must drop.
-async fn check_expiry(sc: &mut Scene, rid: u32, status_id: u32) -> bool {
+pub(super) async fn check_expiry(sc: &mut Scene, rid: u32, status_id: u32) -> bool {
     {
         let h = sc.registry.get(rid).await.unwrap();
         let mut c = h.character.write().await;
@@ -602,6 +619,28 @@ async fn audit_command(
     // Misses / resists / sub-1.0 status chances are random: press up to
     // 12 times and take the best of them.
     for _ in 0..12 {
+        // The audit asks whether a command fires, so meet the gates the
+        // behavior tests cover: the proc it needs and a shield.
+        if cmd.proc_requirement != 0 {
+            crate::runtime::dispatcher::test_open_proc(
+                &sc.registry,
+                &sc.processor.world,
+                sc.processor.lua.as_ref(),
+                Some(&sc.processor.db),
+                PLAYER,
+                cmd.proc_requirement,
+            )
+            .await;
+        }
+        if cmd.requirements & 16 != 0 {
+            let h = sc.registry.get(PLAYER).await.unwrap();
+            h.character
+                .write()
+                .await
+                .chara
+                .mods
+                .set(crate::actor::Modifier::CanBlock, 1.0);
+        }
         let o = press_once(&mut sc, cmd, rcpt).await;
         errors.extend(o.errors.iter().copied());
         saw_damage |= o.damage_main > 0;

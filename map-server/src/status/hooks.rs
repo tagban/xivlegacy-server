@@ -66,6 +66,10 @@ impl HookSide {
                 tp: i32::from(c.chara.tp),
                 status_ids: c.status_effects.iter().map(|e| e.id).collect(),
                 traits: c.traits.clone(),
+                allegiance: match c.ai_container.controller.as_ref().map(|k| k.kind) {
+                    Some(crate::battle::controller::ControllerKind::BattleNpc) => 2,
+                    _ => 1,
+                },
             },
             effects: c
                 .status_effects
@@ -388,11 +392,13 @@ pub fn hit_direction(
     if a < 0.0 {
         a += 2.0 * PI;
     }
+    // 0 is front, 1 right, 2 rear, 3 left (pmeteor `1 << side`): an
+    // actor turned to face someone (`look_at_rotation`) has them in front.
     match (a / (0.5 * PI)) as u32 {
-        0 => 2,
-        1 => 1,
-        2 => 8,
-        _ => 4,
+        0 => 1,
+        1 => 2,
+        2 => 4,
+        _ => 8,
     }
 }
 
@@ -438,6 +444,20 @@ mod tests {
         let mut sorted = dirs.clone();
         sorted.sort_unstable();
         assert_eq!(sorted, vec![1, 2, 4, 8], "{dirs:?}");
+        // A defender turned to face the attacker has them in front, its
+        // back turned has them behind.
+        let me = common::Vector3::new(0.0, 0.0, 0.0);
+        let at = |x: f32, z: f32| {
+            hit_direction(
+                common::Vector3::new(3.0, 0.0, 0.0),
+                crate::runtime::ticker::look_at_rotation(3.0, 0.0, x, z),
+                me,
+            )
+        };
+        assert_eq!(at(0.0, 0.0), 1, "facing the attacker");
+        assert_eq!(at(6.0, 0.0), 4, "back to the attacker");
+        assert!(matches!(at(3.0, 3.0), 2 | 8), "side on");
+        assert!(matches!(at(3.0, -3.0), 2 | 8), "other side on");
         // Turning the defender around swaps front and rear.
         let front = dirs[0];
         let turned = hit_direction(d, std::f32::consts::PI, common::Vector3::new(1.0, 0.0, 0.1));

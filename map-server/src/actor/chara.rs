@@ -624,6 +624,14 @@ impl Character {
             self.chara.mods.add(Modifier::Attack, w.attack as f64);
             self.chara.mods.add(Modifier::Parry, w.parry as f64);
         }
+        // A shield in the off hand blocks (and can't parry): Aegis Boon,
+        // Phalanx, Shield Bash. Shields are catalog ids 410xxxx.
+        let shield = equipped_by_slot
+            .get(&SLOT_OFFHAND)
+            .is_some_and(|cid| *cid / 10_000 == 410);
+        self.chara
+            .mods
+            .set(Modifier::CanBlock, if shield { 1.0 } else { 0.0 });
     }
 
     /// Raw `damage_power` of the equipped main-hand weapon, or 0 if no
