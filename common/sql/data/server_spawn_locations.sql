@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1742 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1752 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -1746,4 +1746,14 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (29201, 1001727, 'etc101_mutamix', 170, '', 0, 243.858, 247.72, -1030.137, 0.0, 0, 0, NULL),
 (29202, 1090600, 'etc2u0_horizon_trigger', 172, '', 0, -1340.0, 55.68, -200.0, 0.0, 0, 0, NULL),
 (29203, 1090601, 'etc2u5_clever_dodo_trigger', 171, '', 0, 1210.0, 279.9, -710.0, 0.0, 0, 0, NULL),
-(29204, 1090602, 'etc1u9_dodo_valley_trigger', 171, '', 0, 1340.0, 279.84, -1094.0, 0.0, 0, 0, NULL);
+(29204, 1090602, 'etc1u9_dodo_valley_trigger', 171, '', 0, 1340.0, 279.84, -1094.0, 0.0, 0, 0, NULL),
+(29205, 1090603, 'etc3l1_cave_trigger', 128, '', 0, -140.0, 25.02, -128.0, 0.0, 0, 0, NULL),
+(29206, 1001575, 'etc3l1_ltrimmna', 128, '', 0, -198.0, 24.68, -126.0, 1.57, 0, 0, NULL),
+(29207, 1001576, 'etc3l1_lowell', 128, '', 0, -199.0, 24.98, -136.0, 1.57, 0, 0, NULL),
+(29208, 1001577, 'etc3l1_kopelyorpel', 128, '', 0, -202.0, 24.93, -131.0, 1.57, 0, 0, NULL),
+(29213, 1090605, 'etc2l1_road_trigger', 130, '', 0, 830.0, 54.5, -1090.0, 0.0, 0, 0, NULL),
+(29214, 1001307, 'etc2l1_inairoh', 130, '', 0, 630.0, 54.59, -1150.0, 0.0, 0, 0, NULL),
+(29215, 1080063, 'etc1l9_shell_1', 130, '', 0, 1215.0, 4.05, -770.0, 0.0, 0, 0, NULL),
+(29216, 1080064, 'etc1l9_shell_2', 130, '', 0, 1232.0, 3.41, -758.0, 0.0, 0, 0, NULL),
+(29217, 1080065, 'etc1l9_shell_3', 130, '', 0, 1248.0, 1.42, -776.0, 0.0, 0, 0, NULL),
+(29218, 1080066, 'etc1l9_shell_4', 130, '', 0, 1240.0, 3.31, -748.0, 0.0, 0, 0, NULL);
