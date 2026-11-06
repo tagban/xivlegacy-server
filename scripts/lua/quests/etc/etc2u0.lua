@@ -16,7 +16,8 @@ oversized beasts are scaring off the carrier chocobos. Walk out to the
 outskirts of Camp Horizon in Western Thanalan: stepping onto the spot
 starts the fight (SimpleContentEtc2u001, the client's SimpleQuestBattle
 QuestDirectorEtc2u001) with two coblyns, a spriggan and a feral dodo. Then
-boast of it to Gegeissa: 100 wind shards (ZAM) and experience.
+boast of it to Gegeissa: a Cotton Dalmatica and experience (the client's
+reward table, data/01/03/05/61.DAT; ZAM's 100 wind shards are older).
 
 Client script etc2u0: processEventStart (offer), processEventFree (while
 the beasts still roam), processEventClear (the reward). Journal steps 304-306.
@@ -41,8 +42,7 @@ FIGHT				= {172, -1340.0, 55.84, -250.0, 0.0};
 
 -- Rewards
 REWARD_EXP			= 1280;
-REWARD_WIND_SHARD	= 1000005;
-REWARD_SHARDS		= 100;
+REWARD_DALMATICA	= 8030423;
 
 function onStart(player, quest)
 	quest:StartSequence(SEQ_000);
@@ -79,7 +79,7 @@ function onTalk(player, quest, npc)
 		callClientFunction(player, "delegateEvent", player, quest, "processEventClear");
 		callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
 		player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
-		player:GetItemPackage(INVENTORY_CURRENCY):AddItem(REWARD_WIND_SHARD, REWARD_SHARDS, 1);
+		player:GetItemPackage(INVENTORY_NORMAL):AddItem(REWARD_DALMATICA, 1, 1);
 		player:EndEvent();
 		player:CompleteQuest(quest);
 		return;

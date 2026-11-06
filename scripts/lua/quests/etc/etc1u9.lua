@@ -15,7 +15,8 @@ Sasapano, a Golden Bazaar merchant, fled a flock of rabid dodos and lost
 his Azeyma rose by a cave where he saw Garlean agents. Clear the dodos from
 the valley southeast of him (stepping onto the spot starts the fight,
 SimpleContentEtc1u901 / the client's SimpleQuestBattle QuestDirectorEtc1u901),
-and he sneaks in after his rose. Reward 5,000 gil (ZAM) and experience.
+and he sneaks in after his rose. Reward 5,000 gil, Dodoskin Caligae and experience
+(the client's reward table, data/01/03/05/61.DAT).
 
 Sasapano had no spawn or class script; he stands at the Golden Bazaar at
 the position noted in quests/dft/DftWil.lua. The dodos' valley lies to the
@@ -45,6 +46,7 @@ FIGHT				= {171, 1320.0, 279.77, -1094.0, 0.0};
 -- Rewards
 REWARD_EXP			= 300;
 REWARD_GIL			= 5000;
+REWARD_CALIGAE		= 8081016;
 
 function onStart(player, quest)
 	quest:StartSequence(SEQ_000);
@@ -82,6 +84,7 @@ function onTalk(player, quest, npc)
 		callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
 		player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
 		player:AddGil(REWARD_GIL);
+		player:GetItemPackage(INVENTORY_NORMAL):AddItem(REWARD_CALIGAE, 1, 1);
 		player:EndEvent();
 		player:CompleteQuest(quest);
 		return;

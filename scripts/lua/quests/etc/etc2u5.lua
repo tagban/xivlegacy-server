@@ -16,11 +16,12 @@ from an undercutting rival with a new bow, and the bow needs the rugged
 leather of a clever dodo. North of Camp Drybone, stepping onto the spot
 starts the fight (SimpleContentEtc2u501, the client's SimpleQuestBattle
 QuestDirectorEtc2u501) with three clever dodos; beating them yields the
-leather (key item 11000219). Hildie takes it and pays a procurer's fee.
+leather (key item 11000219). Hildie takes it and gives you Dodoskin Wristbands.
 
 Client script etc2u5: processEventHildieStart (offer), processEvent_000
 (while you hunt), processEvent_010 (the hand-in). Journal steps 602-604.
-ZAM has no page for this quest, so the fee and experience are estimates.
+The item comes from the client's reward table (data/01/03/05/61.DAT);
+the table gives the experience only as a rank, so that amount is an estimate.
 
 ]]
 
@@ -44,7 +45,7 @@ FIGHT				= {171, 1220.0, 280.0, -690.0, 0.0};
 
 -- Rewards
 REWARD_EXP			= 500;
-REWARD_GIL			= 2000;
+REWARD_WRISTBANDS	= 9010055;
 
 function onStart(player, quest)
 	quest:StartSequence(SEQ_000);
@@ -82,7 +83,7 @@ function onTalk(player, quest, npc)
 		callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
 		player:GetItemPackage(INVENTORY_KEYITEMS):RemoveItem(ITEM_DODO_LEATHER, 1);
 		player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
-		player:AddGil(REWARD_GIL);
+		player:GetItemPackage(INVENTORY_NORMAL):AddItem(REWARD_WRISTBANDS, 1, 1);
 		player:EndEvent();
 		player:CompleteQuest(quest);
 		return;
