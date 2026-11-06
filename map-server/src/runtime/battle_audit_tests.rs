@@ -558,7 +558,7 @@ pub(super) async fn press_once(sc: &mut Scene, cmd: &BattleCommand, rcpt: Recipi
         let h = sc.registry.get(PLAYER).await.unwrap();
         let c = h.character.read().await;
         o.mp_spent = mp_before - i32::from(c.chara.mp);
-        o.tp_spent = 3000 - i32::from(c.chara.tp);
+        o.tp_spent = i32::from(sc.press_tp) - i32::from(c.chara.tp);
         o.recast_set = c.chara.hotbar.first().is_some_and(|e| e.recast_time != 0);
     }
     o

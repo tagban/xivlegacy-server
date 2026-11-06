@@ -471,6 +471,11 @@ async fn band_numbers(lo: u8, hi: u8, count: usize) {
     for cmd in &cmds {
         let rcpt = recipient(cmd);
         let mut sc = real_scene(&env, cmd, rcpt).await;
+        // At exactly the TP it costs: the surplus bonus has its own test
+        // (battle_behavior_ws_tp_surplus).
+        if cmd.tp_cost > 0 {
+            sc.press_tp = cmd.tp_cost as u16;
+        }
         let level = i16::from(cmd.level.max(1));
         let (player_max, player_max_mp) = {
             let h = sc.registry.get(PLAYER).await.unwrap();

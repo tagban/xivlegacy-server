@@ -9,7 +9,9 @@ function onPreAction(effect, caster, target, skill, action, actionContainer)
         --Unsure if decoy forces a miss/resist or if this is the one case where the evade hittype is used
         --Set action's hit rate to 0
         action.hitRate = 0.0;
-        action.resistRate = 750;
+        --Resist rates are percent and halve each roll: 1600 is a sure
+        --full resist (750 left a triple resist, with damage, 6% of the time)
+        action.resistRate = 1600;
         --Remove status and add message 
         target.statusEffects.RemoveStatusEffect(effect, actionContainer, 30331, false);
     end
