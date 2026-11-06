@@ -521,6 +521,10 @@ pub struct Character {
     /// them: `(quest id, the giver's marker)`. Players only; see
     /// `processor/quest_offers.rs`.
     pub quest_offers: std::collections::HashMap<u32, (u32, crate::actor::quest::QuestEnpc)>,
+    /// The level `quest_offers` was built at. A level-up anywhere (a kill,
+    /// a quest reward, a GM grant) leaves it behind, and the next position
+    /// update rebuilds the offers so a level-gated quest shows up.
+    pub quest_offers_level: Option<i16>,
     /// The food or medicine buff riding the Well Fed status
     /// (`processor/items.rs`); the stat recalc applies it while it lasts.
     pub food: Option<FoodBuff>,
@@ -572,6 +576,7 @@ impl Character {
             event_session: crate::event::EventSession::default(),
             quest_journal: crate::actor::quest::QuestJournal::default(),
             quest_offers: Default::default(),
+            quest_offers_level: None,
             food: None,
             status_mods: Default::default(),
             speed_sent: 1.0,
