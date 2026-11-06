@@ -1,4 +1,4 @@
--- server_battlenpc_pools: game data, 365 rows. Reloaded whole when this file changes.
+-- server_battlenpc_pools: game data, 370 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_pools`;
 INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId`, `currentJob`, `combatSkill`, `combatDelay`, `combatDmgMult`, `aggroType`, `immunity`, `linkType`, `spellListId`, `skillListId`) VALUES
@@ -366,4 +366,9 @@ INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId
 (30227, 2289010, 'gla306_ala_mhigan_bladedancer', 29, 0, 1, 4500, 0.45, 0, 0, 0, 0, 0),
 (30228, 2289012, 'gla306_ala_mhigan_challenger', 29, 0, 1, 4800, 0.35, 0, 0, 0, 0, 0),
 (30229, 2289010, 'arc306_siward', 29, 0, 1, 4200, 0.5, 0, 0, 0, 0, 0),
-(30230, 2205514, 'arc306_yarzon', 12, 0, 1, 4800, 0.3, 0, 0, 0, 0, 39);
+(30230, 2205514, 'arc306_yarzon', 12, 0, 1, 4800, 0.3, 0, 0, 0, 0, 39),
+(30400, 2202109, 'etc2u0_coblyn', 49, 0, 1, 4800, 0.25, 0, 0, 0, 0, 49),
+(30401, 2206201, 'etc2u0_spriggan', 50, 0, 1, 4800, 0.25, 0, 0, 0, 0, 50),
+(30402, 2202003, 'etc2u0_feral_dodo', 42, 0, 1, 4800, 0.25, 0, 0, 0, 0, 42),
+(30403, 2202011, 'etc2u5_clever_dodo', 42, 0, 1, 4800, 0.2, 0, 0, 0, 0, 42),
+(30404, 2202008, 'etc1u9_rabid_dodo', 42, 0, 1, 5000, 0.15, 0, 0, 0, 0, 42);

@@ -1,4 +1,4 @@
--- server_battlenpc_groups: game data, 628 rows. Reloaded whole when this file changes.
+-- server_battlenpc_groups: game data, 633 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_groups`;
 INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLevel`, `maxLevel`, `respawnTime`, `hp`, `mp`, `dropListId`, `allegiance`, `spawnType`, `animationId`, `actorState`, `privateAreaName`, `privateAreaLevel`, `zoneId`) VALUES
@@ -630,4 +630,9 @@ INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLe
 (30327, 30227, 'gla306_ala_mhigan_bladedancer', 36, 36, 0, 2000, 0, 0, 0, 16, 0, 0, '', 0, 209),
 (30328, 30228, 'gla306_ala_mhigan_challenger', 36, 36, 0, 1500, 0, 0, 0, 16, 0, 0, '', 0, 209),
 (30329, 30229, 'arc306_siward', 37, 37, 0, 1400, 0, 0, 0, 16, 0, 0, '', 0, 150),
-(30330, 30230, 'arc306_yarzon', 34, 34, 0, 300, 0, 0, 0, 16, 0, 0, '', 0, 150);
+(30330, 30230, 'arc306_yarzon', 34, 34, 0, 300, 0, 0, 0, 16, 0, 0, '', 0, 150),
+(30400, 30400, 'etc2u0_coblyn', 19, 19, 0, 300, 0, 0, 0, 16, 0, 0, '', 0, 172),
+(30401, 30401, 'etc2u0_spriggan', 20, 20, 0, 250, 0, 0, 0, 16, 0, 0, '', 0, 172),
+(30402, 30402, 'etc2u0_feral_dodo', 18, 18, 0, 250, 0, 0, 0, 16, 0, 0, '', 0, 172),
+(30403, 30403, 'etc2u5_clever_dodo', 15, 15, 0, 220, 0, 0, 0, 16, 0, 0, '', 0, 171),
+(30404, 30404, 'etc1u9_rabid_dodo', 10, 10, 0, 150, 0, 0, 0, 16, 0, 0, '', 0, 171);

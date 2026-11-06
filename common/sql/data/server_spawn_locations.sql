@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1737 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1742 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -1741,4 +1741,9 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (29042, 1001980, 'gla306_bazaar_bowman', 172, 'PrivateAreaMasterPast', 5, -1355.0, 55.7, 517.0, 0.0, 0, 0, NULL),
 (29043, 1001981, 'gla306_bazaar_shaman', 172, 'PrivateAreaMasterPast', 5, -1347.0, 56.0, 516.0, 0.0, 0, 0, NULL),
 (29044, 1090517, 'gla306_bazaar_crowd_trigger', 172, 'PrivateAreaMasterPast', 5, -1364.0, 56.0, 529.0, 0.0, 0, 0, NULL),
-(29045, 1090518, 'arc306_keelty_wood_trigger', 150, '', 0, -436.0, 3.85, -450.0, 0.0, 0, 0, NULL);
+(29045, 1090518, 'arc306_keelty_wood_trigger', 150, '', 0, -436.0, 3.85, -450.0, 0.0, 0, 0, NULL),
+(29200, 1001317, 'etc1u9_sasapano', 171, '', 0, 1134.6, 312.19, -1128.24, 2.36, 0, 0, NULL),
+(29201, 1001727, 'etc101_mutamix', 170, '', 0, 243.858, 247.72, -1030.137, 0.0, 0, 0, NULL),
+(29202, 1090600, 'etc2u0_horizon_trigger', 172, '', 0, -1340.0, 55.68, -200.0, 0.0, 0, 0, NULL),
+(29203, 1090601, 'etc2u5_clever_dodo_trigger', 171, '', 0, 1210.0, 279.9, -710.0, 0.0, 0, 0, NULL),
+(29204, 1090602, 'etc1u9_dodo_valley_trigger', 171, '', 0, 1340.0, 279.84, -1094.0, 0.0, 0, 0, NULL);
