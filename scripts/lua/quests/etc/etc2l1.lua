@@ -16,8 +16,9 @@ plains of Bloodshore before the harvest, but frenzied beasts hold the
 road. Walk east toward Bloodshore: stepping onto the spot starts the fight
 (SimpleContentEtc2l101, the client's SimpleQuestBattle
 QuestDirectorEtc2l101) with two aldgoat nannies, a moraby mole and a
-black bat. Back at Wineport she tells you what she saw. Reward 12
-pineapple juice and 1,280 experience (ZAM).
+black bat. Back at Wineport she tells you what she saw. Reward a
+Leather Jacket (the client's reward table, data/01/03/05/61.DAT; ZAM's
+12 pineapple juice are older) and 1,280 experience (ZAM).
 
 I'nairoh had no spawn or class script; she stands in Wineport by Walcher.
 
@@ -45,8 +46,7 @@ FIGHT				= {130, 820.0, 55.15, -1080.0, 0.0};
 
 -- Rewards
 REWARD_EXP			= 1280;
-REWARD_JUICE		= 3010606;
-REWARD_JUICE_QTY	= 12;
+REWARD_JACKET		= 8030920;
 
 function onStart(player, quest)
 	quest:StartSequence(SEQ_000);
@@ -83,7 +83,7 @@ function onTalk(player, quest, npc)
 		callClientFunction(player, "delegateEvent", player, quest, "processEvent010");
 		callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
 		player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
-		player:GetItemPackage(INVENTORY_NORMAL):AddItem(REWARD_JUICE, REWARD_JUICE_QTY, 1);
+		player:GetItemPackage(INVENTORY_NORMAL):AddItem(REWARD_JACKET, 1, 1);
 		player:EndEvent();
 		player:CompleteQuest(quest);
 		return;

@@ -19,7 +19,8 @@ going down into the caves west of Camp Bearded Rock; stepping into the
 depression starts the fight (SimpleContentEtc3l101, the client's
 SimpleQuestBattle QuestDirectorEtc3l101). You save a party from the Garlond
 Ironworks (L'trimmna, Lowell and Kopel Yorpel), speak with them, then
-report to Zanthael. Reward 7,500 gil and 500 experience (ZAM).
+report to Zanthael. Reward 7,500 gil, a Rope Belt and 500 experience
+(the client's reward table, data/01/03/05/61.DAT).
 
 The three engineers had no spawn or class script; they stand in the
 depression after the fight (open world, visible to everyone).
@@ -78,6 +79,7 @@ FIGHT				= {128, -128.0, 24.5, -130.0, -1.57};
 -- Rewards
 REWARD_EXP			= 500;
 REWARD_GIL			= 7500;
+REWARD_BELT			= 8090402;
 
 function onStart(player, quest)
 	player:GetItemPackage(INVENTORY_KEYITEMS):AddItem(ITEM_WARRANTS, 1, 1);
@@ -169,6 +171,7 @@ function onTalk(player, quest, npc)
 			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
 			player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
 			player:AddGil(REWARD_GIL);
+			player:GetItemPackage(INVENTORY_NORMAL):AddItem(REWARD_BELT, 1, 1);
 			player:EndEvent();
 			player:CompleteQuest(quest);
 			return;
