@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1778 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1781 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -1782,4 +1782,7 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (29237, 1090611, 'etc1u7_flats_trigger', 171, '', 0, 1540.0, 255.91, -270.0, 0.0, 0, 0, NULL),
 (29238, 1090612, 'etc1u8_mesa_trigger', 171, '', 0, 1720.0, 255.68, -380.0, 0.0, 0, 0, NULL),
 (29239, 1090613, 'etc2g4_glade_trigger', 150, '', 0, -48.0, 5.05, -512.0, 0.0, 0, 0, NULL),
-(29240, 1000571, 'etc2g4_courtly_knight', 145, '', 0, 2560.0, 175.51, 1320.0, 3.14, 0, 0, NULL);
+(29240, 1000571, 'etc2g4_courtly_knight', 145, '', 0, 2560.0, 175.51, 1320.0, 3.14, 0, 0, NULL),
+(29241, 1001805, 'etc2l5_sizha_epocan', 130, '', 0, 636.0, 54.41, -1156.0, -0.8, 0, 0, NULL),
+(29242, 1090614, 'etc2l5_strongbox_trigger', 135, '', 0, -700.0, 78.96, -1680.0, 0.0, 0, 0, NULL),
+(29243, 1090615, 'etc200_cutters_cry_trigger', 173, '', 0, -710.0, 280.9, -2220.0, 0.0, 0, 0, NULL);
