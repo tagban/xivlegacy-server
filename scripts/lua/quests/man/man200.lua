@@ -8,7 +8,7 @@ Quest Script
 Name: 	Fade to White
 Code: 	Man200
 Id: 	110013
-Prereq: Etc2l0 or Etc2g0 or Etc2u0. Level 18, any class.
+Prereq: Man2l0, Man2g0 or Man2u0 (110004, 110008, 110012). Level 18, any class.
 
 ]]
 
@@ -409,7 +409,10 @@ function namePathCompanion(player, quest)
 	end
 	callClientFunction(player, "delegateEvent", player, quest, "pE055", name, player:GetSNpcSkin(), player:GetSNpcPersonality(), player:GetSNpcCoordinate(), player:GetInitialTown());
 	callClientFunction(player, "delegateEvent", player, quest, "pE060", name, player:GetSNpcSkin(), player:GetSNpcPersonality(), player:GetSNpcCoordinate(), player:GetInitialTown());
-	callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 300, 1, 1, 2);
+	-- Completion reward from the client's quest reward sheet: 50 EXP + 45,000 gil.
+	callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 50, 1, 1, 2);
+	player:AddExp(50, player.charaWork.parameterSave.state_mainSkill[0], 0);
+	player:AddGil(45000);
 	player:EndEvent();
 	player:CompleteQuest(quest);
 end
