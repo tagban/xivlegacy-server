@@ -1,4 +1,4 @@
--- server_battlenpc_groups: game data, 656 rows. Reloaded whole when this file changes.
+-- server_battlenpc_groups: game data, 657 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_groups`;
 INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLevel`, `maxLevel`, `respawnTime`, `hp`, `mp`, `dropListId`, `allegiance`, `spawnType`, `animationId`, `actorState`, `privateAreaName`, `privateAreaLevel`, `zoneId`) VALUES
@@ -658,4 +658,5 @@ INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLe
 (30424, 30424, 'etc1u8_amaljaa_warrior', 36, 36, 0, 700, 0, 0, 0, 16, 0, 0, '', 0, 171),
 (30425, 30425, 'etc2g4_sourleaf_roselet', 31, 31, 0, 550, 0, 0, 0, 16, 0, 0, '', 0, 150),
 (30426, 30426, 'etc2l5_kobold_cragsman', 45, 47, 60, 2000, 0, 0, 0, 0, 0, 0, '', 0, 135),
-(30470, 30470, 'thm306_rival', 36, 36, 0, 1500, 600, 0, 0, 16, 0, 0, '', 0, 172);
+(30470, 30470, 'thm306_rival', 36, 36, 0, 1500, 600, 0, 0, 16, 0, 0, '', 0, 172),
+(30471, 30471, 'lnc306_elemental', 36, 36, 0, 1200, 0, 0, 0, 16, 0, 0, '', 0, 154);
