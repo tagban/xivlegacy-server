@@ -9836,7 +9836,7 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
 (1001313, '', 1600303, 0, NULL),
 (1001314, '', 1200139, 0, NULL),
 (1001315, '', 1500120, 0, NULL),
-(1001316, '', 1500067, 0, NULL),
+(1001316, '/Chara/Npc/Populace/PopulaceStandard', 1500067, 19, '{"talkEventConditions":[{"unknown1":4,"unknown2":0,"conditionName":"talkDefault"}],"noticeEventConditions":[{"unknown1":0,"unknown2":1,"conditionName":"noticeEvent"}],"emoteEventConditions":[{"unknown1":4,"unknown2":0,"emoteId":107,"conditionName":"emoteDefault1"}]}'),
 (1001317, '/Chara/Npc/Populace/PopulaceStandard', 1400140, 19, '{
   "talkEventConditions": [
     {
@@ -9895,7 +9895,7 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
 (1001342, '', 1600104, 0, NULL),
 (1001343, '', 1400124, 0, NULL),
 (1001344, '', 1000093, 0, NULL),
-(1001345, '', 1000094, 0, NULL),
+(1001345, '/Chara/Npc/Populace/PopulaceStandard', 1000094, 19, '{"talkEventConditions":[{"unknown1":4,"unknown2":0,"conditionName":"talkDefault"}],"noticeEventConditions":[{"unknown1":0,"unknown2":1,"conditionName":"noticeEvent"}],"emoteEventConditions":[{"unknown1":4,"unknown2":0,"emoteId":107,"conditionName":"emoteDefault1"}]}'),
 (1001346, '', 1500041, 0, NULL),
 (1001347, '', 1600292, 0, NULL),
 (1001348, '', 1000176, 0, NULL),
@@ -9938,7 +9938,7 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
 (1001355, '', 1300098, 0, NULL),
 (1001356, '', 1200164, 0, NULL),
 (1001357, '', 1600086, 0, NULL),
-(1001358, '', 1000190, 0, NULL),
+(1001358, '/Chara/Npc/Populace/PopulaceStandard', 1000190, 19, '{"talkEventConditions":[{"unknown1":4,"unknown2":0,"conditionName":"talkDefault"}],"noticeEventConditions":[{"unknown1":0,"unknown2":1,"conditionName":"noticeEvent"}],"emoteEventConditions":[{"unknown1":4,"unknown2":0,"emoteId":107,"conditionName":"emoteDefault1"}]}'),
 (1001359, '', 1300101, 0, NULL),
 (1001360, '', 1300102, 0, NULL),
 (1001361, '', 1200159, 0, NULL),
@@ -11497,7 +11497,7 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
     }
   ]
 }'),
-(1001574, '', 1200162, 0, NULL),
+(1001574, '/Chara/Npc/Populace/PopulaceStandard', 1200162, 19, '{"talkEventConditions":[{"unknown1":4,"unknown2":0,"conditionName":"talkDefault"}],"noticeEventConditions":[{"unknown1":0,"unknown2":1,"conditionName":"noticeEvent"}],"emoteEventConditions":[{"unknown1":4,"unknown2":0,"emoteId":107,"conditionName":"emoteDefault1"}]}'),
 (1001575, '/Chara/Npc/Populace/PopulaceStandard', 1900166, 19, '{
   "talkEventConditions": [
     {
@@ -11666,7 +11666,7 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
 (1001605, '', 1000057, 0, NULL),
 (1001606, '', 1400160, 0, NULL),
 (1001607, '', 1100174, 0, NULL),
-(1001608, '', 1300151, 0, NULL),
+(1001608, '/Chara/Npc/Populace/PopulaceStandard', 1300151, 19, '{"talkEventConditions":[{"unknown1":4,"unknown2":0,"conditionName":"talkDefault"}],"noticeEventConditions":[{"unknown1":0,"unknown2":1,"conditionName":"noticeEvent"}],"emoteEventConditions":[{"unknown1":4,"unknown2":0,"emoteId":107,"conditionName":"emoteDefault1"}]}'),
 (1001609, '', 1600005, 0, NULL),
 (1001610, '', 1200038, 0, NULL),
 (1001611, '', 1600080, 0, NULL),
@@ -13079,7 +13079,7 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
   ]
 }'),
 (1001839, '', 1000111, 0, NULL),
-(1001840, '', 1900246, 0, NULL),
+(1001840, '/Chara/Npc/Populace/PopulaceStandard', 1900246, 19, '{"talkEventConditions":[{"unknown1":4,"unknown2":0,"conditionName":"talkDefault"}],"noticeEventConditions":[{"unknown1":0,"unknown2":1,"conditionName":"noticeEvent"}],"emoteEventConditions":[{"unknown1":4,"unknown2":0,"emoteId":107,"conditionName":"emoteDefault1"}]}'),
 (1001841, '/Chara/Npc/Populace/PopulaceValentMaster', 1100397, 19, '{
   "talkEventConditions": [
     {
