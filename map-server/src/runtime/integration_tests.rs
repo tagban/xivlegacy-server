@@ -19360,10 +19360,19 @@ async fn forget_actor_for_all_sessions_drops_respawned_monster() {
     world.forget_actor_for_all_sessions(monster).await;
 
     let s1 = world.session(1).await.unwrap();
-    assert!(!s1.actor_instance_list.contains(&monster), "streaming will respawn it");
-    assert!(s1.actor_instance_list.contains(&0x44D2_001F), "other monsters stay");
+    assert!(
+        !s1.actor_instance_list.contains(&monster),
+        "streaming will respawn it"
+    );
+    assert!(
+        s1.actor_instance_list.contains(&0x44D2_001F),
+        "other monsters stay"
+    );
     let sent = rx1.try_recv().expect("the holder gets a RemoveActor");
     let want = crate::packets::send::actor::build_remove_actor(monster);
     assert_eq!(sent.len(), want.to_bytes().len());
-    assert!(rx2.try_recv().is_err(), "a session without it hears nothing");
+    assert!(
+        rx2.try_recv().is_err(),
+        "a session without it hears nothing"
+    );
 }

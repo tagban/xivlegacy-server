@@ -703,10 +703,11 @@ impl GameTicker {
                         // The spatial grid too: instance streaming and
                         // the AI radius queries read positions from it.
                         let mut ob = AreaOutbox::new();
-                        zone.write()
-                            .await
-                            .core
-                            .update_actor_position(handle.actor_id, spawn, &mut ob);
+                        zone.write().await.core.update_actor_position(
+                            handle.actor_id,
+                            spawn,
+                            &mut ob,
+                        );
                     }
                     crate::runtime::dispatcher::apply_revive(
                         handle.actor_id,
@@ -719,7 +720,9 @@ impl GameTicker {
                         // Clients faded the corpse; a state flip alone
                         // never brings it back. Drop it from their actor
                         // tables so streaming spawns it afresh, alive.
-                        self.world.forget_actor_for_all_sessions(handle.actor_id).await;
+                        self.world
+                            .forget_actor_for_all_sessions(handle.actor_id)
+                            .await;
                     }
                 }
             }
