@@ -12,6 +12,10 @@ Prereq: Level 45, Any DoW/DoM
 
 ]]
 
+-- Rewards (items/gil: ZAM and the client's reward table; the EXP is an estimate)
+REWARD_EXP			= 3500;
+REWARD_GIL			= 8000;
+
 -- Sequence Numbers
 SEQ_000	= 0;  -- Kill ?? ?? ??.
 SEQ_001	= 1;  -- Talk to Dural Tharal.
@@ -70,7 +74,10 @@ function onTalk(player, quest, npc, eventName)
 	elseif (seq == SEQ_001) then
 		if (npcClassId == ENPC_DURAL_THARAL) then
 			callClientFunction(player, "delegateEvent", player, quest, "processEventClear");
-			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 200, 1, 1, 9);
+			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
+			player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
+			player:AddGil(REWARD_GIL);
+			player:GetItemPackage(INVENTORY_NORMAL):AddItem(3020608, 20, 1); -- Magicked Prism (Mythril Eye)
             player:CompleteQuest(quest);
 		end
 	end
