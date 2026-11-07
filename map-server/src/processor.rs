@@ -10330,6 +10330,11 @@ impl PacketProcessor {
             for quest_id in active_quest_ids {
                 self.apply_quest_update_enpcs(actor_id, quest_id).await;
             }
+            // And the quests on offer: an offer built while its giver
+            // wasn't in the player's zone (Minfilia while you're out in the
+            // field) was skipped then, so her marker only shows once it is
+            // re-sent here, in the giver's zone.
+            self.refresh_quest_offers(&handle).await;
         }
     }
 
