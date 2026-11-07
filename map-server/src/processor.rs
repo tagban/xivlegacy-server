@@ -10291,6 +10291,16 @@ impl PacketProcessor {
         // the duty back to SEQ_060; (2) skipped when a deferred login warp
         // just replayed — its own RX 0x0007 does the re-establish for the
         // final zone. (Garlemald-Server #41.)
+        //
+        // The re-establish only broadcasts ENPCs whose flags CHANGED (push
+        // triggers are always re-sent). A talk NPC whose registration is
+        // unchanged was skipped in the origin zone ("no live NPC") and then
+        // counted as already sent, so the destination zone's copy never got
+        // its talk status: Man200 accepts at the Waking Sands door (zone 175)
+        // and warps into zone 181, where Tataru and the guests stayed silent
+        // until a relog. The destination zone's NPCs were spawned fresh by
+        // this warp, so forget what was sent and let every registration go
+        // out as new.
         let in_content_instance = self
             .world
             .session(session_id)
@@ -10311,6 +10321,12 @@ impl PacketProcessor {
                     .map(|q| q.quest_id())
                     .collect()
             };
+            {
+                let mut c = handle.character.write().await;
+                for q in c.quest_journal.slots.iter_mut().flatten() {
+                    q.state.current.clear();
+                }
+            }
             for quest_id in active_quest_ids {
                 self.apply_quest_update_enpcs(actor_id, quest_id).await;
             }

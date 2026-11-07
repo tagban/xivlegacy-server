@@ -2300,6 +2300,176 @@ async fn quest_set_enpc_emits_event_status_and_quest_graphic_packets() {
     let _ = std::fs::remove_dir_all(script_root);
 }
 
+/// A cross-zone warp's zone-in-complete must re-send EVERY active quest
+/// ENPC, not only the ones whose flags changed. Man200 accepts at the Waking
+/// Sands door in zone 175 (its SetENpc broadcasts find no live NPC there) and
+/// warps into zone 181; the re-establish then saw Tataru's talk flag as
+/// unchanged and never sent it, so she stayed silent until a relog.
+#[tokio::test]
+async fn zone_in_complete_resends_unchanged_quest_enpcs() {
+    use crate::actor::event_conditions::{EventConditionList, TalkCondition};
+    use crate::actor::quest::{Quest, quest_actor_id};
+    use crate::lua::LuaEngine;
+    use crate::lua::command::LuaCommand;
+    use crate::processor::PacketProcessor;
+
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let script_root = common::test_tmp::dir().join(format!("garlemald-reemit-{nanos}"));
+    std::fs::create_dir_all(script_root.join("quests/man")).unwrap();
+    std::fs::write(
+        script_root.join("quests/man/man200.lua"),
+        r#"
+            function onStateChange(player, quest, sequence)
+                quest:SetENpc(2000001, 0, true, false, false, false)
+            end
+        "#,
+    )
+    .unwrap();
+
+    let world = Arc::new(WorldManager::new());
+    let registry = Arc::new(ActorRegistry::new());
+    let db = Arc::new(crate::database::Database::open(tempdb()).await.expect("db"));
+    use common::db::ConnCallExt;
+    db.conn_for_test()
+        .call_db(|c| {
+            c.execute(
+                "INSERT INTO characters (id, userId, slot, serverId, name) VALUES (42, 0, 0, 0, 'Tester')",
+                [],
+            )?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+
+    let lua = Arc::new(LuaEngine::new(&script_root));
+    {
+        let mut quests = std::collections::HashMap::new();
+        quests.insert(
+            110_013u32,
+            crate::gamedata::QuestMeta {
+                id: 110_013,
+                quest_name: "Fade to White".to_string(),
+                class_name: "Man200".to_string(),
+                prerequisite: 0,
+                min_level: 18,
+            },
+        );
+        lua.catalogs().install_quests(quests);
+    }
+
+    let mut zone = Zone::new(
+        181,
+        "test",
+        1,
+        "/Area/Zone/Test",
+        0,
+        0,
+        0,
+        false,
+        false,
+        false,
+        false,
+        false,
+        Some(&StubNavmeshLoader),
+    );
+    let mut ob = AreaOutbox::new();
+    zone.core.add_actor(
+        StoredActor {
+            actor_id: 42,
+            kind: ActorKind::Player,
+            position: Vector3::ZERO,
+            grid: (0, 0),
+            is_alive: true,
+        },
+        &mut ob,
+    );
+    zone.core.add_actor(
+        StoredActor {
+            actor_id: 0x987_6543,
+            kind: ActorKind::Npc,
+            position: Vector3::new(2.0, 0.0, 0.0),
+            grid: (0, 0),
+            is_alive: true,
+        },
+        &mut ob,
+    );
+    world.register_zone(zone).await;
+
+    let mut player = Character::new(42);
+    let mut quest = Quest::new(quest_actor_id(110_013), "Man200".to_string());
+    quest.clear_dirty();
+    player.quest_journal.add(quest);
+    registry
+        .insert(ActorHandle::new(42, ActorKindTag::Player, 181, 99, player))
+        .await;
+
+    let (tx, mut rx) = mpsc::channel::<Vec<u8>>(64);
+    world.register_client(99, ClientHandle::new(99, tx)).await;
+
+    let processor = PacketProcessor {
+        db: db.clone(),
+        world: world.clone(),
+        registry: registry.clone(),
+        lua: Some(lua.clone()),
+        cmd: None,
+    };
+
+    // The quest registers its talk NPC while that NPC isn't live (the
+    // origin zone): the broadcast is skipped, but the registration sticks.
+    processor
+        .apply_login_lua_command(
+            &registry.get(42).await.unwrap(),
+            LuaCommand::QuestStartSequence {
+                player_id: 42,
+                quest_id: 110_013,
+                sequence: 0,
+            },
+        )
+        .await;
+    while rx.try_recv().is_ok() {}
+
+    // The warp lands: the destination zone's NPC is live now.
+    let mut npc = Character::new(0x987_6543);
+    npc.chara.actor_class_id = 2_000_001;
+    npc.base.event_conditions = EventConditionList {
+        talk: vec![TalkCondition {
+            condition_name: "talkDefault".to_string(),
+            is_disabled: false,
+            unknown1: 4,
+        }],
+        ..EventConditionList::default()
+    };
+    registry
+        .insert(ActorHandle::new(0x987_6543, ActorKindTag::Npc, 181, 0, npc))
+        .await;
+
+    processor.handle_zone_in_complete(99).await;
+
+    let mut saw_event_status = false;
+    while let Ok(bytes) = rx.try_recv() {
+        let mut offset = 0;
+        while offset < bytes.len() {
+            let Ok(sub) = common::subpacket::SubPacket::parse(&bytes, &mut offset) else {
+                break;
+            };
+            if sub.game_message.opcode == crate::packets::opcodes::OP_SET_EVENT_STATUS
+                && sub.header.source_id == 0x987_6543
+            {
+                saw_event_status = true;
+            }
+        }
+    }
+    assert!(
+        saw_event_status,
+        "zone-in-complete must re-send the unchanged talk NPC's event status",
+    );
+
+    let _ = std::fs::remove_dir_all(script_root);
+}
+
 // ---------------------------------------------------------------------------
 // Quest-engine DB round-trips (Phase A/B/C plumbing)
 // ---------------------------------------------------------------------------
