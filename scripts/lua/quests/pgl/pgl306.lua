@@ -31,9 +31,11 @@ empty class, so the fight is ours (journal: defeat the thaumaturge; a loss
 lets you challenge her again). The thaumaturge uses the caster class of
 Arc300's thunder mage (2180131, thaumaturge spells).
 
-Places (estimates): the Mirage entrance at the top of its stairs; the
-plateau east of the Silver Bazaar (ground y 116-127 from the client's
-ground mesh). The journal markers (11006201-07) are unprobed.
+Places: the Mirage entrance at the top of its stairs, with Hurrey and the
+handmaiden on the floor below it; the plateau east of the Silver Bazaar,
+whose circle sits at its foot (the top is a ledge you can't walk onto from
+the south). Walked in the client. The journal markers (11006201-07) are
+unprobed.
 
 ]]
 
@@ -70,7 +72,7 @@ FIGHT		= {172, -1170.0, 121.93, 480.0, 0.0};
 FIGHT_OUT	= {172, -1170.0, 117.06, 500.0, 3.14};
 -- Where the after-warp scenes set you down.
 ENTRANCE_AFTER	= {175, -151.0, 185.65, 126.0, 3.14};
-PLATEAU_AFTER	= {172, -1165.0, 119.65, 488.0, 3.14};
+PLATEAU_AFTER	= {172, -1170.0, 117.06, 500.0, 3.14}; -- the plateau's foot, as FIGHT_OUT
 MIRAGE_AFTER	= {175, -172.0, 190.0, 113.0, 0.0};
 
 TALKS_GAGARUNA = {
