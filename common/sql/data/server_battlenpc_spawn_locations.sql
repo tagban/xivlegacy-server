@@ -1,4 +1,4 @@
--- server_battlenpc_spawn_locations: game data, 3945 rows. Reloaded whole when this file changes.
+-- server_battlenpc_spawn_locations: game data, 3963 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_spawn_locations`;
 INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `groupId`, `positionX`, `positionY`, `positionZ`, `rotation`) VALUES
@@ -3953,4 +3953,22 @@ INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `
 (3958, 'exc306_moenskaet_unbeatable', 30472, -786.0, 9.15, 389.4, -1.6),
 (3959, 'exc306_moenskaet', 30473, -786.0, 9.15, 389.4, -1.6),
 (3960, 'exc306_right_hand', 30474, -786.4, 9.15, 388.0, -1.6),
-(3961, 'exc306_left_hand', 30475, -785.6, 9.15, 390.8, -1.6);
+(3961, 'exc306_left_hand', 30475, -785.6, 9.15, 390.8, -1.6),
+(3962, 'etc2g1_lemur', 30476, -945.0, 19.72, -2174.0, 0.0),
+(3963, 'etc2g1_lemur', 30476, -960.6, 24.9, -2169.4, 0.0),
+(3964, 'etc2g1_lemur', 30476, -956.0, 19.88, -2185.0, 0.0),
+(3965, 'etc2g1_lemur', 30476, -960.6, 19.77, -2200.6, 0.0),
+(3966, 'etc2g1_lemur', 30476, -934.0, 33.42, -2185.0, 0.0),
+(3967, 'etc2g1_lemur', 30476, -945.0, 30.99, -2196.0, 0.0),
+(3968, 'wld0u4_amaljaa_drudge', 30477, 1420.0, 255.8, 140.0, 0.0),
+(3969, 'wld0u4_amaljaa_drudge', 30477, 1445.0, 256.6, 120.0, 0.0),
+(3970, 'wld0u4_amaljaa_drudge', 30477, 1470.0, 256.3, 120.0, 0.0),
+(3971, 'wld0u4_amaljaa_drudge', 30477, 1495.0, 257.0, 120.0, 0.0),
+(3972, 'wld0u4_amaljaa_drudge', 30477, 1470.0, 254.7, 140.0, 0.0),
+(3973, 'wld0u4_amaljaa_drudge', 30477, 1495.0, 255.2, 140.0, 0.0),
+(3974, 'etc2i1_antelope_doe', 30478, 2680.0, 207.0, 1500.0, 0.0),
+(3975, 'etc2i1_antelope_doe', 30478, 2680.0, 206.0, 1530.0, 0.0),
+(3976, 'etc2i1_antelope_doe', 30478, 2680.0, 209.0, 1560.0, 0.0),
+(3977, 'etc2i1_antelope_doe', 30478, 2710.0, 213.0, 1530.0, 0.0),
+(3978, 'etc2i1_antelope_doe', 30478, 2710.0, 207.0, 1560.0, 0.0),
+(3979, 'etc2i1_antelope_doe', 30478, 2740.0, 208.0, 1560.0, 0.0);

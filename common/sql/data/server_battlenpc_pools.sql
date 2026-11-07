@@ -1,4 +1,4 @@
--- server_battlenpc_pools: game data, 398 rows. Reloaded whole when this file changes.
+-- server_battlenpc_pools: game data, 401 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_pools`;
 INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId`, `currentJob`, `combatSkill`, `combatDelay`, `combatDmgMult`, `aggroType`, `immunity`, `linkType`, `spellListId`, `skillListId`) VALUES
@@ -399,4 +399,7 @@ INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId
 (30472, 2289004, 'exc306_moenskaet_unbeatable', 29, 4, 1, 4200, 1.0, 0, 0, 0, 0, 0),
 (30473, 2289005, 'exc306_moenskaet', 29, 4, 1, 4200, 1.0, 0, 0, 0, 0, 0),
 (30474, 2280219, 'exc306_right_hand', 29, 4, 1, 6000, 1.0, 0, 0, 0, 0, 0),
-(30475, 2280220, 'exc306_left_hand', 29, 4, 1, 6000, 1.0, 0, 0, 0, 0, 0);
+(30475, 2280220, 'exc306_left_hand', 29, 4, 1, 6000, 1.0, 0, 0, 0, 0, 0),
+(30476, 2100512, 'etc2g1_lemur', 4, 0, 1, 4200, 1.0, 0, 0, 0, 0, 4),
+(30477, 2106542, 'wld0u4_amaljaa_drudge', 23, 0, 1, 4200, 1.0, 1, 0, 0, 0, 23),
+(30478, 2100314, 'etc2i1_antelope_doe', 2, 0, 1, 4200, 1.0, 0, 0, 0, 0, 2);
