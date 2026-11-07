@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1787 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1791 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -1791,4 +1791,8 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (29360, 1090520, 'thm306_wreck_trigger', 172, '', 0, -1849.0, 24.0, -255.0, 0.0, 0, 0, NULL),
 (29361, 1090521, 'lnc306_road_trigger', 150, '', 0, 355.0, 4.25, -716.0, 0.0, 0, 0, NULL),
 (29362, 1090522, 'lnc306_echo_trigger', 154, 'PrivateAreaMasterPast', 0, 940.0, 0.0, 1652.0, 0.0, 0, 0, NULL),
-(29363, 1000812, 'lnc306_merchant', 154, '', 0, 798.0, -11.95, 1378.0, 0.5, 0, 0, NULL);
+(29363, 1000812, 'lnc306_merchant', 154, '', 0, 798.0, -11.95, 1378.0, 0.5, 0, 0, NULL),
+(29364, 1090523, 'exc306_quarters_door_trigger', 230, '', 0, -752.6, 7.35, 390.4, 0.0, 0, 0, NULL),
+(29365, 1090525, 'exc306_alehold_trigger', 230, '', 0, -754.4, 7.35, 384.0, 0.0, 0, 0, NULL),
+(29366, 1090526, 'exc306_deck_trigger', 230, '', 0, -792.0, 21.35, 386.0, 0.0, 0, 0, NULL),
+(29367, 1090527, 'exc306_deck_doors_trigger', 230, '', 0, -794.5, 21.35, 377.5, 0.0, 0, 0, NULL);

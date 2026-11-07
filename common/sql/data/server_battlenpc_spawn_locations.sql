@@ -1,4 +1,4 @@
--- server_battlenpc_spawn_locations: game data, 3941 rows. Reloaded whole when this file changes.
+-- server_battlenpc_spawn_locations: game data, 3945 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_spawn_locations`;
 INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `groupId`, `positionX`, `positionY`, `positionZ`, `rotation`) VALUES
@@ -3949,4 +3949,8 @@ INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `
 (4094, 'etc2l5_kobold_cragsman', 30426, -650.0, 61.95, -1590.0, 0.6),
 (4095, 'etc2l5_kobold_cragsman', 30426, -625.0, 61.08, -1595.0, 0.6),
 (3956, 'thm306_rival', 30470, -1848.0, 24.78, -284.0, 1.2),
-(3957, 'lnc306_elemental', 30471, 812.0, -11.75, 1376.3, -1.6);
+(3957, 'lnc306_elemental', 30471, 812.0, -11.75, 1376.3, -1.6),
+(3958, 'exc306_moenskaet_unbeatable', 30472, -786.0, 9.15, 389.4, -1.6),
+(3959, 'exc306_moenskaet', 30473, -786.0, 9.15, 389.4, -1.6),
+(3960, 'exc306_right_hand', 30474, -786.4, 9.15, 388.0, -1.6),
+(3961, 'exc306_left_hand', 30475, -785.6, 9.15, 390.8, -1.6);
