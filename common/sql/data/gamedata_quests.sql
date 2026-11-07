@@ -57,7 +57,7 @@ INSERT INTO `gamedata_quests` (`id`, `questName`, `className`, `prerequisite`, `
 (110185, '[en]', 'Lnc506', 0, 56),
 (110240, 'The Big Payback', 'Thm200', 0, 20),
 (110241, 'Revelry in Rivalry', 'Thm300', 0, 30),
-(110242, 'Law and the Order', 'Thm306', 0, 36),
+(110242, 'Law and the Order', 'Thm306', 110241, 36),
 (110243, '[en]', 'Thm400', 0, 40),
 (110260, 'Dendrological Duties', 'Cnj200', 0, 20),
 (110261, 'Good Knight, Sweet Dreams', 'Cnj300', 110260, 30),

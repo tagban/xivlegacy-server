@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1783 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1784 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -1787,4 +1787,5 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (29242, 1090614, 'etc2l5_strongbox_trigger', 135, '', 0, -700.0, 78.96, -1680.0, 0.0, 0, 0, NULL),
 (29243, 1090615, 'etc200_cutters_cry_trigger', 173, '', 0, -710.0, 280.9, -2220.0, 0.0, 0, 0, NULL),
 (29350, 1000005, 'exc300_rostnsthal', 230, '', 0, -789.9, 9.15, 388.9, 1.57, 0, 0, NULL),
-(29351, 1090519, 'exc300_krakens_den_trigger', 230, '', 0, -414.5, 41.1, 439.0, 0.0, 0, 0, NULL);
+(29351, 1090519, 'exc300_krakens_den_trigger', 230, '', 0, -414.5, 41.1, 439.0, 0.0, 0, 0, NULL),
+(29360, 1090520, 'thm306_wreck_trigger', 172, '', 0, -1849.0, 24.0, -255.0, 0.0, 0, 0, NULL);
