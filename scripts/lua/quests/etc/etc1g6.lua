@@ -12,6 +12,9 @@ Prereq: Level 35, Any DoW/DoM, Etc1g4 complete
 
 ]]
 
+-- Rewards (items/gil: ZAM and the client's reward table; the EXP is an estimate)
+REWARD_EXP			= 2500;
+
 -- Sequence Numbers
 SEQ_000	= 0;  -- Talk to Sylbyrt.
 SEQ_001	= 1;  -- Kill Wandering Wights.
@@ -95,7 +98,9 @@ function onTalk(player, quest, npc, eventName)
 	elseif (seq == SEQ_003) then
 		if (npcClassId == ENPC_NICOLIAUX) then
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent020");
-			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 200, 1, 1, 9);
+			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
+			player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
+			player:GetItemPackage(INVENTORY_NORMAL):AddItem(8050110, 1, 1); -- Dated Canvas Trousers
             player:CompleteQuest(quest);
 		elseif (npcClassId == ENPC_SYLBYRT) then
             callClientFunction(player, "delegateEvent", player, quest, "followEvent020");

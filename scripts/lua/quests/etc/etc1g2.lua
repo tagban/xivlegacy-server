@@ -12,6 +12,9 @@ Prereq: Level 25, Any DoW/DoM
 
 ]]
 
+-- Rewards (items/gil: ZAM and the client's reward table; the EXP is an estimate)
+REWARD_EXP			= 1500;
+
 -- Sequence Numbers
 SEQ_000	= 0;  -- Talk to Mestonnaux.
 SEQ_001	= 1;  -- Kill Popoto-optos.
@@ -87,7 +90,9 @@ function onTalk(player, quest, npc, eventName)
 	elseif (seq == SEQ_002) then
 		if (npcClassId == ENPC_VNABYANO) then
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent05_3");
-			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 200, 1, 1, 9);
+			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
+			player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
+			player:GetItemPackage(INVENTORY_NORMAL):AddItem(8090901, 1, 1); -- Dated Dodoskin Field Belt
             player:CompleteQuest(quest);
 		elseif (npcClassId == ENPC_MESTONNAUX) then
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent005_2");

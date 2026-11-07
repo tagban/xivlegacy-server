@@ -12,6 +12,9 @@ Prereq: Level 30, Any DoW/DoM, Etc1l7 complete
 
 ]]
 
+-- Rewards (items/gil: ZAM and the client's reward table; the EXP is an estimate)
+REWARD_EXP			= 2000;
+
 -- Sequence Numbers
 SEQ_000	= 0;  -- Kill Gnawing Gnats.
 SEQ_001	= 1;  -- Talk to Francis.
@@ -82,7 +85,9 @@ function onTalk(player, quest, npc, eventName)
 	elseif (seq == SEQ_002) then
 		if (npcClassId == ENPC_IMANIA) then
 			callClientFunction(player, "delegateEvent", player, quest, "processEventImania");
-			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 200, 1, 1, 9);
+			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
+			player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
+			player:GetItemPackage(INVENTORY_NORMAL):AddItem(8031810, 1, 1); -- Dated Canvas Cowl
             player:CompleteQuest(quest);
 		elseif (npcClassId == ENPC_FRANCIS) then
 			callClientFunction(player, "delegateEvent", player, quest, "processEventFrancisAfterFree", 0, OBJECTIVE_AMOUNT);

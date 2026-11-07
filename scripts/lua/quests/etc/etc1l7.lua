@@ -12,6 +12,9 @@ Prereq: Level 30, Any DoW/DoM
 
 ]]
 
+-- Rewards (items/gil: ZAM and the client's reward table; the EXP is an estimate)
+REWARD_EXP			= 2000;
+
 -- Sequence Numbers
 SEQ_000	= 0;  -- Talk to Yuyubesu.
 SEQ_001	= 1;  -- Kill Bomb Embers.
@@ -95,7 +98,9 @@ function onTalk(player, quest, npc, eventName)
 			callClientFunction(player, "delegateEvent", player, quest, "processEventYuyubesuAfterFree");
 		elseif (npcClassId == ENPC_HILDIE) then
 			callClientFunction(player, "delegateEvent", player, quest, "processEventHildie");
-			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 200, 1, 1, 9);
+			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
+			player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
+			player:GetItemPackage(INVENTORY_NORMAL):AddItem(8030310, 1, 1); -- Dated Mercenary's Chainmail
             player:CompleteQuest(quest);
 		end
 	end

@@ -12,6 +12,9 @@ Prereq: Level 28, Any DoW/DoM
 
 ]]
 
+-- Rewards (items/gil: ZAM and the client's reward table; the EXP is an estimate)
+REWARD_EXP			= 1500;
+
 -- Sequence Numbers
 SEQ_000	= 0;  -- Kill Iron Coblyns.
 SEQ_005	= 5;  -- Talk to Pahja Zhwan.
@@ -70,7 +73,8 @@ function onTalk(player, quest, npc, eventName)
 	elseif (seq == SEQ_005) then
 		if (npcClassId == ENPC_PAHJA_ZHWAN) then
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent010");
-			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 200, 1, 1, 9);
+			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
+			player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
             player:CompleteQuest(quest);
 		end
 	end
