@@ -17301,7 +17301,17 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
     }
   ]
 }'),
-(1090520, '', 0, 0, NULL),
+(1090520, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "4.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
 (1090521, '', 0, 0, NULL),
 (1090522, '', 0, 0, NULL),
 (1090523, '', 0, 0, NULL),
@@ -31241,7 +31251,7 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
 (2289012, '/Chara/Npc/Monster/Pirate/PirateStandard', 4000191, 0, NULL),
 (2289013, '', 4000598, 0, NULL),
 (2289014, '', 4000192, 0, NULL),
-(2289015, '', 4000189, 0, NULL),
+(2289015, '/Chara/Npc/Monster/Pirate/PirateStandard', 4000189, 0, NULL),
 (2289016, '', 1000342, 0, NULL),
 (2289017, '', 1000342, 0, NULL),
 (2289018, '', 1000342, 0, NULL),
