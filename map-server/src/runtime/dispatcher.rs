@@ -664,6 +664,11 @@ async fn flush_wake_outbox(
     }
 }
 
+/// How far past its attack range an auto-attack still lands, by the two
+/// actors' own positions (each side moves between the swing gate and
+/// here).
+const AUTO_ATTACK_REACH_SLACK: f32 = 1.0;
+
 async fn resolve_auto_attack(
     attacker_actor_id: u32,
     defender_actor_id: u32,
@@ -682,6 +687,31 @@ async fn resolve_auto_attack(
     let Some(defender_handle) = registry.get(defender_actor_id).await else {
         return;
     };
+    // The last word on reach: both sides' own positions. The swing gate
+    // reads the target from the zone grid, which can lag behind; a
+    // monster once landed 46 swings from 32 yalms while the client still
+    // drew it at its spawn.
+    {
+        let (reach, apos) = {
+            let a = attacker_handle.character.read().await;
+            (a.get_attack_range(), a.base.position())
+        };
+        let dpos = defender_handle.character.read().await.base.position();
+        let (dx, dz) = (dpos.x - apos.x, dpos.z - apos.z);
+        let dist = (dx * dx + dz * dz).sqrt();
+        if dist > reach + AUTO_ATTACK_REACH_SLACK {
+            tracing::debug!(
+                attacker = format!("0x{attacker_actor_id:08X}"),
+                defender = format!("0x{defender_actor_id:08X}"),
+                distance = dist,
+                reach,
+                attacker_at = ?apos,
+                defender_at = ?dpos,
+                "battle: auto-attack out of reach, dropped",
+            );
+            return;
+        }
+    }
     // Cover: a melee swing at a Covered actor lands on their paladin.
     let ranged = attacker_handle
         .character
