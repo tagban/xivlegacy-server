@@ -92,7 +92,7 @@ function onTalk(player, quest, npc, eventName)
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent05_3");
 			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
 			player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
-			player:GetItemPackage(INVENTORY_NORMAL):AddItem(8090901, 1, 1); -- Dated Dodoskin Field Belt
+			player:GetItemPackage(INVENTORY_NORMAL):AddItem(8090405, 1, 1); -- Velveteen Rope Belt
             player:CompleteQuest(quest);
 		elseif (npcClassId == ENPC_MESTONNAUX) then
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent005_2");

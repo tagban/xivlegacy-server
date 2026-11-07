@@ -75,7 +75,7 @@ function onTalk(player, quest, npc, eventName)
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent020");
 			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
 			player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
-			player:GetItemPackage(INVENTORY_NORMAL):AddItem(8080613, 1, 1); -- Dated Toadskin Shoes
+			player:GetItemPackage(INVENTORY_NORMAL):AddItem(8080517, 1, 1); -- Boarskin Crakows
             player:CompleteQuest(quest);
 		end
 	end

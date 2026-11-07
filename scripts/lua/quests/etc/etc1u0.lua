@@ -75,7 +75,7 @@ function onTalk(player, quest, npc, eventName)
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent010");
 			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
 			player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
-			player:GetItemPackage(INVENTORY_NORMAL):AddItem(9030013, 1, 1); -- Dated Black Pearl Earrings
+			player:GetItemPackage(INVENTORY_NORMAL):AddItem(9030038, 1, 1); -- Pearl Earrings
             player:CompleteQuest(quest);
 		end
 	end

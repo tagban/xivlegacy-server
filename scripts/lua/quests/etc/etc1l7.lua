@@ -100,7 +100,7 @@ function onTalk(player, quest, npc, eventName)
 			callClientFunction(player, "delegateEvent", player, quest, "processEventHildie");
 			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
 			player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
-			player:GetItemPackage(INVENTORY_NORMAL):AddItem(8030310, 1, 1); -- Dated Mercenary's Chainmail
+			player:GetItemPackage(INVENTORY_NORMAL):AddItem(8030320, 1, 1); -- Steel Chainmail
             player:CompleteQuest(quest);
 		end
 	end

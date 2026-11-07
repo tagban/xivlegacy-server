@@ -77,6 +77,7 @@ function onTalk(player, quest, npc, eventName)
 			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
 			player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
 			player:AddGil(REWARD_GIL);
+			player:GetItemPackage(INVENTORY_NORMAL):AddItem(3020608, 20, 1); -- Magicked Prism (Mythril Eye)
             player:CompleteQuest(quest);
 		end
 	end

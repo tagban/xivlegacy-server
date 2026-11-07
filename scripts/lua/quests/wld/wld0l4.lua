@@ -76,6 +76,7 @@ function onTalk(player, quest, npc, eventName)
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent010");
 			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
 			player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
+			player:GetItemPackage(INVENTORY_NORMAL):AddItem(10013004, 2, 1); -- Grade 4 Dark Matter
             player:CompleteQuest(quest);
 		elseif (npcClassId == FAINE) then
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent005_2");

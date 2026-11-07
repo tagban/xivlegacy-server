@@ -95,7 +95,7 @@ function onTalk(player, quest, npc, eventName)
             callClientFunction(player, "delegateEvent", player, quest, "processEvent010_1");
 			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
 			player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
-			player:GetItemPackage(INVENTORY_NORMAL):AddItem(8010806, 1, 1); -- Dated Silver Spectacles
+			player:GetItemPackage(INVENTORY_NORMAL):AddItem(8010810, 1, 1); -- Mythril Spectacles
             player:CompleteQuest(quest);
 		end
 	end

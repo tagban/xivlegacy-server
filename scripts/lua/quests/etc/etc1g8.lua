@@ -87,7 +87,7 @@ function onTalk(player, quest, npc, eventName)
 			callClientFunction(player, "delegateEvent", player, quest, "processEventImania");
 			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
 			player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
-			player:GetItemPackage(INVENTORY_NORMAL):AddItem(8031810, 1, 1); -- Dated Canvas Cowl
+			player:GetItemPackage(INVENTORY_NORMAL):AddItem(8031822, 1, 1); -- Linen Cowl
             player:CompleteQuest(quest);
 		elseif (npcClassId == ENPC_FRANCIS) then
 			callClientFunction(player, "delegateEvent", player, quest, "processEventFrancisAfterFree", 0, OBJECTIVE_AMOUNT);

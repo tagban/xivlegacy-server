@@ -100,7 +100,7 @@ function onTalk(player, quest, npc, eventName)
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent020");
 			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
 			player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
-			player:GetItemPackage(INVENTORY_NORMAL):AddItem(8050110, 1, 1); -- Dated Canvas Trousers
+			player:GetItemPackage(INVENTORY_NORMAL):AddItem(8050125, 1, 1); -- Linen Trousers
             player:CompleteQuest(quest);
 		elseif (npcClassId == ENPC_SYLBYRT) then
             callClientFunction(player, "delegateEvent", player, quest, "followEvent020");

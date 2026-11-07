@@ -79,7 +79,7 @@ function onTalk(player, quest, npc, eventName)
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent010Chaunollet");
 			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
 			player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
-			player:GetItemPackage(INVENTORY_NORMAL):AddItem(8050115, 1, 1); -- Dated Tarred Leather Trousers
+			player:GetItemPackage(INVENTORY_NORMAL):AddItem(8050130, 1, 1); -- Felt Trousers
             player:CompleteQuest(quest);
 		end
 	end
