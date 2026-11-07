@@ -6,8 +6,8 @@ require ("quest")
 Quest Script
 
 Name: 	Dressed to Be Killed
-Code: 	110677
-Id: 	110638
+Code: 	Etc1u2
+Id: 	110677
 Prereq: Level 45, Any DoW/DoM
 
 ]]
