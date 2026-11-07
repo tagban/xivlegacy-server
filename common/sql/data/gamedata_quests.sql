@@ -33,7 +33,7 @@ INSERT INTO `gamedata_quests` (`id`, `questName`, `className`, `prerequisite`, `
 (110083, '[en]', 'Gla400', 0, 40),
 (110100, 'Bloody Baptism', 'Exc200', 0, 20),
 (110101, 'Two-man Crew', 'Exc300', 0, 30),
-(110102, 'Captain''s Orders', 'Exc306', 0, 36),
+(110102, 'Captain''s Orders', 'Exc306', 110101, 36),
 (110103, '[en]', 'Exc400', 0, 40),
 (110104, '[en]', 'Exc500', 0, 50),
 (110105, '[en]', 'Exc506', 0, 56),
