@@ -19332,3 +19332,47 @@ async fn divine_veil_regens_the_party_on_a_real_cure() {
         "a stranger doesn't"
     );
 }
+
+/// A respawned monster was invisible until relog: the client had faded
+/// its corpse and the respawn only flipped its state. Forgetting it drops
+/// it from every client holding it (RemoveActor) and from their instance
+/// lists, so streaming spawns it afresh; sessions without it hear nothing.
+#[tokio::test]
+async fn forget_actor_for_all_sessions_drops_respawned_monster() {
+    use crate::data::{ClientHandle, Session as MapSession};
+    use std::sync::Arc;
+    use tokio::sync::mpsc;
+
+    let world = Arc::new(WorldManager::new());
+    let monster = 0x44D2_001E;
+
+    let (tx1, mut rx1) = mpsc::channel::<Vec<u8>>(8);
+    world.register_client(1, ClientHandle::new(1, tx1)).await;
+    let mut holder = MapSession::new(1);
+    holder.actor_instance_list.insert(monster);
+    holder.actor_instance_list.insert(0x44D2_001F);
+    world.upsert_session(holder).await;
+
+    let (tx2, mut rx2) = mpsc::channel::<Vec<u8>>(8);
+    world.register_client(2, ClientHandle::new(2, tx2)).await;
+    world.upsert_session(MapSession::new(2)).await;
+
+    world.forget_actor_for_all_sessions(monster).await;
+
+    let s1 = world.session(1).await.unwrap();
+    assert!(
+        !s1.actor_instance_list.contains(&monster),
+        "streaming will respawn it"
+    );
+    assert!(
+        s1.actor_instance_list.contains(&0x44D2_001F),
+        "other monsters stay"
+    );
+    let sent = rx1.try_recv().expect("the holder gets a RemoveActor");
+    let want = crate::packets::send::actor::build_remove_actor(monster);
+    assert_eq!(sent.len(), want.to_bytes().len());
+    assert!(
+        rx2.try_recv().is_err(),
+        "a session without it hears nothing"
+    );
+}
