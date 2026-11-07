@@ -2264,7 +2264,13 @@ pub(crate) async fn apply_content_finished(
         None => 0,
     };
 
-    // 6. Scheduler purge.
+    // 6. The duty's countdown, if a script opened one (contenttimer.lua):
+    //    closed on every way out, the clock having run out or not.
+    if player_id != 0 {
+        close_content_timer(player_id, registry, world).await;
+    }
+
+    // 7. Scheduler purge.
     let purged = match (player_id, lua) {
         (0, _) | (_, None) => 0,
         (pid, Some(engine)) => engine
@@ -2283,6 +2289,25 @@ pub(crate) async fn apply_content_finished(
         purged_coroutines = purged,
         "ContentFinished applied (full teardown)",
     );
+}
+
+/// Closes the countdown `ShowContentTimer` (scripts/lua/contenttimer.lua)
+/// opened: GenericData `'xlContentTimer', 0, 0`. Only the XIVLegacy client
+/// acts on it (its player script learns that data type); the stock client
+/// ignores string data types it doesn't know.
+async fn close_content_timer(player_id: u32, registry: &ActorRegistry, world: &WorldManager) {
+    use crate::lua::command::LuaCommandArg;
+    apply_send_data_packet(
+        player_id,
+        &[
+            LuaCommandArg::String("xlContentTimer".to_string()),
+            LuaCommandArg::Int(0),
+            LuaCommandArg::Int(0),
+        ],
+        registry,
+        world,
+    )
+    .await;
 }
 
 /// A player leaving a content copy (walking out, warping away, logging

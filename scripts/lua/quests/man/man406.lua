@@ -255,7 +255,9 @@ function onTalk(player, quest, npc)
 	elseif (sequence == SEQ_050 and classId == TATARU) then
 		-- Minfilia hears what became of the Resistance (man40660)
 		talkEvent(player, quest, "pE60", companionArgs(player));
-		callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 300, 1, 1, 2);
+		-- Completion reward from the client's quest reward sheet: 50 EXP + REWARD_GIL.
+		callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 50, 1, 1, 2);
+		player:AddExp(50, player.charaWork.parameterSave.state_mainSkill[0], 0);
 		player:AddGil(REWARD_GIL);
 		player:EndEvent();
 		player:CompleteQuest(quest);

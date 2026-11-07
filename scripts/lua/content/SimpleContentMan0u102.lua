@@ -1,4 +1,5 @@
 require ("global")
+require ("contenttimer")
 require ("modifiers")
 -- onUpdate drives mob engagement through allyGlobal.EngageTarget;
 -- without this require the global is nil and every tick errors
@@ -211,6 +212,7 @@ function onUpdate(tick, area)
 		state.reminded5 = true;
 		owner:SendGameMessage(GetWorldMaster(), TEXT_TIME_REMAINING, 0x20, 5);
 	end
+	UpdateContentTimer(owner, state, tick, TICKS_PER_SECOND);
 
 	-- ---- Escortee roster + wounding-fail (rosters are live-only) ----
 	local flhaminn = nil;
@@ -228,6 +230,7 @@ function onUpdate(tick, area)
 			owner:SendGameMessage(GetWorldMaster(), TEXT_PROTECT_ESCORTEE, 0x20, flhaminn.actorId);
 			owner:SendGameMessage(GetWorldMaster(), TEXT_BOUND_BY_DUTY, 0x20);
 			owner:SendGameMessage(GetWorldMaster(), TEXT_TIME_REMAINING, 0x20, ESCORT_LIMIT_MINUTES);
+			QueueContentTimer(state, tick, state.startTick + ESCORT_LIMIT_TICKS);
 			sayFlhaminn(owner, SAY_DANGERS_AHEAD);
 		end
 		state.sawEscortee = true;

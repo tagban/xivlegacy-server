@@ -23,6 +23,7 @@ A duty is a table handed to the content script's hooks:
 			{ goal = { x =, z = }, radius = 10, signal = "legTwo" },
 		},
 		minutes = 30,                     -- time limit
+		contentId = nil,                  -- the countdown's title (client content list), optional
 		failSequence = 15,                -- quest step a failure rolls back to
 		eject = { x =, y =, z =, rot = }, -- where a failure leaves the player
 		barks = { start =, ambush =, clear =, hurt = },  -- optional say ids or strings
@@ -42,6 +43,7 @@ the content.
 require ("global")
 require ("modifiers")
 require ("ally")
+require ("contenttimer")
 
 escortGlobal = {};
 
@@ -187,6 +189,7 @@ function escortGlobal.Update(duty, tick, area)
 			owner:SendGameMessage(GetWorldMaster(), TEXT_TIME_REMAINING, 0x20, left);
 		end
 	end
+	UpdateContentTimer(owner, state, tick, TICKS_PER_SECOND);
 
 	-- Escortees: the rosters are live-only, so a fallen one just vanishes.
 	local escortees = {};
@@ -226,6 +229,7 @@ function escortGlobal.Update(duty, tick, area)
 		-- "You are now bound by duty." is the client's own, on joining the
 		-- content group.
 		owner:SendGameMessage(GetWorldMaster(), TEXT_TIME_REMAINING, 0x20, duty.minutes or 30);
+		QueueContentTimer(state, tick, state.startTick + limit, duty.contentId);
 		bark(owner, duty, "start");
 	end
 

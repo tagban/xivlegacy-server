@@ -184,7 +184,9 @@ function onTalk(player, quest, npc)
 	elseif (sequence == SEQ_030 and classId == MINFILIA) then
 		-- your companion presses Minfilia; it fades in after a warp
 		callClientFunction(player, "delegateEvent", player, quest, "pE30", companionArgs(player));
-		callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 300, 1, 1, 2);
+		-- Completion reward from the client's quest reward sheet: 50 EXP + REWARD_GIL.
+		callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 50, 1, 1, 2);
+		player:AddExp(50, player.charaWork.parameterSave.state_mainSkill[0], 0);
 		player:AddGil(REWARD_GIL);
 		player:EndEvent();
 		player:CompleteQuest(quest);
