@@ -5,9 +5,9 @@ require ("quest")
 
 Quest Script
 
-Name: 	Sanguine Studies
+Name: 	Rustproof
 Code: 	Wld0u4
-Id: 	1107546
+Id: 	110756
 Prereq: Level 28, Any Class, Sanguine Studies completed.
 
 ]]
