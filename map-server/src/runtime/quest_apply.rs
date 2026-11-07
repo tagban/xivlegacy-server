@@ -1737,6 +1737,7 @@ pub(crate) async fn apply_hide_actor(
     let Some(client) = world.client(session_id).await else {
         return;
     };
+    world.hide_actor_for_session(session_id, actor_id).await;
     let mut sub = crate::packets::send::actor::build_remove_actor(actor_id);
     sub.set_target_id(session_id);
     client.send_bytes(sub.to_bytes()).await;

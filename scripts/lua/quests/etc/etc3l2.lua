@@ -119,10 +119,11 @@ function onTalk(player, quest, npc)
 			-- The Echo ends fadeInAfterWarp: a same-zone warp lifts the veil.
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent010_3");
 			attentionMessage(player, 25225, quest:GetQuestId()); -- Objectives complete!
-			player:HideActor(npc.Id);
 			player:EndEvent();
 			quest:StartSequence(SEQ_010);
 			GetWorldManager():DoZoneChange(player, player:GetZoneID(), nil, 0, 15, player.positionX, player.positionY, player.positionZ, player.rotation);
+			-- After the warp: its zone-in would send the NPC again.
+			player:HideActor(npc.Id);
 			return;
 		end
 	end
