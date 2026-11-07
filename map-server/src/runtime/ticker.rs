@@ -524,6 +524,32 @@ impl GameTicker {
                 apply_npc_movement_step(&self.world, &self.registry, zone, &handle, step).await;
             }
 
+            // A knockback's sped-up run is over: others get the usual
+            // speed again (dispatcher `apply_knockback`).
+            let restore = {
+                let mut chara = handle.character.write().await;
+                if chara.knockback_speed_until_ms != 0 && now_ms >= chara.knockback_speed_until_ms {
+                    chara.knockback_speed_until_ms = 0;
+                    Some(chara.speed_sent)
+                } else {
+                    None
+                }
+            };
+            if let Some(multiplier) = restore {
+                let sub = crate::packets::send::actor::build_set_actor_speed_scaled(
+                    handle.actor_id,
+                    multiplier,
+                );
+                crate::runtime::broadcast::broadcast_around_actor(
+                    &self.world,
+                    &self.registry,
+                    zone,
+                    handle.actor_id,
+                    sub.to_bytes(),
+                )
+                .await;
+            }
+
             // Chocobo rental expiry — port of Meteor commit `8687e431`'s
             // `Player.Update` arm. If the actor has an active rental
             // whose expire timestamp has elapsed, dismount and
@@ -1044,10 +1070,16 @@ pub(crate) fn build_owner_view(
     );
     let spawn_position = (spawn.x != 0.0 || spawn.y != 0.0 || spawn.z != 0.0).then_some(spawn);
     let pos = chara.base.position();
-    let is_close_to_spawn = spawn_position.is_none_or(|sp| {
-        let (dx, dz) = (pos.x - sp.x, pos.z - sp.z);
-        dx * dx + dz * dz <= LEASH_DISTANCE * LEASH_DISTANCE
-    });
+    // Monsters a duty or quest script spawned (no respawn) aren't
+    // leashed: they follow the fight wherever it goes. Leashed, an escort
+    // monster pulled near the edge of its 50 yalms gave up at once, the
+    // script engaged it again the next tick, and it sat at the line
+    // while the player walked on (Man0u1 chinchillas).
+    let is_close_to_spawn = chara.chara.respawn_disabled
+        || spawn_position.is_none_or(|sp| {
+            let (dx, dz) = (pos.x - sp.x, pos.z - sp.z);
+            dx * dx + dz * dz <= LEASH_DISTANCE * LEASH_DISTANCE
+        });
     ControllerOwnerView {
         actor: ActorView {
             actor_id,
@@ -2238,6 +2270,7 @@ mod tests {
             let mut landed: Option<u32> = None;
             let mut pushed_to = start;
             let mut set_position_sent = false;
+            let mut warp: Option<common::subpacket::SubPacket> = None;
             for attempt in 0..10u64 {
                 {
                     let handle = ticker.registry.get(2).await.unwrap();
@@ -2252,10 +2285,13 @@ mod tests {
                     ticker.tick_once(attempt * 4_000 + i * 100).await;
                 }
                 let subs = drain_subpackets(&mut rx);
-                set_position_sent |= subs.iter().any(|s| {
+                if let Some(w) = subs.iter().find(|s| {
                     s.game_message.opcode == crate::packets::opcodes::OP_SET_ACTOR_POSITION
                         && s.header.source_id == 1
-                });
+                }) {
+                    set_position_sent = true;
+                    warp = Some(w.clone());
+                }
                 landed = subs
                     .iter()
                     .filter(|s| {
@@ -2289,6 +2325,38 @@ mod tests {
                     set_position_sent,
                     "the player's client is sent the new spot"
                 );
+                // The warp carries the knockback note: push direction,
+                // distance and start, facing the monster.
+                let w = warp.unwrap();
+                let d = &w.data;
+                let f = |o: usize| f32::from_le_bytes(d[o..o + 4].try_into().unwrap());
+                assert_eq!(d.len(), 0x48, "warp body + note");
+                assert_eq!(&d[0x28..0x2C], b"XKB1");
+                assert!(
+                    (f(0x08) - pushed_to.x).abs() < 1e-3 && (f(0x10) - pushed_to.z).abs() < 1e-3
+                );
+                let (dir_x, dir_z) = (f(0x2C), f(0x30));
+                assert!(((pushed_to.x - start.x) - dir_x * f(0x34)).abs() < 1e-3);
+                assert!(((pushed_to.z - start.z) - dir_z * f(0x34)).abs() < 1e-3);
+                assert_eq!(
+                    u16::from_le_bytes([d[0x38], d[0x39]]),
+                    crate::runtime::dispatcher::knockback_slide_ms(f(0x34))
+                );
+                assert!((f(0x3C) - start.x).abs() < 1e-3 && (f(0x44) - start.z).abs() < 1e-3);
+                let face = (mob.x - pushed_to.x).atan2(mob.z - pushed_to.z);
+                assert!(
+                    (f(0x14) - face).abs() < 1e-3,
+                    "faces the monster: {} vs {face}",
+                    f(0x14)
+                );
+                // The sped-up run for onlookers ends on the server clock
+                // (the dispatcher arms it there; this test's ticks run on
+                // their own small clock).
+                ticker
+                    .tick_once(crate::runtime::clock::server_now_ms() + 1000)
+                    .await;
+                let h = ticker.registry.get(1).await.unwrap();
+                assert_eq!(h.character.read().await.knockback_speed_until_ms, 0);
             }
             let kb = crate::runtime::dispatcher::knockback_hit_effect(1);
             if immune {
@@ -2486,6 +2554,57 @@ mod tests {
             c.base.position_x
         );
         assert!(!c.ai_container.is_engaged());
+    }
+
+    /// A monster a duty spawned (no respawn) follows the fight past the
+    /// leash: it keeps fighting and closes on the player.
+    #[tokio::test]
+    async fn duty_monster_is_not_leashed() {
+        let (ticker, _zone, _rx) = setup_engaged_npc_vs_player(2.0, |_| {}).await;
+        {
+            let handle = ticker.registry.get(2).await.unwrap();
+            let mut c = handle.character.write().await;
+            c.chara.spawn_x = 2.0 + LEASH_DISTANCE + 5.0;
+            c.chara.respawn_disabled = true;
+        }
+        for i in 1..=10u64 {
+            ticker.tick_once(i * 100).await;
+        }
+        let handle = ticker.registry.get(2).await.unwrap();
+        let c = handle.character.read().await;
+        assert!(c.ai_container.is_engaged(), "a duty monster keeps fighting");
+        assert_eq!(c.hate.most_hated(), Some(1));
+    }
+
+    /// The zone grid still has the player beside the monster, but the
+    /// player is really 40 yalms off: the swing gate passes on the grid,
+    /// the swing itself must not land.
+    #[tokio::test]
+    async fn monster_swing_out_of_real_reach_does_not_land() {
+        let (ticker, _zone, _rx) = setup_engaged_npc_vs_player(2.0, |_| {}).await;
+        let player = ticker.registry.get(1).await.unwrap();
+        let hp_before = {
+            let mut c = player.character.write().await;
+            c.base.position_x = 40.0;
+            c.get_hp()
+        };
+        for i in 1..=100u64 {
+            ticker.tick_once(i * 100).await;
+        }
+        assert_eq!(
+            player.character.read().await.get_hp(),
+            hp_before,
+            "no hit from 38 yalms"
+        );
+        // Back beside it: the swings land again.
+        player.character.write().await.base.position_x = 0.0;
+        for i in 101..=200u64 {
+            ticker.tick_once(i * 100).await;
+        }
+        assert!(
+            player.character.read().await.get_hp() < hp_before,
+            "hit at 2 yalms"
+        );
     }
 
     /// Inside the leash a monster keeps fighting.

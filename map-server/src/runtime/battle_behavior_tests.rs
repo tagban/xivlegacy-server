@@ -2346,14 +2346,15 @@ async fn battle_behavior_ws_tp_surplus() {
     let env = env().await;
     let ws = by_name(&env, "heavy_swing").clone();
     let mut sc = real_scene_at(&env, &ws, Recipient::Enemy, 20, 4).await;
+    // From the rear (no parry or block) and with no crits, only the ±4%
+    // damage roll is left: parries and crits in some of the 21 presses
+    // moved the median enough to fail CI now and then.
+    stand_at(&sc, "rear").await;
     {
         let h = sc.registry.get(PLAYER).await.unwrap();
-        h.character
-            .write()
-            .await
-            .chara
-            .mods
-            .set(Modifier::RawHitRate, 100.0);
+        let mut c = h.character.write().await;
+        c.chara.mods.set(Modifier::RawHitRate, 100.0);
+        c.chara.mods.set(Modifier::RawCritRate, -100.0);
     }
     let low = median_at_tp(&mut sc, &ws, 1000).await;
     let high = median_at_tp(&mut sc, &ws, 3000).await;

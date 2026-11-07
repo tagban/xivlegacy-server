@@ -1,4 +1,4 @@
--- server_battlenpc_groups: game data, 659 rows. Reloaded whole when this file changes.
+-- server_battlenpc_groups: game data, 665 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_groups`;
 INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLevel`, `maxLevel`, `respawnTime`, `hp`, `mp`, `dropListId`, `allegiance`, `spawnType`, `animationId`, `actorState`, `privateAreaName`, `privateAreaLevel`, `zoneId`) VALUES
@@ -658,6 +658,12 @@ INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLe
 (30424, 30424, 'etc1u8_amaljaa_warrior', 36, 36, 0, 700, 0, 0, 0, 16, 0, 0, '', 0, 171),
 (30425, 30425, 'etc2g4_sourleaf_roselet', 31, 31, 0, 550, 0, 0, 0, 16, 0, 0, '', 0, 150),
 (30426, 30426, 'etc2l5_kobold_cragsman', 45, 47, 60, 2000, 0, 0, 0, 0, 0, 0, '', 0, 135),
+(30470, 30470, 'thm306_rival', 36, 36, 0, 1500, 600, 0, 0, 16, 0, 0, '', 0, 172),
+(30471, 30471, 'lnc306_elemental', 36, 36, 0, 1200, 0, 0, 0, 16, 0, 0, '', 0, 154),
+(30472, 30472, 'exc306_moenskaet_unbeatable', 36, 36, 0, 5000, 0, 0, 0, 16, 0, 0, '', 0, 230),
+(30473, 30473, 'exc306_moenskaet', 34, 34, 0, 900, 0, 0, 0, 16, 0, 0, '', 0, 230),
+(30474, 30474, 'exc306_right_hand', 30, 30, 0, 400, 0, 0, 0, 16, 0, 0, '', 0, 230),
+(30475, 30475, 'exc306_left_hand', 30, 30, 0, 400, 0, 0, 0, 16, 0, 0, '', 0, 230),
 (30450, 30450, 'cnj300_wind_elemental', 30, 30, 0, 500, 0, 0, 0, 16, 0, 0, '', 0, 150),
 (30451, 30451, 'cnj300_earth_elemental', 30, 30, 0, 650, 0, 0, 0, 16, 0, 0, '', 0, 150),
 (30452, 30452, 'pgl306_ossuary_thaumaturge', 36, 36, 0, 1100, 0, 0, 0, 16, 0, 0, '', 0, 172),

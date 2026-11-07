@@ -67,9 +67,18 @@ pub fn count() -> usize {
 
 /// FNV-1a 64 of a file's text: how a changed data file or an edited
 /// migration is noticed.
+///
+/// Line endings don't count: a `\r` right before a `\n` is skipped, so a
+/// checkout with Windows line endings (Git's `core.autocrlf`) bundles the
+/// same checksum as the LF files in the repository. Text with LF endings
+/// hashes exactly as it always has, so recorded checksums stay valid.
 pub fn checksum(sql: &str) -> String {
+    let bytes = sql.as_bytes();
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-    for b in sql.as_bytes() {
+    for (i, b) in bytes.iter().enumerate() {
+        if *b == b'\r' && bytes.get(i + 1) == Some(&b'\n') {
+            continue;
+        }
         h ^= *b as u64;
         h = h.wrapping_mul(0x0000_0100_0000_01b3);
     }
@@ -99,6 +108,30 @@ mod tests {
             n += 1;
         }
         assert!(n > 30, "expected the game-data files, found {n}");
+    }
+
+    #[test]
+    fn checksum_ignores_line_endings() {
+        let lf = "ALTER TABLE t ADD c INT;\nUPDATE t SET c = 1;\n";
+        let crlf = lf.replace('\n', "\r\n");
+        assert_eq!(checksum(lf), checksum(&crlf));
+        // LF text keeps the value databases have already recorded
+        // (FNV-1a 64 of the raw bytes).
+        assert_eq!(checksum(""), "cbf29ce484222325");
+        assert_eq!(checksum("a\n"), "089bdc07b544e7b2");
+        // a lone \r (not a line ending) still counts
+        assert_ne!(checksum("a\rb"), checksum("ab"));
+        // so does a real edit
+        assert_ne!(checksum(lf), checksum("ALTER TABLE t ADD c INT;\n"));
+        // The first migration keeps the checksum the live database recorded,
+        // with either line ending.
+        let first = iter().next().expect("a migration");
+        assert_eq!(first.name, "001_persist_current_job.sql");
+        assert_eq!(checksum(&first.sql), "aff2a0261bb69b4c");
+        assert_eq!(
+            checksum(&first.sql.replace('\n', "\r\n")),
+            "aff2a0261bb69b4c"
+        );
     }
 
     #[test]
