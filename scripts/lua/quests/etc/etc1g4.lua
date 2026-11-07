@@ -46,7 +46,7 @@ function onStateChange(player, quest, sequence)
 		quest:SetENpc(ENPC_NICOLIAUX, QFLAG_TALK);
 	elseif (sequence == SEQ_000) then
         quest:SetENpc(ENPC_NICOLIAUX);
-		quest:SetENpc(BNPC_MUSK_ANGLER);
+		quest:SetENpc(BNPC_AURORA_ANGLER);
 	elseif (sequence == SEQ_001) then
 		quest:SetENpc(ENPC_NICOLIAUX, QFLAG_REWARD);
 	end	
