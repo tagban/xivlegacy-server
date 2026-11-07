@@ -15230,6 +15230,81 @@ async fn sheathe_mid_combat_flushes_battle_states_and_stops_auto_attack() {
     }
 }
 
+/// A spell cast on yourself mid-fight (Cure, Cura, Stoneskin) must survive
+/// the 0x00CD packets the client sends while it is placed: first
+/// `selected = 0xC0000000` (no such actor), then the monster being fought
+/// again. Both used to clear the cast (client run 2026-11-07, CNJ 50 on Old
+/// Six-arms: Stoneskin and Cura dispatched, never resolved).
+#[tokio::test]
+async fn self_cast_mid_fight_survives_the_clients_target_packets() {
+    use crate::battle::state::BattleStateKind;
+
+    let scene = sheathe_scene().await;
+    let handle = scene.registry.get(1).await.expect("player handle");
+    {
+        let mut c = handle.character.write().await;
+        c.base.current_main_state = crate::actor::MAIN_STATE_ACTIVE;
+    }
+    scene.processor.apply_player_set_target(42, 2, true).await;
+    {
+        let mut c = handle.character.write().await;
+        assert!(c.ai_container.is_engaged(), "engaged on the wolf");
+        let mut cure = crate::battle::BattleCommand::new(27346, "cure");
+        cure.cast_time_ms = 3000;
+        let now = crate::runtime::clock::server_now_ms();
+        assert!(
+            c.ai_container.internal_cast(1, cure, now),
+            "cure on self pushed"
+        );
+    }
+    let kinds = |c: &crate::actor::Character| -> Vec<BattleStateKind> {
+        c.ai_container
+            .state_stack()
+            .iter()
+            .map(|s| s.kind)
+            .collect()
+    };
+
+    scene
+        .processor
+        .apply_player_set_target(42, 0xC000_0000, true)
+        .await;
+    scene.processor.apply_player_set_target(42, 2, true).await;
+    {
+        let c = handle.character.read().await;
+        assert_eq!(
+            kinds(&c),
+            vec![BattleStateKind::Attack, BattleStateKind::Magic],
+            "the cast is still under way, still engaged on the wolf",
+        );
+        assert_eq!(
+            c.ai_container.current_state().map(|s| s.target_actor_id),
+            Some(1)
+        );
+    }
+
+    // A real switch to another monster still re-engages (and drops the cast).
+    scene
+        .registry
+        .insert(ActorHandle::new(
+            3,
+            ActorKindTag::BattleNpc,
+            100,
+            0,
+            Character::new(3),
+        ))
+        .await;
+    scene.processor.apply_player_set_target(42, 3, true).await;
+    {
+        let c = handle.character.read().await;
+        assert_eq!(kinds(&c), vec![BattleStateKind::Attack]);
+        assert_eq!(
+            c.ai_container.current_state().map(|s| s.target_actor_id),
+            Some(3)
+        );
+    }
+}
+
 /// The 0x00CD SetTarget auto-attack on a monster while PASSIVE (weapon
 /// sheathed) draws the weapon and engages, as the press would once ACTIVE
 /// (a QoL change from pmeteor, which dropped it: PacketProcessor.cs:266-295).
