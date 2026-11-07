@@ -1791,6 +1791,6 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (29302, 1090652, 'cnj300_owls_nest_knight_trigger', 145, '', 0, 2537.0, 174.41, 1316.0, 0.0, 0, 0, NULL),
 (29303, 1090653, 'cnj300_forest_edge_trigger', 152, '', 0, -1572.0, 20.31, -1902.0, 0.0, 0, 0, NULL),
 (29304, 1090654, 'pgl306_mirage_entrance_trigger', 175, '', 0, -151.0, 185.65, 129.0, 0.0, 0, 0, NULL),
-(29305, 1090655, 'pgl306_hurrey_trigger', 175, '', 0, -147.0, 185.65, 131.0, 0.0, 0, 0, NULL),
-(29306, 1090656, 'pgl306_handmaiden_trigger', 175, '', 0, -155.0, 185.65, 132.0, 0.0, 0, 0, NULL),
-(29307, 1090657, 'pgl306_plateau_trigger', 172, '', 0, -1165.0, 119.65, 488.0, 0.0, 0, 0, NULL);
+(29305, 1090655, 'pgl306_hurrey_trigger', 175, '', 0, -147.0, 182.65, 131.0, 0.0, 0, 0, NULL),
+(29306, 1090656, 'pgl306_handmaiden_trigger', 175, '', 0, -155.0, 182.65, 132.0, 0.0, 0, 0, NULL),
+(29307, 1090657, 'pgl306_plateau_trigger', 172, '', 0, -1167.0, 116.5, 494.0, 0.0, 0, 0, NULL);
