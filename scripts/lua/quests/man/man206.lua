@@ -184,7 +184,10 @@ function onTalk(player, quest, npc)
 	elseif (sequence == SEQ_030) then
 		if (classId == TATARU) then
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent040");
-			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 300, 1, 1, 2);
+			-- Completion reward from the client's quest reward sheet: 50 EXP + 60,000 gil.
+			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 50, 1, 1, 2);
+			player:AddExp(50, player.charaWork.parameterSave.state_mainSkill[0], 0);
+			player:AddGil(60000);
 			player:EndEvent();
 			player:CompleteQuest(quest);
 			-- processEvent040 fades in after a warp: one in place
