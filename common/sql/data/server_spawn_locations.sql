@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1795 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1799 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -1799,4 +1799,8 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (29300, 1090650, 'cnj300_lifemend_stump_trigger', 150, '', 0, -646.0, 3.97, -983.0, 0.0, 0, 0, NULL),
 (29301, 1090651, 'cnj300_amberscale_rock_trigger', 150, '', 0, -584.0, -25.0, -444.0, 0.0, 0, 0, NULL),
 (29302, 1090652, 'cnj300_owls_nest_knight_trigger', 145, '', 0, 2537.0, 174.41, 1316.0, 0.0, 0, 0, NULL),
-(29303, 1090653, 'cnj300_forest_edge_trigger', 152, '', 0, -1572.0, 20.31, -1902.0, 0.0, 0, 0, NULL);
+(29303, 1090653, 'cnj300_forest_edge_trigger', 152, '', 0, -1572.0, 20.31, -1902.0, 0.0, 0, 0, NULL),
+(29304, 1090654, 'pgl306_mirage_entrance_trigger', 175, '', 0, -151.0, 185.65, 129.0, 0.0, 0, 0, NULL),
+(29305, 1090655, 'pgl306_hurrey_trigger', 175, '', 0, -147.0, 182.65, 131.0, 0.0, 0, 0, NULL),
+(29306, 1090656, 'pgl306_handmaiden_trigger', 175, '', 0, -155.0, 182.65, 132.0, 0.0, 0, 0, NULL),
+(29307, 1090657, 'pgl306_plateau_trigger', 172, '', 0, -1167.0, 116.5, 494.0, 0.0, 0, 0, NULL);

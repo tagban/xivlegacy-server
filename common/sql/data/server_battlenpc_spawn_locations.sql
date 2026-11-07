@@ -1,4 +1,4 @@
--- server_battlenpc_spawn_locations: game data, 3948 rows. Reloaded whole when this file changes.
+-- server_battlenpc_spawn_locations: game data, 3950 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_spawn_locations`;
 INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `groupId`, `positionX`, `positionY`, `positionZ`, `rotation`) VALUES
@@ -3956,4 +3956,6 @@ INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `
 (3961, 'exc306_left_hand', 30475, -785.6, 9.15, 390.8, -1.6),
 (4046, 'cnj300_wind_elemental', 30450, -590.0, -25.39, -438.0, 2.4),
 (4047, 'cnj300_wind_elemental', 30450, -578.0, -25.31, -438.0, -2.4),
-(4048, 'cnj300_earth_elemental', 30451, -584.0, -25.47, -432.0, 3.14);
+(4048, 'cnj300_earth_elemental', 30451, -584.0, -25.47, -432.0, 3.14),
+(4044, 'pgl306_ossuary_thaumaturge', 30452, -1170.0, 116.2, 496.0, 0.0),
+(4045, 'pgl306_thaumaturge_doppelganger', 30453, -1165.0, 117.0, 496.0, 0.0);
