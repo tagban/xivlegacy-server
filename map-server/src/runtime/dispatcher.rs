@@ -664,6 +664,11 @@ async fn flush_wake_outbox(
     }
 }
 
+/// How far past its attack range an auto-attack still lands, by the two
+/// actors' own positions (each side moves between the swing gate and
+/// here).
+const AUTO_ATTACK_REACH_SLACK: f32 = 1.0;
+
 async fn resolve_auto_attack(
     attacker_actor_id: u32,
     defender_actor_id: u32,
@@ -682,6 +687,31 @@ async fn resolve_auto_attack(
     let Some(defender_handle) = registry.get(defender_actor_id).await else {
         return;
     };
+    // The last word on reach: both sides' own positions. The swing gate
+    // reads the target from the zone grid, which can lag behind; a
+    // monster once landed 46 swings from 32 yalms while the client still
+    // drew it at its spawn.
+    {
+        let (reach, apos) = {
+            let a = attacker_handle.character.read().await;
+            (a.get_attack_range(), a.base.position())
+        };
+        let dpos = defender_handle.character.read().await.base.position();
+        let (dx, dz) = (dpos.x - apos.x, dpos.z - apos.z);
+        let dist = (dx * dx + dz * dz).sqrt();
+        if dist > reach + AUTO_ATTACK_REACH_SLACK {
+            tracing::debug!(
+                attacker = format!("0x{attacker_actor_id:08X}"),
+                defender = format!("0x{defender_actor_id:08X}"),
+                distance = dist,
+                reach,
+                attacker_at = ?apos,
+                defender_at = ?dpos,
+                "battle: auto-attack out of reach, dropped",
+            );
+            return;
+        }
+    }
     // Cover: a melee swing at a Covered actor lands on their paladin.
     let ranged = attacker_handle
         .character
@@ -1497,6 +1527,8 @@ const KNOCKBACK_MAX_DROP: f32 = 2.0;
 /// SetActorPosition: spawn type 0x11, embedded id 0xC0000000).
 const KNOCKBACK_SPAWN_TYPE: u16 = 0x11;
 const KNOCKBACK_EMBEDDED_ID: i32 = 0xC000_0000_u32 as i32;
+/// The 0x00CF move state others see a knockback with (2 = running).
+const KNOCKBACK_MOVE_STATE: u16 = 2;
 
 /// Where a knockback of `level` from `from` leaves an actor at `at`:
 /// straight away from the attacker (along `facing` if they stand on the
@@ -1580,10 +1612,54 @@ async fn apply_knockback(
     if (to.x - at.x).abs() < 1e-3 && (to.z - at.z).abs() < 1e-3 {
         return;
     }
-    tracing::debug!(target = target_id, level, from = ?at, to = ?to, "knockback");
+    let (dx, dz) = (to.x - at.x, to.z - at.z);
+    let distance = (dx * dx + dz * dz).sqrt();
+    let (dir_x, dir_z) = if distance > 1e-4 {
+        (dx / distance, dz / distance)
+    } else {
+        (0.0, 0.0)
+    };
+    // Face the attacker: back along the push (rotation = atan2(dx, dz)
+    // toward what you face, as `summon.rs` and `gm_spawn.rs` turn actors).
+    let face = if distance > 1e-4 {
+        (-dir_x).atan2(-dir_z)
+    } else {
+        rotation
+    };
+    let duration_ms = knockback_slide_ms(distance);
+    tracing::debug!(
+        target = target_id,
+        level,
+        from = ?at,
+        to = ?to,
+        duration_ms,
+        "knockback"
+    );
+    // Everyone around: a quick run back to the spot, still facing the
+    // attacker. The run speed goes up for the slide and back after it.
+    let multiplier = knockback_speed_multiplier(distance, duration_ms);
+    {
+        let mut c = t.character.write().await;
+        c.knockback_speed_until_ms =
+            crate::runtime::clock::server_now_ms() + u64::from(duration_ms);
+    }
+    broadcast_to_neighbours(
+        world,
+        registry,
+        target_id,
+        tx::actor::build_set_actor_speed_scaled(target_id, multiplier).to_bytes(),
+    )
+    .await;
     // Stored position, zone grid and the 0x00CF move for everyone around.
     crate::runtime::quest_apply::apply_move_actor_to_position(
-        target_id, to.x, to.y, to.z, rotation, 0, registry, world,
+        target_id,
+        to.x,
+        to.y,
+        to.z,
+        face,
+        KNOCKBACK_MOVE_STATE,
+        registry,
+        world,
     )
     .await;
     if t.is_player() {
@@ -1591,21 +1667,44 @@ async fn apply_knockback(
             session.destination_x = to.x;
             session.destination_y = to.y;
             session.destination_z = to.z;
-            session.destination_rot = rotation;
+            session.destination_rot = face;
             world.upsert_session(session).await;
         }
-        let pkt = tx::actor::build_set_actor_position(
+        // The player's own client ignores 0x00CF for itself: it gets the
+        // in-zone warp (a fade, for a client without our knockback hook)
+        // with a note a patched client slides on instead.
+        let note = tx::actor::KnockbackNote {
+            dir_x,
+            dir_z,
+            distance,
+            duration_ms,
+            start: [at.x, at.y, at.z],
+        };
+        let pkt = tx::actor::build_knockback_warp(
             target_id,
             KNOCKBACK_EMBEDDED_ID,
             to.x,
             to.y,
             to.z,
-            rotation,
+            face,
             KNOCKBACK_SPAWN_TYPE,
-            false,
+            &note,
         );
         send_to_self_if_player(registry, world, target_id, pkt.to_bytes()).await;
     }
+}
+
+/// How long a knockback slide of `distance` yalms takes: fast, a bit
+/// longer for a longer push (2 yalms 0.33 s, 6 yalms 0.49 s).
+pub(crate) fn knockback_slide_ms(distance: f32) -> u16 {
+    (250.0 + 40.0 * distance.max(0.0)).min(500.0) as u16
+}
+
+/// The run-speed multiplier that covers `distance` in `duration_ms`
+/// (never slower than the usual run).
+pub(crate) fn knockback_speed_multiplier(distance: f32, duration_ms: u16) -> f32 {
+    let speed = distance / (f32::from(duration_ms.max(1)) / 1000.0);
+    (speed / tx::actor::SPEED_DEFAULT_RUN).max(1.0)
 }
 
 /// Weaponskill damage bonus per 1000 TP above its cost (ours: no 1.0 source;
@@ -2415,6 +2514,7 @@ async fn resolve_action(
                 tier: command.status_tier,
                 chance: f64::from(command.status_chance),
                 aoe_type: f64::from(command.aoe_type as u8),
+                recast_ms: f64::from(command.max_recast_time_seconds) * 1000.0,
                 ..Default::default()
             };
             match crate::status::script::run_command_setup(&root, &command.name, &caster, start) {
@@ -2429,6 +2529,7 @@ async fn resolve_action(
                     c.status_tier = set.tier;
                     c.status_chance = set.chance as f32;
                     c.aoe_type = aoe_from(set.aoe_type);
+                    c.max_recast_time_seconds = (set.recast_ms / 1000.0).round() as u32;
                     tracing::debug!(
                         command = %command.name,
                         held = ?atk_status_ids,
@@ -5739,6 +5840,21 @@ mod knockback_tests {
             (to.x - (5.0 + KNOCKBACK_YALMS_PER_LEVEL)).abs() < 1e-4,
             "{to:?}"
         );
+    }
+
+    #[test]
+    fn slide_is_quick_and_others_run_fast_enough_to_keep_up() {
+        assert_eq!(knockback_slide_ms(2.0), 330);
+        assert_eq!(knockback_slide_ms(6.0), 490);
+        assert_eq!(knockback_slide_ms(20.0), 500);
+        for d in [2.0_f32, 4.0, 6.0] {
+            let ms = knockback_slide_ms(d);
+            let m = knockback_speed_multiplier(d, ms);
+            let covered = tx::actor::SPEED_DEFAULT_RUN * m * f32::from(ms) / 1000.0;
+            assert!((covered - d).abs() < 1e-3, "{d}: {covered}");
+        }
+        // A short push never slows the run down.
+        assert_eq!(knockback_speed_multiplier(0.5, 330), 1.0);
     }
 
     #[test]

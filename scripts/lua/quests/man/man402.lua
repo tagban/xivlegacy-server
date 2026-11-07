@@ -144,7 +144,9 @@ function onTalk(player, quest, npc)
 	elseif (sequence == SEQ_020 and classId == TATARU) then
 		-- the report, and Minfilia's reproach; it fades in after a warp
 		callClientFunction(player, "delegateEvent", player, quest, "pE30", companionArgs(player));
-		callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 300, 1, 1, 2);
+		-- Completion reward from the client's quest reward sheet: 50 EXP + REWARD_GIL.
+		callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 50, 1, 1, 2);
+		player:AddExp(50, player.charaWork.parameterSave.state_mainSkill[0], 0);
 		player:AddGil(REWARD_GIL);
 		player:EndEvent();
 		player:CompleteQuest(quest);

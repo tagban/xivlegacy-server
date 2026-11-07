@@ -1,4 +1,4 @@
--- server_zones_privateareas: game data, 45 rows. Reloaded whole when this file changes.
+-- server_zones_privateareas: game data, 46 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_zones_privateareas`;
 INSERT INTO `server_zones_privateareas` (`id`, `parentZoneId`, `className`, `privateAreaName`, `privateAreaType`, `dayMusic`, `nightMusic`, `battleMusic`) VALUES
@@ -46,4 +46,5 @@ INSERT INTO `server_zones_privateareas` (`id`, `parentZoneId`, `className`, `pri
 (44, 153, '/Area/PrivateArea/PrivateAreaMasterPast', 'PrivateAreaMasterPast', 0, 0, 0, 0),
 (45, 175, '/Area/PrivateArea/PrivateAreaMasterPast', 'PrivateAreaMasterPast', 5, 0, 0, 0),
 (46, 170, '/Area/PrivateArea/PrivateAreaMasterPast', 'PrivateAreaMasterPast', 0, 0, 0, 0),
-(47, 181, '/Area/PrivateArea/PrivateAreaMasterPast', 'PrivateAreaMasterPast', 4, 61, 0, 0);
+(47, 181, '/Area/PrivateArea/PrivateAreaMasterPast', 'PrivateAreaMasterPast', 4, 61, 0, 0),
+(48, 154, '/Area/PrivateArea/PrivateAreaMasterPast', 'PrivateAreaMasterPast', 0, 0, 0, 0);

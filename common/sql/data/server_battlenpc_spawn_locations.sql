@@ -1,4 +1,4 @@
--- server_battlenpc_spawn_locations: game data, 3942 rows. Reloaded whole when this file changes.
+-- server_battlenpc_spawn_locations: game data, 3948 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_spawn_locations`;
 INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `groupId`, `positionX`, `positionY`, `positionZ`, `rotation`) VALUES
@@ -45,14 +45,14 @@ INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `
 (41, 'ankle_biter', 15, -634.94, 21.94, -1070.57, 0.0),
 (42, 'tourney_gladiator', 16, -205.4, 192.0, 150.9, 0.0),
 (43, 'escort_flhaminn', 17, -31.0, 183.0, -66.0, 2.0),
-(44, 'chinchilla', 18, -17.7, 188.4, -190.4, 0.0),
-(45, 'chinchilla', 18, -9.7, 188.4, -194.4, 0.0),
-(46, 'chinchilla', 18, 3.1, 193.8, -313.9, 0.0),
-(47, 'chinchilla', 18, 11.1, 193.8, -317.9, 0.0),
-(48, 'chinchilla', 18, 7.1, 193.8, -311.9, 0.0),
-(49, 'chinchilla', 18, 20.4, 198.3, -416.8, 0.0),
-(50, 'chinchilla', 18, 28.4, 198.3, -420.8, 0.0),
-(51, 'chinchilla', 18, 24.4, 198.3, -422.8, 0.0),
+(44, 'chinchilla', 18, -17.7, 183.5, -190.4, 0.0),
+(45, 'chinchilla', 18, -9.7, 184.1, -194.4, 0.0),
+(46, 'chinchilla', 18, 3.1, 183.8, -313.9, 0.0),
+(47, 'chinchilla', 18, 11.1, 183.6, -317.9, 0.0),
+(48, 'chinchilla', 18, 7.1, 183.7, -311.9, 0.0),
+(49, 'chinchilla', 18, 20.4, 205.5, -424.0, 0.0),
+(50, 'chinchilla', 18, 28.4, 206.4, -420.8, 0.0),
+(51, 'chinchilla', 18, 24.4, 205.6, -422.8, 0.0),
 (52, 'escort_companion', 19, 1714.0, 31.0, -842.0, 2.6),
 (53, 'moonspore_trooper', 20, 1741.0, 29.0, -885.0, 0.0),
 (54, 'moonspore_trooper', 20, 1767.0, 20.5, -903.0, 1.5),
@@ -3948,6 +3948,12 @@ INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `
 (4093, 'etc2l5_kobold_cragsman', 30426, -630.0, 61.95, -1610.0, 0.6),
 (4094, 'etc2l5_kobold_cragsman', 30426, -650.0, 61.95, -1590.0, 0.6),
 (4095, 'etc2l5_kobold_cragsman', 30426, -625.0, 61.08, -1595.0, 0.6),
+(3956, 'thm306_rival', 30470, -1848.0, 24.78, -284.0, 1.2),
+(3957, 'lnc306_elemental', 30471, 812.0, -11.75, 1376.3, -1.6),
+(3958, 'exc306_moenskaet_unbeatable', 30472, -786.0, 9.15, 389.4, -1.6),
+(3959, 'exc306_moenskaet', 30473, -786.0, 9.15, 389.4, -1.6),
+(3960, 'exc306_right_hand', 30474, -786.4, 9.15, 388.0, -1.6),
+(3961, 'exc306_left_hand', 30475, -785.6, 9.15, 390.8, -1.6),
 (4046, 'cnj300_wind_elemental', 30450, -590.0, -25.39, -438.0, 2.4),
 (4047, 'cnj300_wind_elemental', 30450, -578.0, -25.31, -438.0, -2.4),
 (4048, 'cnj300_earth_elemental', 30451, -584.0, -25.47, -432.0, 3.14);

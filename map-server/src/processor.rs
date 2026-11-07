@@ -9382,6 +9382,14 @@ impl PacketProcessor {
             false
         };
 
+        // Only a live actor can be engaged. While a spell aimed at yourself or
+        // a party member is being placed, the client sends 0xC0000000 here
+        // (with the monster still as its attack target): engaging that id
+        // cleared the cast and swung at nothing.
+        let target_exists = selected_target != 0
+            && selected_target != Self::SET_TARGET_NONE
+            && self.registry.get(selected_target).await.is_some();
+
         // Attacking a monster from passive mode draws the weapon first: the
         // client asks to attack (attackTarget set) when the basic attack is
         // used on a monster while sheathed. Only a BattleNpc target counts,
@@ -9426,6 +9434,7 @@ impl PacketProcessor {
             let valid_combat_target = auto_attack
                 && !cleared
                 && !target_friendly
+                && target_exists
                 && selected_target != actor_id
                 && selected_target != crate::actor::INVALID_ACTORID
                 && in_active_mode;
@@ -9436,9 +9445,18 @@ impl PacketProcessor {
                 // the player's swing clock past the ticker's domain.
                 let now_ms = crate::runtime::clock::server_now_ms();
                 let delay = c.get_attack_delay_ms();
+                // The target being fought is the Attack state's, wherever it
+                // sits in the stack: a spell cast on yourself mid-fight puts
+                // a Magic state (target = you) on top, and the client re-sends
+                // the monster here while it casts. Reading the top state made
+                // that look like a target switch and cleared the cast (Cure,
+                // Cura and Stoneskin never finished in combat).
                 let cur = c
                     .ai_container
-                    .current_state()
+                    .state_stack()
+                    .iter()
+                    .rev()
+                    .find(|s| s.kind == crate::battle::state::BattleStateKind::Attack)
                     .map(|s| s.target_actor_id)
                     .filter(|id| *id != 0);
                 // Re-engage only when switching targets — re-engaging the same
@@ -10291,6 +10309,16 @@ impl PacketProcessor {
         // the duty back to SEQ_060; (2) skipped when a deferred login warp
         // just replayed — its own RX 0x0007 does the re-establish for the
         // final zone. (Garlemald-Server #41.)
+        //
+        // The re-establish only broadcasts ENPCs whose flags CHANGED (push
+        // triggers are always re-sent). A talk NPC whose registration is
+        // unchanged was skipped in the origin zone ("no live NPC") and then
+        // counted as already sent, so the destination zone's copy never got
+        // its talk status: Man200 accepts at the Waking Sands door (zone 175)
+        // and warps into zone 181, where Tataru and the guests stayed silent
+        // until a relog. The destination zone's NPCs were spawned fresh by
+        // this warp, so forget what was sent and let every registration go
+        // out as new.
         let in_content_instance = self
             .world
             .session(session_id)
@@ -10311,9 +10339,20 @@ impl PacketProcessor {
                     .map(|q| q.quest_id())
                     .collect()
             };
+            {
+                let mut c = handle.character.write().await;
+                for q in c.quest_journal.slots.iter_mut().flatten() {
+                    q.state.current.clear();
+                }
+            }
             for quest_id in active_quest_ids {
                 self.apply_quest_update_enpcs(actor_id, quest_id).await;
             }
+            // And the quests on offer: an offer built while its giver
+            // wasn't in the player's zone (Minfilia while you're out in the
+            // field) was skipped then, so her marker only shows once it is
+            // re-sent here, in the giver's zone.
+            self.refresh_quest_offers(&handle).await;
         }
     }
 
