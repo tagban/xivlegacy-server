@@ -3951,8 +3951,8 @@ INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `
 (4046, 'cnj300_wind_elemental', 30450, -590.0, -25.39, -438.0, 2.4),
 (4047, 'cnj300_wind_elemental', 30450, -578.0, -25.31, -438.0, -2.4),
 (4048, 'cnj300_earth_elemental', 30451, -584.0, -25.47, -432.0, 3.14),
-(4044, 'pgl306_ossuary_thaumaturge', 30452, -1170.0, 126.83, 470.0, 3.14),
-(4045, 'pgl306_thaumaturge_doppelganger', 30453, -1160.0, 123.51, 470.0, 3.14),
+(4044, 'pgl306_ossuary_thaumaturge', 30452, -1170.0, 116.2, 496.0, 0.0),
+(4045, 'pgl306_thaumaturge_doppelganger', 30453, -1165.0, 117.0, 496.0, 0.0),
 (4041, 'cnj306_dreadwolf', 30454, -590.0, -25.39, -438.0, 2.4),
 (4042, 'cnj306_dreadwolf', 30454, -578.0, -25.31, -438.0, -2.4),
 (4043, 'cnj306_dreadwolf', 30454, -584.0, -25.47, -432.0, 3.14);

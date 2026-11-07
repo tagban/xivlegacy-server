@@ -65,10 +65,11 @@ MRKR_GAGARUNA		= 11006206;
 REWARD_GIL	= 36000;
 REWARD_EXP	= 3600;
 
--- The fight on the plateau, and where a win or a loss sets you down: 8
--- yalms south of the plateau circle, so stepping back in plays the next
--- scene (or retries the fight).
-FIGHT		= {172, -1170.0, 121.93, 480.0, 0.0};
+-- The fight, in the hollow at the plateau's foot (the top is a ledge the
+-- client can't stand on; heights from tools/terrain), and where a win or a
+-- loss sets you down: south of the plateau circle, so stepping back in
+-- plays the next scene (or retries the fight).
+FIGHT		= {172, -1172.0, 117.4, 504.0, 3.14};
 FIGHT_OUT	= {172, -1170.0, 117.06, 500.0, 3.14};
 -- Where the after-warp scenes set you down.
 ENTRANCE_AFTER	= {175, -151.0, 185.65, 126.0, 3.14};
