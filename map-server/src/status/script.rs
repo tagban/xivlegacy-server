@@ -403,6 +403,9 @@ pub struct CommandStatus {
     pub aoe_type: f64,
     /// A flat `action.enmity` the script set (Provoke 750, Flash 400).
     pub enmity: Option<f64>,
+    /// `recastTimeMs`: the "Swift" traits shorten it in `onAbilityStart`
+    /// (Swift Sacred Prism −30 s). Scripts read it, so it must be set.
+    pub recast_ms: f64,
 }
 
 /// One `caster.statusEffects.AddStatusEffect` call in a command script.
@@ -691,6 +694,7 @@ pub fn run_command_setup(
     skill.set("statusTier", start.tier)?;
     skill.set("statusChance", start.chance)?;
     skill.set("aoeType", start.aoe_type)?;
+    skill.set("recastTimeMs", start.recast_ms)?;
     let action = lua.create_table()?;
     let action_t = action.clone();
     let s = setup.clone();
@@ -749,6 +753,7 @@ pub fn run_command_setup(
         chance: num("statusChance", start.chance),
         aoe_type: num("aoeType", start.aoe_type),
         enmity: action_t.raw_get::<Option<f64>>("enmity").ok().flatten(),
+        recast_ms: num("recastTimeMs", start.recast_ms).max(0.0),
     }))
 }
 
@@ -1534,6 +1539,24 @@ mod tests {
             .unwrap();
         assert!(!out.toggled_off);
         assert_eq!((out.removed.clone(), out.tier), (vec![(223213, 30329)], 2));
+    }
+
+    #[test]
+    fn swift_traits_shorten_the_recast_and_setup_finishes() {
+        // Sacred Prism reads recastTimeMs in onAbilityStart; a missing
+        // field errored there and stopped the setup before onSkillFinish.
+        let mut s = start(223225);
+        s.recast_ms = 90_000.0;
+        let mut caster = owner();
+        let out = run_command_setup(&root(), "sacred_prism", &caster, s.clone())
+            .unwrap()
+            .unwrap();
+        assert_eq!(out.recast_ms, 90_000.0);
+        caster.traits = vec![27360]; // Swift Sacred Prism
+        let out = run_command_setup(&root(), "sacred_prism", &caster, s)
+            .unwrap()
+            .unwrap();
+        assert_eq!(out.recast_ms, 60_000.0);
     }
 
     #[test]

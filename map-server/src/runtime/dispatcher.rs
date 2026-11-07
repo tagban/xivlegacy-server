@@ -2514,6 +2514,7 @@ async fn resolve_action(
                 tier: command.status_tier,
                 chance: f64::from(command.status_chance),
                 aoe_type: f64::from(command.aoe_type as u8),
+                recast_ms: f64::from(command.max_recast_time_seconds) * 1000.0,
                 ..Default::default()
             };
             match crate::status::script::run_command_setup(&root, &command.name, &caster, start) {
@@ -2528,6 +2529,7 @@ async fn resolve_action(
                     c.status_tier = set.tier;
                     c.status_chance = set.chance as f32;
                     c.aoe_type = aoe_from(set.aoe_type);
+                    c.max_recast_time_seconds = (set.recast_ms / 1000.0).round() as u32;
                     tracing::debug!(
                         command = %command.name,
                         held = ?atk_status_ids,
