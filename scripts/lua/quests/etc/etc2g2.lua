@@ -12,6 +12,10 @@ Prereq: Level 18, Any DoW/DoM
 
 ]]
 
+-- Rewards (the client's reward table; EXP from its row, or the level-band estimate)
+REWARD_EXP			= 500;
+REWARD_GIL			= 10000;
+
 -- Sequence Numbers
 SEQ_000	= 0;  -- Kill Canopy Galagos.
 SEQ_001	= 1;  -- Talk to Kinborow.
@@ -70,7 +74,10 @@ function onTalk(player, quest, npc, eventName)
 	elseif (seq == SEQ_001) then
 		if (npcClassId == ENPC_KINBOROW) then
 			callClientFunction(player, "delegateEvent", player, quest, "processEventClear");
-			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 200, 1, 1, 9);
+			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
+			player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
+			player:AddGil(REWARD_GIL);
+			player:GetItemPackage(INVENTORY_NORMAL):AddItem(8030821, 1, 1); -- Cotton Acton
             player:CompleteQuest(quest);
 		end
 	end

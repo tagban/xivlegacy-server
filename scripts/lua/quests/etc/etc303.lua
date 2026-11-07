@@ -12,6 +12,9 @@ Prereq: Level 15, Any Class. Etc3l3, Etc3g3, or Etc3u3 completed.
 
 ]]
 
+-- Rewards (the client's reward table; EXP from its row, or the level-band estimate)
+REWARD_EXP			= 500;
+
 -- Sequence Numbers
 SEQ_000	= 0;  -- Talk to F'ongho.
 
@@ -57,7 +60,9 @@ function onTalk(player, quest, npc, eventName)
 	if (seq == SEQ_000) then
         if (npcClassId == FONGHO) then
             callClientFunction(player, "delegateEvent", player, quest, "processEvent_005");
-			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 200, 1, 1, 9);
+			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
+			player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
+			player:GetItemPackage(INVENTORY_NORMAL):AddItem(8051118, 1, 1); -- Cotton Shepherd's Slops
 			player:CompleteQuest(quest);
 		elseif (npcClassId == HASTHWAB) then
             callClientFunction(player, "delegateEvent", player, quest, "processEvent_000");

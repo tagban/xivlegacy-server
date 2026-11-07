@@ -7,10 +7,13 @@ Quest Script
 
 Name: 	Secrets Unearthed
 Code: 	Wld0u3
-Id: 	110756
+Id: 	110755
 Prereq: Level 17, Any Class
 
 ]]
+
+-- Rewards (the client's reward table; EXP from its row, or the level-band estimate)
+REWARD_EXP			= 500;
 
 -- Sequence Numbers
 SEQ_000	= 0;  -- Talk to Mumukiya.
@@ -71,7 +74,9 @@ function onTalk(player, quest, npc, eventName)
 		--Quest Complete
 		if (npcClassId == MUMUKIYA) then
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent_020");
-			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 200, 1, 1, 9);
+			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
+			player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
+			player:GetItemPackage(INVENTORY_NORMAL):AddItem(8070809, 1, 1); -- Leather Mitts
             player:CompleteQuest(quest);
 		elseif (npcClassId == ABELARD) then
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent_010_1");
