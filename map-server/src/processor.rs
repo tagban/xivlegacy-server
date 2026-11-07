@@ -9382,6 +9382,14 @@ impl PacketProcessor {
             false
         };
 
+        // Only a live actor can be engaged. While a spell aimed at yourself or
+        // a party member is being placed, the client sends 0xC0000000 here
+        // (with the monster still as its attack target): engaging that id
+        // cleared the cast and swung at nothing.
+        let target_exists = selected_target != 0
+            && selected_target != Self::SET_TARGET_NONE
+            && self.registry.get(selected_target).await.is_some();
+
         // Attacking a monster from passive mode draws the weapon first: the
         // client asks to attack (attackTarget set) when the basic attack is
         // used on a monster while sheathed. Only a BattleNpc target counts,
@@ -9426,6 +9434,7 @@ impl PacketProcessor {
             let valid_combat_target = auto_attack
                 && !cleared
                 && !target_friendly
+                && target_exists
                 && selected_target != actor_id
                 && selected_target != crate::actor::INVALID_ACTORID
                 && in_active_mode;
@@ -9436,9 +9445,18 @@ impl PacketProcessor {
                 // the player's swing clock past the ticker's domain.
                 let now_ms = crate::runtime::clock::server_now_ms();
                 let delay = c.get_attack_delay_ms();
+                // The target being fought is the Attack state's, wherever it
+                // sits in the stack: a spell cast on yourself mid-fight puts
+                // a Magic state (target = you) on top, and the client re-sends
+                // the monster here while it casts. Reading the top state made
+                // that look like a target switch and cleared the cast (Cure,
+                // Cura and Stoneskin never finished in combat).
                 let cur = c
                     .ai_container
-                    .current_state()
+                    .state_stack()
+                    .iter()
+                    .rev()
+                    .find(|s| s.kind == crate::battle::state::BattleStateKind::Attack)
                     .map(|s| s.target_actor_id)
                     .filter(|id| *id != 0);
                 // Re-engage only when switching targets — re-engaging the same
