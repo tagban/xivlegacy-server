@@ -431,11 +431,20 @@ function onUpdate(tick, area)
 			local dMob = math.min(
 				dist2d(mob.positionX, mob.positionZ, powle.positionX, powle.positionZ),
 				dist2d(mob.positionX, mob.positionZ, owner.positionX, owner.positionZ))
-			if dMob <= HOLD_RADIUS then
+			-- Contested = a mob that is (or is about to be) in the fight.
+			-- An idle one between ENGAGE_RADIUS and HOLD_RADIUS never
+			-- pulls, so counting it froze the kids for the rest of the duty
+			-- (seen in Man0u1's twin escort, client run 2026-11-08).
+			if dMob <= HOLD_RADIUS and (mob:IsEngaged() or dMob <= ENGAGE_RADIUS) then
 				nearLive = nearLive + 1
 			end
 			if mob:IsEngaged() then
-				anyEngaged = true
+				-- Only an engaged mob still in the fight holds the walk:
+				-- one stuck behind terrain past HOLD_RADIUS would hold it
+				-- until the duty timed out.
+				if dMob <= HOLD_RADIUS then
+					anyEngaged = true
+				end
 				if not state.mobsEngaged[mob.actorId] then
 					state.mobsEngaged[mob.actorId] = true;
 					owner:SendGameMessageLocalizedDisplayName(GetWorldMaster(), TEXT_MOB_ENGAGED, 0x20, ANKLE_BITER_DISPLAY_ID);
