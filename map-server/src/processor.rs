@@ -5940,104 +5940,14 @@ impl PacketProcessor {
         kind: crate::lua::command::SetPoolKind,
         value: i32,
     ) {
-        use crate::lua::command::SetPoolKind;
-        let Some(handle) = self.registry.get(actor_id).await else {
-            tracing::debug!(actor = actor_id, "SetPool: actor not in registry");
-            return;
-        };
-        let value_i16 = value.clamp(0, i16::MAX as i32) as i16;
-        let value_u16 = value.clamp(0, u16::MAX as i32) as u16;
-        let post_pools = {
-            let mut c = handle.character.write().await;
-            match kind {
-                SetPoolKind::Hp => {
-                    c.chara.hp = value_i16.min(c.chara.max_hp);
-                }
-                SetPoolKind::MaxHp => {
-                    let old_max = c.chara.max_hp;
-                    c.chara.max_hp = value_i16;
-                    // Heal-to-full when the player was at/under the
-                    // old cap — Meteor's setmaxhp behaviour.
-                    if c.chara.hp >= old_max || c.chara.hp == 0 {
-                        c.chara.hp = value_i16;
-                    } else {
-                        c.chara.hp = c.chara.hp.min(value_i16);
-                    }
-                }
-                SetPoolKind::Mp => {
-                    c.chara.mp = value_i16.min(c.chara.max_mp);
-                }
-                SetPoolKind::MaxMp => {
-                    let old_max = c.chara.max_mp;
-                    c.chara.max_mp = value_i16;
-                    if c.chara.mp >= old_max || c.chara.mp == 0 {
-                        c.chara.mp = value_i16;
-                    } else {
-                        c.chara.mp = c.chara.mp.min(value_i16);
-                    }
-                }
-                SetPoolKind::Tp => {
-                    c.chara.tp = value_u16;
-                }
-            }
-            (
-                c.chara.hp.max(0) as u16,
-                c.chara.max_hp.max(0) as u16,
-                c.chara.mp.max(0) as u16,
-                c.chara.max_mp.max(0) as u16,
-                c.chara.tp,
-            )
-        };
-        let (hp, hp_max, mp, mp_max, tp) = post_pools;
-        let mut subs = crate::packets::send::actor::build_chara_state_at_quickly_for_all(
-            actor_id, hp, hp_max, mp, mp_max, tp,
-        );
-        // Players also get the player-variant bundle (extra fields:
-        // class slot + main-skill level). Bnpcs don't need it; the
-        // chara variant alone updates their nameplate HP bar.
-        if handle.is_player() {
-            let (class_slot, main_skill_level) = {
-                let c = handle.character.read().await;
-                (c.chara.class.max(0) as u8, c.chara.level.max(1) as u16)
-            };
-            subs.extend(
-                crate::packets::send::actor::build_player_state_at_quickly_for_all(
-                    actor_id,
-                    hp,
-                    hp_max,
-                    class_slot,
-                    main_skill_level,
-                ),
-            );
-        }
-        for sub in subs {
-            let bytes = sub.to_bytes();
-            crate::runtime::dispatcher::send_to_self_if_player(
-                &self.registry,
-                &self.world,
-                actor_id,
-                bytes.clone(),
-            )
-            .await;
-            crate::runtime::dispatcher::broadcast_to_neighbours(
-                &self.world,
-                &self.registry,
-                actor_id,
-                bytes,
-            )
-            .await;
-        }
-        tracing::info!(
-            actor = actor_id,
-            ?kind,
+        crate::runtime::quest_apply::apply_set_pool(
+            &self.registry,
+            &self.world,
+            actor_id,
+            kind,
             value,
-            hp,
-            hp_max,
-            mp,
-            mp_max,
-            tp,
-            "SetPool applied + broadcast"
-        );
+        )
+        .await;
     }
 
     /// Same-zone teleport. Called by both `WorldManager:WarpToPosition`
@@ -6845,7 +6755,12 @@ impl PacketProcessor {
             _ => (player_handle.zone_id, None),
         };
         let Some(npc_handle) = self
-            .find_npc_by_class_id(zone_id, enpc.actor_class_id, requester_area.as_ref())
+            .find_npc_by_class_id(
+                zone_id,
+                enpc.actor_class_id,
+                requester_area.as_ref(),
+                Some(crate::runtime::quest_apply::player_xz(&player_handle).await),
+            )
             .await
         else {
             tracing::debug!(
@@ -6927,7 +6842,12 @@ impl PacketProcessor {
             _ => (player_handle.zone_id, None),
         };
         let Some(npc_handle) = self
-            .find_npc_by_class_id(zone_id, enpc.actor_class_id, requester_area.as_ref())
+            .find_npc_by_class_id(
+                zone_id,
+                enpc.actor_class_id,
+                requester_area.as_ref(),
+                Some(crate::runtime::quest_apply::player_xz(&player_handle).await),
+            )
             .await
         else {
             return;
@@ -6970,41 +6890,17 @@ impl PacketProcessor {
         zone_id: u32,
         class_id: u32,
         requester_area: Option<&(String, u32)>,
+        near: Option<(f32, f32)>,
     ) -> Option<ActorHandle> {
-        // Search the session zone first, then its seamless partner zones.
-        // Split towns (Gridania 155/206, Limsa 133/230) seed each half's
-        // NPCs in its OWN zone but share one coordinate space, so a player
-        // whose session sits in one half must still resolve a quest ENPC
-        // seeded in the partner half — e.g. LNC-guild Willelda/Burchard live
-        // in 206 while the 155-session player stands at the (206) guild, and
-        // a mid-scene marker move (SEQ_080 Willelda → SEQ_085 Burchard) re-
-        // broadcasts with no re-stream to ride the spawn overlay. Mirrors the
-        // streaming path's `partner_zone_actors_around`. (Garlemald-Server #41.)
-        let mut zones = vec![zone_id];
-        if let Some(z) = self.world.zone(zone_id).await {
-            let region_id = z.read().await.core.region_id as u32;
-            zones.extend(self.world.seamless_partner_zones(region_id, zone_id).await);
-        }
-        let mut root_match: Option<ActorHandle> = None;
-        for zid in zones {
-            for h in self.registry.actors_in_zone(zid).await {
-                let matches = {
-                    let c = h.character.read().await;
-                    c.chara.actor_class_id == class_id
-                };
-                if !matches {
-                    continue;
-                }
-                match (&h.private_area, requester_area) {
-                    (Some(npc_area), Some(req)) if npc_area.as_ref() == req => return Some(h),
-                    (None, None) => return Some(h),
-                    // Root copy — fallback for a private-area player.
-                    (None, Some(_)) if root_match.is_none() => root_match = Some(h),
-                    _ => {}
-                }
-            }
-        }
-        root_match
+        crate::runtime::quest_apply::find_npc_by_class_id(
+            &self.registry,
+            &self.world,
+            zone_id,
+            class_id,
+            requester_area,
+            near,
+        )
+        .await
     }
 
     /// `player:AddQuest(id)` — allocate a free slot, build a fresh
