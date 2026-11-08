@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1812 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1816 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -764,8 +764,8 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (767, 1280048, 'redlabyrinth_aetherytegate', 174, '', 0, 1797.0, 249.0, 1856.0, 0.0, 0, 0, NULL),
 (768, 1280049, 'burntlizardcreek_aetherytegate', 174, '', 0, 1185.0, 280.0, 1407.0, 0.0, 0, 0, NULL),
 (769, 1280050, 'zanrak_aetherytegate', 174, '', 0, 2416.0, 249.0, 1535.0, 0.0, 0, 0, NULL),
-(770, 1280052, 'nanawamines_aetherytegate', 0, '', 0, 80.5, 169.0, -1268.5, 0.0, 0, 0, NULL),
-(771, 1280054, 'copperbellmines_aetherytegate', 0, '', 0, -621.0, 112.0, -118.0, 0.0, 0, 0, NULL),
+(770, 1280052, 'nanawamines_aetherytegate', 176, '', 0, 80.5, 169.0, -1268.5, 0.0, 0, 0, NULL),
+(771, 1280054, 'copperbellmines_aetherytegate', 178, '', 0, -621.0, 112.0, -118.0, 0.0, 0, 0, NULL),
 (772, 1280057, '', 0, '', 0, 33.0, 201.0, -482.0, 0.0, 0, 0, NULL),
 (773, 1280058, '', 0, '', 0, -1315.0, 57.0, -147.0, 0.0, 0, 0, NULL),
 (774, 1280059, '', 0, '', 0, -165.0, 281.0, -1699.0, 0.0, 0, 0, NULL),
@@ -1816,4 +1816,8 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (29950, 1090800, 'mun_tuy_cellars_entrance1', 152, '', 0, -1025.1, -0.19, -2408.7, 0.0, 0, 0, NULL),
 (29951, 1090801, 'mun_tuy_cellars_exit1', 157, '', 0, -1025.0, -3.67, -2393.0, 0.0, 0, 0, NULL),
 (29952, 1090802, 'mun_tuy_cellars_entrance2', 152, '', 0, -702.9, 15.81, -1943.3, 0.0, 0, 0, NULL),
-(29953, 1090803, 'mun_tuy_cellars_exit2', 157, '', 0, -705.0, 12.26, -1959.0, 0.0, 0, 0, NULL);
+(29953, 1090803, 'mun_tuy_cellars_exit2', 157, '', 0, -705.0, 12.26, -1959.0, 0.0, 0, 0, NULL),
+(29954, 1090804, 'nanawa_mines_entrance1', 170, '', 0, 97.7, 183.55, -1081.5, 0.0, 0, 0, NULL),
+(29955, 1090805, 'nanawa_mines_exit1', 176, '', 0, 93.0, 182.24, -1097.0, 0.0, 0, 0, NULL),
+(29956, 1090806, 'copperbell_mines_entrance1', 172, '', 0, -711.0, 119.47, -95.0, 0.0, 0, 0, NULL),
+(29957, 1090807, 'copperbell_mines_exit1', 178, '', 0, -695.0, 118.24, -99.0, 0.0, 0, 0, NULL);
