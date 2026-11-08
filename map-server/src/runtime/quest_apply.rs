@@ -96,6 +96,14 @@ pub async fn apply_runtime_lua_command(
             crate::runtime::gc_apply::apply_promote_gc(registry, db, world, player_id, gc).await;
             true
         }
+        LC::SetPool {
+            actor_id,
+            kind,
+            value,
+        } => {
+            apply_set_pool(registry, world, actor_id, kind, value).await;
+            true
+        }
         LC::AddQuest {
             player_id,
             quest_id,
@@ -808,7 +816,7 @@ pub async fn apply_runtime_lua_command(
             actor_id,
             main_state,
         } => {
-            apply_change_state(actor_id, main_state, registry, world).await;
+            apply_change_state(actor_id, main_state, registry, world, lua).await;
             true
         }
         LC::DirectorAddMember {
@@ -1247,6 +1255,7 @@ async fn apply_change_state(
     main_state: u16,
     registry: &ActorRegistry,
     world: &WorldManager,
+    lua: Option<&Arc<LuaEngine>>,
 ) {
     let Some(handle) = registry.get(actor_id).await else {
         tracing::debug!(
@@ -1264,6 +1273,40 @@ async fn apply_change_state(
         );
         return;
     };
+    // A passive flip on an actor that is mid-fight is a disengage: flush its
+    // battle states the way a player's sheathe does
+    // (`Processor::flush_battle_states_on_sheathe`). Content scripts call
+    // `mob:ChangeState(0)` from onUpdate to end a fight (the Man0u1
+    // Coliseum loss), and without this the gladiator's AttackState kept
+    // swinging for ~25 s after "You are defeated." and undid the HP
+    // restore. The Disengage arm emits the passive trio itself.
+    if main_state == crate::actor::MAIN_STATE_PASSIVE {
+        let mut battle_outbox = crate::battle::outbox::BattleOutbox::new();
+        let engaged = {
+            let mut c = handle.character.write().await;
+            if c.ai_container.state_stack().is_empty() {
+                false
+            } else {
+                c.ai_container.internal_disengage(&mut battle_outbox);
+                c.chara.current_target = crate::actor::INVALID_ACTORID;
+                true
+            }
+        };
+        if engaged {
+            tracing::debug!(
+                actor = format!("0x{actor_id:08X}"),
+                "ChangeState passive flushed engaged battle states (InternalDisengage)",
+            );
+            for ev in battle_outbox.drain() {
+                // Boxed: the dispatcher can run Lua, which drains back here.
+                Box::pin(crate::runtime::dispatcher::dispatch_battle_event(
+                    &ev, registry, world, &zone_arc, lua, None,
+                ))
+                .await;
+            }
+            return;
+        }
+    }
     // pmeteor's State-flag flush (Character.cs PostUpdate:411-419) ships a
     // TRIO, not just the 0x0134: SetActorState + CommandResultX00 (anim
     // 0x72000062) + CommandResultX01 (anim 0x7C000062, command 21001
@@ -8421,6 +8464,70 @@ mod change_state_self_send_tests {
     /// excludes the source, so without the explicit self-send the weapon
     /// never draws on the acting client (`recipients=0` in the SEQ_005
     /// live test). (Garlemald-Server #28.)
+    /// Content-area scripts drain through the runtime path, not the packet
+    /// processor; `owner:SetHP(...)` there used to be dropped (Man0u1
+    /// Coliseum: the post-match heal never landed). The shared handler
+    /// writes the pool and tells the owning client.
+    #[tokio::test]
+    async fn set_pool_from_runtime_drain_heals_and_notifies() {
+        let world = WorldManager::new();
+        let registry = ActorRegistry::new();
+        let mut zone = Zone::new(
+            166,
+            "test",
+            1,
+            "/Area/Zone/Test",
+            0,
+            0,
+            0,
+            false,
+            false,
+            false,
+            false,
+            false,
+            Some(&StubNavmeshLoader),
+        );
+        let mut ob = crate::zone::outbox::AreaOutbox::new();
+        zone.core.add_actor(
+            StoredActor {
+                actor_id: 1,
+                kind: ActorKind::Player,
+                position: Vector3::ZERO,
+                grid: (0, 0),
+                is_alive: true,
+            },
+            &mut ob,
+        );
+        world.register_zone(zone).await;
+        let handle = crate::runtime::actor_registry::ActorHandle::new(
+            1,
+            ActorKindTag::Player,
+            166,
+            7,
+            Character::new(1),
+        );
+        {
+            let mut c = handle.character.write().await;
+            c.chara.max_hp = 137;
+            c.chara.hp = 1;
+        }
+        registry.insert(handle.clone()).await;
+        let (tx, mut rx) = mpsc::channel::<Vec<u8>>(8);
+        world.register_client(7, ClientHandle::new(7, tx)).await;
+
+        apply_set_pool(
+            &registry,
+            &world,
+            1,
+            crate::lua::command::SetPoolKind::Hp,
+            137,
+        )
+        .await;
+
+        assert_eq!(handle.character.read().await.chara.hp, 137);
+        assert!(rx.try_recv().is_ok(), "owner should get the pool update");
+    }
+
     #[tokio::test]
     async fn change_state_reaches_the_acting_player() {
         let world = WorldManager::new();
@@ -8466,7 +8573,7 @@ mod change_state_self_send_tests {
         let (tx, mut rx) = mpsc::channel::<Vec<u8>>(4);
         world.register_client(7, ClientHandle::new(7, tx)).await;
 
-        apply_change_state(1, 2, &registry, &world).await;
+        apply_change_state(1, 2, &registry, &world, None).await;
 
         let got = rx.try_recv().expect("player should receive own state trio");
         let mut off = 0usize;
@@ -9199,4 +9306,108 @@ mod complete_quest_turn_in_tests {
 
         let _ = std::fs::remove_dir_all(root);
     }
+}
+
+/// Writes one HP/MP/TP pool on an actor and broadcasts the
+/// `stateAtQuicklyForAll` bundle. Shared by the packet processor and the
+/// runtime drain (content-area ticks, e.g. the Man0u1 Coliseum heal).
+pub(crate) async fn apply_set_pool(
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    actor_id: u32,
+    kind: crate::lua::command::SetPoolKind,
+    value: i32,
+) {
+    use crate::lua::command::SetPoolKind;
+    let Some(handle) = registry.get(actor_id).await else {
+        tracing::debug!(actor = actor_id, "SetPool: actor not in registry");
+        return;
+    };
+    let value_i16 = value.clamp(0, i16::MAX as i32) as i16;
+    let value_u16 = value.clamp(0, u16::MAX as i32) as u16;
+    let post_pools = {
+        let mut c = handle.character.write().await;
+        match kind {
+            SetPoolKind::Hp => {
+                c.chara.hp = value_i16.min(c.chara.max_hp);
+            }
+            SetPoolKind::MaxHp => {
+                let old_max = c.chara.max_hp;
+                c.chara.max_hp = value_i16;
+                // Heal-to-full when the player was at/under the
+                // old cap — Meteor's setmaxhp behaviour.
+                if c.chara.hp >= old_max || c.chara.hp == 0 {
+                    c.chara.hp = value_i16;
+                } else {
+                    c.chara.hp = c.chara.hp.min(value_i16);
+                }
+            }
+            SetPoolKind::Mp => {
+                c.chara.mp = value_i16.min(c.chara.max_mp);
+            }
+            SetPoolKind::MaxMp => {
+                let old_max = c.chara.max_mp;
+                c.chara.max_mp = value_i16;
+                if c.chara.mp >= old_max || c.chara.mp == 0 {
+                    c.chara.mp = value_i16;
+                } else {
+                    c.chara.mp = c.chara.mp.min(value_i16);
+                }
+            }
+            SetPoolKind::Tp => {
+                c.chara.tp = value_u16;
+            }
+        }
+        (
+            c.chara.hp.max(0) as u16,
+            c.chara.max_hp.max(0) as u16,
+            c.chara.mp.max(0) as u16,
+            c.chara.max_mp.max(0) as u16,
+            c.chara.tp,
+        )
+    };
+    let (hp, hp_max, mp, mp_max, tp) = post_pools;
+    let mut subs = crate::packets::send::actor::build_chara_state_at_quickly_for_all(
+        actor_id, hp, hp_max, mp, mp_max, tp,
+    );
+    // Players also get the player-variant bundle (extra fields:
+    // class slot + main-skill level). Bnpcs don't need it; the
+    // chara variant alone updates their nameplate HP bar.
+    if handle.is_player() {
+        let (class_slot, main_skill_level) = {
+            let c = handle.character.read().await;
+            (c.chara.class.max(0) as u8, c.chara.level.max(1) as u16)
+        };
+        subs.extend(
+            crate::packets::send::actor::build_player_state_at_quickly_for_all(
+                actor_id,
+                hp,
+                hp_max,
+                class_slot,
+                main_skill_level,
+            ),
+        );
+    }
+    for sub in subs {
+        let bytes = sub.to_bytes();
+        crate::runtime::dispatcher::send_to_self_if_player(
+            registry,
+            world,
+            actor_id,
+            bytes.clone(),
+        )
+        .await;
+        crate::runtime::dispatcher::broadcast_to_neighbours(world, registry, actor_id, bytes).await;
+    }
+    tracing::info!(
+        actor = actor_id,
+        ?kind,
+        value,
+        hp,
+        hp_max,
+        mp,
+        mp_max,
+        tp,
+        "SetPool applied + broadcast"
+    );
 }
