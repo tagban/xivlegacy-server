@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1808 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1812 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -790,7 +790,7 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (793, 1280079, 'silentarbor_aetherytegate', 154, '', 0, 991.0, -11.0, 600.0, 0.0, 0, 0, NULL),
 (794, 1280080, 'longroot_aetherytegate', 154, '', 0, 1126.0, 1.0, 1440.0, 0.0, 0, 0, NULL),
 (795, 1280081, 'snakemolt_aetherytegate', 154, '', 0, 189.0, 1.0, 1337.0, 0.0, 0, 0, NULL),
-(796, 1280082, 'muntuycellars_aetherytegate', 0, '', 0, -689.0, -15.0, -2065.0, 0.0, 0, 0, NULL),
+(796, 1280082, 'muntuycellars_aetherytegate', 157, '', 0, -689.0, -15.0, -2065.0, 0.0, 0, 0, NULL),
 (797, 1280083, 'tamtaradeeprcroft_aetherytegate', 0, '', 0, 313.0, -35.0, -171.0, 0.0, 0, 0, NULL),
 (798, 1280088, '', 0, '', 0, -1054.0, 21.0, -1761.0, 0.0, 0, 0, NULL),
 (799, 1280089, '', 0, '', 0, -1568.0, -11.0, -552.0, 0.0, 0, 0, NULL),
@@ -1812,4 +1812,8 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (29371, 1001316, 'wld0u2_papala', 171, '', 0, 1103.0, 312.5, -1147.0, 0.0, 0, 0, NULL),
 (29372, 1001358, 'etc2i0_patrick', 145, '', 0, 2629.0, 174.81, 1392.0, 0.0, 0, 0, NULL),
 (29373, 1001574, 'etc2i1_arscelin', 145, '', 0, 2627.0, 174.85, 1328.0, 0.0, 0, 0, NULL),
-(29374, 1001608, 'wld0l4_faine', 129, '', 0, -1799.0, 60.37, -931.0, 0.0, 0, 0, NULL);
+(29374, 1001608, 'wld0l4_faine', 129, '', 0, -1799.0, 60.37, -931.0, 0.0, 0, 0, NULL),
+(29950, 1090800, 'mun_tuy_cellars_entrance1', 152, '', 0, -1025.1, -0.19, -2408.7, 0.0, 0, 0, NULL),
+(29951, 1090801, 'mun_tuy_cellars_exit1', 157, '', 0, -1025.0, -3.67, -2393.0, 0.0, 0, 0, NULL),
+(29952, 1090802, 'mun_tuy_cellars_entrance2', 152, '', 0, -702.9, 15.81, -1943.3, 0.0, 0, 0, NULL),
+(29953, 1090803, 'mun_tuy_cellars_exit2', 157, '', 0, -705.0, 12.26, -1959.0, 0.0, 0, 0, NULL);
