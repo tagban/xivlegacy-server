@@ -1,4 +1,4 @@
--- server_battlenpc_pools: game data, 420 rows. Reloaded whole when this file changes.
+-- server_battlenpc_pools: game data, 445 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_pools`;
 INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId`, `currentJob`, `combatSkill`, `combatDelay`, `combatDmgMult`, `aggroType`, `immunity`, `linkType`, `spellListId`, `skillListId`) VALUES
@@ -421,4 +421,29 @@ INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId
 (31050, 2101111, 'molting_miteling', 35, 0, 1, 4200, 1.0, 1, 0, 0, 0, 35),
 (31051, 2104007, 'mun_tuy_squirrel', 12, 0, 1, 4200, 1.0, 0, 0, 0, 0, 12),
 (31056, 2100610, 'prince_of_pestilence', 37, 0, 1, 4200, 1.0, 1, 0, 0, 0, 37),
-(31077, 2109903, 'will_o_the_wykes', 53, 0, 1, 4200, 1.0, 1, 0, 0, 0, 53);
+(31077, 2109903, 'will_o_the_wykes', 53, 0, 1, 4200, 1.0, 1, 0, 0, 0, 53),
+(31003, 2101609, 'bomb_ember', 64, 0, 1, 4200, 1.0, 1, 0, 0, 0, 64),
+(31004, 2101711, 'cursed_eye', 51, 0, 1, 4200, 1.0, 1, 0, 0, 0, 51),
+(31005, 2102105, 'iron_coblyn', 49, 0, 1, 4200, 1.0, 1, 0, 0, 0, 49),
+(31006, 2101816, 'dapper_cadaver', 29, 0, 1, 4000, 1.0, 1, 0, 0, 0, 124),
+(31015, 2103001, 'antling_digger', 33, 0, 1, 4200, 1.0, 1, 0, 0, 0, 33),
+(31016, 2101602, 'balloon', 64, 0, 1, 4200, 1.0, 1, 0, 0, 0, 64),
+(31017, 2101413, 'bardi', 3, 0, 1, 4200, 1.0, 1, 0, 0, 0, 3),
+(31023, 2100109, 'cellar_puk', 45, 0, 1, 4200, 1.0, 0, 0, 0, 0, 45),
+(31027, 2109904, 'friar_s_lantern', 53, 0, 1, 4200, 1.0, 1, 0, 0, 0, 53),
+(31029, 2101604, 'gas_bomb', 64, 0, 1, 4200, 1.0, 0, 0, 0, 0, 64),
+(31032, 2110301, 'goblin_thug', 26, 0, 1, 4200, 1.0, 0, 0, 0, 0, 26),
+(31036, 2102111, 'heliodor_doblyn', 49, 0, 1, 4200, 1.0, 0, 0, 0, 0, 49),
+(31039, 2105605, 'jumping_djigga', 36, 0, 1, 4200, 1.0, 1, 0, 0, 0, 36),
+(31041, 2106311, 'kokoroon_quickfingers', 25, 0, 1, 4200, 1.0, 1, 0, 0, 0, 25),
+(31044, 2101901, 'magicked_bones', 47, 0, 1, 4200, 1.0, 1, 0, 0, 0, 125),
+(31045, 2103907, 'maidenbug', 38, 0, 1, 4200, 1.0, 0, 0, 0, 0, 38),
+(31049, 2101111, 'molting_miteling', 35, 0, 1, 4200, 1.0, 1, 0, 0, 0, 35),
+(31055, 2103401, 'plain_pudding', 63, 0, 1, 4200, 1.0, 0, 0, 0, 0, 63),
+(31057, 2100602, 'pus_gnat', 37, 0, 1, 4200, 1.0, 1, 0, 0, 0, 37),
+(31060, 2106304, 'qiqirn_scrambler', 25, 0, 1, 4200, 1.0, 0, 0, 0, 0, 25),
+(31065, 2101801, 'rotting_corpse', 29, 0, 1, 4000, 1.0, 0, 0, 0, 0, 124),
+(31071, 2101903, 'skeleton_swordbearer', 47, 0, 1, 4200, 1.0, 1, 0, 0, 0, 125),
+(31078, 2109903, 'will_o_the_wykes', 53, 0, 1, 4200, 1.0, 1, 0, 0, 0, 53),
+(31079, 2104801, 'wind_elemental', 59, 0, 1, 4200, 0.4, 1, 0, 0, 0, 102),
+(31080, 2105503, 'yarzon_bleeder', 39, 0, 1, 4200, 1.0, 1, 0, 0, 0, 39);
