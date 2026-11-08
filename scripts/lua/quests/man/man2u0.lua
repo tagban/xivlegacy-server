@@ -55,7 +55,7 @@ THANCRED					= 1000948;
 BATTLEFIELD					= {175, nil, -147.0, 205.0, -163.0, 1.57};
 PHRONTISTERY_DOOR			= {209, nil, -212.0, 229.6, 284.0, 0.6};
 SICKROOM					= {209, 5, -218.0, 229.5, 306.0, 0.6};
-OSSUARY_PLAZA				= {209, nil, -262.0, 202.0, 203.0, 0.8};
+OSSUARY_PLAZA				= {209, nil, -258.0, 202.0, 203.0, 0.8};
 QUICKSAND					= {175, nil, -75.242, 195.009, 74.572, -0.046};
 
 -- Msg pack for the Npc LS (Momodi)

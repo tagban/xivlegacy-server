@@ -6031,6 +6031,7 @@ pub(crate) async fn broadcast_quest_enpc_update(
         zone_id,
         enpc.actor_class_id,
         requester_area.as_ref(),
+        Some(player_xz(&player_handle).await),
     )
     .await
     else {
@@ -6637,6 +6638,7 @@ async fn broadcast_quest_enpc_graphic(
         zone_id,
         enpc.actor_class_id,
         requester_area.as_ref(),
+        Some(player_xz(&player_handle).await),
     )
     .await
     else {
@@ -6684,6 +6686,7 @@ async fn broadcast_quest_enpc_clear(
         zone_id,
         enpc.actor_class_id,
         requester_area.as_ref(),
+        Some(player_xz(&player_handle).await),
     )
     .await
     else {
@@ -6721,12 +6724,13 @@ async fn broadcast_quest_enpc_clear(
 /// the copy the client never spawned is silently dropped. Falls back to
 /// a zone-root copy when the player's area has none (private-area player
 /// whose quest NPC only exists at the root). (Garlemald-Server #28.)
-async fn find_npc_by_class_id(
+pub(crate) async fn find_npc_by_class_id(
     registry: &ActorRegistry,
     world: &WorldManager,
     zone_id: u32,
     class_id: u32,
     requester_area: Option<&(String, u32)>,
+    near: Option<(f32, f32)>,
 ) -> Option<ActorHandle> {
     // Search the session zone first, then its seamless partner zones. Split
     // towns (Gridania 155/206, Limsa 133/230) seed each half's NPCs in its
@@ -6736,31 +6740,55 @@ async fn find_npc_by_class_id(
     // player stands at the (206) guild, and a mid-scene marker move (SEQ_080
     // Willelda → SEQ_085 Burchard) re-broadcasts with no re-stream to ride the
     // spawn overlay. Mirrors `partner_zone_actors_around`. (Garlemald-Server #41.)
+    //
+    // One area can hold several copies of a class: zone 209's
+    // PrivateAreaMasterPast 5 seats Niellefresne in both Man0u1's
+    // Coliseum echo and Man2u0's sickroom. With `near` (the player's x/z)
+    // the closest copy wins, so the marker lands on the one in front of
+    // the player.
     let mut zones = vec![zone_id];
     if let Some(z) = world.zone(zone_id).await {
         let region_id = z.read().await.core.region_id as u32;
         zones.extend(world.seamless_partner_zones(region_id, zone_id).await);
     }
-    let mut root_match: Option<ActorHandle> = None;
+    let mut area_match: Option<(f32, ActorHandle)> = None;
+    let mut root_match: Option<(f32, ActorHandle)> = None;
     for zid in zones {
         for h in registry.actors_in_zone(zid).await {
-            let matches = {
+            let (matches, x, z) = {
                 let c = h.character.read().await;
-                c.chara.actor_class_id == class_id
+                (
+                    c.chara.actor_class_id == class_id,
+                    c.base.position_x,
+                    c.base.position_z,
+                )
             };
             if !matches {
                 continue;
             }
-            match (&h.private_area, requester_area) {
-                (Some(npc_area), Some(req)) if npc_area.as_ref() == req => return Some(h),
-                (None, None) => return Some(h),
+            let dist = near.map_or(0.0, |(px, pz)| (x - px).powi(2) + (z - pz).powi(2));
+            let slot = match (&h.private_area, requester_area) {
+                (Some(npc_area), Some(req)) if npc_area.as_ref() == req => &mut area_match,
+                (None, None) => &mut area_match,
                 // Root copy — keep as fallback for a private-area player.
-                (None, Some(_)) if root_match.is_none() => root_match = Some(h),
-                _ => {}
+                (None, Some(_)) => &mut root_match,
+                _ => continue,
+            };
+            if slot.as_ref().is_none_or(|(best, _)| dist < *best) {
+                *slot = Some((dist, h));
+            }
+            if near.is_none() && area_match.is_some() {
+                return area_match.map(|(_, h)| h);
             }
         }
     }
-    root_match
+    area_match.or(root_match).map(|(_, h)| h)
+}
+
+/// The player's x/z, for picking the nearest of several same-class NPCs.
+pub(crate) async fn player_xz(handle: &ActorHandle) -> (f32, f32) {
+    let c = handle.character.read().await;
+    (c.base.position_x, c.base.position_z)
 }
 
 // ---------------------------------------------------------------------------
@@ -8201,6 +8229,47 @@ mod tests {
     /// B3: `apply_set_actor_mod` writes the value through to the
     /// target character's `ModifierMap`. Tests both registered actors
     /// (success) and unknown actors (quiet skip).
+    /// Two copies of one class in the same private area (Niellefresne in
+    /// zone 209's PrivateAreaMasterPast 5, for Man0u1 and Man2u0): the
+    /// quest marker goes to the copy nearest the player.
+    #[tokio::test]
+    async fn find_npc_by_class_id_prefers_nearest_copy() {
+        let registry = ActorRegistry::new();
+        let world = WorldManager::new();
+        let area = ("PrivateAreaMasterPast".to_string(), 5u32);
+        for (id, x, z) in [(1u32, -187.0f32, 195.0f32), (2, -219.5, 311.5)] {
+            let mut c = Character::new(id);
+            c.chara.actor_class_id = 1000037;
+            c.base.position_x = x;
+            c.base.position_z = z;
+            registry
+                .insert(
+                    ActorHandle::new(id, ActorKindTag::Npc, 209, 0, c)
+                        .with_private_area(area.0.clone(), area.1),
+                )
+                .await;
+        }
+        let pick = |near: Option<(f32, f32)>| {
+            find_npc_by_class_id(&registry, &world, 209, 1000037, Some(&area), near)
+        };
+        assert_eq!(
+            pick(Some((-218.0, 306.0))).await.map(|h| h.actor_id),
+            Some(2)
+        );
+        assert_eq!(
+            pick(Some((-186.0, 194.0))).await.map(|h| h.actor_id),
+            Some(1)
+        );
+        assert!(pick(None).await.is_some());
+        // Another area's copy is never picked.
+        let other = ("PrivateAreaMasterPast".to_string(), 3u32);
+        assert!(
+            find_npc_by_class_id(&registry, &world, 209, 1000037, Some(&other), None)
+                .await
+                .is_none()
+        );
+    }
+
     #[tokio::test]
     async fn apply_set_actor_mod_writes_modifier_map() {
         let registry = ActorRegistry::new();
