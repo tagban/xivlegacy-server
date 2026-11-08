@@ -12,6 +12,9 @@ Prereq: Level 30, Any DoW/DoM, Etc1g9 completed
 
 ]]
 
+-- Rewards (items/gil: ZAM and the client's reward table; the EXP is an estimate)
+REWARD_EXP			= 2000;
+
 -- Sequence Numbers
 SEQ_000	= 0;  -- Kill Mirror Roselets.
 SEQ_001	= 1;  -- Talk to Lonsygg.
@@ -84,7 +87,9 @@ function onTalk(player, quest, npc, eventName)
 	elseif (seq == SEQ_002) then
 		if (npcClassId == ENPC_ETHELINDA) then
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent005");
-			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 200, 1, 1, 9);
+			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
+			player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
+			player:GetItemPackage(INVENTORY_NORMAL):AddItem(3910305, 12, 1); -- Bronze Azagai
             player:CompleteQuest(quest);
 		elseif (npcClassId == ENPC_LONSYGG) then
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent005_2");
