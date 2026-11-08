@@ -12,6 +12,10 @@ Prereq: Level 10, Any Class
 
 ]]
 
+-- Rewards (the client's reward table; EXP from its row, or the level-band estimate)
+REWARD_EXP			= 300;
+REWARD_GIL			= 2500;
+
 -- Sequence Numbers
 SEQ_000	= 0;  -- Kill Sabletooth Spriggans.
 SEQ_001	= 1;  -- Talk to Marcette.
@@ -70,7 +74,10 @@ function onTalk(player, quest, npc, eventName)
 	elseif (seq == SEQ_001) then
 		if (npcClassId == ENPC_MARCETTE) then
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent010");
-			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 200, 1, 1, 9);
+			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
+			player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
+			player:AddGil(REWARD_GIL);
+			player:GetItemPackage(INVENTORY_NORMAL):AddItem(8031514, 1, 1); -- Dodoskin Harness
             player:CompleteQuest(quest);
 		end
 	end
