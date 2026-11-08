@@ -2608,23 +2608,21 @@ mod tests {
             c.base.position_x = 40.0;
             c.get_hp()
         };
+        // A hit here takes 1 HP and natural regen gives it back a few
+        // ticks later, so watch the lowest HP of each phase, not the end.
+        let mut lowest = hp_before;
         for i in 1..=100u64 {
             ticker.tick_once(i * 100).await;
+            lowest = lowest.min(player.character.read().await.get_hp());
         }
-        assert_eq!(
-            player.character.read().await.get_hp(),
-            hp_before,
-            "no hit from 38 yalms"
-        );
+        assert_eq!(lowest, hp_before, "no hit from 38 yalms");
         // Back beside it: the swings land again.
         player.character.write().await.base.position_x = 0.0;
         for i in 101..=200u64 {
             ticker.tick_once(i * 100).await;
+            lowest = lowest.min(player.character.read().await.get_hp());
         }
-        assert!(
-            player.character.read().await.get_hp() < hp_before,
-            "hit at 2 yalms"
-        );
+        assert!(lowest < hp_before, "hit at 2 yalms");
     }
 
     /// Inside the leash a monster keeps fighting.

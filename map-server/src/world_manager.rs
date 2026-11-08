@@ -4068,6 +4068,29 @@ impl WorldManager {
         );
     }
 
+    /// Removes `actor_id` from every client that has it spawned and from
+    /// those sessions' `actor_instance_list`, so the next
+    /// [`Self::send_instance_update`] streams it again with fresh spawn
+    /// packets. Used when a monster respawns: its corpse has faded on the
+    /// client, and the respawn's state change alone leaves it invisible
+    /// (and untargetable) until the player relogs.
+    pub async fn forget_actor_for_all_sessions(&self, actor_id: u32) {
+        let holders: Vec<u32> = {
+            let mut sessions = self.sessions.write().await;
+            sessions
+                .iter_mut()
+                .filter_map(|(id, s)| s.actor_instance_list.remove(&actor_id).then_some(*id))
+                .collect()
+        };
+        for session_id in holders {
+            if let Some(client) = self.client(session_id).await {
+                let mut sub = crate::packets::send::actor::build_remove_actor(actor_id);
+                sub.set_target_id(session_id);
+                client.send_bytes(sub.to_bytes()).await;
+            }
+        }
+    }
+
     /// Continuous actor-instance update — the per-movement spawn stream
     /// (port of C# `Session.UpdateInstance` / `Player.SendInstanceUpdate`,
     /// PacketProcessor.cs:163). garlemald previously emitted populace
@@ -4099,29 +4122,6 @@ impl WorldManager {
     /// (100) exceeds the escort's ENGAGE_RADIUS (18) + PLAYER_LEASH (15)
     /// and the controller's MAX_DETECT_DISTANCE (20), so a mob always
     /// renders before it can reach or aggro the player. (#46.)
-    /// Removes `actor_id` from every client that has it spawned and from
-    /// those sessions' `actor_instance_list`, so the next
-    /// [`Self::send_instance_update`] streams it again with fresh spawn
-    /// packets. Used when a monster respawns: its corpse has faded on the
-    /// client, and the respawn's state change alone leaves it invisible
-    /// (and untargetable) until the player relogs.
-    pub async fn forget_actor_for_all_sessions(&self, actor_id: u32) {
-        let holders: Vec<u32> = {
-            let mut sessions = self.sessions.write().await;
-            sessions
-                .iter_mut()
-                .filter_map(|(id, s)| s.actor_instance_list.remove(&actor_id).then_some(*id))
-                .collect()
-        };
-        for session_id in holders {
-            if let Some(client) = self.client(session_id).await {
-                let mut sub = crate::packets::send::actor::build_remove_actor(actor_id);
-                sub.set_target_id(session_id);
-                client.send_bytes(sub.to_bytes()).await;
-            }
-        }
-    }
-
     /// Takes every open-world monster the client has spawned out of its
     /// view (populace and quest NPCs stay, as in [`Self::send_instance_update`]).
     /// For a content instance entered in place, where no zone-in wipe
