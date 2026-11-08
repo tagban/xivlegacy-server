@@ -269,11 +269,22 @@ function onUpdate(tick, area)
 			local dMob = math.min(
 				dist2d(mob.positionX, mob.positionZ, flhaminn.positionX, flhaminn.positionZ),
 				dist2d(mob.positionX, mob.positionZ, owner.positionX, owner.positionZ))
-			if dMob <= HOLD_RADIUS then
+			-- Contested = a mob that is (or is about to be) in the fight.
+			-- An idle one between ENGAGE_RADIUS and HOLD_RADIUS of
+			-- F'lhaminn never pulls, so counting it froze her in place
+			-- for the rest of the duty (client run 2026-11-08: a
+			-- chinchilla idling 26y from her, timer ran out).
+			if dMob <= HOLD_RADIUS and (mob:IsEngaged() or dMob <= ENGAGE_RADIUS) then
 				nearLive = nearLive + 1
 			end
 			if mob:IsEngaged() then
-				anyEngaged = true
+				-- Only an engaged mob still in the fight holds the
+				-- arrival: one that pulled but got stuck behind terrain
+				-- (client run 2026-11-08: 29y off, unreachable) used to
+				-- hold the camp beat until the duty timed out.
+				if dMob <= HOLD_RADIUS then
+					anyEngaged = true
+				end
 				if not state.mobsEngaged[mob.actorId] then
 					state.mobsEngaged[mob.actorId] = true;
 					owner:SendGameMessageLocalizedDisplayName(GetWorldMaster(), TEXT_MOB_ENGAGED, 0x20, CHINCHILLA_DISPLAY_ID);

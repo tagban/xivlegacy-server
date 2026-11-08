@@ -3723,7 +3723,7 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
   ]
 }'),
 (1000366, '', 1200031, 0, NULL),
-(1000367, '', 1900052, 0, NULL),
+(1000367, '/Chara/Npc/Populace/PopulaceStandard', 1900052, 19, '{"talkEventConditions":[{"unknown1":4,"unknown2":0,"conditionName":"talkDefault"}],"noticeEventConditions":[{"unknown1":0,"unknown2":1,"conditionName":"noticeEvent"}],"emoteEventConditions":[{"unknown1":4,"unknown2":0,"emoteId":107,"conditionName":"emoteDefault1"}]}'),
 (1000368, '', 1500065, 0, NULL),
 (1000369, '', 1200033, 0, NULL),
 (1000370, '/Chara/Npc/Populace/PopulaceStandard', 1200022, 19, '{
@@ -9811,7 +9811,7 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
     }
   ]
 }'),
-(1001306, '', 1600198, 0, NULL),
+(1001306, '/Chara/Npc/Populace/PopulaceStandard', 1600198, 19, '{"talkEventConditions":[{"unknown1":4,"unknown2":0,"conditionName":"talkDefault"}],"noticeEventConditions":[{"unknown1":0,"unknown2":1,"conditionName":"noticeEvent"}],"emoteEventConditions":[{"unknown1":4,"unknown2":0,"emoteId":107,"conditionName":"emoteDefault1"}]}'),
 (1001307, '/Chara/Npc/Populace/PopulaceStandard', 1900133, 19, '{
   "talkEventConditions": [
     {
@@ -11654,14 +11654,14 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
 (1001593, '', 1100128, 0, NULL),
 (1001594, '', 2600003, 0, NULL),
 (1001595, '', 2600005, 0, NULL),
-(1001596, '', 2200003, 0, NULL),
+(1001596, '/Chara/Npc/Populace/PopulaceStandard', 2200003, 19, '{"talkEventConditions":[{"unknown1":4,"unknown2":0,"conditionName":"talkDefault"}],"noticeEventConditions":[{"unknown1":0,"unknown2":1,"conditionName":"noticeEvent"}],"emoteEventConditions":[{"unknown1":4,"unknown2":0,"emoteId":107,"conditionName":"emoteDefault1"}]}'),
 (1001597, '', 1400128, 0, NULL),
 (1001598, '', 1000044, 0, NULL),
 (1001599, '', 1400163, 0, NULL),
 (1001600, '', 1200036, 0, NULL),
 (1001601, '', 1000025, 0, NULL),
 (1001602, '', 1900143, 0, NULL),
-(1001603, '', 1500063, 0, NULL),
+(1001603, '/Chara/Npc/Populace/PopulaceStandard', 1500063, 19, '{"talkEventConditions":[{"unknown1":4,"unknown2":0,"conditionName":"talkDefault"}],"noticeEventConditions":[{"unknown1":0,"unknown2":1,"conditionName":"noticeEvent"}],"emoteEventConditions":[{"unknown1":4,"unknown2":0,"emoteId":107,"conditionName":"emoteDefault1"}]}'),
 (1001604, '', 1900139, 0, NULL),
 (1001605, '', 1000057, 0, NULL),
 (1001606, '', 1400160, 0, NULL),
