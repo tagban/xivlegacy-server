@@ -37,11 +37,13 @@ function questBattle.warp(player, spot)
 	GetWorldManager():DoZoneChange(player, spot[1], nil, 0, 15, spot[2], spot[3], spot[4], spot[5]);
 end
 
--- Quest side: enter the duty at the fight's spot.
-function questBattle.start(player, name, spot)
+-- Quest side: enter the duty at the fight's spot. directorPath defaults to
+-- the SimpleQuestBattle director; class quests whose client director is a
+-- plain QuestDirectorBaseClass (Cnj30001) pass "Quest/QuestDirector<Name>".
+function questBattle.start(player, name, spot, directorPath)
 	local contentArea = player.CurrentArea:CreateContentArea(player,
 		"/Area/PrivateArea/Content/PrivateAreaMasterSimpleContent", name,
-		"SimpleContent" .. name, "Quest/SimpleQuestBattle/QuestDirector" .. name, spot[1]);
+		"SimpleContent" .. name, directorPath or ("Quest/SimpleQuestBattle/QuestDirector" .. name), spot[1]);
 	if (contentArea == nil) then
 		player:EndEvent();
 		questBattle.warp(player, spot);
