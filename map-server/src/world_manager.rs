@@ -1721,6 +1721,14 @@ impl WorldManager {
         self.sessions.write().await.insert(session.id, session);
     }
 
+    /// Remember that a quest hid `actor_id` from this session's player
+    /// (see `Session::hidden_actors`).
+    pub async fn hide_actor_for_session(&self, session_id: u32, actor_id: u32) {
+        if let Some(s) = self.sessions.write().await.get_mut(&session_id) {
+            s.hidden_actors.insert(actor_id);
+        }
+    }
+
     pub async fn session(&self, id: u32) -> Option<Session> {
         self.sessions.read().await.get(&id).cloned()
     }
@@ -3013,6 +3021,9 @@ impl WorldManager {
                 neighbours.push((partner_id, kind, Some(partner_zone_name)));
             }
         }
+        // Actors a quest hid from this player stay hidden through the
+        // reload (an Echo's same-zone fade-in warp).
+        neighbours.retain(|(id, _, _)| !session.hidden_actors.contains(id));
         tracing::info!(
             session = session_id,
             actor = format!("0x{actor_id:08X}"),
@@ -4203,6 +4214,7 @@ impl WorldManager {
                 .filter(|a| !in_content_instance || (a.actor_id & CONTENT_ACTOR_BAND_BIT) != 0)
                 .map(|a| a.actor_id)
                 .filter(|id| !session.actor_instance_list.contains(id))
+                .filter(|id| !session.hidden_actors.contains(id))
                 .collect();
             // Other players in range the client hasn't spawned yet. The
             // range query only pairs actors of one content copy, so inside

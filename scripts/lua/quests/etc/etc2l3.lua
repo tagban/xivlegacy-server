@@ -12,6 +12,9 @@ Prereq: Level 17, Any Class
 
 ]]
 
+-- Rewards (the client's reward table; EXP from its row, or the level-band estimate)
+REWARD_EXP			= 500;
+
 -- Sequence Numbers
 SEQ_000	= 0;  -- Talk to the ??? in Shposhae.
 SEQ_005	= 5;  -- Talk to F'ongho and think about what NM you saw.
@@ -84,7 +87,8 @@ function onTalk(player, quest, npc, eventName)
 			local monsterChoice = callClientFunction(player, "delegateEvent", player, quest, "processEvent_020");
 			
 			if (monsterChoice == 1) then
-				callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 200, 1, 1, 9);
+				callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
+				player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
 				player:CompleteQuest(quest);
 			end
 		end

@@ -2103,11 +2103,13 @@ impl UserData for LuaPlayer {
         );
 
         // --- Quests ----------------------------------------------------------
-        methods.add_method("HasQuest", |_, this, id: u32| {
-            Ok(this.snapshot.active_quests.contains(&id))
+        // Both take a quest id or the quest itself: Meteor had both
+        // overloads and side-quest scripts call `player:HasQuest(quest)`.
+        methods.add_method("HasQuest", |_, this, v: Value| {
+            Ok(quest_arg_to_id(&v).is_some_and(|id| this.snapshot.active_quests.contains(&id)))
         });
-        methods.add_method("IsQuestCompleted", |_, this, id: u32| {
-            Ok(this.snapshot.completed_quests.contains(&id))
+        methods.add_method("IsQuestCompleted", |_, this, v: Value| {
+            Ok(quest_arg_to_id(&v).is_some_and(|id| this.snapshot.completed_quests.contains(&id)))
         });
         // Whether one of the player's quests answers for an NPC of this
         // class (an offer it gives, or a taken quest's marker on it).

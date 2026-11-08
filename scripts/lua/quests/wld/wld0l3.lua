@@ -12,6 +12,9 @@ Prereq: Level 17, Any Class
 
 ]]
 
+-- Rewards (the client's reward table; EXP from its row, or the level-band estimate)
+REWARD_EXP			= 500;
+
 -- Sequence Numbers
 SEQ_000	= 0;  -- Talk to Lolojo.
 SEQ_001	= 1;  -- Talk to Syzfrusk.
@@ -71,7 +74,9 @@ function onTalk(player, quest, npc, eventName)
 		--Quest Complete
 		if (npcClassId == SYZFRUSK) then
 			callClientFunction(player, "delegateEvent", player, quest, "processEventClear");
-			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 200, 1, 1, 9);
+			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
+			player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
+			player:GetItemPackage(INVENTORY_NORMAL):AddItem(8011517, 1, 1); -- Leather Pot Helm
             player:CompleteQuest(quest);
 		elseif (npcClassId == LOLOJO) then
 			callClientFunction(player, "delegateEvent", player, quest, "processlolojoEventFree");

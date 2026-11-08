@@ -12,6 +12,10 @@ Prereq: Level 5, Any Class
 
 ]]
 
+-- Rewards (the client's reward table; EXP from its row, or the level-band estimate)
+REWARD_EXP			= 200;
+REWARD_GIL			= 2500;
+
 -- Sequence Numbers
 SEQ_000	= 0;  -- Talk to Ryssfloh.
 SEQ_001	= 1;  -- Talk to Sweetnix Rosycheeks.
@@ -71,7 +75,10 @@ function onTalk(player, quest, npc, eventName)
 		--Quest Complete
 		if (npcClassId == SWEETNIX) then
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent020");
-			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 200, 1, 1, 9);
+			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
+			player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
+			player:AddGil(REWARD_GIL);
+			player:GetItemPackage(INVENTORY_NORMAL):AddItem(8030819, 1, 1); -- Hempen Acton
             player:CompleteQuest(quest);
 		elseif (npcClassId == RYSSFLOH) then
 			callClientFunction(player, "delegateEvent", player, quest, "followEvent015");

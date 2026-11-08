@@ -13,6 +13,9 @@ Notes:  Unlocks Ul'dah Inn exit from the rear entrance.  Rewards 200 EXP
 
 ]]
 
+-- Rewards (the client's reward table; EXP from its row, or the level-band estimate)
+REWARD_EXP			= 200;
+
 -- Sequence Numbers
 SEQ_000 = 0;  -- Talk to Judithe
 SEQ_001 = 1;  -- Return to Otopa Pottopa
@@ -72,7 +75,8 @@ function onTalk(player, quest, npc)
             callClientFunction(player, "delegateEvent", player, quest, "processEvent_010_1");
         elseif (classId == OTOPA_POTTOPA) then 
             callClientFunction(player, "delegateEvent", player, quest, "processEvent_020");
-			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 200, 1, 1); -- 200 exp rewarded
+			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
+			player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
             player:CompleteQuest(quest);
         end
     end
