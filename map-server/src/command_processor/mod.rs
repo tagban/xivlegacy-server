@@ -1008,6 +1008,14 @@ impl CommandProcessor {
             c.base.position_y = y;
             c.base.position_z = z;
         }
+        // A quick warp keeps the player where the client has them loaded:
+        // only for the same zone *and* the same private area (or none).
+        // Into or out of an area is a zone change, even within one zone id.
+        let wanted_area = private_area.clone().filter(|n| !n.is_empty());
+        let same_area = match self.world.session(session_id).await {
+            Some(s) => s.current_private_area_name.filter(|n| !n.is_empty()) == wanted_area,
+            None => wanted_area.is_none(),
+        };
         if let Some(mut session) = self.world.session(session_id).await {
             session.destination_zone_id = zone_id;
             session.destination_x = x;
@@ -1022,7 +1030,7 @@ impl CommandProcessor {
         // as Kodama's `!pos` sends it. Meteor's `DoPlayerMoveInZone` sent a
         // 0xE2 (0x10) signal first, then type 0x00 with id 0xFFFFFFFF: the
         // scene reloaded and the camera looked at the ceiling for ~5 s.
-        if current_zone_id == zone_id {
+        if current_zone_id == zone_id && same_area {
             if let Some(client) = self.world.client(session_id).await {
                 // The world-server relay drops subpackets whose target_id
                 // is 0 (`world-server/src/server.rs`, zone-reply fan-out),
