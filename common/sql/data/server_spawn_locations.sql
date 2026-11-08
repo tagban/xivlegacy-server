@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1816 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1820 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -1820,4 +1820,8 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (29954, 1090804, 'nanawa_mines_entrance1', 170, '', 0, 97.7, 183.55, -1081.5, 0.0, 0, 0, NULL),
 (29955, 1090805, 'nanawa_mines_exit1', 176, '', 0, 93.0, 182.24, -1097.0, 0.0, 0, 0, NULL),
 (29956, 1090806, 'copperbell_mines_entrance1', 172, '', 0, -711.0, 119.47, -95.0, 0.0, 0, 0, NULL),
-(29957, 1090807, 'copperbell_mines_exit1', 178, '', 0, -695.0, 118.24, -99.0, 0.0, 0, 0, NULL);
+(29957, 1090807, 'copperbell_mines_exit1', 178, '', 0, -695.0, 118.24, -99.0, 0.0, 0, 0, NULL),
+(29958, 1090808, 'cassiopeia_hollow_entrance1', 130, '', 0, 1118, 26.3, -762, 0.0, 0, 0, NULL),
+(29959, 1090809, 'cassiopeia_hollow_exit1', 132, '', 0, 1131.0, 20.15, -726.0, 0.0, 0, 0, NULL),
+(29960, 1090810, 'mistbeard_cove_entrance1', 129, '', 0, -1750, 21.5, -1452, 0.0, 0, 0, NULL),
+(29961, 1090811, 'mistbeard_cove_exit1', 131, '', 0, -1815.0, -18.25, -1496.0, 0.0, 0, 0, NULL);

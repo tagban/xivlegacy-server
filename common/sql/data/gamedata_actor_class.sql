@@ -1,4 +1,4 @@
--- gamedata_actor_class: game data, 8021 rows. Reloaded whole when this file changes.
+-- gamedata_actor_class: game data, 8025 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `gamedata_actor_class`;
 INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propertyFlags`, `eventConditions`) VALUES
@@ -30161,9 +30161,9 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
 (2180217, '/Chara/Npc/Monster/Fighter/FighterAllyOpeningAttacker', 3180222, 0, NULL),
 (2180218, '/Chara/Npc/Monster/Pirate/PirateStandard', 3180220, 0, NULL),
 (2180219, '/Chara/Npc/Monster/Pirate/PirateStandard', 3180222, 0, NULL),
-(2180301, '', 3180301, 0, NULL),
-(2180302, '', 3180302, 0, NULL),
-(2180303, '', 3180303, 0, NULL),
+(2180301, '/Chara/Npc/Monster/Pirate/PirateStandard', 3180301, 0, NULL),
+(2180302, '/Chara/Npc/Monster/Pirate/PirateStandard', 3180302, 0, NULL),
+(2180303, '/Chara/Npc/Monster/Pirate/PirateStandard', 3180303, 0, NULL),
 (2200101, '/Chara/Npc/Monster/Bird/BirdStandard', 3200101, 0, NULL),
 (2200102, '/Chara/Npc/Monster/Bird/BirdStandard', 3200102, 0, NULL),
 (2200103, '/Chara/Npc/Monster/Bird/BirdStandard', 3200103, 0, NULL),
@@ -34522,6 +34522,50 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
   ]
 }'),
 (1090807, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "true",
+      "radius": "4.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090808, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "true",
+      "radius": "4.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090809, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "true",
+      "radius": "4.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090810, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "true",
+      "radius": "4.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090811, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
   "pushWithCircleEventConditions": [
     {
       "isEnabled": "true",
