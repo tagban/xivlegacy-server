@@ -690,12 +690,24 @@ impl GameTicker {
                     // BattleNpc respawn flow which restores to the
                     // initial spawn coords. AutoRevive (raise) just
                     // brings the actor back where they fell.
-                    if matches!(action, DeathTickAction::Respawn) {
-                        let mut c = handle.character.write().await;
-                        let (sx, sy, sz) = (c.chara.spawn_x, c.chara.spawn_y, c.chara.spawn_z);
-                        c.base.position_x = sx;
-                        c.base.position_y = sy;
-                        c.base.position_z = sz;
+                    let respawn = matches!(action, DeathTickAction::Respawn);
+                    if respawn {
+                        let spawn = {
+                            let mut c = handle.character.write().await;
+                            let (sx, sy, sz) = (c.chara.spawn_x, c.chara.spawn_y, c.chara.spawn_z);
+                            c.base.position_x = sx;
+                            c.base.position_y = sy;
+                            c.base.position_z = sz;
+                            common::Vector3::new(sx, sy, sz)
+                        };
+                        // The spatial grid too: instance streaming and
+                        // the AI radius queries read positions from it.
+                        let mut ob = AreaOutbox::new();
+                        zone.write().await.core.update_actor_position(
+                            handle.actor_id,
+                            spawn,
+                            &mut ob,
+                        );
                     }
                     crate::runtime::dispatcher::apply_revive(
                         handle.actor_id,
@@ -704,6 +716,14 @@ impl GameTicker {
                         zone,
                     )
                     .await;
+                    if respawn {
+                        // Clients faded the corpse; a state flip alone
+                        // never brings it back. Drop it from their actor
+                        // tables so streaming spawns it afresh, alive.
+                        self.world
+                            .forget_actor_for_all_sessions(handle.actor_id)
+                            .await;
+                    }
                 }
             }
 
@@ -2588,23 +2608,21 @@ mod tests {
             c.base.position_x = 40.0;
             c.get_hp()
         };
+        // A hit here takes 1 HP and natural regen gives it back a few
+        // ticks later, so watch the lowest HP of each phase, not the end.
+        let mut lowest = hp_before;
         for i in 1..=100u64 {
             ticker.tick_once(i * 100).await;
+            lowest = lowest.min(player.character.read().await.get_hp());
         }
-        assert_eq!(
-            player.character.read().await.get_hp(),
-            hp_before,
-            "no hit from 38 yalms"
-        );
+        assert_eq!(lowest, hp_before, "no hit from 38 yalms");
         // Back beside it: the swings land again.
         player.character.write().await.base.position_x = 0.0;
         for i in 101..=200u64 {
             ticker.tick_once(i * 100).await;
+            lowest = lowest.min(player.character.read().await.get_hp());
         }
-        assert!(
-            player.character.read().await.get_hp() < hp_before,
-            "hit at 2 yalms"
-        );
+        assert!(lowest < hp_before, "hit at 2 yalms");
     }
 
     /// Inside the leash a monster keeps fighting.

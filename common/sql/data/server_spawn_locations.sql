@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1820 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1824 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -1813,6 +1813,10 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (29372, 1001358, 'etc2i0_patrick', 145, '', 0, 2629.0, 174.81, 1392.0, 0.0, 0, 0, NULL),
 (29373, 1001574, 'etc2i1_arscelin', 145, '', 0, 2627.0, 174.85, 1328.0, 0.0, 0, 0, NULL),
 (29374, 1001608, 'wld0l4_faine', 129, '', 0, -1799.0, 60.37, -931.0, 0.0, 0, 0, NULL),
+(29375, 1000367, 'etc303_fongho', 128, '', 0, 286.0, 26.69, 346.0, 0.0, 0, 0, NULL),
+(29376, 1001596, 'wld0u3_abelard', 172, '', 0, -1734.0, 55.98, -325.0, 0.0, 0, 0, NULL),
+(29377, 1001306, 'wld0l3_syzfrusk', 130, '', 0, 578.0, 54.49, -1214.0, 0.0, 0, 0, NULL),
+(29378, 1001603, 'wld0l3_lolojo', 130, '', 0, 1080.0, 53.4, -459.0, 0.0, 0, 0, NULL),
 (29950, 1090800, 'mun_tuy_cellars_entrance1', 152, '', 0, -1025.1, -0.19, -2408.7, 0.0, 0, 0, NULL),
 (29951, 1090801, 'mun_tuy_cellars_exit1', 157, '', 0, -1025.0, -3.67, -2393.0, 0.0, 0, 0, NULL),
 (29952, 1090802, 'mun_tuy_cellars_entrance2', 152, '', 0, -702.9, 15.81, -1943.3, 0.0, 0, 0, NULL),
