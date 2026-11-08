@@ -170,6 +170,7 @@ CNTR_MANIC_CALM  = 3; -- SEQ_057: Manic Miner sequence progress (0..3)
 FLAG_ARENA_HANDOFF   = 0;
 FLAG_CALM_MADDENED   = 1; -- SEQ_057: Maddened Miner becalmed (Beckon)
 FLAG_CAMP_ECHO_SEEN  = 2; -- SEQ_065: the Ascilia echo CS has played
+FLAG_ESCORT_PAID     = 3; -- SEQ_075: the 3,000-gil escort payment is made
 
 -- The six taught emotes (EmoteStandardCommand 100-range ids — the
 -- client-side F'lhaminn demo schedulers encode exactly these:
@@ -333,7 +334,9 @@ function onStateChange(player, quest, sequence)
 	elseif (sequence == SEQ_070) then
 		quest:SetENpc(MOMODI, QFLAG_TALK);
 	elseif (sequence == SEQ_075) then
-		quest:SetENpc(FLHAMINN, QFLAG_TALK);
+		-- Marker off once paid (takes effect on the next refresh; the
+		-- flag reads back stale inside the hook that set it).
+		quest:SetENpc(FLHAMINN, data:GetFlag(FLAG_ESCORT_PAID) and QFLAG_NONE or QFLAG_TALK);
 		quest:SetENpc(LINETTE);
 	elseif (sequence == SEQ_080) then
 		quest:SetENpc(NOGELOIX, QFLAG_TALK);
@@ -410,6 +413,7 @@ function onTalk(player, quest, npc)
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent015");
 			player:EndEvent();
 			quest:StartSequence(SEQ_012);
+			quest:UpdateENPCs();
 		end
 	elseif (sequence == SEQ_012) then
 		if (classId == MOMODI) then
@@ -419,6 +423,7 @@ function onTalk(player, quest, npc)
 			player:SendGameMessage(GetWorldMaster(), 25117, 0x20, ITEM_COLISEUM_PASS);
 			player:EndEvent();
 			quest:StartSequence(SEQ_015);
+			quest:UpdateENPCs();
 		end
 	elseif (sequence == SEQ_015) then
 		if (seq015_onTalk(player, quest, npc, classId) == true) then
@@ -472,16 +477,27 @@ function onTalk(player, quest, npc)
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent200_2");
 			player:EndEvent();
 			quest:StartSequence(SEQ_075);
+			quest:UpdateENPCs();
 		end
 	elseif (sequence == SEQ_075) then
 		if (classId == FLHAMINN) then
-			-- man0u200: the escort payment at the Concern stage — an
-			-- in-place cutscene (fadeInCutSceneDefault; no warp
-			-- needed). "You obtain 3,000 gil." is on camera.
-			callClientFunction(player, "delegateEvent", player, quest, "processEvent200");
-			player:AddGil(3000);
-			player:EndEvent();
-			quest:NewNpcLsMsg(1);
+			if (not quest:GetData():GetFlag(FLAG_ESCORT_PAID)) then
+				-- man0u200: the escort payment at the Concern stage — an
+				-- in-place cutscene (fadeInCutSceneDefault; no warp
+				-- needed). "You obtain 3,000 gil." is on camera.
+				callClientFunction(player, "delegateEvent", player, quest, "processEvent200");
+				quest:GetData():SetFlag(FLAG_ESCORT_PAID);
+				player:AddGil(3000);
+				player:EndEvent();
+				quest:NewNpcLsMsg(1);
+			else
+				-- Paid already; the sequence moves on at Momodi's
+				-- linkpearl. Talking again replayed the payment (and
+				-- the 3,000 gil) every time. The script has no repeat
+				-- line for her (200_2 is Momodi's gossip about her), so
+				-- the talk just closes.
+				player:EndEvent();
+			end
 		end
 	elseif (sequence == SEQ_080) then
 		if (classId == NOGELOIX) then
@@ -489,6 +505,9 @@ function onTalk(player, quest, npc)
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent205");
 			player:EndEvent();
 			quest:StartSequence(SEQ_085);
+			-- Push the SEQ_085 markers (Faustigeant's talk icon); without
+			-- it the client kept the SEQ_080 set until a zone change.
+			quest:UpdateENPCs();
 		end
 	elseif (sequence == SEQ_085) then
 		if (classId == FAUSTIGEANT) then
@@ -498,6 +517,7 @@ function onTalk(player, quest, npc)
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent210");
 			player:EndEvent();
 			quest:StartSequence(SEQ_090);
+			quest:UpdateENPCs();
 		elseif (classId == NOGELOIX) then
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent210_2");
 			player:EndEvent();
@@ -512,6 +532,7 @@ function onTalk(player, quest, npc)
 			player:EndEvent();
 			quest:NewNpcLsMsg(1);
 			quest:StartSequence(SEQ_100);
+			quest:UpdateENPCs();
 		else
 			seq090_onTalk(player, quest, npc, classId);
 		end
