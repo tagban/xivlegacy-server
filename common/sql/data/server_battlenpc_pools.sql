@@ -1,4 +1,4 @@
--- server_battlenpc_pools: game data, 405 rows. Reloaded whole when this file changes.
+-- server_battlenpc_pools: game data, 420 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_pools`;
 INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId`, `currentJob`, `combatSkill`, `combatDelay`, `combatDmgMult`, `aggroType`, `immunity`, `linkType`, `spellListId`, `skillListId`) VALUES
@@ -406,4 +406,19 @@ INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId
 (30454, 2101403, 'cnj306_dreadwolf', 3, 0, 1, 4200, 0.3, 0, 0, 0, 0, 3),
 (30476, 2100512, 'etc2g1_lemur', 4, 0, 1, 4200, 1.0, 0, 0, 0, 0, 4),
 (30477, 2106542, 'wld0u4_amaljaa_drudge', 23, 0, 1, 4200, 1.0, 1, 0, 0, 0, 23),
-(30478, 2100314, 'etc2i1_antelope_doe', 2, 0, 1, 4200, 1.0, 0, 0, 0, 0, 2);
+(30478, 2100314, 'etc2i1_antelope_doe', 2, 0, 1, 4200, 1.0, 0, 0, 0, 0, 2),
+(31000, 2101908, 'wandering_wight', 47, 0, 1, 4200, 1.0, 1, 0, 0, 0, 125),
+(31001, 2100609, 'gnawing_gnats', 37, 0, 1, 4200, 1.0, 1, 0, 0, 0, 37),
+(31002, 2100503, 'opo_opo', 4, 0, 1, 4200, 1.0, 1, 0, 0, 0, 4),
+(31013, 2102609, 'alux', 52, 0, 1, 4200, 1.0, 1, 0, 0, 0, 52),
+(31022, 2100109, 'cellar_puk', 45, 0, 1, 4200, 1.0, 0, 0, 0, 0, 45),
+(31024, 2101403, 'dreadwolf', 3, 0, 1, 4200, 1.0, 1, 0, 0, 0, 3),
+(31031, 2104105, 'giant_bat', 43, 0, 1, 4200, 1.0, 1, 0, 0, 0, 43),
+(31034, 2110301, 'goblin_thug', 26, 0, 1, 4200, 1.0, 0, 0, 0, 0, 26),
+(31040, 2104106, 'kalong', 43, 0, 1, 4200, 1.0, 1, 0, 0, 0, 43),
+(31043, 2101901, 'magicked_bones', 47, 0, 1, 4200, 1.0, 1, 0, 0, 0, 125),
+(31047, 2109902, 'marshlight', 53, 0, 1, 4200, 1.0, 1, 0, 0, 0, 53),
+(31050, 2101111, 'molting_miteling', 35, 0, 1, 4200, 1.0, 1, 0, 0, 0, 35),
+(31051, 2104007, 'mun_tuy_squirrel', 12, 0, 1, 4200, 1.0, 0, 0, 0, 0, 12),
+(31056, 2100610, 'prince_of_pestilence', 37, 0, 1, 4200, 1.0, 1, 0, 0, 0, 37),
+(31077, 2109903, 'will_o_the_wykes', 53, 0, 1, 4200, 1.0, 1, 0, 0, 0, 53);
