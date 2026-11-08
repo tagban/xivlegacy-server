@@ -1,4 +1,4 @@
--- server_battlenpc_spawn_locations: game data, 3953 rows. Reloaded whole when this file changes.
+-- server_battlenpc_spawn_locations: game data, 3971 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_spawn_locations`;
 INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `groupId`, `positionX`, `positionY`, `positionZ`, `rotation`) VALUES
@@ -2647,12 +2647,12 @@ INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `
 (101948, 'dormouse', 10255, 212.73, 59.372, -1853.293, 2.015),
 (101949, 'dormouse', 10255, 224.295, 53.581, -1857.138, 2.1349),
 (101950, 'dormouse', 10255, 236.553, 57.006, -1855.884, -1.6546),
-(101951, 'dreadwolf', 10256, 2654.043, 175.314, 4843.082, -0.6514),
-(101952, 'dreadwolf', 10256, 2642.144, 175.344, 4857.263, 0.1595),
-(101953, 'dreadwolf', 10256, 2616.813, 175.348, 4857.532, -3.1305),
-(101954, 'dreadwolf', 10256, 2620.953, 175.298, 4832.794, -0.9871),
-(101955, 'dreadwolf', 10256, 2637.964, 175.283, 4826.727, 1.9516),
-(101956, 'dreadwolf', 10256, 2648.608, 175.296, 4833.948, 1.87),
+(101951, 'dreadwolf', 10256, 2225.0, 143.0, 870.0, -0.6514),
+(101952, 'dreadwolf', 10256, 2225.0, 145.0, 895.0, 0.1595),
+(101953, 'dreadwolf', 10256, 2250.0, 143.0, 870.0, -3.1305),
+(101954, 'dreadwolf', 10256, 2250.0, 143.0, 895.0, -0.9871),
+(101955, 'dreadwolf', 10256, 2250.0, 144.0, 920.0, 1.9516),
+(101956, 'dreadwolf', 10256, 2225.0, 145.0, 920.0, 1.87),
 (101957, 'dreadwolf', 10257, -920.998, 10.254, -650.075, -1.6855),
 (101958, 'dreadwolf', 10257, -934.257, 10.808, -628.905, 0.8202),
 (101959, 'dreadwolf', 10257, -960.362, 3.807, -638.713, 3.0501),
@@ -3961,4 +3961,22 @@ INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `
 (4045, 'pgl306_thaumaturge_doppelganger', 30453, -1165.0, 117.0, 496.0, 0.0),
 (4041, 'cnj306_dreadwolf', 30454, -590.0, -25.39, -438.0, 2.4),
 (4042, 'cnj306_dreadwolf', 30454, -578.0, -25.31, -438.0, -2.4),
-(4043, 'cnj306_dreadwolf', 30454, -584.0, -25.47, -432.0, 3.14);
+(4043, 'cnj306_dreadwolf', 30454, -584.0, -25.47, -432.0, 3.14),
+(3962, 'etc2g1_lemur', 30476, -945.0, 19.72, -2174.0, 0.0),
+(3963, 'etc2g1_lemur', 30476, -960.6, 24.9, -2169.4, 0.0),
+(3964, 'etc2g1_lemur', 30476, -956.0, 19.88, -2185.0, 0.0),
+(3965, 'etc2g1_lemur', 30476, -960.6, 19.77, -2200.6, 0.0),
+(3966, 'etc2g1_lemur', 30476, -934.0, 33.42, -2185.0, 0.0),
+(3967, 'etc2g1_lemur', 30476, -945.0, 30.99, -2196.0, 0.0),
+(3968, 'wld0u4_amaljaa_drudge', 30477, 1420.0, 255.8, 140.0, 0.0),
+(3969, 'wld0u4_amaljaa_drudge', 30477, 1445.0, 256.6, 120.0, 0.0),
+(3970, 'wld0u4_amaljaa_drudge', 30477, 1470.0, 256.3, 120.0, 0.0),
+(3971, 'wld0u4_amaljaa_drudge', 30477, 1495.0, 257.0, 120.0, 0.0),
+(3972, 'wld0u4_amaljaa_drudge', 30477, 1470.0, 254.7, 140.0, 0.0),
+(3973, 'wld0u4_amaljaa_drudge', 30477, 1495.0, 255.2, 140.0, 0.0),
+(3974, 'etc2i1_antelope_doe', 30478, 1610.0, 143.0, 1220.0, 0.0),
+(3975, 'etc2i1_antelope_doe', 30478, 1610.0, 145.0, 1245.0, 0.0),
+(3976, 'etc2i1_antelope_doe', 30478, 1610.0, 143.0, 1270.0, 0.0),
+(3977, 'etc2i1_antelope_doe', 30478, 1610.0, 144.0, 1295.0, 0.0),
+(3978, 'etc2i1_antelope_doe', 30478, 1635.0, 149.0, 1220.0, 0.0),
+(3979, 'etc2i1_antelope_doe', 30478, 1635.0, 149.0, 1295.0, 0.0);
