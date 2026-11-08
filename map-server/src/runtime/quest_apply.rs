@@ -1300,12 +1300,7 @@ async fn apply_change_state(
             for ev in battle_outbox.drain() {
                 // Boxed: the dispatcher can run Lua, which drains back here.
                 Box::pin(crate::runtime::dispatcher::dispatch_battle_event(
-                    &ev,
-                    registry,
-                    world,
-                    &zone_arc,
-                    lua,
-                    None,
+                    &ev, registry, world, &zone_arc, lua, None,
                 ))
                 .await;
             }
@@ -8469,6 +8464,70 @@ mod change_state_self_send_tests {
     /// excludes the source, so without the explicit self-send the weapon
     /// never draws on the acting client (`recipients=0` in the SEQ_005
     /// live test). (Garlemald-Server #28.)
+    /// Content-area scripts drain through the runtime path, not the packet
+    /// processor; `owner:SetHP(...)` there used to be dropped (Man0u1
+    /// Coliseum: the post-match heal never landed). The shared handler
+    /// writes the pool and tells the owning client.
+    #[tokio::test]
+    async fn set_pool_from_runtime_drain_heals_and_notifies() {
+        let world = WorldManager::new();
+        let registry = ActorRegistry::new();
+        let mut zone = Zone::new(
+            166,
+            "test",
+            1,
+            "/Area/Zone/Test",
+            0,
+            0,
+            0,
+            false,
+            false,
+            false,
+            false,
+            false,
+            Some(&StubNavmeshLoader),
+        );
+        let mut ob = crate::zone::outbox::AreaOutbox::new();
+        zone.core.add_actor(
+            StoredActor {
+                actor_id: 1,
+                kind: ActorKind::Player,
+                position: Vector3::ZERO,
+                grid: (0, 0),
+                is_alive: true,
+            },
+            &mut ob,
+        );
+        world.register_zone(zone).await;
+        let handle = crate::runtime::actor_registry::ActorHandle::new(
+            1,
+            ActorKindTag::Player,
+            166,
+            7,
+            Character::new(1),
+        );
+        {
+            let mut c = handle.character.write().await;
+            c.chara.max_hp = 137;
+            c.chara.hp = 1;
+        }
+        registry.insert(handle.clone()).await;
+        let (tx, mut rx) = mpsc::channel::<Vec<u8>>(8);
+        world.register_client(7, ClientHandle::new(7, tx)).await;
+
+        apply_set_pool(
+            &registry,
+            &world,
+            1,
+            crate::lua::command::SetPoolKind::Hp,
+            137,
+        )
+        .await;
+
+        assert_eq!(handle.character.read().await.chara.hp, 137);
+        assert!(rx.try_recv().is_ok(), "owner should get the pool update");
+    }
+
     #[tokio::test]
     async fn change_state_reaches_the_acting_player() {
         let world = WorldManager::new();
@@ -8514,7 +8573,7 @@ mod change_state_self_send_tests {
         let (tx, mut rx) = mpsc::channel::<Vec<u8>>(4);
         world.register_client(7, ClientHandle::new(7, tx)).await;
 
-        apply_change_state(1, 2, &registry, &world).await;
+        apply_change_state(1, 2, &registry, &world, None).await;
 
         let got = rx.try_recv().expect("player should receive own state trio");
         let mut off = 0usize;
@@ -9253,8 +9312,8 @@ mod complete_quest_turn_in_tests {
 /// `stateAtQuicklyForAll` bundle. Shared by the packet processor and the
 /// runtime drain (content-area ticks, e.g. the Man0u1 Coliseum heal).
 pub(crate) async fn apply_set_pool(
-registry: &ActorRegistry,
-world: &WorldManager,
+    registry: &ActorRegistry,
+    world: &WorldManager,
     actor_id: u32,
     kind: crate::lua::command::SetPoolKind,
     value: i32,
@@ -9338,13 +9397,7 @@ world: &WorldManager,
             bytes.clone(),
         )
         .await;
-        crate::runtime::dispatcher::broadcast_to_neighbours(
-            world,
-            registry,
-            actor_id,
-            bytes,
-        )
-        .await;
+        crate::runtime::dispatcher::broadcast_to_neighbours(world, registry, actor_id, bytes).await;
     }
     tracing::info!(
         actor = actor_id,
