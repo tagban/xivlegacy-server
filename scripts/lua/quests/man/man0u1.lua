@@ -266,7 +266,12 @@ function onStateChange(player, quest, sequence)
 		-- GLD leg — Coliseum entrance (public), lobby + echo (PA 209/5).
 		quest:SetENpc(YOYOBINA, (subseqGLD == 0) and QFLAG_TALK or QFLAG_NONE);
 		quest:SetENpc(LULUTSU, (subseqGLD == 1) and QFLAG_TALK or QFLAG_NONE);
-		quest:SetENpc(ARENA_TRIGGER, (subseqGLD == 2) and QFLAG_PUSH or QFLAG_NONE, false, (subseqGLD == 2));
+		-- The gate's push is live from GLD 1: Lulutsu's pass check bumps
+		-- the counter to 2 inside her talk hook, and the UpdateENPCs at
+		-- the end of that hook still reads the old counter, so arming at
+		-- exactly 2 left the gate dead until a relog (client run
+		-- 2026-11-08). onPush starts the match only at GLD 2.
+		quest:SetENpc(ARENA_TRIGGER, (subseqGLD == 2) and QFLAG_PUSH or QFLAG_NONE, false, (subseqGLD == 1 or subseqGLD == 2));
 		quest:SetENpc(PAPAWA);
 		quest:SetENpc(ABYLGO_HAMYLGO);
 		quest:SetENpc(FRUHYBOLG);
@@ -816,6 +821,11 @@ function onPush(player, quest, npc)
 	local data = quest:GetData();
 
 	if (sequence == SEQ_015) then
+		if (classId == ARENA_TRIGGER and data:GetCounter(CNTR_SEQ15_GLD) ~= 2) then
+			-- No pass shown to Lulutsu yet (GLD 1): nothing happens.
+			player:EndEvent();
+			return;
+		end
 		if (classId == ARENA_TRIGGER and data:GetCounter(CNTR_SEQ15_GLD) == 2) then
 			-- Retail: "Duty calls. Do you wish to proceed with 'Court
 			-- in the Sands'?" — the same duty-join dialog as the
