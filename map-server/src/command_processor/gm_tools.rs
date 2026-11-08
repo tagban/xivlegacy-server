@@ -119,7 +119,7 @@ impl CommandProcessor {
 
     /// An NPC or monster in `me`'s zone by name (case-insensitive: the start
     /// of its display name, or part of its spawn name or class path, such as
-    /// "dodo"), actor class id or actor id: the nearest match.
+    /// "dodo"), actor class id or actor id: the nearest living match.
     async fn find_npc(&self, me: u32, what: &str) -> Option<u32> {
         let (zone, mx, mz) = {
             let h = self.registry.get(me).await?;
@@ -147,7 +147,8 @@ impl CommandProcessor {
                         || c.base.class_path.to_lowercase().contains(&want)
                 }
             };
-            if !hit {
+            // a felled monster waiting to respawn is no use to bring or go to
+            if !hit || c.is_dead() {
                 continue;
             }
             let d = (c.base.position_x - mx).powi(2) + (c.base.position_z - mz).powi(2);

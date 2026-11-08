@@ -235,6 +235,11 @@ pub struct Session {
     /// Reset by every zone-in bundle (its wipe drops them client-side);
     /// filled and pruned by `send_instance_update`.
     pub known_players: std::collections::HashSet<u32>,
+    /// Actors a quest hid from this player (`player:HideActor`). The
+    /// zone-in bundle skips them, so a same-zone warp right after the
+    /// hide (an Echo's fade-in) doesn't send the NPC back. Actor ids
+    /// carry their zone, and the set ends with the session.
+    pub hidden_actors: std::collections::HashSet<u32>,
 }
 
 /// Snapshot of a player's currently-active scripted content area.
