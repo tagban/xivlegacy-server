@@ -12,6 +12,9 @@ Prereq: Level 20, Any DoW/DoM
 
 ]]
 
+-- Rewards (the client's reward table; EXP from its row, or the level-band estimate)
+REWARD_EXP			= 1280;
+
 -- Sequence Numbers
 SEQ_000	= 0;  -- Kill Musk Roselings.
 SEQ_001	= 1;  -- Talk to H'lahono.
@@ -70,7 +73,9 @@ function onTalk(player, quest, npc, eventName)
 	elseif (seq == SEQ_001) then
 		if (npcClassId == ENPC_HLAHONO) then
 			callClientFunction(player, "delegateEvent", player, quest, "processEventAfter");
-			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 200, 1, 1, 9);
+			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
+			player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
+			player:GetItemPackage(INVENTORY_NORMAL):AddItem(9010055, 1, 1); -- Dodoskin Wristbands
             player:CompleteQuest(quest);
 		end
 	end

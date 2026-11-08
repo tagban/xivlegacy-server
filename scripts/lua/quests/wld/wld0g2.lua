@@ -13,6 +13,9 @@ Notes:  Rewards 200 gil
 
 ]]
 
+-- Rewards (the client's reward table; EXP from its row, or the level-band estimate)
+REWARD_EXP			= 300;
+
 -- Sequence Numbers
 SEQ_000 = 0;  -- Talk to the four lost souls.
 SEQ_001 = 1;  -- Return to Swaenhylt
@@ -128,7 +131,10 @@ function onTalk(player, quest, npc)
     elseif (sequence == SEQ_001) then
         if (classId == SWAENHYLT) then
             callClientFunction(player, "delegateEvent", player, quest, "processEvent025");
-			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 200, 1, 1, 9);
+			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
+			player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
+			player:GetItemPackage(INVENTORY_NORMAL):AddItem(8012011, 1, 1); -- Straw Hat
+			player:GetItemPackage(INVENTORY_NORMAL):AddItem(3010201, 12, 1); -- Flatbread
 			player:CompleteQuest(quest);        
         end  
     end

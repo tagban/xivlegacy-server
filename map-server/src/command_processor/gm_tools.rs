@@ -42,6 +42,23 @@ fn home_city(town: u32) -> u32 {
 }
 
 impl CommandProcessor {
+    /// The private area (name, type) an actor is in: a player's from their
+    /// session, an NPC's from the area it was spawned into. `None` in the
+    /// public zone. A warp to an actor's spot needs it as well as the zone:
+    /// an area's actors carry the area's zone id, so without the area a
+    /// `goto` to an NPC there sent the player to the public zone at the
+    /// area's coordinates, and the client hung on Now Loading.
+    pub(super) async fn area_of(&self, actor_id: u32) -> Option<(String, u32)> {
+        let h = self.registry.get(actor_id).await?;
+        if h.session_id == 0 {
+            return h.private_area.as_ref().map(|a| (a.0.clone(), a.1));
+        }
+        let s = self.world.session(h.session_id).await?;
+        s.current_private_area_name
+            .filter(|n| !n.is_empty())
+            .map(|n| (n, s.current_private_area_level))
+    }
+
     /// (zone, x, y, z, rotation) of an online character.
     pub(super) async fn spot_of(&self, chara_id: u32) -> Option<(u32, f32, f32, f32, f32)> {
         let handle = self.registry.get(chara_id).await?;
@@ -119,7 +136,7 @@ impl CommandProcessor {
 
     /// An NPC or monster in `me`'s zone by name (case-insensitive: the start
     /// of its display name, or part of its spawn name or class path, such as
-    /// "dodo"), actor class id or actor id: the nearest match.
+    /// "dodo"), actor class id or actor id: the nearest living match.
     async fn find_npc(&self, me: u32, what: &str) -> Option<u32> {
         let (zone, mx, mz) = {
             let h = self.registry.get(me).await?;
@@ -147,7 +164,8 @@ impl CommandProcessor {
                         || c.base.class_path.to_lowercase().contains(&want)
                 }
             };
-            if !hit {
+            // a felled monster waiting to respawn is no use to bring or go to
+            if !hit || c.is_dead() {
                 continue;
             }
             let d = (c.base.position_x - mx).powi(2) + (c.base.position_z - mz).powi(2);
@@ -196,9 +214,17 @@ impl CommandProcessor {
             return "that actor is gone".into();
         };
         let my_name = args.invoker.unwrap_or_default().to_string();
-        self.teleport(&my_name, Some(zone), None, 0, (x, y, z))
+        let area = self.area_of(tid).await;
+        let (pa, pa_type) = area.clone().unzip();
+        self.teleport(&my_name, Some(zone), pa, pa_type.unwrap_or(0), (x, y, z))
             .await;
-        format!("went to {} (zone {zone})", self.actor_label(tid).await)
+        match area {
+            Some((name, _)) => format!(
+                "went to {} (zone {zone}, {name})",
+                self.actor_label(tid).await
+            ),
+            None => format!("went to {} (zone {zone})", self.actor_label(tid).await),
+        }
     }
 
     /// `bring [name]`: someone to where you are; with no name, your target;
@@ -232,7 +258,10 @@ impl CommandProcessor {
             };
             if h.session_id != 0 {
                 let name = h.character.read().await.base.display_name().to_string();
-                return self.teleport(&name, Some(zone), None, 0, (x, y, z)).await;
+                let (pa, pa_type) = self.area_of(me).await.unzip();
+                return self
+                    .teleport(&name, Some(zone), pa, pa_type.unwrap_or(0), (x, y, z))
+                    .await;
             }
             if h.zone_id != zone {
                 return "your target is in another zone".into();
@@ -263,7 +292,10 @@ impl CommandProcessor {
                 self.actor_label(tid).await
             );
         }
-        let r = self.teleport(&what, Some(zone), None, 0, (x, y, z)).await;
+        let (pa, pa_type) = self.area_of(me).await.unzip();
+        let r = self
+            .teleport(&what, Some(zone), pa, pa_type.unwrap_or(0), (x, y, z))
+            .await;
         if r.starts_with("warped") {
             format!("brought {what} to you")
         } else {
@@ -317,7 +349,10 @@ impl CommandProcessor {
         let Some((zone, x, y, z, _)) = self.spot_of(tid).await else {
             return format!("{to} is not online");
         };
-        let r = self.teleport(&who, Some(zone), None, 0, (x, y, z)).await;
+        let (pa, pa_type) = self.area_of(tid).await.unzip();
+        let r = self
+            .teleport(&who, Some(zone), pa, pa_type.unwrap_or(0), (x, y, z))
+            .await;
         if r.starts_with("warped") {
             format!("sent {who} to {to}")
         } else {
@@ -370,8 +405,15 @@ impl CommandProcessor {
         let Some((zone, x, y, z, _)) = self.spot_of(id).await else {
             return format!("{name} is not online");
         };
-        self.teleport(&name, Some(zone), None, 0, (x, y + sign * dist, z))
-            .await
+        let (pa, pa_type) = self.area_of(id).await.unzip();
+        self.teleport(
+            &name,
+            Some(zone),
+            pa,
+            pa_type.unwrap_or(0),
+            (x, y + sign * dist, z),
+        )
+        .await
     }
 
     /// `posfix <name>`: to their home city's spawn point; works offline too
