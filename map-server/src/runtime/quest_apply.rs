@@ -8863,6 +8863,63 @@ mod complete_quest_turn_in_tests {
     use crate::actor::quest::{Quest, quest_actor_id};
     use crate::runtime::actor_registry::ActorKindTag;
 
+    /// wld0l4.lua (and nine other side quests) ask `player:HasQuest(quest)`
+    /// in the offer arm; the old `u32`-typed binding raised, so the offer
+    /// never opened. Both forms must answer.
+    #[tokio::test]
+    async fn has_quest_binding_accepts_userdata_and_integer() {
+        use crate::lua::command::{CommandQueue, LuaCommand};
+        use crate::lua::userdata::{LuaQuestHandle, PlayerSnapshot};
+
+        let root = tmpdir();
+        let script = root.join("quests/wld/wld0l4.lua");
+        std::fs::create_dir_all(script.parent().unwrap()).unwrap();
+        std::fs::write(
+            &script,
+            r#"
+                function onTalk(player, quest, npc)
+                    if player:HasQuest(quest) then player:CompleteQuest(110010) end
+                    if player:HasQuest(110003) then player:CompleteQuest(110011) end
+                    if not player:HasQuest(110004) then player:CompleteQuest(110012) end
+                    if player:IsQuestCompleted(quest) then player:CompleteQuest(110013) end
+                    if player:IsQuestCompleted(110005) then player:CompleteQuest(110014) end
+                end
+            "#,
+        )
+        .unwrap();
+        let lua = LuaEngine::new(&root);
+
+        const PLAYER_ID: u32 = 0x0246_0001;
+        let snapshot = PlayerSnapshot {
+            actor_id: PLAYER_ID,
+            active_quests: vec![110_774, 110_003],
+            completed_quests: vec![110_005],
+            ..Default::default()
+        };
+        let quest_handle = LuaQuestHandle {
+            player_id: PLAYER_ID,
+            quest_id: 110_774,
+            has_quest: true,
+            sequence: 0,
+            flags: 0,
+            counters: [0; 4],
+            npc_ls_from: 0,
+            npc_ls_msg_step: 0,
+            queue: CommandQueue::new(),
+        };
+        let result = lua.call_quest_hook(&script, "onTalk", snapshot, quest_handle, Vec::new());
+        assert!(result.error.is_none(), "onTalk errored: {:?}", result.error);
+        let completed: Vec<u32> = result
+            .commands
+            .iter()
+            .filter_map(|c| match c {
+                LuaCommand::CompleteQuest { quest_id, .. } => Some(*quest_id),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(completed, vec![110_010, 110_011, 110_012, 110_014]);
+    }
+
     /// RED case on the old binding: the userdata form raised a runtime
     /// error and `LuaCommand::CompleteQuest` was never enqueued.
     #[tokio::test]
