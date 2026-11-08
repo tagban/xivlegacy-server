@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1799 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1801 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -1803,4 +1803,6 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (29304, 1090654, 'pgl306_mirage_entrance_trigger', 175, '', 0, -151.0, 185.65, 129.0, 0.0, 0, 0, NULL),
 (29305, 1090655, 'pgl306_hurrey_trigger', 175, '', 0, -147.0, 182.65, 131.0, 0.0, 0, 0, NULL),
 (29306, 1090656, 'pgl306_handmaiden_trigger', 175, '', 0, -155.0, 182.65, 132.0, 0.0, 0, 0, NULL),
-(29307, 1090657, 'pgl306_plateau_trigger', 172, '', 0, -1167.0, 116.5, 494.0, 0.0, 0, 0, NULL);
+(29307, 1090657, 'pgl306_plateau_trigger', 172, '', 0, -1167.0, 116.5, 494.0, 0.0, 0, 0, NULL),
+(29308, 1000372, 'cnj306_ingram_fane', 206, '', 0, -359.5, 6.25, -1706.0, -2.37, 0, 0, NULL),
+(29309, 1090658, 'cnj306_emerald_moss_trigger', 152, '', 0, -1040.0, 20.53, -1752.0, 0.0, 0, 0, NULL);
