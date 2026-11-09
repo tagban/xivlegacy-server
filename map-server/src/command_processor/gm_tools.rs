@@ -190,6 +190,51 @@ impl CommandProcessor {
         format!("{name} (actor 0x{actor_id:08X})")
     }
 
+    /// `leve <id> [stars 1-5]`: take battle leve `id` if you don't hold it
+    /// and start it where you stand, as the camp aetheryte's menu does;
+    /// `leve abandon` gives up the running one.
+    pub(super) async fn handle_leve(&self, args: &Args<'_>) -> String {
+        let usage = "usage: leve <guildleve id> [stars 1-5] | leve abandon";
+        let me = match self.invoker_id(args).await {
+            Ok(id) => id,
+            Err(e) => return e,
+        };
+        if args.rest().first() == Some(&"abandon") {
+            self.run_lua(vec![LC::AbandonBattleleve { player_id: me }])
+                .await;
+            return "leve abandoned".into();
+        }
+        let Ok(guildleve_id) = args.parse_u32(0) else {
+            return usage.into();
+        };
+        let difficulty = args.parse_u8(1).unwrap_or(1).clamp(1, 5);
+        let held = match self.registry.get(me).await {
+            Some(h) => h
+                .character
+                .read()
+                .await
+                .chara
+                .guildleves_regional
+                .iter()
+                .any(|e| u32::from(e.guildleve_id) == guildleve_id),
+            None => return "you are not online".into(),
+        };
+        let mut cmds = Vec::new();
+        if !held {
+            cmds.push(LC::AddGuildleve {
+                player_id: me,
+                guildleve_id,
+            });
+        }
+        cmds.push(LC::StartBattleleve {
+            player_id: me,
+            guildleve_id,
+            difficulty,
+        });
+        self.run_lua(cmds).await;
+        format!("leve {guildleve_id} at {difficulty} star(s)")
+    }
+
     /// `goto [name]`: to your target, a player, or an NPC or monster in your
     /// zone (by name, class id or actor id).
     pub(super) async fn handle_goto(&self, args: &Args<'_>) -> String {

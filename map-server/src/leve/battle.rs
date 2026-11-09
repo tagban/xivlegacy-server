@@ -66,6 +66,9 @@ const MAX_UP: usize = 8;
 const EXTRAS: usize = 2;
 /// Targets stand at least this far from the camp.
 const MIN_CAMP_DISTANCE: f32 = 30.0;
+/// Party members this close to the leader (yalms) join the leve they
+/// start at the camp.
+const PARTY_JOIN_RANGE: f32 = 50.0;
 /// The director stays this long after the leve ended, so the tracker can
 /// show the result.
 const LINGER_MS: u64 = 15_000;
@@ -172,7 +175,15 @@ enum Phase {
 
 #[derive(Debug, Clone)]
 struct Leve {
+    /// Who runs it: the player who started it, or the party member it
+    /// passed to when they left.
     owner: u32,
+    /// Who holds the leve card (the starter); it leaves their slots when
+    /// the leve ends.
+    holder: u32,
+    /// Party members on the leve with the owner: they see the tracker and
+    /// share the reward.
+    members: Vec<u32>,
     guildleve_id: u32,
     difficulty: u8,
     zone_id: u32,
@@ -191,6 +202,17 @@ struct Leve {
     next_spot: usize,
     reward_gil: i32,
     phase: Phase,
+    /// Director class (`/Director/Guildleve/<class>`), for spawning it
+    /// again for a member who comes back.
+    class: &'static str,
+    /// `guildleveWork.startTime` and the target marker, for the same.
+    start_secs: u32,
+    marker: (f32, f32, f32),
+    /// Members who dropped off (left the zone, logged out); they rejoin
+    /// when they are back in the zone and still in the party.
+    dropped: Vec<u32>,
+    /// When each dropped member was first seen back.
+    back_since: HashMap<u32, u64>,
 }
 
 static ACTIVE: Mutex<Vec<Leve>> = Mutex::new(Vec::new());
@@ -200,13 +222,88 @@ fn with_active<R>(f: impl FnOnce(&mut Vec<Leve>) -> R) -> R {
     f(&mut ACTIVE.lock().unwrap())
 }
 
-/// The leve `player_id` is running: (leve id, difficulty).
+impl Leve {
+    /// The owner, then the members.
+    fn participants(&self) -> Vec<u32> {
+        std::iter::once(self.owner)
+            .chain(self.members.iter().copied())
+            .collect()
+    }
+
+    fn has(&self, player_id: u32) -> bool {
+        self.owner == player_id || self.members.contains(&player_id)
+    }
+}
+
+/// The leve `player_id` is running, their own or their party's: (leve id,
+/// difficulty).
 pub fn current(player_id: u32) -> Option<(u32, u8)> {
     with_active(|a| {
         a.iter()
-            .find(|l| l.owner == player_id && matches!(l.phase, Phase::Running { .. }))
+            .find(|l| l.has(player_id) && matches!(l.phase, Phase::Running { .. }))
             .map(|l| (l.guildleve_id, l.difficulty))
     })
+}
+
+/// Send each of `players` the same packets.
+async fn send_all(
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    players: &[u32],
+    subs: Vec<SubPacket>,
+) {
+    for &p in players {
+        send(registry, world, p, subs.clone()).await;
+    }
+}
+
+/// Is `player_id` online, in `zone_id`, with a live connection?
+async fn in_zone(
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    player_id: u32,
+    zone_id: u32,
+) -> bool {
+    match registry.get(player_id).await {
+        Some(h) => h.zone_id == zone_id && world.client(h.session_id).await.is_some(),
+        None => false,
+    }
+}
+
+/// The party members who join a leve `leader` starts: online, in the same
+/// zone, within [`PARTY_JOIN_RANGE`] of the leader and not on a leve of
+/// their own.
+async fn party_joiners(
+    leader: u32,
+    zone_id: u32,
+    registry: &ActorRegistry,
+    world: &WorldManager,
+) -> Vec<u32> {
+    let Some(lh) = registry.get(leader).await else {
+        return Vec::new();
+    };
+    let at = {
+        let c = lh.character.read().await;
+        (c.base.position_x, c.base.position_z)
+    };
+    let mut out = Vec::new();
+    for m in crate::parties::others(leader) {
+        let Some(h) = registry.get(m).await else {
+            continue;
+        };
+        if !h.is_player() || !in_zone(registry, world, m, zone_id).await || current(m).is_some() {
+            continue;
+        }
+        let near = {
+            let c = h.character.read().await;
+            ((c.base.position_x - at.0).powi(2) + (c.base.position_z - at.1).powi(2)).sqrt()
+                <= PARTY_JOIN_RANGE
+        };
+        if near {
+            out.push(m);
+        }
+    }
+    out
 }
 
 async fn send(
@@ -477,8 +574,15 @@ pub async fn start(
         | (zone_id << 19)
         | (NEXT_DIRECTOR.fetch_add(1, std::sync::atomic::Ordering::Relaxed) & 0x7_FFFF);
     let time_limit_ms = u64::from(gd.time_limit.max(1)) * 60_000;
+    let members = party_joiners(player_id, zone_id, registry, world).await;
+    let start_secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as u32)
+        .unwrap_or_default();
     let mut leve = Leve {
         owner: player_id,
+        holder: player_id,
+        members,
         guildleve_id: gl_id,
         difficulty,
         zone_id,
@@ -496,6 +600,11 @@ pub async fn start(
         phase: Phase::Running {
             deadline_ms: now_ms + time_limit_ms,
         },
+        class: director_class(&gd),
+        start_secs,
+        marker: center,
+        dropped: Vec::new(),
+        back_since: HashMap::new(),
     };
     for i in 0..4 {
         if leve.aim[i] > 0 && classes[i] == 0 {
@@ -519,90 +628,52 @@ pub async fn start(
     }
 
     // Director actor first: the tracker and the start texts point at it.
-    let (zone_name, zone_actor) = match world.zone(zone_id).await {
-        Some(z) => {
-            let z = z.read().await;
-            (z.core.zone_name.clone(), z.core.actor_id)
-        }
-        None => return,
+    let Some(spawn) = director_spawn(&leve, world).await else {
+        return;
     };
-    let class = director_class(&gd);
-    let class_path = format!("/Director/Guildleve/{class}");
-    let spawn = crate::world_manager::build_director_spawn_subpackets_with(
-        director_id,
-        zone_actor,
-        &class_path,
-        class,
-        &zone_name,
-        &[
-            LuaParam::Int32(DIRECTOR_KIND),
-            LuaParam::Int32(gl_id as i32),
-            LuaParam::Int32(6),
-            LuaParam::Int32(0),
-            LuaParam::Int32(0),
-            LuaParam::Int32(0),
-        ],
-    );
-    send(registry, world, player_id, spawn).await;
-
-    message(
-        registry,
-        world,
-        player_id,
-        TEXT_STARTED,
-        &[LuaParam::Int32(gl_id as i32), LuaParam::Actor(player_id)],
-    )
-    .await;
+    // Everyone on it gets the director, the start texts and the tracker:
+    // the leader and the party members who came along.
+    let everyone = leve.participants();
+    send_all(registry, world, &everyone, spawn).await;
     let anim =
         crate::director::guildleve::guildleve_start_animation(gd.border_id, gd.plate_id, false);
-    let anim_sub = crate::packets::send::actor::build_play_animation_on_actor(player_id, anim);
-    send(registry, world, player_id, vec![anim_sub]).await;
-    if let Some(m) =
-        crate::director::guildleve::GuildleveLocationMusic::pick(u32::from(gd.location))
-    {
-        music(registry, world, player_id, m).await;
-    }
-    message(
-        registry,
-        world,
-        player_id,
-        TEXT_BEGIN,
-        &[
-            LuaParam::Int32(gl_id as i32),
-            LuaParam::Int32(i32::from(difficulty)),
-        ],
-    )
-    .await;
-    message(
-        registry,
-        world,
-        player_id,
-        TEXT_TIME_LIMIT,
-        &[LuaParam::Int32(gd.time_limit as i32)],
-    )
-    .await;
-
-    let start_secs = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as u32)
-        .unwrap_or_default();
-    let mut subs = director_packets(&leve, "guildleveWork/start", |b| {
-        b.add_int("guildleveWork.startTime", start_secs);
-    });
-    subs.extend(director_packets(&leve, "guildleveWork/infoVariable", |b| {
-        for i in 0..4 {
-            if leve.aim[i] != 0 {
-                b.add_byte(&format!("guildleveWork.aimNum[{i}]"), leve.aim[i] as u8);
-                b.add_byte(&format!("guildleveWork.uiState[{i}]"), 1);
-            }
+    let tune = crate::director::guildleve::GuildleveLocationMusic::pick(u32::from(gd.location));
+    for &p in &everyone {
+        message(
+            registry,
+            world,
+            p,
+            TEXT_STARTED,
+            &[LuaParam::Int32(gl_id as i32), LuaParam::Actor(player_id)],
+        )
+        .await;
+        let anim_sub = crate::packets::send::actor::build_play_animation_on_actor(p, anim);
+        send(registry, world, p, vec![anim_sub]).await;
+        if let Some(m) = tune {
+            music(registry, world, p, m).await;
         }
-    }));
-    subs.extend(director_packets(&leve, "guildleveWork/marker", |b| {
-        b.add_float("guildleveWork.markerX[0]", center.0);
-        b.add_float("guildleveWork.markerY[0]", center.1);
-        b.add_float("guildleveWork.markerZ[0]", center.2);
-    }));
-    send(registry, world, player_id, subs).await;
+        message(
+            registry,
+            world,
+            p,
+            TEXT_BEGIN,
+            &[
+                LuaParam::Int32(gl_id as i32),
+                LuaParam::Int32(i32::from(difficulty)),
+            ],
+        )
+        .await;
+        message(
+            registry,
+            world,
+            p,
+            TEXT_TIME_LIMIT,
+            &[LuaParam::Int32(gd.time_limit as i32)],
+        )
+        .await;
+    }
+
+    send_all(registry, world, &everyone, tracker_state(&leve)).await;
 
     // Targets: up to MAX_UP of each objective, plus decoys for mobs that
     // don't count.
@@ -633,11 +704,135 @@ pub async fn start(
         difficulty,
         zone_id,
         director = format!("0x{director_id:08X}"),
+        party = ?leve.members,
         targets = leve.spawned.len(),
         center = ?center,
         "battle leve started"
     );
     with_active(|a| a.push(leve));
+}
+
+/// The guildleve director actor's spawn packets.
+async fn director_spawn(leve: &Leve, world: &WorldManager) -> Option<Vec<SubPacket>> {
+    let (zone_name, zone_actor) = {
+        let z = world.zone(leve.zone_id).await?;
+        let z = z.read().await;
+        (z.core.zone_name.clone(), z.core.actor_id)
+    };
+    let class_path = format!("/Director/Guildleve/{}", leve.class);
+    Some(crate::world_manager::build_director_spawn_subpackets_with(
+        leve.director_id,
+        zone_actor,
+        &class_path,
+        leve.class,
+        &zone_name,
+        &[
+            LuaParam::Int32(DIRECTOR_KIND),
+            LuaParam::Int32(leve.guildleve_id as i32),
+            LuaParam::Int32(6),
+            LuaParam::Int32(0),
+            LuaParam::Int32(0),
+            LuaParam::Int32(0),
+        ],
+    ))
+}
+
+/// The tracker's state: start time (the client counts the timer down from
+/// it), objectives with what's done so far, and the target marker.
+fn tracker_state(leve: &Leve) -> Vec<SubPacket> {
+    let mut subs = director_packets(leve, "guildleveWork/start", |b| {
+        b.add_int("guildleveWork.startTime", leve.start_secs);
+    });
+    subs.extend(director_packets(leve, "guildleveWork/infoVariable", |b| {
+        for i in 0..4 {
+            if leve.aim[i] != 0 {
+                b.add_byte(&format!("guildleveWork.aimNum[{i}]"), leve.aim[i] as u8);
+                b.add_byte(&format!("guildleveWork.uiState[{i}]"), 1);
+                if leve.now[i] != 0 {
+                    b.add_byte(&format!("guildleveWork.aimNumNow[{i}]"), leve.now[i] as u8);
+                }
+            }
+        }
+    }));
+    subs.extend(director_packets(leve, "guildleveWork/marker", |b| {
+        b.add_float("guildleveWork.markerX[0]", leve.marker.0);
+        b.add_float("guildleveWork.markerY[0]", leve.marker.1);
+        b.add_float("guildleveWork.markerZ[0]", leve.marker.2);
+    }));
+    subs
+}
+
+/// A dropped member back in the zone this long (ms) rejoins: long enough
+/// for their client to finish loading the zone.
+const REJOIN_AFTER_MS: u64 = 5_000;
+
+/// Members who dropped off a running leve and are back in its zone, in
+/// the same party as the one running it: after [`REJOIN_AFTER_MS`] they
+/// get the director and the tracker again and are on the leve.
+async fn rejoin_dropped(leve: &Leve, now_ms: u64, registry: &ActorRegistry, world: &WorldManager) {
+    if leve.dropped.is_empty() {
+        return;
+    }
+    let party = crate::parties::members_of(leve.owner);
+    let mut back = Vec::new();
+    let mut away = Vec::new();
+    for &d in &leve.dropped {
+        if party.contains(&d) && in_zone(registry, world, d, leve.zone_id).await {
+            back.push(d);
+        } else {
+            away.push(d);
+        }
+    }
+    let director_id = leve.director_id;
+    let ready: Vec<u32> = with_active(|a| {
+        let Some(l) = a.iter_mut().find(|l| l.director_id == director_id) else {
+            return Vec::new();
+        };
+        for d in &away {
+            l.back_since.remove(d);
+        }
+        let mut ready = Vec::new();
+        for &d in &back {
+            let since = *l.back_since.entry(d).or_insert(now_ms);
+            if now_ms >= since + REJOIN_AFTER_MS {
+                ready.push(d);
+            }
+        }
+        for d in &ready {
+            l.back_since.remove(d);
+            l.dropped.retain(|x| x != d);
+            if !l.has(*d) {
+                l.members.push(*d);
+            }
+        }
+        ready
+    });
+    if ready.is_empty() {
+        return;
+    }
+    let Some(spawn) = director_spawn(leve, world).await else {
+        return;
+    };
+    for &d in &ready {
+        send(registry, world, d, spawn.clone()).await;
+        send(registry, world, d, tracker_state(leve)).await;
+        message(
+            registry,
+            world,
+            d,
+            TEXT_BEGIN,
+            &[
+                LuaParam::Int32(leve.guildleve_id as i32),
+                LuaParam::Int32(i32::from(leve.difficulty)),
+            ],
+        )
+        .await;
+        tracing::info!(
+            player = d,
+            gl_id = leve.guildleve_id,
+            "back on the party's battle leve"
+        );
+    }
 }
 
 /// Spawn one leve monster at the leve's next ground spot.
@@ -723,7 +918,7 @@ pub async fn on_death(
     let subs = director_packets(&leve, "guildleveWork/infoVariable", |b| {
         b.add_byte(&format!("guildleveWork.aimNumNow[{i}]"), leve.now[i] as u8);
     });
-    send(registry, world, leve.owner, subs).await;
+    send_all(registry, world, &leve.participants(), subs).await;
     tracing::info!(
         player = leve.owner,
         gl_id = leve.guildleve_id,
@@ -743,7 +938,7 @@ pub async fn on_death(
         let class_id = leve.classes[i];
         if let Some(actor_id) = spawn_one(&mut leve, class_id, registry, world, db, lua).await {
             with_active(|a| {
-                if let Some(l) = a.iter_mut().find(|l| l.owner == leve.owner) {
+                if let Some(l) = a.iter_mut().find(|l| l.director_id == leve.director_id) {
                     l.spawned.insert(actor_id, Some(i));
                     l.next_spot = leve.next_spot;
                 }
@@ -752,7 +947,8 @@ pub async fn on_death(
     }
 }
 
-/// End the running leve; returns it with its phase set to Ended.
+/// End the running leve `player_id` owns; returns it with its phase set to
+/// Ended.
 fn finish(player_id: u32, now_ms: u64) -> Option<Leve> {
     with_active(|a| {
         let leve = a
@@ -781,8 +977,20 @@ async fn wrap_up(leve: &Leve, registry: &ActorRegistry, world: &WorldManager, db
         }));
         s
     };
-    send(registry, world, leve.owner, subs).await;
-    remove(leve.owner, leve.guildleve_id, registry, world, db).await;
+    send_all(registry, world, &leve.participants(), subs).await;
+    remove(leve.holder, leve.guildleve_id, registry, world, db).await;
+}
+
+/// Everyone on the leve who is still in its zone: they hear the result
+/// and share the reward.
+async fn present(leve: &Leve, registry: &ActorRegistry, world: &WorldManager) -> Vec<u32> {
+    let mut out = Vec::new();
+    for p in leve.participants() {
+        if in_zone(registry, world, p, leve.zone_id).await {
+            out.push(p);
+        }
+    }
+    out
 }
 
 async fn complete(
@@ -795,43 +1003,44 @@ async fn complete(
     let Some(leve) = finish(player_id, now_ms) else {
         return;
     };
-    music(registry, world, player_id, MUSIC_VICTORY).await;
-    message(
-        registry,
-        world,
-        player_id,
-        TEXT_COMPLETE,
-        &[LuaParam::Int32(leve.guildleve_id as i32)],
-    )
-    .await;
+    let paid = present(&leve, registry, world).await;
+    for &p in &paid {
+        music(registry, world, p, MUSIC_VICTORY).await;
+        message(
+            registry,
+            world,
+            p,
+            TEXT_COMPLETE,
+            &[LuaParam::Int32(leve.guildleve_id as i32)],
+        )
+        .await;
+    }
     wrap_up(&leve, registry, world, db).await;
-    crate::runtime::quest_apply::apply_add_gil(
-        player_id,
-        leve.reward_gil,
-        registry,
-        Some(world),
-        db,
-    )
-    .await;
-    say(
-        registry,
-        world,
-        player_id,
-        &format!(
-            "You receive {} gil for completing the levequest.",
-            leve.reward_gil
-        ),
-    )
-    .await;
+    for &p in &paid {
+        crate::runtime::quest_apply::apply_add_gil(p, leve.reward_gil, registry, Some(world), db)
+            .await;
+        say(
+            registry,
+            world,
+            p,
+            &format!(
+                "You receive {} gil for completing the levequest.",
+                leve.reward_gil
+            ),
+        )
+        .await;
+    }
     tracing::info!(
         player = player_id,
         gl_id = leve.guildleve_id,
         gil = leve.reward_gil,
+        paid = ?paid,
         "battle leve complete"
     );
 }
 
-/// Give up the running leve.
+/// Give up the running leve. The one running it ends it for everyone; a
+/// party member on it just leaves it.
 pub async fn abandon(
     player_id: u32,
     registry: &ActorRegistry,
@@ -839,17 +1048,40 @@ pub async fn abandon(
     db: &Database,
     now_ms: u64,
 ) {
+    let left = with_active(|a| {
+        let l = a
+            .iter_mut()
+            .find(|l| l.members.contains(&player_id) && matches!(l.phase, Phase::Running { .. }))?;
+        l.members.retain(|&m| m != player_id);
+        Some((l.guildleve_id, l.director_id))
+    });
+    if let Some((gl_id, director_id)) = left {
+        message(
+            registry,
+            world,
+            player_id,
+            TEXT_ABANDON,
+            &[LuaParam::Int32(gl_id as i32)],
+        )
+        .await;
+        let sub = crate::packets::send::actor::build_remove_actor(director_id);
+        send(registry, world, player_id, vec![sub]).await;
+        tracing::info!(player = player_id, gl_id, "left the party's battle leve");
+        return;
+    }
     let Some(leve) = finish(player_id, now_ms) else {
         return;
     };
-    message(
-        registry,
-        world,
-        player_id,
-        TEXT_ABANDON,
-        &[LuaParam::Int32(leve.guildleve_id as i32)],
-    )
-    .await;
+    for p in present(&leve, registry, world).await {
+        message(
+            registry,
+            world,
+            p,
+            TEXT_ABANDON,
+            &[LuaParam::Int32(leve.guildleve_id as i32)],
+        )
+        .await;
+    }
     wrap_up(&leve, registry, world, db).await;
     tracing::info!(
         player = player_id,
@@ -858,7 +1090,10 @@ pub async fn abandon(
     );
 }
 
-/// Time limits, owners who left, and taking ended leves' directors down.
+/// Time limits, players who left, and taking ended leves' directors down.
+/// A member who leaves the zone (or logs out) drops off the leve; when the
+/// one running it leaves, it passes to a member still there, and fails
+/// when nobody is.
 pub async fn tick(now_ms: u64, registry: &ActorRegistry, world: &WorldManager, db: &Database) {
     // once a second is plenty
     static LAST: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -867,51 +1102,77 @@ pub async fn tick(now_ms: u64, registry: &ActorRegistry, world: &WorldManager, d
         return;
     }
     LAST.store(now_ms, std::sync::atomic::Ordering::Relaxed);
-    let snapshot: Vec<(u32, u32, u32, Phase)> = with_active(|a| {
-        a.iter()
-            .map(|l| (l.owner, l.zone_id, l.director_id, l.phase.clone()))
-            .collect()
-    });
+    let snapshot: Vec<Leve> = with_active(|a| a.clone());
     if snapshot.is_empty() {
         return;
     }
-    for (owner, zone_id, director_id, phase) in snapshot {
-        let here = match registry.get(owner).await {
-            Some(h) => h.zone_id == zone_id && world.client(h.session_id).await.is_some(),
-            None => false,
-        };
-        match phase {
-            Phase::Running { deadline_ms } if !here || now_ms >= deadline_ms => {
-                if let Some(leve) = finish(owner, now_ms) {
-                    wrap_up(&leve, registry, world, db).await;
-                    if here {
-                        say(
-                            registry,
-                            world,
-                            owner,
-                            "Time is up. The levequest has failed.",
-                        )
-                        .await;
+    for leve in snapshot {
+        let here = present(&leve, registry, world).await;
+        let director_id = leve.director_id;
+        match leve.phase {
+            Phase::Running { deadline_ms } => {
+                if here.len() != leve.participants().len() && !here.is_empty() {
+                    // drop who left; a new owner if the owner did
+                    let owner = if here.contains(&leve.owner) {
+                        leve.owner
+                    } else {
+                        here[0]
+                    };
+                    let gone: Vec<u32> = leve
+                        .participants()
+                        .into_iter()
+                        .filter(|p| !here.contains(p))
+                        .collect();
+                    with_active(|a| {
+                        if let Some(l) = a.iter_mut().find(|l| l.director_id == director_id) {
+                            l.owner = owner;
+                            l.members = here.iter().copied().filter(|&p| p != owner).collect();
+                            for g in &gone {
+                                if !l.dropped.contains(g) {
+                                    l.dropped.push(*g);
+                                }
+                            }
+                        }
+                    });
+                    if owner != leve.owner {
+                        tracing::info!(
+                            gl_id = leve.guildleve_id,
+                            from = leve.owner,
+                            to = owner,
+                            "battle leve passed to a party member"
+                        );
                     }
-                    tracing::info!(
-                        player = owner,
-                        gl_id = leve.guildleve_id,
-                        left = !here,
-                        "battle leve failed"
-                    );
+                }
+                if !here.is_empty() && now_ms < deadline_ms {
+                    rejoin_dropped(&leve, now_ms, registry, world).await;
+                }
+                if here.is_empty() || now_ms >= deadline_ms {
+                    let owner = here.first().copied().unwrap_or(leve.owner);
+                    if let Some(ended) = finish(owner, now_ms) {
+                        wrap_up(&ended, registry, world, db).await;
+                        for &p in &here {
+                            say(registry, world, p, "Time is up. The levequest has failed.").await;
+                        }
+                        tracing::info!(
+                            player = owner,
+                            gl_id = ended.guildleve_id,
+                            left = here.is_empty(),
+                            "battle leve failed"
+                        );
+                    }
                 }
             }
-            Phase::Ended { remove_at_ms } if now_ms >= remove_at_ms || !here => {
+            Phase::Ended { remove_at_ms } if now_ms >= remove_at_ms || here.is_empty() => {
                 with_active(|a| a.retain(|l| l.director_id != director_id));
-                if here {
+                let bgm = match world.zone(leve.zone_id).await {
+                    Some(z) => z.read().await.core.bgm_day,
+                    None => 0,
+                };
+                for &p in &here {
                     let sub = crate::packets::send::actor::build_remove_actor(director_id);
-                    send(registry, world, owner, vec![sub]).await;
-                    let bgm = match world.zone(zone_id).await {
-                        Some(z) => z.read().await.core.bgm_day,
-                        None => 0,
-                    };
+                    send(registry, world, p, vec![sub]).await;
                     if bgm != 0 {
-                        music(registry, world, owner, bgm).await;
+                        music(registry, world, p, bgm).await;
                     }
                 }
             }
