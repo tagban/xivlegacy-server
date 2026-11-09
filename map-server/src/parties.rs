@@ -760,36 +760,36 @@ mod tests {
     #[test]
     fn rejoin_after_a_relog() {
         // a party of two: the member drops, the party dissolves
-        join(9301, 9302);
-        let others_before = others(9302);
-        remove(9302);
-        note_away(9302, others_before, 1000);
+        join(9611, 9612);
+        let others_before = others(9612);
+        remove(9612);
+        note_away(9612, others_before, 1000);
         // back in time, the old leader online: rejoins under them
-        assert_eq!(rejoin_host(9302, 1000 + 60, &[9301]), Some(9301));
-        assert_eq!(join(9301, 9302), Some(vec![9301, 9302]));
-        dissolve(9301);
+        assert_eq!(rejoin_host(9612, 1000 + 60, &[9611]), Some(9611));
+        assert_eq!(join(9611, 9612), Some(vec![9611, 9612]));
+        dissolve(9611);
     }
 
     #[test]
     fn no_rejoin_late_or_into_a_new_party() {
-        join(9401, 9402);
-        join(9401, 9403);
-        let others_before = others(9403);
-        remove(9403);
+        join(9621, 9622);
+        join(9621, 9623);
+        let others_before = others(9623);
+        remove(9623);
         // too late
-        note_away(9403, others_before.clone(), 1000);
+        note_away(9623, others_before.clone(), 1000);
         assert_eq!(
-            rejoin_host(9403, 1000 + REJOIN_WINDOW_SECS + 1, &[9401, 9402]),
+            rejoin_host(9623, 1000 + REJOIN_WINDOW_SECS + 1, &[9621, 9622]),
             None
         );
         // nobody from the old party online
-        note_away(9403, others_before.clone(), 1000);
-        assert_eq!(rejoin_host(9403, 1001, &[]), None);
+        note_away(9623, others_before.clone(), 1000);
+        assert_eq!(rejoin_host(9623, 1001, &[]), None);
         // the old party took someone else in: not theirs any more
-        join(9401, 9404);
-        note_away(9403, others_before, 1000);
-        assert_eq!(rejoin_host(9403, 1001, &[9401, 9402]), None);
-        dissolve(9401);
+        join(9621, 9624);
+        note_away(9623, others_before, 1000);
+        assert_eq!(rejoin_host(9623, 1001, &[9621, 9622]), None);
+        dissolve(9621);
     }
 
     #[test]
