@@ -192,6 +192,15 @@ pub enum LuaCommand {
         /// Content instance (`crate::content_instance`) this belongs to; 0 = none.
         instance_id: u32,
     },
+    /// `contentArea:SpawnMapObjects()` — give a content copy its own
+    /// doors and barriers: every `DoorServer` spawn of the parent zone
+    /// (`server_spawn_locations`), spawned into the copy and registered
+    /// with `crate::dungeon_gates` so the copy can open and close them.
+    SpawnContentGates {
+        zone_id: u32,
+        instance_id: u32,
+        slot: u32,
+    },
     /// `director:AddMember(actor)` — port of C#
     /// `Director::AddMember`. Appends `member_actor_id` to the
     /// director's transient roster (keyed by director_actor_id on

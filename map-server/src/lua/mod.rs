@@ -1213,12 +1213,34 @@ impl LuaEngine {
     /// `None` when the script / `init` is missing or errors — callers
     /// fall back to the populace-shaped tail.
     pub fn call_npc_init(&self, class_path_lower: &str) -> Option<Vec<common::luaparam::LuaParam>> {
-        use common::luaparam::LuaParam;
         let path = self.resolver().base_class(class_path_lower);
+        self.call_init_at(&path)
+    }
+
+    /// An NPC's own `unique/<zone>/<class>/<uniqueId>.lua` `init`, the
+    /// way pmeteor's `CreateScriptBindPacket` resolves it: map objects
+    /// keep their background binding there (`DoorServer`'s
+    /// `(false, false, 0, 0, layoutId, instanceId, isOpen)`). `None` when
+    /// the script or its `init` is missing.
+    pub fn call_unique_npc_init(
+        &self,
+        zone_name: &str,
+        class_name: &str,
+        unique_id: &str,
+    ) -> Option<Vec<common::luaparam::LuaParam>> {
+        if zone_name.is_empty() || class_name.is_empty() || unique_id.is_empty() {
+            return None;
+        }
+        let path = self.resolver().npc(zone_name, class_name, unique_id);
+        self.call_init_at(&path)
+    }
+
+    fn call_init_at(&self, path: &Path) -> Option<Vec<common::luaparam::LuaParam>> {
+        use common::luaparam::LuaParam;
         if !path.exists() {
             return None;
         }
-        let (lua, _queue) = self.load_script(&path).ok()?;
+        let (lua, _queue) = self.load_script(path).ok()?;
         let init: mlua::Function = lua.globals().get("init").ok()?;
         // Base-class `init` implementations ignore the npc argument
         // (they return constants); pass Nil rather than building a

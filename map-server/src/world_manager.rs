@@ -779,6 +779,46 @@ pub(crate) fn push_npc_spawn(
     // The old universal populace-shaped tail made every door's
     // `initForEvent` error client-side (40000 dialog → kicked to login)
     // the moment a quest enabled its event condition.
+    // `DoorServer` doors and barriers take their own unique script's
+    // `init`: it carries the background object they move (pmeteor
+    // `CreateScriptBindPacket` resolves the unique script first). A
+    // dungeon copy's gate also carries its current state in the trailing
+    // `isOpen` (`crate::dungeon_gates`). Other map objects keep the base
+    // class tail (`DoorStandard`'s trailing ints are its trigger box).
+    let map_object_init = if class_name == "DoorServer" {
+        lua.and_then(|l| l.call_unique_npc_init(zone_name, &class_name, &character.base.unique_id))
+            .map(|mut tail| {
+                if let Some(open) = crate::dungeon_gates::is_open(actor_id)
+                    && let Some(last) = tail.get_mut(6)
+                {
+                    *last = if open {
+                        common::luaparam::LuaParam::True
+                    } else {
+                        common::luaparam::LuaParam::False
+                    };
+                }
+                tail
+            })
+    } else {
+        None
+    };
+    // `DoorServer` objects without a `server_eventnpc_mapobj` row bind to
+    // the layout and instance ids their `init` returns.
+    let (mapobj_layout_id, mapobj_instance_id) = match (
+        character.base.mapobj_layout_id,
+        character.base.mapobj_instance_id,
+        map_object_init.as_deref(),
+    ) {
+        (0, 0, Some([_, _, _, _, layout, instance, ..])) if class_name == "DoorServer" => {
+            match (layout, instance) {
+                (common::luaparam::LuaParam::Int32(l), common::luaparam::LuaParam::Int32(i)) => {
+                    (*l as u32, *i as u32)
+                }
+                _ => (0, 0),
+            }
+        }
+        (l, i, _) => (l, i),
+    };
     let script_bind_params = {
         let mut p = vec![
             common::luaparam::LuaParam::String(class_path_lower.clone()),
@@ -789,7 +829,10 @@ pub(crate) fn push_npc_spawn(
             common::luaparam::LuaParam::False,
             common::luaparam::LuaParam::Int32(actor_class_id as i32),
         ];
-        match lua.and_then(|l| l.call_npc_init(&class_path_lower)) {
+        match map_object_init
+            .clone()
+            .or_else(|| lua.and_then(|l| l.call_npc_init(&class_path_lower)))
+        {
             Some(tail) if !tail.is_empty() => p.extend(tail),
             // Monster classes without a base script (most open-world
             // families) take the tail every shipped `*Standard` monster
@@ -865,7 +908,7 @@ pub(crate) fn push_npc_spawn(
         0x0,
         false,
     ));
-    if character.base.mapobj_layout_id != 0 && character.base.mapobj_instance_id != 0 {
+    if mapobj_layout_id != 0 && mapobj_instance_id != 0 {
         // MapObj actor (door/gate) — Meteor's `Npc.GetSpawnPackets` sends
         // `SetActorBGProperties` INSTEAD of an appearance packet, binding
         // the actor to a background layout object whose mesh + collision
@@ -875,8 +918,8 @@ pub(crate) fn push_npc_spawn(
         // second.
         subpackets.push(tx::actor::build_set_actor_bg_properties(
             actor_id,
-            character.base.mapobj_instance_id,
-            character.base.mapobj_layout_id,
+            mapobj_instance_id,
+            mapobj_layout_id,
         ));
     } else {
         subpackets.push(tx::actor::build_set_actor_appearance(

@@ -42,12 +42,18 @@ impl PacketProcessor {
         }
         let usage = || {
             let names: Vec<&str> = DUNGEONS.iter().map(|(n, _)| *n).collect();
-            format!("usage: !dungeon <{}> | !dungeon leave", names.join("|"))
+            format!(
+                "usage: !dungeon <{}> | !dungeon leave | !dungeon gate [<name>|all open|close]",
+                names.join("|")
+            )
         };
         let arg = match words.next() {
             Some(a) => a.to_ascii_lowercase(),
             None => return Some(Err(usage())),
         };
+        if arg == "gate" {
+            return Some(self.dungeon_gate_command(handle, words.collect()).await);
+        }
         let function = if arg == "leave" {
             "leave"
         } else {
@@ -83,5 +89,54 @@ impl PacketProcessor {
             }
             Err(e) => Some(Err(format!("!dungeon failed: {e}"))),
         }
+    }
+
+    /// `!dungeon gate` lists the copy's doors and barriers;
+    /// `!dungeon gate <name|all> <open|close>` moves them.
+    async fn dungeon_gate_command(
+        &self,
+        handle: &ActorHandle,
+        args: Vec<&str>,
+    ) -> Result<String, String> {
+        let zone_id = self
+            .world
+            .session(handle.session_id)
+            .await
+            .map_or(handle.zone_id, |s| s.current_zone_id);
+        let instance_id = match self.world.zone(zone_id).await {
+            Some(z) => z.read().await.core.instance_of(handle.actor_id),
+            None => 0,
+        };
+        if instance_id == 0 {
+            return Err("not in a dungeon copy".into());
+        }
+        let gates = crate::runtime::dungeon_fight::gates_of(instance_id);
+        let (name, state) = match args.as_slice() {
+            [] => return Ok(format!("gates: {}", gates.join(", "))),
+            [name, state] => (*name, *state),
+            _ => return Err("usage: !dungeon gate [<name>|all open|close]".into()),
+        };
+        let open = match state.to_ascii_lowercase().as_str() {
+            "open" => true,
+            "close" | "closed" => false,
+            _ => return Err("open or close".into()),
+        };
+        let targets: Vec<String> = if name.eq_ignore_ascii_case("all") {
+            gates
+        } else {
+            gates.into_iter().filter(|g| g.contains(name)).collect()
+        };
+        if targets.is_empty() {
+            return Err(format!("no gate matching {name}"));
+        }
+        for g in &targets {
+            crate::runtime::dungeon_fight::set_gate(&self.world, zone_id, instance_id, g, open)
+                .await;
+        }
+        Ok(format!(
+            "{} {}",
+            if open { "opened" } else { "closed" },
+            targets.join(", ")
+        ))
     }
 }

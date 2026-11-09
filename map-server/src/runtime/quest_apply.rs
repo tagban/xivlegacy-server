@@ -2245,6 +2245,7 @@ pub(crate) async fn apply_content_finished(
     // Its players keep their tag until they warp out (the zone change
     // clears it).
     crate::content_instance::release(active.instance_id);
+    crate::dungeon_gates::release_instance(active.instance_id);
     if active.instance_id != 0 {
         for mut member in world.all_sessions().await {
             if member.id != session_id

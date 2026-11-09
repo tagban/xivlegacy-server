@@ -48,6 +48,7 @@ mod crafting;
 mod data;
 mod database;
 mod director;
+mod dungeon_gates;
 mod event;
 mod gamedata;
 mod gathering;

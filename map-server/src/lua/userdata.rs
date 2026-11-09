@@ -4048,6 +4048,20 @@ impl UserData for LuaContentArea {
             },
         );
 
+        // `contentArea:SpawnMapObjects()` — the parent zone's doors and
+        // barriers (`DoorServer` spawns), one set per copy.
+        methods.add_method("SpawnMapObjects", |_, this, _: ()| {
+            push(
+                &this.queue,
+                LuaCommand::SpawnContentGates {
+                    zone_id: this.parent_zone_id,
+                    instance_id: this.instance_id,
+                    slot: this.slot,
+                },
+            );
+            Ok(())
+        });
+
         // B6: combat-tutorial onUpdate iterators. The script uses:
         //   for player in players do ... end       (stateful iter)
         //   for i = 0, #allies - 1 do ... end       (length-indexed)
