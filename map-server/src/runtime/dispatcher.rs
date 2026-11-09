@@ -4949,7 +4949,7 @@ pub(crate) async fn die_if_defender_fell(
     // The killer's party shares the kill: members close by get the
     // seals, the EXP (with the party modifier) and the quest kill credit,
     // as the killer does.
-    let sharers = kill_sharers(&attacker_handle, defender_actor_id, registry).await;
+    let sharers = kill_sharers(&attacker_handle, defender_actor_id, registry, zone).await;
     let party_size = sharers.len() as u32;
     for h in &sharers {
         award_grand_company_seals(h, mob_level, db_arc).await;
@@ -4997,14 +4997,19 @@ pub(crate) async fn die_if_defender_fell(
 const KILL_SHARE_RANGE: f32 = 50.0;
 
 /// Who shares a kill: the killer, then the members of their party who are
-/// online, alive, in the same zone and within [`KILL_SHARE_RANGE`] of the
-/// monster.
+/// online, alive, in the same zone and content copy as the killer, and
+/// within [`KILL_SHARE_RANGE`] of the monster. (Two copies of a duty stand
+/// at the same coordinates, so the copy check matters; the killer's copy
+/// is used because the dead monster may already have left the area.)
 async fn kill_sharers(
     killer: &crate::runtime::actor_registry::ActorHandle,
     victim_id: u32,
     registry: &ActorRegistry,
+    zone: &Arc<RwLock<Zone>>,
 ) -> Vec<crate::runtime::actor_registry::ActorHandle> {
     let mut out = vec![killer.clone()];
+    let copy_of = |id: u32| async move { zone.read().await.core.instance_of(id) };
+    let killer_copy = copy_of(killer.actor_id).await;
     let at = match registry.get(victim_id).await {
         Some(v) => {
             let c = v.character.read().await;
@@ -5016,7 +5021,7 @@ async fn kill_sharers(
         let Some(h) = registry.get(m).await else {
             continue;
         };
-        if !h.is_player() || h.session_id == 0 {
+        if !h.is_player() || h.session_id == 0 || copy_of(m).await != killer_copy {
             continue;
         }
         let near = {
@@ -6957,16 +6962,18 @@ mod kill_share_tests {
     use super::*;
     use crate::actor::Character;
     use crate::runtime::actor_registry::{ActorHandle, ActorKindTag};
+    use crate::zone::navmesh::StubNavmeshLoader;
 
     /// Who shares a kill: the killer and the party members close to the
-    /// monster; not a member far off, in another zone, dead or offline,
+    /// monster; not a member far off, in another zone or content copy, dead
+    /// or offline,
     /// and never a stranger standing next to it.
     #[tokio::test]
     async fn party_members_close_by_share_the_kill() {
         // Own ids: the party table is process-wide.
-        let (killer, near, far, away, dead, offline, stranger, mob) =
-            (9631u32, 9632, 9633, 9634, 9635, 9636, 9637, 9638);
-        for m in [near, far, away, dead, offline] {
+        let (killer, near, far, away, dead, offline, stranger, mob, copy2) =
+            (9631u32, 9632, 9633, 9634, 9635, 9636, 9637, 9638, 9639);
+        for m in [near, far, away, dead, offline, copy2] {
             crate::parties::join_for_test(killer, m).expect("party");
         }
         let registry = ActorRegistry::new();
@@ -6980,6 +6987,7 @@ mod kill_share_tests {
             (offline, ActorKindTag::Player, 100, 5.0, 100, 0),
             (stranger, ActorKindTag::Player, 100, 1.0, 100, 7),
             (mob, ActorKindTag::BattleNpc, 100, 0.0, 0, 0),
+            (copy2, ActorKindTag::Player, 100, 3.0, 100, 8),
         ];
         for (id, kind, zone, x, hp, session) in actors {
             let mut c = Character::new(id);
@@ -6991,8 +6999,31 @@ mod kill_share_tests {
                 .insert(ActorHandle::new(id, kind, zone, session, c))
                 .await;
         }
+        let zone = Arc::new(RwLock::new(Zone::new(
+            100,
+            "test",
+            1,
+            "/Area/Zone/Test",
+            0,
+            0,
+            0,
+            false,
+            false,
+            false,
+            false,
+            false,
+            Some(&StubNavmeshLoader),
+        )));
+        {
+            // the killer's party is in copy 1; copy2 stands in copy 2
+            let mut z = zone.write().await;
+            for id in [killer, near, far, dead, offline, stranger, mob] {
+                z.core.set_instance(id, 1);
+            }
+            z.core.set_instance(copy2, 2);
+        }
         let killer_handle = registry.get(killer).await.unwrap();
-        let ids: Vec<u32> = kill_sharers(&killer_handle, mob, &registry)
+        let ids: Vec<u32> = kill_sharers(&killer_handle, mob, &registry, &zone)
             .await
             .iter()
             .map(|h| h.actor_id)
