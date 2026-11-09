@@ -1472,6 +1472,10 @@ mod tests {
         let (k, d) = out.mod_deltas[0];
         assert_eq!(k, Modifier::Delay.as_u32());
         assert!((d + 0.6).abs() < 1e-9, "{d}");
+        // No size (a bare `!addeffect`): 20% faster, not a zero delay.
+        let out = run_on_gain(&root(), "haste", &owner(), fx(0.0)).unwrap();
+        let (_, d) = out.mod_deltas[0];
+        assert!((d + 0.6).abs() < 1e-9, "3.0 delay x0.8: {d}");
     }
 
     #[test]
