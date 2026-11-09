@@ -681,6 +681,10 @@ async fn resolve_auto_attack(
     if attacker_actor_id == defender_actor_id {
         return;
     }
+    // A sealed boss room keeps its fight and the rest of the copy apart.
+    if !crate::runtime::dungeon_fight::may_interact(attacker_actor_id, defender_actor_id) {
+        return;
+    }
     let Some(attacker_handle) = registry.get(attacker_actor_id).await else {
         return;
     };
@@ -2652,6 +2656,9 @@ async fn resolve_action(
         zone,
     )
     .await;
+    // A sealed boss room keeps its fight and the rest of the copy apart:
+    // no attacks, heals, buffs or raises across the gate.
+    targets.retain(|t| crate::runtime::dungeon_fight::may_interact(attacker_actor_id, *t));
     // Cover: a single-target melee attack on a Covered actor lands on
     // their paladin.
     if targets.len() == 1
