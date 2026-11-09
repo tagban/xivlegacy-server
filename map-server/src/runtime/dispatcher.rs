@@ -4946,37 +4946,91 @@ pub(crate) async fn die_if_defender_fell(
     // through the rank-cap table eventually reduces returns once
     // the player exceeds the mob level. The richer curve from
     // `BattleUtils.cs:GetEXPReward` is the follow-up.
-    award_grand_company_seals(&attacker_handle, mob_level, db_arc).await;
+    // The killer's party shares the kill: members close by get the
+    // seals, the EXP (with the party modifier) and the quest kill credit,
+    // as the killer does.
+    let sharers = kill_sharers(&attacker_handle, defender_actor_id, registry).await;
+    let party_size = sharers.len() as u32;
+    for h in &sharers {
+        award_grand_company_seals(h, mob_level, db_arc).await;
+    }
 
     // Kill EXP — pmeteor pays it in the same death batch
     // (`BattleNpc.cs:376` → `BattleUtils.AddBattleBonusEXP`), and it
     // likewise fires before the quest-hook chain so `onKillBNpc` sees
     // the post-award EXP state. Tutorial-content kills are gated off
     // inside (their Lua already self-pays a fixed grant).
-    award_battle_exp(
-        &attacker_handle,
-        defender_actor_id,
-        mob_level,
-        registry,
-        world,
-        zone,
-        db_arc,
-        lua,
-    )
-    .await;
+    for h in &sharers {
+        award_battle_exp(
+            h,
+            defender_actor_id,
+            mob_level,
+            party_size,
+            h.actor_id == attacker_id,
+            registry,
+            world,
+            zone,
+            db_arc,
+            lua,
+        )
+        .await;
+    }
 
     let Some(lua) = lua else {
         return;
     };
-    crate::runtime::quest_hook::fire_on_kill_bnpc(
-        &attacker_handle,
-        lua,
-        bnpc_class_id,
-        registry,
-        db_arc,
-        world,
-    )
-    .await;
+    for h in &sharers {
+        crate::runtime::quest_hook::fire_on_kill_bnpc(
+            h,
+            lua,
+            bnpc_class_id,
+            registry,
+            db_arc,
+            world,
+        )
+        .await;
+    }
+}
+
+/// How close (yalms) to a defeated monster a party member must be to
+/// share the kill.
+const KILL_SHARE_RANGE: f32 = 50.0;
+
+/// Who shares a kill: the killer, then the members of their party who are
+/// online, alive, in the same zone and within [`KILL_SHARE_RANGE`] of the
+/// monster.
+async fn kill_sharers(
+    killer: &crate::runtime::actor_registry::ActorHandle,
+    victim_id: u32,
+    registry: &ActorRegistry,
+) -> Vec<crate::runtime::actor_registry::ActorHandle> {
+    let mut out = vec![killer.clone()];
+    let at = match registry.get(victim_id).await {
+        Some(v) => {
+            let c = v.character.read().await;
+            (c.base.zone_id, c.base.position_x, c.base.position_z)
+        }
+        None => return out,
+    };
+    for m in crate::parties::others(killer.actor_id) {
+        let Some(h) = registry.get(m).await else {
+            continue;
+        };
+        if !h.is_player() || h.session_id == 0 {
+            continue;
+        }
+        let near = {
+            let c = h.character.read().await;
+            c.is_alive()
+                && c.base.zone_id == at.0
+                && ((c.base.position_x - at.1).powi(2) + (c.base.position_z - at.2).powi(2)).sqrt()
+                    <= KILL_SHARE_RANGE
+        };
+        if near {
+            out.push(h);
+        }
+    }
+    out
 }
 
 /// #28 S4.1 — the all-hostiles-dead gate for scripted content (the
@@ -5226,14 +5280,17 @@ const SELF_PAYING_CONTENT_SCRIPTS: [&str; 3] = [
 /// kills; the refresh stores `tier + 1` with the *previous* tier's
 /// window as duration (BattleUtils.cs:995-1005). EXP goes to the
 /// killer's CURRENT class — pmeteor `attacker.GetClass()`. Link bonus
-/// stays 0 until LinkCount mob-mod plumbing lands; party distribution
-/// (0.667 modifier paid to every member) is deferred with real parties
-/// — the killer is paid solo.
+/// stays 0 until LinkCount mob-mod plumbing lands. In a party every
+/// member sharing the kill ([`kill_sharers`]) is paid with the flat 0.667
+/// party modifier (`party_size` > 1); only the `killer` gets the
+/// "defeats" line.
 #[allow(clippy::too_many_arguments)]
 async fn award_battle_exp(
     attacker_handle: &crate::runtime::actor_registry::ActorHandle,
     defender_actor_id: u32,
     mob_level: i16,
+    party_size: u32,
+    killer: bool,
     registry: &ActorRegistry,
     world: &WorldManager,
     zone: &Arc<RwLock<Zone>>,
@@ -5256,7 +5313,7 @@ async fn award_battle_exp(
         let c = attacker_handle.character.read().await;
         (c.chara.level, c.chara.class.clamp(0, u8::MAX as i16) as u8)
     };
-    let base = crate::battle::exp::base_kill_exp(player_level, mob_level, 1) as i32;
+    let base = crate::battle::exp::base_kill_exp(player_level, mob_level, party_size) as i32;
     if base == 0 {
         // dlvl <= -20: no EXP and no message (BattleUtils.cs:876).
         return;
@@ -5318,12 +5375,17 @@ async fn award_battle_exp(
     // (`CommandResultContainer.CombineLists`); garlemald resolves the
     // death after the attack batch has shipped, so they ride their own
     // X01/X10 container right behind it.
-    let mut rows = vec![tx::actor_battle::CommandResult {
-        target_id: defender_actor_id,
-        worldmaster_text_id: 30108, // "<attacker> defeats <target>."
-        hit_num: 1,
-        ..Default::default()
-    }];
+    // The "defeats" line is the killer's; a party member sharing the
+    // kill only gets their own chain line.
+    let mut rows = Vec::new();
+    if killer {
+        rows.push(tx::actor_battle::CommandResult {
+            target_id: defender_actor_id,
+            worldmaster_text_id: 30108, // "<attacker> defeats <target>."
+            hit_num: 1,
+            ..Default::default()
+        });
+    }
     if chain_tier > 0 {
         rows.push(tx::actor_battle::CommandResult {
             target_id: attacker_handle.actor_id,
