@@ -549,11 +549,8 @@ impl PacketProcessor {
                         *slot = *v;
                     }
                 }
-                let active = if character.chara.current_job > 0 {
-                    character.chara.current_job as usize
-                } else {
-                    character.chara.class.max(0) as usize
-                };
+                // A job has its base class's level (levels are per class).
+                let active = character.chara.class.max(0) as usize;
                 if let Some(lvl) = character.battle_save.skill_level.get(active).copied()
                     && lvl > 0
                 {
