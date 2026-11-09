@@ -1181,6 +1181,9 @@ impl PacketProcessor {
         }
         // Then the quests on offer, so their givers show the marker.
         self.refresh_quest_offers(&handle).await;
+        // Back into the party they dropped out of (a logout or a lost
+        // connection), if it's still around.
+        crate::parties::on_login(&self.registry, &self.world, &self.db, actor_id).await;
 
         Ok(())
     }

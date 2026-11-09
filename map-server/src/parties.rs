@@ -69,7 +69,20 @@ struct Table {
     /// under instead of the login one, which their client has deleted and
     /// won't take back.
     solo: HashMap<u32, u64>,
+    /// Players who dropped out of a party by logging out (or losing the
+    /// connection): who was in it with them, the leader first, and when.
+    away: HashMap<u32, Away>,
 }
+
+#[derive(Debug, Clone)]
+struct Away {
+    others: Vec<u32>,
+    at_secs: u64,
+}
+
+/// A player who logs back in within this many seconds of dropping out of
+/// a party is put back in it.
+pub const REJOIN_WINDOW_SECS: u64 = 10 * 60;
 
 fn table() -> std::sync::MutexGuard<'static, Table> {
     static TABLE: OnceLock<Mutex<Table>> = OnceLock::new();
@@ -619,16 +632,85 @@ pub async fn on_logout(registry: &ActorRegistry, world: &WorldManager, db: &Data
     for (invitee, inv) in lapsed {
         delete_relation(world, registry, inv, invitee).await;
     }
+    let others_before = others(actor);
     let before = remove(actor);
     if before.is_empty() {
         return;
     }
+    note_away(actor, others_before, common::utils::unix_timestamp() as u64);
     let name = name_of(db, actor).await;
     let rest: Vec<u32> = before.into_iter().filter(|&m| m != actor).collect();
     tell_all(world, registry, &rest, 30431, vec![LuaParam::String(name)]).await;
     for m in rest {
         refresh(registry, world, m).await;
     }
+}
+
+fn note_away(actor: u32, others: Vec<u32>, now_secs: u64) {
+    table().away.insert(
+        actor,
+        Away {
+            others,
+            at_secs: now_secs,
+        },
+    );
+}
+
+/// Whose party `actor` goes back into on login: a former party member
+/// who is online (`online`) and whose party is still made up of the old
+/// party only, the old leader first. The leader of that party, or the
+/// member themself if they are on their own now. None when the window
+/// has passed, nobody is left, or the party has moved on.
+fn rejoin_host(actor: u32, now_secs: u64, online: &[u32]) -> Option<u32> {
+    let away = table().away.remove(&actor)?;
+    if now_secs.saturating_sub(away.at_secs) > REJOIN_WINDOW_SECS || table().of.contains_key(&actor)
+    {
+        return None;
+    }
+    away.others.iter().copied().find_map(|m| {
+        if !online.contains(&m) {
+            return None;
+        }
+        let theirs = members_of(m);
+        let same = theirs.iter().all(|x| away.others.contains(x));
+        (same && theirs.len() < MAX_MEMBERS).then(|| theirs[0])
+    })
+}
+
+/// A player logged in: back into the party they dropped out of, if it is
+/// still there (see [`REJOIN_WINDOW_SECS`]).
+pub async fn on_login(registry: &ActorRegistry, world: &WorldManager, db: &Database, actor: u32) {
+    let candidates: Vec<u32> = match table().away.get(&actor) {
+        Some(a) => a.others.clone(),
+        None => return,
+    };
+    let mut online = Vec::new();
+    for m in candidates {
+        if let Some(h) = registry.get(m).await
+            && h.is_player()
+            && world.client(h.session_id).await.is_some()
+        {
+            online.push(m);
+        }
+    }
+    let Some(host) = rejoin_host(actor, common::utils::unix_timestamp() as u64, &online) else {
+        return;
+    };
+    let Some(members) = join(host, actor) else {
+        return;
+    };
+    tracing::info!(actor, party = ?members, "back in the party after logging in again");
+    for &m in &members {
+        refresh(registry, world, m).await;
+    }
+    tell_all(
+        world,
+        registry,
+        &members,
+        30427,
+        vec![LuaParam::String(name_of(db, actor).await)],
+    )
+    .await;
 }
 
 #[cfg(test)]
@@ -673,6 +755,41 @@ mod tests {
         assert_eq!(members_of(9201), vec![9202, 9201]);
         assert!(is_leader(9202));
         dissolve(9202);
+    }
+
+    #[test]
+    fn rejoin_after_a_relog() {
+        // a party of two: the member drops, the party dissolves
+        join(9611, 9612);
+        let others_before = others(9612);
+        remove(9612);
+        note_away(9612, others_before, 1000);
+        // back in time, the old leader online: rejoins under them
+        assert_eq!(rejoin_host(9612, 1000 + 60, &[9611]), Some(9611));
+        assert_eq!(join(9611, 9612), Some(vec![9611, 9612]));
+        dissolve(9611);
+    }
+
+    #[test]
+    fn no_rejoin_late_or_into_a_new_party() {
+        join(9621, 9622);
+        join(9621, 9623);
+        let others_before = others(9623);
+        remove(9623);
+        // too late
+        note_away(9623, others_before.clone(), 1000);
+        assert_eq!(
+            rejoin_host(9623, 1000 + REJOIN_WINDOW_SECS + 1, &[9621, 9622]),
+            None
+        );
+        // nobody from the old party online
+        note_away(9623, others_before.clone(), 1000);
+        assert_eq!(rejoin_host(9623, 1001, &[]), None);
+        // the old party took someone else in: not theirs any more
+        join(9621, 9624);
+        note_away(9623, others_before, 1000);
+        assert_eq!(rejoin_host(9623, 1001, &[9621, 9622]), None);
+        dissolve(9621);
     }
 
     #[test]
