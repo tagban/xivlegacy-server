@@ -45,6 +45,9 @@ pub const PKG_MELDREQUEST: u16 = 5;
 pub const PKG_BAZAAR: u16 = 7;
 pub const PKG_CURRENCY_CRYSTALS: u16 = 99;
 pub const PKG_KEYITEMS: u16 = 100;
+/// The job items: soul crystals (and the materia melders). The client's
+/// gear window reads its soul crystal list from this package (101).
+pub const PKG_JOB_ITEMS: u16 = 101;
 pub const PKG_EQUIPMENT: u16 = 0x00FE;
 pub const PKG_TRADE: u16 = 0x00FD;
 pub const PKG_EQUIPMENT_OTHERPLAYER: u16 = 0x00F9;
@@ -52,6 +55,7 @@ pub const PKG_EQUIPMENT_OTHERPLAYER: u16 = 0x00F9;
 pub const CAP_NORMAL: u16 = 200;
 pub const CAP_CURRENCY: u16 = 320;
 pub const CAP_KEYITEMS: u16 = 500;
+pub const CAP_JOB_ITEMS: u16 = 10;
 pub const CAP_LOOT: u16 = 10;
 pub const CAP_TRADE: u16 = 4;
 pub const CAP_MELDREQUEST: u16 = 4;
@@ -65,6 +69,7 @@ pub fn default_capacity(code: u16) -> u16 {
         PKG_NORMAL => CAP_NORMAL,
         PKG_CURRENCY_CRYSTALS => CAP_CURRENCY,
         PKG_KEYITEMS => CAP_KEYITEMS,
+        PKG_JOB_ITEMS => CAP_JOB_ITEMS,
         PKG_LOOT => CAP_LOOT,
         PKG_TRADE => CAP_TRADE,
         PKG_MELDREQUEST => CAP_MELDREQUEST,
@@ -820,6 +825,7 @@ impl std::fmt::Display for ItemPackage {
             PKG_BAZAAR => "Bazaar",
             PKG_CURRENCY_CRYSTALS => "Currency",
             PKG_KEYITEMS => "KeyItems",
+            PKG_JOB_ITEMS => "JobItems",
             PKG_EQUIPMENT => "Equipment",
             PKG_TRADE => "Trade",
             PKG_EQUIPMENT_OTHERPLAYER => "CheckEquip",

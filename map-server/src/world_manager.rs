@@ -2570,6 +2570,8 @@ impl WorldManager {
             (200u16, 0u16),
             (320, 99),
             (500, 100),
+            // Soul crystals: the gear window's job list.
+            (10, 101),
             (10, 7),
             (4, 5),
             (10, 4),

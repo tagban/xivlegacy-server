@@ -4826,8 +4826,12 @@ pub async fn apply_add_item(
     // Key items live in their own KEYITEMS bag (package 100). They are
     // unique / non-stacking, so the grant is idempotent: `add_key_item`
     // inserts at most one row and reports whether it was newly added.
-    if item_package == crate::inventory::PKG_KEYITEMS {
-        match db.add_key_item(actor_id, item_id).await {
+    // Soul crystals (package 101) are unique the same way.
+    if item_package == crate::inventory::PKG_KEYITEMS
+        || item_package == crate::inventory::PKG_JOB_ITEMS
+    {
+        let capacity = crate::inventory::default_capacity(item_package);
+        match db.add_unique_item(actor_id, item_id, item_package).await {
             Ok(true) => {
                 tracing::info!(actor = actor_id, item = item_id, "AddKeyItem applied",);
                 // Live no-wipe refresh of the KEYITEMS bag, same shape as
@@ -4836,8 +4840,8 @@ pub async fn apply_add_item(
                 if let Some(world) = world {
                     send_inventory_package_update(
                         actor_id,
-                        crate::inventory::PKG_KEYITEMS,
-                        crate::inventory::CAP_KEYITEMS,
+                        item_package,
+                        capacity,
                         Some(item_id),
                         registry,
                         world,

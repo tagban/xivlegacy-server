@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1824 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1826 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -1828,4 +1828,6 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (29958, 1090808, 'cassiopeia_hollow_entrance1', 130, '', 0, 1118, 26.3, -762, 0.0, 0, 0, NULL),
 (29959, 1090809, 'cassiopeia_hollow_exit1', 132, '', 0, 1131.0, 20.15, -726.0, 0.0, 0, 0, NULL),
 (29960, 1090810, 'mistbeard_cove_entrance1', 129, '', 0, -1750, 21.5, -1452, 0.0, 0, 0, NULL),
-(29961, 1090811, 'mistbeard_cove_exit1', 131, '', 0, -1815.0, -18.25, -1496.0, 0.0, 0, 0, NULL);
+(29961, 1090811, 'mistbeard_cove_exit1', 131, '', 0, -1815.0, -18.25, -1496.0, 0.0, 0, 0, NULL),
+(30100, 1060028, 'war0j1_curious_gorge', 172, '', 0, -1282.0, 40.0, -62.0, 0.6, 0, 0, NULL),
+(30101, 1090900, 'war0j1_antling_nest_trigger', 172, '', 0, -1250.0, 56.0, -122.0, 0.0, 0, 0, NULL);

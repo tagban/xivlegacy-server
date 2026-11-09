@@ -106,6 +106,37 @@ fn class_gate(script_name: &str, class: i16) -> bool {
     }
 }
 
+/// Job quests (`war0j1`-`war0j6` ...): the job, its class and the second
+/// class Job 1 asks for at level 15 (the client's own hint,
+/// processEventStart_Hint: Marauder 30 and Gladiator 15 for the warrior).
+const JOB_QUESTS: &[(&str, i16, u16, usize)] = &[
+    ("war0j", 4, 17, 3),
+    ("mnk0j", 2, 15, 8),
+    ("whm0j", 23, 27, 3),
+    ("blm0j", 22, 26, 2),
+    ("pld0j", 3, 16, 23),
+    ("brd0j", 7, 18, 23),
+    ("drg0j", 8, 19, 2),
+];
+
+/// Job 1 is offered on the job's class, with the second class at 15 and
+/// no job taken up; the later job quests only to the job itself.
+fn job_gate(script_name: &str, class: i16, current_job: u16, skill_level: &[i16]) -> bool {
+    let Some((prefix, base_class, job, second)) = JOB_QUESTS
+        .iter()
+        .find(|(prefix, ..)| script_name.starts_with(prefix) && script_name.len() == 6)
+    else {
+        return true;
+    };
+    if script_name == format!("{prefix}1") {
+        current_job == 0
+            && class == *base_class
+            && skill_level.get(*second).copied().unwrap_or(0) >= 15
+    } else {
+        current_job == *job
+    }
+}
+
 fn company_gate(script_name: &str, chara: &crate::actor::CharaState) -> bool {
     use crate::actor::gc;
     let (nation, kind) = if let Some(rest) = script_name.strip_prefix("com") {
@@ -171,6 +202,12 @@ impl PacketProcessor {
                     is_offerable(&name, !needs.is_empty())
                         && company_gate(&name, &c.chara)
                         && class_gate(&name, c.chara.class)
+                        && job_gate(
+                            &name,
+                            c.chara.class,
+                            c.chara.current_job,
+                            &c.battle_save.skill_level,
+                        )
                         && !journal.has(m.id)
                         && !journal.is_completed(m.id)
                         && level >= m.min_level
@@ -423,5 +460,30 @@ mod tests {
         assert!(!company_gate("gcu101", &sworn));
         // Other quests are untouched.
         assert!(company_gate("man300", &sworn));
+    }
+}
+
+#[cfg(test)]
+mod job_gate_tests {
+    use super::job_gate;
+
+    #[test]
+    fn job_one_needs_the_class_and_a_second_class_at_15() {
+        let mut levels = vec![0i16; 64];
+        levels[4] = 30;
+        assert!(!job_gate("war0j1", 4, 0, &levels), "no gladiator 15");
+        levels[3] = 15;
+        assert!(job_gate("war0j1", 4, 0, &levels));
+        assert!(!job_gate("war0j1", 3, 0, &levels), "on another class");
+        assert!(!job_gate("war0j1", 4, 17, &levels), "already the warrior");
+    }
+
+    #[test]
+    fn later_job_quests_need_the_job() {
+        let levels = vec![50i16; 64];
+        assert!(job_gate("war0j2", 4, 17, &levels));
+        assert!(!job_gate("war0j2", 4, 0, &levels));
+        assert!(!job_gate("mnk0j3", 2, 17, &levels));
+        assert!(job_gate("gla306", 3, 0, &levels), "other quests pass");
     }
 }
