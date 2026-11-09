@@ -5632,7 +5632,23 @@ pub(crate) async fn apply_revive(
     let bytes = sub.to_bytes();
     send_to_self_if_player(registry, world, owner_actor_id, bytes.clone()).await;
     broadcast_around_actor(world, registry, zone, owner_actor_id, bytes).await;
+    if handle.is_player() {
+        // The state change alone leaves the client lying in the
+        // knocked-out pose, unable to move: it stands up on the
+        // getting-up animation (the one TeleportCommand's knocked-out
+        // Return plays).
+        let bytes = crate::packets::send::actor::build_play_animation_on_actor(
+            owner_actor_id,
+            GET_UP_ANIMATION,
+        )
+        .to_bytes();
+        send_to_self_if_player(registry, world, owner_actor_id, bytes.clone()).await;
+        broadcast_around_actor(world, registry, zone, owner_actor_id, bytes).await;
+    }
 }
+
+/// Animation a revived player plays to get back on their feet.
+pub const GET_UP_ANIMATION: u32 = 0x0100_0066;
 
 /// GM `settp`: set the actor's TP and push the pool bundle so the client's
 /// gauge (and its weaponskill icons) follow at once.

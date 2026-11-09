@@ -131,6 +131,22 @@ function onEventStarted(player, actor, triggerName, isTeleport)
 			player:PlayAnimation(0x4000FFB);
 			player:SendGameMessage(worldMaster, 34104, 0x20);
 
+			-- Inside a dungeon copy, Return brings you back to the
+			-- dungeon's entrance (in the same copy) with HP and MP whole,
+			-- instead of out to your home point. Revive() stands a
+			-- knocked-out player back up on their client (it does nothing
+			-- for one who isn't down; the script's state and HP snapshots
+			-- can't tell reliably).
+			local entry = dungeonEntrance(player:GetZoneID());
+			if (entry ~= nil) then
+				player:Revive();
+				player:SetHP(player:GetMaxHP());
+				player:SetMP(player:GetMaxMP());
+				player:EndEvent();
+				GetWorldManager():DoPlayerMoveInZone(player, entry[1], entry[2], entry[3], entry[4], 0x11);
+				return;
+			end
+
 			--bandaid fix for returning while dead, missing things like weakness and the heal number
 			if (player:GetHP() == 0) then
 				-- `:GetMaxHP()` — the inherited `.GetMaxHP()` dot-call passed
@@ -140,18 +156,6 @@ function onEventStarted(player, actor, triggerName, isTeleport)
 				player:SetHP(player:GetMaxHP());
 				player:ChangeState(0);
 				player:PlayAnimation(0x01000066);
-			end
-
-			-- Inside a dungeon copy, Return brings you back to the
-			-- dungeon's entrance (in the same copy) with HP and MP whole,
-			-- instead of out to your home point.
-			local entry = dungeonEntrance(player:GetZoneID());
-			if (entry ~= nil) then
-				player:SetHP(player:GetMaxHP());
-				player:SetMP(player:GetMaxMP());
-				player:EndEvent();
-				GetWorldManager():DoPlayerMoveInZone(player, entry[1], entry[2], entry[3], entry[4], 0x11);
-				return;
 			end
 
 			-- Same 0x0131-before-0x00E2 ordering as the teleport branch
