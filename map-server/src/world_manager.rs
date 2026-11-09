@@ -3199,11 +3199,9 @@ impl WorldManager {
         // — pmeteor never party-adds them; the party trio below stays
         // the player's real (solo) party. (Garlemald-Server #46.)
         if let Some(active) = session.active_content_script.as_ref() {
-            let roster: Vec<u32> = session
-                .transient_director_members
-                .get(&active.director_actor_id)
-                .cloned()
-                .unwrap_or_default();
+            // A party member's comes from the owner's.
+            let roster: Vec<u32> =
+                crate::runtime::quest_apply::content_group_roster(self, &session, actor_id).await;
             if roster.is_empty() {
                 // A content script whose director has no members yet
                 // (pre-AddMember). An empty X08 is the malformed shape

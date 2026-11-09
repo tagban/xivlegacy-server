@@ -18,7 +18,7 @@
 //! The registry is synchronous (a mutex) because the Lua bindings must hand
 //! back actor ids before their commands are applied.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Mutex, OnceLock};
 
@@ -42,6 +42,10 @@ struct Registry {
     /// zone -> instance id per slot (0 = free)
     slots: HashMap<u32, [u32; MAX_SLOTS as usize]>,
     by_id: HashMap<u32, Instance>,
+    /// Copies entered as a party (`DoZoneChangeContentParty`: the
+    /// dungeons and the Grand Company duties). Leaving their zone by any
+    /// zone change leaves the copy.
+    party: HashSet<u32>,
 }
 
 fn registry() -> &'static Mutex<Registry> {
@@ -64,12 +68,27 @@ pub fn allocate(zone_id: u32) -> Option<Instance> {
 /// Close a copy, freeing its slot. Unknown ids are ignored.
 pub fn release(instance_id: u32) {
     let mut r = registry().lock().unwrap_or_else(|e| e.into_inner());
+    r.party.remove(&instance_id);
     if let Some(inst) = r.by_id.remove(&instance_id)
         && let Some(slots) = r.slots.get_mut(&inst.zone_id)
         && slots[inst.slot as usize] == instance_id
     {
         slots[inst.slot as usize] = 0;
     }
+}
+
+/// Mark a live copy as entered by a party (`DoZoneChangeContentParty`).
+pub fn mark_party(instance_id: u32) {
+    let mut r = registry().lock().unwrap_or_else(|e| e.into_inner());
+    if r.by_id.contains_key(&instance_id) {
+        r.party.insert(instance_id);
+    }
+}
+
+/// Whether a live copy was entered by a party ([`mark_party`]).
+pub fn is_party(instance_id: u32) -> bool {
+    let r = registry().lock().unwrap_or_else(|e| e.into_inner());
+    r.party.contains(&instance_id)
 }
 
 pub fn get(instance_id: u32) -> Option<Instance> {
@@ -130,6 +149,18 @@ mod tests {
         assert_ne!(a.id, b.id);
         assert!(get(a.id).is_none());
         release(b.id);
+    }
+
+    #[test]
+    fn party_marks_live_with_the_copy() {
+        let a = allocate(9004).unwrap();
+        assert!(!is_party(a.id));
+        mark_party(a.id);
+        assert!(is_party(a.id));
+        release(a.id);
+        assert!(!is_party(a.id));
+        mark_party(a.id);
+        assert!(!is_party(a.id), "a closed copy can't be marked");
     }
 
     #[test]

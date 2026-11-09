@@ -19484,3 +19484,191 @@ async fn forget_actor_for_all_sessions_drops_respawned_monster() {
         "a session without it hears nothing"
     );
 }
+
+/// A Toto-Rak copy entered as a party: the owner and one of the copy's
+/// monsters on the director's roster, then the member joined to it.
+/// Session ids are the actor ids. Returns (world, registry, the owner's
+/// active content).
+async fn party_copy_scene(
+    owner: u32,
+    member: u32,
+    monster: u32,
+) -> (
+    Arc<WorldManager>,
+    Arc<ActorRegistry>,
+    crate::data::ActiveContentScript,
+) {
+    use crate::data::Session as MapSession;
+    let world = Arc::new(WorldManager::new());
+    let registry = Arc::new(ActorRegistry::new());
+    let inst = crate::content_instance::allocate(159).expect("slot");
+    crate::content_instance::mark_party(inst.id);
+    let director = 0x64F8_0003;
+    let active = crate::data::ActiveContentScript {
+        parent_zone_id: 159,
+        area_name: "Totorak".to_string(),
+        area_class_path: "/Area/PrivateArea/Content/PrivateAreaMasterSimpleContent".to_string(),
+        director_name: "Occupancy/RaidFst0Dungeon03".to_string(),
+        director_actor_id: director,
+        content_area_actor_id: 0,
+        content_script: "SimpleContentDungeonTotorak".to_string(),
+        warp_complete: true,
+        spawned_actor_ids: vec![monster],
+        instance_id: inst.id,
+        party_member: false,
+    };
+    for (id, session) in [(owner, owner), (member, member)] {
+        let mut c = Character::new(id);
+        c.base.zone_id = 159;
+        registry
+            .insert(ActorHandle::new(id, ActorKindTag::Player, 159, session, c))
+            .await;
+    }
+    let mut c = Character::new(monster);
+    c.base.zone_id = 159;
+    registry
+        .insert(ActorHandle::new(
+            monster,
+            ActorKindTag::BattleNpc,
+            159,
+            0,
+            c,
+        ))
+        .await;
+    let mut owner_session = MapSession {
+        id: owner,
+        current_zone_id: 159,
+        active_content_script: Some(active.clone()),
+        ..MapSession::default()
+    };
+    owner_session
+        .transient_director_members
+        .insert(director, vec![owner, monster]);
+    world.upsert_session(owner_session).await;
+    world
+        .upsert_session(MapSession {
+            id: member,
+            current_zone_id: 159,
+            ..MapSession::default()
+        })
+        .await;
+    crate::runtime::quest_apply::join_party_to_copy(
+        &registry,
+        &world,
+        owner,
+        &active,
+        Some(&crate::data::PendingKickEvent {
+            trigger_actor_id: owner,
+            owner_actor_id: active.director_actor_id,
+            event_name: "noticeEvent".to_string(),
+            args: Vec::new(),
+        }),
+        &[(member, member)],
+    )
+    .await;
+    (world, registry, active)
+}
+
+/// A member entering the leader's copy gets a member's view of it; the
+/// director's roster stays the owner's alone (the kill gate fires
+/// `battleComplete` on whichever session holds it).
+#[tokio::test]
+async fn party_member_joins_the_copy_as_a_member() {
+    let (owner, member, monster) = (9501u32, 9502u32, 0x44FC_0001u32);
+    let (world, _registry, active) = party_copy_scene(owner, member, monster).await;
+    let dir = active.director_actor_id;
+    let o = world.session(owner).await.unwrap();
+    assert_eq!(o.transient_director_members[&dir], vec![owner, monster]);
+    let m = world.session(member).await.unwrap();
+    let ma = m
+        .active_content_script
+        .as_ref()
+        .expect("member in the copy");
+    assert!(ma.party_member);
+    assert_eq!(ma.instance_id, active.instance_id);
+    assert!(ma.spawned_actor_ids.is_empty(), "spawns stay the owner's");
+    assert!(!m.transient_director_members.contains_key(&dir));
+    let kick = m
+        .pending_kick_event
+        .as_ref()
+        .expect("their own director kick");
+    assert_eq!(kick.trigger_actor_id, member);
+    assert_eq!(kick.owner_actor_id, dir);
+    assert_eq!(
+        crate::runtime::quest_apply::content_group_roster(&world, &m, member).await,
+        vec![owner, monster, member],
+        "their content group comes from the owner's roster",
+    );
+    crate::content_instance::release(active.instance_id);
+}
+
+/// A member leaving drops their view of the copy; the copy goes on.
+#[tokio::test]
+async fn party_member_leaving_keeps_the_copy_up() {
+    let (owner, member, monster) = (9511u32, 9512u32, 0x44FC_0002u32);
+    let (world, registry, active) = party_copy_scene(owner, member, monster).await;
+    let dir = active.director_actor_id;
+    crate::runtime::quest_apply::apply_leave_content(member, &registry, &world, None).await;
+    let m = world.session(member).await.unwrap();
+    assert!(m.active_content_script.is_none());
+    let o = world.session(owner).await.unwrap();
+    assert!(o.active_content_script.is_some(), "the copy goes on");
+    assert_eq!(o.transient_director_members[&dir], vec![owner, monster]);
+    assert!(crate::content_instance::get(active.instance_id).is_some());
+    crate::content_instance::release(active.instance_id);
+}
+
+/// The owner leaving hands the copy to the member still inside: its
+/// spawns and the director's roster (less the owner) go with it, so the
+/// kill gate now fires on the heir.
+#[tokio::test]
+async fn party_copy_owner_leaving_hands_over_the_roster() {
+    let (owner, member, monster) = (9521u32, 9522u32, 0x44FC_0003u32);
+    let (world, registry, active) = party_copy_scene(owner, member, monster).await;
+    let dir = active.director_actor_id;
+    crate::runtime::quest_apply::apply_leave_content(owner, &registry, &world, None).await;
+    let o = world.session(owner).await.unwrap();
+    assert!(o.active_content_script.is_none());
+    assert!(!o.transient_director_members.contains_key(&dir));
+    let m = world.session(member).await.unwrap();
+    let ma = m
+        .active_content_script
+        .as_ref()
+        .expect("heir keeps the copy");
+    assert!(!ma.party_member, "the heir runs the copy");
+    assert_eq!(ma.spawned_actor_ids, vec![monster]);
+    assert_eq!(m.transient_director_members[&dir], vec![monster]);
+    assert!(crate::content_instance::get(active.instance_id).is_some());
+    crate::content_instance::release(active.instance_id);
+}
+
+/// Any zone change out of a party copy's zone leaves the copy; one inside
+/// that zone, or out of a quest duty's copy, doesn't.
+#[test]
+fn zone_changes_out_of_a_party_copy_leave_it() {
+    let inst = crate::content_instance::allocate(159).expect("slot");
+    let mut active = crate::data::ActiveContentScript {
+        parent_zone_id: 159,
+        area_name: "Totorak".to_string(),
+        area_class_path: String::new(),
+        director_name: String::new(),
+        director_actor_id: 0,
+        content_area_actor_id: 0,
+        content_script: String::new(),
+        warp_complete: true,
+        spawned_actor_ids: Vec::new(),
+        instance_id: inst.id,
+        party_member: false,
+    };
+    use crate::runtime::quest_apply::leaves_party_copy;
+    assert!(!leaves_party_copy(&active, 154), "a quest duty's copy");
+    crate::content_instance::mark_party(inst.id);
+    assert!(leaves_party_copy(&active, 154));
+    assert!(
+        !leaves_party_copy(&active, 159),
+        "a warp inside the dungeon"
+    );
+    active.instance_id = 0;
+    assert!(!leaves_party_copy(&active, 154), "untracked content");
+    crate::content_instance::release(inst.id);
+}

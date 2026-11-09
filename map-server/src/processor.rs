@@ -3330,6 +3330,7 @@ impl PacketProcessor {
         // before the warp (by the entrance), online.
         let mut members: Vec<(u32, u32)> = Vec::new();
         if with_party && instance_id != 0 {
+            crate::content_instance::mark_party(instance_id);
             let from_zone = match self.registry.get(player_id).await {
                 Some(h) => h.character.read().await.base.zone_id,
                 None => 0,
@@ -3344,6 +3345,16 @@ impl PacketProcessor {
                 }
             }
         }
+        // The owner's opening kick of the director, before their warp
+        // spends it: the members get their own.
+        let owner_kick = match self.registry.get(player_id).await {
+            Some(h) if !members.is_empty() => self
+                .world
+                .session(h.session_id)
+                .await
+                .and_then(|s| s.pending_kick_event),
+            _ => None,
+        };
         self.apply_do_zone_change_content_one(
             player_id,
             parent_zone_id,
@@ -3371,16 +3382,16 @@ impl PacketProcessor {
         let Some(owner_active) = owner_active.filter(|a| a.instance_id == instance_id) else {
             return;
         };
-        for (member_id, session_id) in members {
-            if let Some(mut snap) = self.world.session(session_id).await {
-                snap.active_content_script = Some(crate::data::ActiveContentScript {
-                    spawned_actor_ids: Vec::new(),
-                    party_member: true,
-                    ..owner_active.clone()
-                });
-                snap.content_warp_acked = false;
-                self.world.upsert_session(snap).await;
-            }
+        crate::runtime::quest_apply::join_party_to_copy(
+            &self.registry,
+            &self.world,
+            player_id,
+            &owner_active,
+            owner_kick.as_ref(),
+            &members,
+        )
+        .await;
+        for (member_id, _) in members {
             self.apply_do_zone_change_content_one(
                 member_id,
                 parent_zone_id,
@@ -3653,11 +3664,13 @@ impl PacketProcessor {
                 // Build the GroupMember rows from the director's
                 // transient roster (populated by DirectorAddMember
                 // earlier in the doContentArea chain).
-                let roster: Vec<u32> = snap
-                    .transient_director_members
-                    .get(&active.director_actor_id)
-                    .cloned()
-                    .unwrap_or_default();
+                // A party member's comes from the owner's.
+                let roster: Vec<u32> = crate::runtime::quest_apply::content_group_roster(
+                    &self.world,
+                    &snap,
+                    player_id,
+                )
+                .await;
                 let mut members: Vec<crate::packets::send::groups::GroupMember> =
                     Vec::with_capacity(roster.len());
                 for &mid in &roster {
