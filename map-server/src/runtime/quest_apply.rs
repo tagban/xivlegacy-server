@@ -1347,6 +1347,7 @@ async fn apply_director_add_member(
     for snap in sessions {
         if let Some(active) = snap.active_content_script.as_ref()
             && active.director_actor_id == director_actor_id
+            && !active.party_member
         {
             target = Some(snap);
             break;
@@ -2354,6 +2355,148 @@ async fn close_content_timer(player_id: u32, registry: &ActorRegistry, world: &W
     .await;
 }
 
+/// Party members entering their leader's content copy
+/// (`DoZoneChangeContentParty`), before their warps: each member's session
+/// gets a member's view of the owner's content state (`party_member`), so
+/// the copy's actors stream to them while its hooks (`onUpdate`, the kill
+/// gate, the teardown) keep running once, on the owner's session, which
+/// alone holds the director's roster. `members` holds (actor id, session
+/// id) pairs.
+///
+/// `kick` is the owner's opening kick of the copy's director (dungeon.lua's
+/// `noticeEvent`): each member gets its own, so the director's
+/// `onEventStarted` runs for them too. The Grand Company duties' directors
+/// open the duty timer there and, on the win, advance the player's quest,
+/// play the closing scene and take them out; without it a member had no
+/// timer, no quest step and no way out. The owner's content mods (the
+/// `MinimumHpLock` the duties set in `onCreate`) carry over likewise.
+pub(crate) async fn join_party_to_copy(
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    owner_id: u32,
+    owner_active: &crate::data::ActiveContentScript,
+    kick: Option<&crate::data::PendingKickEvent>,
+    members: &[(u32, u32)],
+) {
+    let hp_lock = match registry.get(owner_id).await {
+        Some(h) => h
+            .character
+            .read()
+            .await
+            .chara
+            .mods
+            .get(crate::actor::Modifier::MinimumHpLock),
+        None => 0.0,
+    };
+    for &(member_id, session_id) in members {
+        if let Some(mut snap) = world.session(session_id).await {
+            snap.active_content_script = Some(crate::data::ActiveContentScript {
+                spawned_actor_ids: Vec::new(),
+                party_member: true,
+                ..owner_active.clone()
+            });
+            snap.content_warp_acked = false;
+            if let Some(k) = kick.filter(|k| k.owner_actor_id == owner_active.director_actor_id) {
+                snap.pending_kick_event = Some(crate::data::PendingKickEvent {
+                    trigger_actor_id: member_id,
+                    ..k.clone()
+                });
+            }
+            world.upsert_session(snap).await;
+        }
+        if hp_lock != 0.0
+            && let Some(h) = registry.get(member_id).await
+        {
+            h.character
+                .write()
+                .await
+                .chara
+                .mods
+                .set(crate::actor::Modifier::MinimumHpLock, hp_lock);
+        }
+    }
+}
+
+/// The content group a session's client is sent for its copy: the
+/// director's roster where the session holds it (the owner), else, for a
+/// party member, the owner's roster with the member in it. Only the
+/// owner's session stores the roster: the kill gate fires `battleComplete`
+/// through whichever session holds one.
+pub(crate) async fn content_group_roster(
+    world: &WorldManager,
+    session: &crate::data::Session,
+    player_id: u32,
+) -> Vec<u32> {
+    let Some(active) = session.active_content_script.as_ref() else {
+        return Vec::new();
+    };
+    if let Some(r) = session
+        .transient_director_members
+        .get(&active.director_actor_id)
+        .filter(|r| !r.is_empty())
+    {
+        return r.clone();
+    }
+    if !active.party_member || active.instance_id == 0 {
+        return Vec::new();
+    }
+    let mut roster = world
+        .all_sessions()
+        .await
+        .into_iter()
+        .find(|s| {
+            s.active_content_script
+                .as_ref()
+                .is_some_and(|a| a.instance_id == active.instance_id && !a.party_member)
+        })
+        .and_then(|s| {
+            s.transient_director_members
+                .get(&active.director_actor_id)
+                .cloned()
+        })
+        .unwrap_or_default();
+    if !roster.is_empty() && !roster.contains(&player_id) {
+        roster.push(player_id);
+    }
+    roster
+}
+
+/// A player's own side of leaving a copy that goes on without them: the
+/// duty timer closed, the content's `MinimumHpLock` off, and their
+/// director coroutine (parked on `battleComplete`) dropped, so a later
+/// win can't resume it and take them out of wherever they are by then.
+async fn leave_copy_player_cleanup(
+    player_id: u32,
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    lua: Option<&Arc<LuaEngine>>,
+) {
+    if let Some(h) = registry.get(player_id).await {
+        h.character
+            .write()
+            .await
+            .chara
+            .mods
+            .set(crate::actor::Modifier::MinimumHpLock, 0.0);
+    }
+    close_content_timer(player_id, registry, world).await;
+    if let Some(engine) = lua
+        && let Ok(mut s) = engine.scheduler().lock()
+    {
+        s.purge_owner(player_id);
+    }
+}
+
+/// Whether a zone change to `dest_zone` takes a player out of their
+/// content copy for good: a copy entered as a party (the dungeons and the
+/// Grand Company duties), and a zone other than the copy's. Warps inside
+/// the copy's zone stay in it.
+pub(crate) fn leaves_party_copy(active: &crate::data::ActiveContentScript, dest_zone: u32) -> bool {
+    active.instance_id != 0
+        && dest_zone != active.parent_zone_id
+        && crate::content_instance::is_party(active.instance_id)
+}
+
 /// A player leaving a content copy (walking out, warping away, logging
 /// off). A party member just drops their view of it. The owner hands the
 /// copy to a member still inside (its hooks and spawns move with it), or,
@@ -2390,6 +2533,7 @@ pub(crate) async fn apply_leave_content(
         snap.active_content_script = None;
         snap.pending_content_kick_event = None;
         world.upsert_session(snap).await;
+        leave_copy_player_cleanup(player_id, registry, world, lua).await;
         return;
     }
     let heir = world.all_sessions().await.into_iter().find(|m| {
@@ -2404,6 +2548,15 @@ pub(crate) async fn apply_leave_content(
                 a.party_member = false;
                 a.spawned_actor_ids = active.spawned_actor_ids.clone();
             }
+            // The heir runs the copy from here, the director's roster with
+            // it (the kill gate reads it): the owner's, less the owner.
+            let mut roster = snap
+                .transient_director_members
+                .remove(&active.director_actor_id)
+                .unwrap_or_default();
+            roster.retain(|&id| id != player_id);
+            heir.transient_director_members
+                .insert(active.director_actor_id, roster);
             let heir_id = heir.id;
             world.upsert_session(heir).await;
             snap.active_content_script = None;
@@ -2415,6 +2568,7 @@ pub(crate) async fn apply_leave_content(
                 to = heir_id,
                 "content copy handed to a party member still inside",
             );
+            leave_copy_player_cleanup(player_id, registry, world, lua).await;
         }
         None => {
             apply_content_finished(
@@ -2626,6 +2780,26 @@ pub(crate) async fn apply_do_zone_change(
     if session_id == 0 {
         tracing::debug!(player = player_id, "DoZoneChange: no session (NPC?)");
         return;
+    }
+    // Out of a party's dungeon copy by any other way than its exit (a
+    // GM warp, Return, a teleport, a home point after a fall): leave it
+    // like the exit does, so it goes on with the party or ends. Without
+    // this the copy and its monsters stayed up for good, and the player
+    // carried its content group into the field.
+    if let Some(active) = world
+        .session(session_id)
+        .await
+        .and_then(|s| s.active_content_script)
+        && leaves_party_copy(&active, zone_id)
+    {
+        tracing::info!(
+            player = player_id,
+            instance = active.instance_id,
+            from_zone = active.parent_zone_id,
+            to_zone = zone_id,
+            "zone change out of a party copy: leaving it",
+        );
+        apply_leave_content(player_id, registry, world, lua).await;
     }
 
     // LOGIN-WINDOW deferral — a warp drained while the client is still
