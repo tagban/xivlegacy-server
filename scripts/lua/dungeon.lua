@@ -87,6 +87,14 @@ local function byZone(zoneId)
 	end
 end
 
+-- The entrance of the instanced dungeon in this zone ({x, y, z, rot}), or
+-- nil. Return (TeleportCommand) lands here inside a copy.
+function dungeonEntrance(zoneId)
+	local d = byZone(zoneId);
+	if d == nil or DUNGEON_SPAWNS[zoneId] == nil then return nil end
+	return d.entry;
+end
+
 function enterDungeon(player, key)
 	local d = DUNGEONS[key];
 	if d == nil then return end

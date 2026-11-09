@@ -681,6 +681,10 @@ async fn resolve_auto_attack(
     if attacker_actor_id == defender_actor_id {
         return;
     }
+    // A sealed boss room keeps its fight and the rest of the copy apart.
+    if !crate::runtime::dungeon_fight::may_interact(attacker_actor_id, defender_actor_id) {
+        return;
+    }
     let Some(attacker_handle) = registry.get(attacker_actor_id).await else {
         return;
     };
@@ -2652,6 +2656,9 @@ async fn resolve_action(
         zone,
     )
     .await;
+    // A sealed boss room keeps its fight and the rest of the copy apart:
+    // no attacks, heals, buffs or raises across the gate.
+    targets.retain(|t| crate::runtime::dungeon_fight::may_interact(attacker_actor_id, *t));
     // Cover: a single-target melee attack on a Covered actor lands on
     // their paladin.
     if targets.len() == 1
@@ -5692,7 +5699,23 @@ pub(crate) async fn apply_revive(
     let bytes = sub.to_bytes();
     send_to_self_if_player(registry, world, owner_actor_id, bytes.clone()).await;
     broadcast_around_actor(world, registry, zone, owner_actor_id, bytes).await;
+    if handle.is_player() {
+        // The state change alone leaves the client lying in the
+        // knocked-out pose, unable to move: it stands up on the
+        // getting-up animation (the one TeleportCommand's knocked-out
+        // Return plays).
+        let bytes = crate::packets::send::actor::build_play_animation_on_actor(
+            owner_actor_id,
+            GET_UP_ANIMATION,
+        )
+        .to_bytes();
+        send_to_self_if_player(registry, world, owner_actor_id, bytes.clone()).await;
+        broadcast_around_actor(world, registry, zone, owner_actor_id, bytes).await;
+    }
 }
+
+/// Animation a revived player plays to get back on their feet.
+pub const GET_UP_ANIMATION: u32 = 0x0100_0066;
 
 /// GM `settp`: set the actor's TP and push the pool bundle so the client's
 /// gauge (and its weaponskill icons) follow at once.

@@ -819,6 +819,18 @@ pub async fn apply_runtime_lua_command(
             apply_change_state(actor_id, main_state, registry, world, lua).await;
             true
         }
+        // `player:Revive()` from a command or event script (Return inside
+        // a dungeon copy); the login hooks have their own arm.
+        LC::Revive { actor_id } => {
+            let zone_id = match registry.get(actor_id).await {
+                Some(h) => h.zone_id,
+                None => return true,
+            };
+            if let Some(zone) = world.zone(zone_id).await {
+                crate::runtime::dispatcher::apply_revive(actor_id, registry, world, &zone).await;
+            }
+            true
+        }
         LC::DirectorAddMember {
             director_actor_id,
             member_actor_id,
@@ -2246,6 +2258,7 @@ pub(crate) async fn apply_content_finished(
     // clears it).
     crate::content_instance::release(active.instance_id);
     crate::dungeon_gates::release_instance(active.instance_id);
+    crate::runtime::dungeon_fight::release_instance(active.instance_id);
     if active.instance_id != 0 {
         for mut member in world.all_sessions().await {
             if member.id != session_id

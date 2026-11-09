@@ -393,6 +393,16 @@ impl GameTicker {
                 if !session.content_warp_acked {
                     continue;
                 }
+                // Boss rooms: gates that close behind the party, and the
+                // way back to the entrance after a lost fight.
+                crate::runtime::dungeon_fight::tick_boss_fights(
+                    now_ms,
+                    &self.registry,
+                    &self.world,
+                    active.parent_zone_id,
+                    active.instance_id,
+                )
+                .await;
                 let script_path = lua.resolver().content(&active.content_script);
                 if !script_path.exists() {
                     continue;
