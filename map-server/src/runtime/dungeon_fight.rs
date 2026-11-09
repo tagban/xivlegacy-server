@@ -306,9 +306,11 @@ pub fn advance(
             fighters,
             wiped_at_ms,
         }) => {
+            // Only fighters still in the room hold the fight: one who took
+            // Return to the entrance (or left the copy) is out of it.
             let standing = players
                 .iter()
-                .any(|p| !p.down() && fighters.contains(&p.actor_id));
+                .any(|p| !p.down() && p.in_room && fighters.contains(&p.actor_id));
             if standing {
                 let intruders: Vec<u32> = players
                     .iter()

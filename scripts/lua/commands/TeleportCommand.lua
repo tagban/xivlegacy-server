@@ -13,6 +13,7 @@ eventConfirm(isReturn, isInBattle, cityReturnNum, 138821, forceAskReturnOnly)
 require ("global")
 require ("aetheryte")
 require ("utils")
+require ("dungeon")
 
 teleportMenuToAetheryte = {
 	[1] = {
@@ -139,6 +140,18 @@ function onEventStarted(player, actor, triggerName, isTeleport)
 				player:SetHP(player:GetMaxHP());
 				player:ChangeState(0);
 				player:PlayAnimation(0x01000066);
+			end
+
+			-- Inside a dungeon copy, Return brings you back to the
+			-- dungeon's entrance (in the same copy) with HP and MP whole,
+			-- instead of out to your home point.
+			local entry = dungeonEntrance(player:GetZoneID());
+			if (entry ~= nil) then
+				player:SetHP(player:GetMaxHP());
+				player:SetMP(player:GetMaxMP());
+				player:EndEvent();
+				GetWorldManager():DoPlayerMoveInZone(player, entry[1], entry[2], entry[3], entry[4], 0x11);
+				return;
 			end
 
 			-- Same 0x0131-before-0x00E2 ordering as the teleport branch
