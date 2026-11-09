@@ -1944,6 +1944,15 @@ async fn side_of_target(
         c.base.rotation,
         attacker,
     );
+    tracing::debug!(
+        target_x = c.base.position_x,
+        target_z = c.base.position_z,
+        target_rot = c.base.rotation,
+        attacker_x = attacker.x,
+        attacker_z = attacker.z,
+        dir,
+        "battle: positional side",
+    );
     Some(match dir {
         1 => P::Front,
         4 => P::Rear,
