@@ -6951,3 +6951,52 @@ mod pool_tick_sync_tests {
         );
     }
 }
+
+#[cfg(test)]
+mod kill_share_tests {
+    use super::*;
+    use crate::actor::Character;
+    use crate::runtime::actor_registry::{ActorHandle, ActorKindTag};
+
+    /// Who shares a kill: the killer and the party members close to the
+    /// monster; not a member far off, in another zone, dead or offline,
+    /// and never a stranger standing next to it.
+    #[tokio::test]
+    async fn party_members_close_by_share_the_kill() {
+        // Own ids: the party table is process-wide.
+        let (killer, near, far, away, dead, offline, stranger, mob) =
+            (9631u32, 9632, 9633, 9634, 9635, 9636, 9637, 9638);
+        for m in [near, far, away, dead, offline] {
+            crate::parties::join_for_test(killer, m).expect("party");
+        }
+        let registry = ActorRegistry::new();
+        // (id, kind, zone, x, hp, session)
+        let actors = [
+            (killer, ActorKindTag::Player, 100, 2.0, 100, 1),
+            (near, ActorKindTag::Player, 100, 30.0, 100, 2),
+            (far, ActorKindTag::Player, 100, 80.0, 100, 3),
+            (away, ActorKindTag::Player, 101, 1.0, 100, 4),
+            (dead, ActorKindTag::Player, 100, 5.0, 0, 5),
+            (offline, ActorKindTag::Player, 100, 5.0, 100, 0),
+            (stranger, ActorKindTag::Player, 100, 1.0, 100, 7),
+            (mob, ActorKindTag::BattleNpc, 100, 0.0, 0, 0),
+        ];
+        for (id, kind, zone, x, hp, session) in actors {
+            let mut c = Character::new(id);
+            c.base.zone_id = zone;
+            c.base.position_x = x;
+            c.chara.hp = hp;
+            c.chara.max_hp = 100;
+            registry
+                .insert(ActorHandle::new(id, kind, zone, session, c))
+                .await;
+        }
+        let killer_handle = registry.get(killer).await.unwrap();
+        let ids: Vec<u32> = kill_sharers(&killer_handle, mob, &registry)
+            .await
+            .iter()
+            .map(|h| h.actor_id)
+            .collect();
+        assert_eq!(ids, vec![killer, near]);
+    }
+}
