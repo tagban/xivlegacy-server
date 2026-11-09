@@ -118,6 +118,9 @@ end
 -- A content script's onCreate: the dungeon's monsters, into this copy.
 function spawnDungeon(player, contentArea, director, zoneId)
 	director:AddMember(player);
+	-- The copy's own doors and barriers (DoorServer spawns of the zone),
+	-- opened and closed per copy by the server.
+	contentArea:SpawnMapObjects();
 	local ranges = DUNGEON_SPAWNS[zoneId];
 	if ranges == nil then return end
 	for _, range in ipairs(ranges) do

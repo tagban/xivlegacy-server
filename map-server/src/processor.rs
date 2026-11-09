@@ -2869,6 +2869,13 @@ impl PacketProcessor {
                         )
                         .await;
                     }
+                    crate::lua::command::LuaCommand::SpawnContentGates {
+                        zone_id: gz,
+                        instance_id,
+                        slot,
+                    } => {
+                        self.apply_spawn_content_gates(gz, instance_id, slot).await;
+                    }
                     crate::lua::command::LuaCommand::PartyAddMember {
                         leader_actor_id,
                         member_actor_id,
@@ -3210,6 +3217,54 @@ impl PacketProcessor {
             "SpawnActor applied — actor inserted into zone + registry, \
              spawn bundle deferred to post-warp send_zone_in_bundle",
         );
+    }
+
+    /// `contentArea:SpawnMapObjects()`: spawn the parent zone's
+    /// `DoorServer` doors and barriers into a copy and register them with
+    /// `crate::dungeon_gates`. Actor ids follow the content `SpawnActor`
+    /// formula (the unique id's hash plus the copy's slot).
+    async fn apply_spawn_content_gates(&self, zone_id: u32, instance_id: u32, slot: u32) {
+        let Some(zone_arc) = self.world.zone(zone_id).await else {
+            return;
+        };
+        let seeds: Vec<crate::zone::spawn_location::SpawnLocation> = {
+            let zone = zone_arc.read().await;
+            zone.spawn_locations
+                .iter()
+                .filter(|s| {
+                    crate::dungeon_gates::is_copy_gate_class(s.class_id)
+                        && s.private_area_name.is_empty()
+                })
+                .cloned()
+                .collect()
+        };
+        for seed in seeds {
+            let suffix = common::utils::murmur_hash2(&seed.unique_id, 0) & 0xFFF;
+            let actor_number = crate::content_instance::spawn_actor_number(slot, 0x60000 | suffix);
+            let actor_id = (4u32 << 28) | (zone_id << 19) | ((actor_number + 5) & 0x7FFFF);
+            if self.registry.get(actor_id).await.is_some() {
+                tracing::warn!(
+                    zone = zone_id,
+                    unique_id = %seed.unique_id,
+                    actor_id = format!("0x{actor_id:08X}"),
+                    "SpawnMapObjects: actor id already taken, gate skipped",
+                );
+                continue;
+            }
+            crate::dungeon_gates::register(instance_id, actor_id, &seed.unique_id, seed.class_id);
+            self.apply_spawn_actor(
+                zone_id,
+                seed.class_id,
+                seed.unique_id.clone(),
+                seed.x,
+                seed.y,
+                seed.z,
+                seed.rotation,
+                actor_id,
+                instance_id,
+            )
+            .await;
+        }
     }
 
     /// B4 of the SEQ_005 unblock plan — port of C#
