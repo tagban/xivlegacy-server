@@ -4946,37 +4946,96 @@ pub(crate) async fn die_if_defender_fell(
     // through the rank-cap table eventually reduces returns once
     // the player exceeds the mob level. The richer curve from
     // `BattleUtils.cs:GetEXPReward` is the follow-up.
-    award_grand_company_seals(&attacker_handle, mob_level, db_arc).await;
+    // The killer's party shares the kill: members close by get the
+    // seals, the EXP (with the party modifier) and the quest kill credit,
+    // as the killer does.
+    let sharers = kill_sharers(&attacker_handle, defender_actor_id, registry, zone).await;
+    let party_size = sharers.len() as u32;
+    for h in &sharers {
+        award_grand_company_seals(h, mob_level, db_arc).await;
+    }
 
     // Kill EXP — pmeteor pays it in the same death batch
     // (`BattleNpc.cs:376` → `BattleUtils.AddBattleBonusEXP`), and it
     // likewise fires before the quest-hook chain so `onKillBNpc` sees
     // the post-award EXP state. Tutorial-content kills are gated off
     // inside (their Lua already self-pays a fixed grant).
-    award_battle_exp(
-        &attacker_handle,
-        defender_actor_id,
-        mob_level,
-        registry,
-        world,
-        zone,
-        db_arc,
-        lua,
-    )
-    .await;
+    for h in &sharers {
+        award_battle_exp(
+            h,
+            defender_actor_id,
+            mob_level,
+            party_size,
+            h.actor_id == attacker_id,
+            registry,
+            world,
+            zone,
+            db_arc,
+            lua,
+        )
+        .await;
+    }
 
     let Some(lua) = lua else {
         return;
     };
-    crate::runtime::quest_hook::fire_on_kill_bnpc(
-        &attacker_handle,
-        lua,
-        bnpc_class_id,
-        registry,
-        db_arc,
-        world,
-    )
-    .await;
+    for h in &sharers {
+        crate::runtime::quest_hook::fire_on_kill_bnpc(
+            h,
+            lua,
+            bnpc_class_id,
+            registry,
+            db_arc,
+            world,
+        )
+        .await;
+    }
+}
+
+/// How close (yalms) to a defeated monster a party member must be to
+/// share the kill.
+const KILL_SHARE_RANGE: f32 = 50.0;
+
+/// Who shares a kill: the killer, then the members of their party who are
+/// online, alive, in the same zone and content copy as the killer, and
+/// within [`KILL_SHARE_RANGE`] of the monster. (Two copies of a duty stand
+/// at the same coordinates, so the copy check matters; the killer's copy
+/// is used because the dead monster may already have left the area.)
+async fn kill_sharers(
+    killer: &crate::runtime::actor_registry::ActorHandle,
+    victim_id: u32,
+    registry: &ActorRegistry,
+    zone: &Arc<RwLock<Zone>>,
+) -> Vec<crate::runtime::actor_registry::ActorHandle> {
+    let mut out = vec![killer.clone()];
+    let copy_of = |id: u32| async move { zone.read().await.core.instance_of(id) };
+    let killer_copy = copy_of(killer.actor_id).await;
+    let at = match registry.get(victim_id).await {
+        Some(v) => {
+            let c = v.character.read().await;
+            (c.base.zone_id, c.base.position_x, c.base.position_z)
+        }
+        None => return out,
+    };
+    for m in crate::parties::others(killer.actor_id) {
+        let Some(h) = registry.get(m).await else {
+            continue;
+        };
+        if !h.is_player() || h.session_id == 0 || copy_of(m).await != killer_copy {
+            continue;
+        }
+        let near = {
+            let c = h.character.read().await;
+            c.is_alive()
+                && c.base.zone_id == at.0
+                && ((c.base.position_x - at.1).powi(2) + (c.base.position_z - at.2).powi(2)).sqrt()
+                    <= KILL_SHARE_RANGE
+        };
+        if near {
+            out.push(h);
+        }
+    }
+    out
 }
 
 /// #28 S4.1 — the all-hostiles-dead gate for scripted content (the
@@ -5226,14 +5285,17 @@ const SELF_PAYING_CONTENT_SCRIPTS: [&str; 3] = [
 /// kills; the refresh stores `tier + 1` with the *previous* tier's
 /// window as duration (BattleUtils.cs:995-1005). EXP goes to the
 /// killer's CURRENT class — pmeteor `attacker.GetClass()`. Link bonus
-/// stays 0 until LinkCount mob-mod plumbing lands; party distribution
-/// (0.667 modifier paid to every member) is deferred with real parties
-/// — the killer is paid solo.
+/// stays 0 until LinkCount mob-mod plumbing lands. In a party every
+/// member sharing the kill ([`kill_sharers`]) is paid with the flat 0.667
+/// party modifier (`party_size` > 1); only the `killer` gets the
+/// "defeats" line.
 #[allow(clippy::too_many_arguments)]
 async fn award_battle_exp(
     attacker_handle: &crate::runtime::actor_registry::ActorHandle,
     defender_actor_id: u32,
     mob_level: i16,
+    party_size: u32,
+    killer: bool,
     registry: &ActorRegistry,
     world: &WorldManager,
     zone: &Arc<RwLock<Zone>>,
@@ -5256,7 +5318,7 @@ async fn award_battle_exp(
         let c = attacker_handle.character.read().await;
         (c.chara.level, c.chara.class.clamp(0, u8::MAX as i16) as u8)
     };
-    let base = crate::battle::exp::base_kill_exp(player_level, mob_level, 1) as i32;
+    let base = crate::battle::exp::base_kill_exp(player_level, mob_level, party_size) as i32;
     if base == 0 {
         // dlvl <= -20: no EXP and no message (BattleUtils.cs:876).
         return;
@@ -5318,12 +5380,17 @@ async fn award_battle_exp(
     // (`CommandResultContainer.CombineLists`); garlemald resolves the
     // death after the attack batch has shipped, so they ride their own
     // X01/X10 container right behind it.
-    let mut rows = vec![tx::actor_battle::CommandResult {
-        target_id: defender_actor_id,
-        worldmaster_text_id: 30108, // "<attacker> defeats <target>."
-        hit_num: 1,
-        ..Default::default()
-    }];
+    // The "defeats" line is the killer's; a party member sharing the
+    // kill only gets their own chain line.
+    let mut rows = Vec::new();
+    if killer {
+        rows.push(tx::actor_battle::CommandResult {
+            target_id: defender_actor_id,
+            worldmaster_text_id: 30108, // "<attacker> defeats <target>."
+            hit_num: 1,
+            ..Default::default()
+        });
+    }
     if chain_tier > 0 {
         rows.push(tx::actor_battle::CommandResult {
             target_id: attacker_handle.actor_id,
@@ -6887,5 +6954,80 @@ mod pool_tick_sync_tests {
             !received_state_bundle(&mut rx),
             "empty-TP decay must not emit a state bundle",
         );
+    }
+}
+
+#[cfg(test)]
+mod kill_share_tests {
+    use super::*;
+    use crate::actor::Character;
+    use crate::runtime::actor_registry::{ActorHandle, ActorKindTag};
+    use crate::zone::navmesh::StubNavmeshLoader;
+
+    /// Who shares a kill: the killer and the party members close to the
+    /// monster; not a member far off, in another zone or content copy, dead
+    /// or offline,
+    /// and never a stranger standing next to it.
+    #[tokio::test]
+    async fn party_members_close_by_share_the_kill() {
+        // Own ids: the party table is process-wide.
+        let (killer, near, far, away, dead, offline, stranger, mob, copy2) =
+            (9631u32, 9632, 9633, 9634, 9635, 9636, 9637, 9638, 9639);
+        for m in [near, far, away, dead, offline, copy2] {
+            crate::parties::join_for_test(killer, m).expect("party");
+        }
+        let registry = ActorRegistry::new();
+        // (id, kind, zone, x, hp, session)
+        let actors = [
+            (killer, ActorKindTag::Player, 100, 2.0, 100, 1),
+            (near, ActorKindTag::Player, 100, 30.0, 100, 2),
+            (far, ActorKindTag::Player, 100, 80.0, 100, 3),
+            (away, ActorKindTag::Player, 101, 1.0, 100, 4),
+            (dead, ActorKindTag::Player, 100, 5.0, 0, 5),
+            (offline, ActorKindTag::Player, 100, 5.0, 100, 0),
+            (stranger, ActorKindTag::Player, 100, 1.0, 100, 7),
+            (mob, ActorKindTag::BattleNpc, 100, 0.0, 0, 0),
+            (copy2, ActorKindTag::Player, 100, 3.0, 100, 8),
+        ];
+        for (id, kind, zone, x, hp, session) in actors {
+            let mut c = Character::new(id);
+            c.base.zone_id = zone;
+            c.base.position_x = x;
+            c.chara.hp = hp;
+            c.chara.max_hp = 100;
+            registry
+                .insert(ActorHandle::new(id, kind, zone, session, c))
+                .await;
+        }
+        let zone = Arc::new(RwLock::new(Zone::new(
+            100,
+            "test",
+            1,
+            "/Area/Zone/Test",
+            0,
+            0,
+            0,
+            false,
+            false,
+            false,
+            false,
+            false,
+            Some(&StubNavmeshLoader),
+        )));
+        {
+            // the killer's party is in copy 1; copy2 stands in copy 2
+            let mut z = zone.write().await;
+            for id in [killer, near, far, dead, offline, stranger, mob] {
+                z.core.set_instance(id, 1);
+            }
+            z.core.set_instance(copy2, 2);
+        }
+        let killer_handle = registry.get(killer).await.unwrap();
+        let ids: Vec<u32> = kill_sharers(&killer_handle, mob, &registry, &zone)
+            .await
+            .iter()
+            .map(|h| h.actor_id)
+            .collect();
+        assert_eq!(ids, vec![killer, near]);
     }
 }
