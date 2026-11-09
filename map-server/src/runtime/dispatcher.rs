@@ -769,6 +769,13 @@ async fn resolve_auto_attack(
         has_stoneskin: false,
     };
     let base = battle_utils::attack_calculate_base_damage(&atk_view_for_base, &mut rng);
+    // Extra hits from statuses (Spinning Heel) grow the swing; the
+    // weapon's own hit count is what the swing is balanced for.
+    let hit_mult = battle_utils::auto_attack_hit_multiplier(
+        atk_mods.get(crate::actor::modifier::Modifier::HitCount),
+        atk_status.get(crate::actor::modifier::Modifier::HitCount),
+    );
+    let base = (f64::from(base) * hit_mult).round() as i32;
 
     let mut result = CommandResult::for_target(defender_actor_id, 0, 0);
     result.amount = base.max(0) as u16;
