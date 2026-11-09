@@ -266,7 +266,7 @@ impl CommandProcessor {
             "completequest <quest id> [name]",
             "delquest <quest id> [name]",
             "addtitle <title id> [name]",
-            "addeffect <status id> [seconds] [magnitude] [name]",
+            "addeffect <status id> [seconds] [magnitude] [name | 0x<actor id>]",
             "addallaetherytes [name]",
             "setmusic <music id> [name]",
             "setweather <weather id>",

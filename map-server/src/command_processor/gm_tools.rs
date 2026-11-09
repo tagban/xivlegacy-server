@@ -985,7 +985,8 @@ impl CommandProcessor {
         format!("{name}'s title is now {title}")
     }
 
-    /// `addeffect <status id> [seconds] [name]`.
+    /// `addeffect <status id> [seconds] [magnitude] [name | 0x<actor id>]`.
+    /// A `0x` actor id puts the status on any actor, a monster included.
     pub(super) async fn handle_addeffect(&self, args: &Args<'_>) -> String {
         let Some(status) = args.tokens.first().and_then(|t| t.parse::<u32>().ok()) else {
             return "usage: addeffect <status id> [seconds] [magnitude] [name]".into();
@@ -1006,9 +1007,16 @@ impl CommandProcessor {
                 "usage: addeffect <status id> [seconds] [magnitude] <name>".into()
             };
         };
-        let id = match self.online_id(&name).await {
-            Ok(id) => id,
-            Err(e) => return e,
+        let actor = name
+            .strip_prefix("0x")
+            .or_else(|| name.strip_prefix("0X"))
+            .and_then(|h| u32::from_str_radix(h, 16).ok());
+        let id = match actor {
+            Some(id) => id,
+            None => match self.online_id(&name).await {
+                Ok(id) => id,
+                Err(e) => return e,
+            },
         };
         self.run_lua(vec![LC::TryStatus {
             source_actor_id: id,

@@ -2489,6 +2489,11 @@ async fn resolve_action(
             traits: atk_traits.clone(),
         };
         apply_skill_hook(&root, "onPositional", &mut c, &caster);
+        tracing::debug!(
+            command = command.id,
+            side = ?side,
+            "battle: positional bonus (onPositional ran)",
+        );
         positioned = c;
         &positioned
     } else {
