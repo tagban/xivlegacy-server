@@ -1,4 +1,4 @@
--- server_battlenpc_pools: game data, 493 rows. Reloaded whole when this file changes.
+-- server_battlenpc_pools: game data, 498 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_pools`;
 INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId`, `currentJob`, `combatSkill`, `combatDelay`, `combatDmgMult`, `aggroType`, `immunity`, `linkType`, `spellListId`, `skillListId`) VALUES
@@ -494,4 +494,9 @@ INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId
 (31301, 2100309, 'war0j2_sirocco', 2, 0, 1, 4200, 1.0, 0, 0, 0, 0, 2),
 (31302, 2201208, 'war0j3_canyon_condor', 41, 0, 1, 4200, 1.0, 0, 0, 0, 0, 41),
 (31303, 2100801, 'war0j5_audhumbla', 8, 0, 1, 4200, 1.0, 0, 0, 0, 0, 8),
-(31304, 2289037, 'war0j6_curious_gorge', 29, 0, 1, 6000, 0.25, 0, 0, 0, 0, 0);
+(31304, 2289037, 'war0j6_curious_gorge', 29, 0, 1, 6000, 0.25, 0, 0, 0, 0, 0),
+(31305, 2202611, 'mnk0j1_runagate_imp', 52, 0, 1, 4200, 1.0, 0, 0, 0, 0, 52),
+(31306, 2102010, 'mnk0j2_gluttonous_gertrude', 42, 0, 1, 4200, 1.0, 0, 0, 0, 0, 42),
+(31307, 2100610, 'mnk0j3_prince_of_pestilence', 37, 0, 1, 4200, 1.0, 0, 0, 0, 0, 37),
+(31308, 2100709, 'mnk0j4_apep', 31, 0, 1, 4200, 1.0, 0, 0, 0, 0, 31),
+(31309, 2289039, 'mnk0j6_widargelt', 29, 0, 1, 6000, 0.25, 0, 0, 0, 0, 0);
