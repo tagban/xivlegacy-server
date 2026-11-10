@@ -549,14 +549,8 @@ impl PacketProcessor {
                         *slot = *v;
                     }
                 }
-                // A job levels with its class (class_of_job): its level and EXP are the class's.
-                let active = if character.chara.current_job > 0 {
-                    crate::actor::job::class_of_job(character.chara.current_job as u8)
-                        .map(usize::from)
-                        .unwrap_or(character.chara.class.max(0) as usize)
-                } else {
-                    character.chara.class.max(0) as usize
-                };
+                // A job has its base class's level (levels are per class).
+                let active = character.chara.class.max(0) as usize;
                 if let Some(lvl) = character.battle_save.skill_level.get(active).copied()
                     && lvl > 0
                 {

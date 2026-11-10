@@ -36,6 +36,7 @@ speed = 2
 dismount = 2
 wake = 2
 goto = 2
+side = 2
 bring = 2
 send = 2
 return = 2

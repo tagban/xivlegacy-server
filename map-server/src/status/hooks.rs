@@ -270,6 +270,7 @@ impl HookSkill {
     pub fn from_command(c: &BattleCommand) -> Self {
         Self {
             id: u32::from(c.id),
+            job: c.job,
             command_type: c.command_type.bits(),
             action_type: c.action_type as u8,
             num_hits: c.num_hits,

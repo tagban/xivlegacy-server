@@ -869,6 +869,17 @@ pub fn attack_calculate_base_damage(attacker: &CombatView<'_>, rng: &mut dyn Rng
     ((base * dev).round() as i32).clamp(1, 9999)
 }
 
+/// How much a status that adds auto-attack hits (Spinning Heel: fists 2 -> 3)
+/// grows one swing. `total_hits` is the actor's HitCount and `bonus_hits`
+/// the share statuses/gear put on top of the weapon's own count. The swing
+/// is balanced per weapon, so the weapon's own hits are 1.0 and every extra
+/// hit adds its share: 3 of 2 = 1.5.
+pub fn auto_attack_hit_multiplier(total_hits: f64, bonus_hits: f64) -> f64 {
+    let total = total_hits.max(1.0);
+    let base = (total - bonus_hits).max(1.0);
+    (total / base).max(1.0)
+}
+
 /// A player's max HP before gear, fitted to retail 1.23b captures: 126 at
 /// level 3, 148 at 5, 758 at 26 and 750 at 27 (2634 at 50 with gear).
 pub fn player_base_hp(level: i16) -> f64 {
@@ -1359,6 +1370,18 @@ mod tests {
             (f64::from(hit) - monster_melee_power(50)).abs() <= 2.0,
             "{hit}"
         );
+    }
+
+    #[test]
+    fn extra_auto_attack_hits_grow_the_swing() {
+        // Fists hit twice; Spinning Heel adds one: 1.5x.
+        assert!((auto_attack_hit_multiplier(3.0, 1.0) - 1.5).abs() < 1e-9);
+        // The weapon's own hits are the balanced swing.
+        assert_eq!(auto_attack_hit_multiplier(2.0, 0.0), 1.0);
+        assert_eq!(auto_attack_hit_multiplier(1.0, 0.0), 1.0);
+        // Bad data never shrinks or zeroes a swing.
+        assert_eq!(auto_attack_hit_multiplier(0.0, 0.0), 1.0);
+        assert_eq!(auto_attack_hit_multiplier(1.0, 2.0), 1.0);
     }
 
     #[test]
