@@ -1,4 +1,4 @@
--- server_battlenpc_spawn_locations: game data, 4370 rows. Reloaded whole when this file changes.
+-- server_battlenpc_spawn_locations: game data, 4380 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_spawn_locations`;
 INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `groupId`, `positionX`, `positionY`, `positionZ`, `rotation`) VALUES
@@ -4378,4 +4378,14 @@ INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `
 (110395, '', 31082, 1289.0, -79.6, -734.0, -0.2),
 (110396, '', 31082, 1261.0, -71.03, -1100.0, 0.79),
 (110397, '', 31082, 1579.0, -67.86, -968.0, 2.61),
-(110398, '', 31082, 1079.0, -79.6, -956.0, 0.67);
+(110398, '', 31082, 1079.0, -79.6, -956.0, 0.67),
+(3700, 'war0j1_antling_worker', 31300, -1270.0, 55.7, -120.0, 0.0),
+(3701, 'war0j1_antling_worker', 31300, -1280.0, 56.0, -128.0, 0.0),
+(3702, 'war0j1_antling_worker', 31300, -1272.0, 56.4, -140.0, 0.0),
+(3703, 'war0j2_sirocco', 31301, -350.0, 4.0, -640.0, 0.0),
+(3704, 'war0j2_sirocco', 31301, -338.0, 2.4, -640.0, 0.0),
+(3705, 'war0j3_canyon_condor', 31302, -1348.0, 56.1, 425.0, 0.0),
+(3706, 'war0j3_canyon_condor', 31302, -1338.0, 56.0, 420.0, 0.0),
+(3707, 'war0j3_canyon_condor', 31302, -1352.0, 56.1, 415.0, 0.0),
+(3708, 'war0j5_audhumbla', 31303, -322.0, 52.8, -1832.0, 0.0),
+(3709, 'war0j6_curious_gorge', 31304, -1368.0, 56.0, 561.0, 0.0);

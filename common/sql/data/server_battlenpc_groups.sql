@@ -1,4 +1,4 @@
--- server_battlenpc_groups: game data, 752 rows. Reloaded whole when this file changes.
+-- server_battlenpc_groups: game data, 757 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_groups`;
 INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLevel`, `maxLevel`, `respawnTime`, `hp`, `mp`, `dropListId`, `allegiance`, `spawnType`, `animationId`, `actorState`, `privateAreaName`, `privateAreaLevel`, `zoneId`) VALUES
@@ -754,4 +754,9 @@ INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLe
 (31075, 31075, 'wight_warrior', 45, 49, 90, 2752, 0, 0, 0, 0, 0, 0, '', 0, 131),
 (31076, 31076, 'wild_jackal', 45, 48, 90, 2594, 0, 0, 0, 0, 0, 0, '', 0, 131),
 (31081, 31081, 'yarzon_scavenger', 40, 44, 90, 2069, 0, 0, 0, 0, 0, 0, '', 0, 131),
-(31082, 31082, 'yarzon_scavenger', 35, 35, 90, 1029, 0, 0, 0, 0, 0, 0, '', 0, 132);
+(31082, 31082, 'yarzon_scavenger', 35, 35, 90, 1029, 0, 0, 0, 0, 0, 0, '', 0, 132),
+(31300, 31300, 'war0j1_antling_worker', 28, 28, 0, 800, 0, 0, 0, 16, 0, 0, '', 0, 172),
+(31301, 31301, 'war0j2_sirocco', 33, 33, 0, 1100, 0, 0, 0, 16, 0, 0, '', 0, 150),
+(31302, 31302, 'war0j3_canyon_condor', 37, 37, 0, 900, 0, 0, 0, 16, 0, 0, '', 0, 172),
+(31303, 31303, 'war0j5_audhumbla', 45, 45, 0, 3200, 0, 0, 0, 16, 0, 0, '', 0, 135),
+(31304, 31304, 'war0j6_curious_gorge', 50, 50, 0, 700, 0, 0, 0, 16, 0, 0, '', 0, 172);

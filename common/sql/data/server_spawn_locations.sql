@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1824 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1835 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -1828,4 +1828,15 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (29958, 1090808, 'cassiopeia_hollow_entrance1', 130, '', 0, 1118, 26.3, -762, 0.0, 0, 0, NULL),
 (29959, 1090809, 'cassiopeia_hollow_exit1', 132, '', 0, 1131.0, 20.15, -726.0, 0.0, 0, 0, NULL),
 (29960, 1090810, 'mistbeard_cove_entrance1', 129, '', 0, -1750, 21.5, -1452, 0.0, 0, 0, NULL),
-(29961, 1090811, 'mistbeard_cove_exit1', 131, '', 0, -1815.0, -18.25, -1496.0, 0.0, 0, 0, NULL);
+(29961, 1090811, 'mistbeard_cove_exit1', 131, '', 0, -1815.0, -18.25, -1496.0, 0.0, 0, 0, NULL),
+(30100, 1060028, 'war0j1_curious_gorge', 172, '', 0, -1282.0, 40.0, -62.0, 0.6, 0, 0, NULL),
+(30101, 1090900, 'war0j1_antling_nest_trigger', 172, '', 0, -1250.0, 56.0, -122.0, 0.0, 0, 0, NULL),
+(30102, 1090901, 'war0j2_sirocco_trigger', 150, '', 0, -342.0, 3.0, -636.0, 0.0, 0, 0, NULL),
+(30103, 1090902, 'war0j3_condor_trigger', 172, '', 0, -1345.0, 56.0, 430.0, 0.0, 0, 0, NULL),
+(30104, 1090903, 'war0j3_east_gate_trigger', 172, '', 0, -1335.0, 58.0, 528.0, 0.0, 0, 0, NULL),
+(30105, 1090904, 'war0j4_cutters_cry_armor', 173, '', 0, -700.0, 279.6, -2232.0, 0.0, 0, 0, NULL),
+(30106, 1090905, 'war0j4_natalan_armor', 143, '', 0, 960.0, 288.0, -30.0, 0.0, 0, 0, NULL),
+(30107, 1090906, 'war0j4_turning_leaf_armor', 153, '', 0, -1320.0, -2.3, 340.0, 0.0, 0, 0, NULL),
+(30108, 1090907, 'war0j4_craneperch_armor', 128, '', 0, 950.0, 45.4, 840.0, 0.0, 0, 0, NULL),
+(30109, 1090908, 'war0j5_iron_lake_cave_trigger', 135, '', 0, -330.0, 54.0, -1830.0, 0.0, 0, 0, NULL),
+(30110, 1090909, 'war0j6_silver_bazaar_trigger', 172, '', 0, -1380.0, 56.0, 561.0, 0.0, 0, 0, NULL);

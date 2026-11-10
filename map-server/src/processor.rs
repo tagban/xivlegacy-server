@@ -2258,6 +2258,9 @@ impl PacketProcessor {
                 self.apply_equip_ability_in_first_open_slot(player_id, class_id, command_id)
                     .await;
             }
+            LC::ChangeJob { player_id, mode } => {
+                self.apply_change_job(player_id, mode).await;
+            }
             LC::SetCurrentJob { player_id, job_id } => {
                 self.apply_set_current_job(player_id, job_id).await;
             }
@@ -5986,6 +5989,95 @@ impl PacketProcessor {
             job_id,
             "SetCurrentJob applied + 0x01A4 broadcast (hotbar reload deferred to next character load)",
         );
+    }
+
+    /// `player:ChangeJob(mode)` — the soul crystal slot in the gear
+    /// window (ChangeJobCommand). Mode 1 takes up the job of the
+    /// player's class, if they hold its soul crystal (job items, 101);
+    /// mode 2 goes back to the class. The job wears the class's gear
+    /// (copied both ways, so a change made as either carries over) and
+    /// keeps a hotbar of its own, seeded from the class's the first
+    /// time.
+    async fn apply_change_job(&self, player_id: u32, mode: u8) {
+        let Some(handle) = self.registry.get(player_id).await else {
+            return;
+        };
+        let (class_id, current_job) = {
+            let c = handle.character.read().await;
+            (c.chara.class.max(0) as u8, c.chara.current_job as u8)
+        };
+        let (from, to) = match mode {
+            1 => {
+                let Some((job, crystal)) = crate::actor::job_of_class(class_id) else {
+                    tracing::info!(
+                        player = player_id,
+                        class_id,
+                        "ChangeJob: this class has no job"
+                    );
+                    return;
+                };
+                if current_job == job {
+                    return;
+                }
+                let owned = self
+                    .db
+                    .owns_item_in_package(player_id, crystal, crate::inventory::PKG_JOB_ITEMS)
+                    .await
+                    .unwrap_or(false);
+                if !owned {
+                    tracing::info!(player = player_id, job, "ChangeJob: no soul crystal");
+                    return;
+                }
+                (class_id, job)
+            }
+            _ => {
+                if current_job == 0 {
+                    return;
+                }
+                (current_job, class_id)
+            }
+        };
+        if let Err(e) = self.db.mirror_job_set(player_id, from, to).await {
+            tracing::warn!(player = player_id, from, to, err = %e, "ChangeJob: copying the gear set failed");
+        }
+        let job = if mode == 1 { to } else { 0 };
+        self.apply_set_current_job(player_id, job).await;
+        if mode != 1 {
+            // Back to the class: the nameplate shows the class again.
+            let bytes = crate::packets::send::player::build_set_current_job(
+                handle.actor_id,
+                class_id as u32,
+            )
+            .to_bytes();
+            crate::runtime::dispatcher::send_to_self_if_player(
+                &self.registry,
+                &self.world,
+                handle.actor_id,
+                bytes.clone(),
+            )
+            .await;
+            crate::runtime::dispatcher::broadcast_to_neighbours(
+                &self.world,
+                &self.registry,
+                handle.actor_id,
+                bytes,
+            )
+            .await;
+        }
+        match self.db.load_hotbar(player_id, to).await {
+            Ok(bar) => {
+                handle.character.write().await.chara.hotbar = bar;
+            }
+            Err(e) => {
+                tracing::warn!(player = player_id, err = %e, "ChangeJob: hotbar reload failed")
+            }
+        }
+        for slot0 in 0..crate::runtime::quest_apply::HOTBAR_SLOTS {
+            self.send_hotbar_slot_update(player_id, slot0).await;
+        }
+        // Job quests are offered by job: the offers change with it.
+        self.refresh_quest_offers(&handle).await;
+        tracing::info!(player = player_id, class_id, job, "ChangeJob applied");
     }
 
     /// `player:SetHP/SetMaxHP/SetMP/SetMaxMP/SetTP(value)` — direct

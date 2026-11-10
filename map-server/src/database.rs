@@ -1728,6 +1728,18 @@ impl Database {
     ///
     /// Returns `true` iff the key item was newly added.
     pub async fn add_key_item(&self, chara_id: u32, key_item_id: u32) -> Result<bool> {
+        self.add_unique_item(chara_id, key_item_id, crate::inventory::PKG_KEYITEMS)
+            .await
+    }
+
+    /// [`Database::add_key_item`] for any package of unique items: the
+    /// key items (100) and the job items (101, soul crystals).
+    pub async fn add_unique_item(
+        &self,
+        chara_id: u32,
+        key_item_id: u32,
+        package: u16,
+    ) -> Result<bool> {
         if key_item_id == 0 {
             return Ok(false);
         }
@@ -1742,9 +1754,9 @@ impl Database {
                           FROM characters_inventory ci
                           INNER JOIN server_items si ON ci.serverItemId = si.id
                           WHERE ci.characterId = :cid
-                            AND ci.itemPackage = 100
+                            AND ci.itemPackage = :pkg
                             AND si.itemId = :iid",
-                        named_params! { ":cid": chara_id, ":iid": key_item_id },
+                        named_params! { ":cid": chara_id, ":iid": key_item_id, ":pkg": package },
                         |r| r.get::<_, i64>(0),
                     )
                     .optional()?;
@@ -1764,17 +1776,17 @@ impl Database {
                     .query_row(
                         r"SELECT COALESCE(MAX(slot), -1) + 1
                           FROM characters_inventory
-                          WHERE characterId = :cid AND itemPackage = 100",
-                        named_params! { ":cid": chara_id },
+                          WHERE characterId = :cid AND itemPackage = :pkg",
+                        named_params! { ":cid": chara_id, ":pkg": package },
                         |r| r.get::<_, i32>(0),
                     )
                     .unwrap_or(0);
                 tx.execute(
                     r"INSERT INTO characters_inventory
                         (characterId, itemPackage, serverItemId, slot)
-                      VALUES (:cid, 100, :sid, :slot)",
+                      VALUES (:cid, :pkg, :sid, :slot)",
                     named_params! {
-                        ":cid": chara_id, ":sid": sid, ":slot": next_slot,
+                        ":cid": chara_id, ":pkg": package, ":sid": sid, ":slot": next_slot,
                     },
                 )?;
                 tx.commit()?;
@@ -1782,6 +1794,74 @@ impl Database {
             })
             .await?;
         Ok(added)
+    }
+
+    /// Whether the character holds `item_id` in `package` (a soul crystal
+    /// in the job items, 101).
+    pub async fn owns_item_in_package(
+        &self,
+        chara_id: u32,
+        item_id: u32,
+        package: u16,
+    ) -> Result<bool> {
+        self.conn
+            .call_db(move |c| {
+                let n: i64 = c.query_row(
+                    r"SELECT COUNT(*) FROM characters_inventory ci
+                      INNER JOIN server_items si ON ci.serverItemId = si.id
+                      WHERE ci.characterId = :cid AND ci.itemPackage = :pkg AND si.itemId = :iid",
+                    named_params! { ":cid": chara_id, ":pkg": package, ":iid": item_id },
+                    |r| r.get(0),
+                )?;
+                Ok(n > 0)
+            })
+            .await
+    }
+
+    /// A job wears its class's gear: switching between a class and its
+    /// job gives `to` the gear set `from` has on (every slot), and seeds
+    /// `to`'s hotbar from `from`'s when `to` has none yet.
+    pub async fn mirror_job_set(&self, chara_id: u32, from: u8, to: u8) -> Result<()> {
+        if from == to {
+            return Ok(());
+        }
+        self.conn
+            .call_db(move |c| {
+                let tx = c.transaction()?;
+                let gear: i64 = tx.query_row(
+                    "SELECT COUNT(*) FROM characters_inventory_equipment WHERE characterId = :cid AND classId = :from",
+                    named_params! { ":cid": chara_id, ":from": from },
+                    |r| r.get(0),
+                )?;
+                if gear > 0 {
+                    tx.execute(
+                        "DELETE FROM characters_inventory_equipment WHERE characterId = :cid AND classId = :to",
+                        named_params! { ":cid": chara_id, ":to": to },
+                    )?;
+                    tx.execute(
+                        r"INSERT INTO characters_inventory_equipment (characterId, classId, equipSlot, itemId)
+                          SELECT characterId, :to, equipSlot, itemId FROM characters_inventory_equipment
+                          WHERE characterId = :cid AND classId = :from",
+                        named_params! { ":cid": chara_id, ":from": from, ":to": to },
+                    )?;
+                }
+                let bar: i64 = tx.query_row(
+                    "SELECT COUNT(*) FROM characters_hotbar WHERE characterId = :cid AND classId = :to",
+                    named_params! { ":cid": chara_id, ":to": to },
+                    |r| r.get(0),
+                )?;
+                if bar == 0 {
+                    tx.execute(
+                        r"INSERT INTO characters_hotbar (characterId, classId, hotbarSlot, commandId, recastTime)
+                          SELECT characterId, :to, hotbarSlot, commandId, recastTime FROM characters_hotbar
+                          WHERE characterId = :cid AND classId = :from",
+                        named_params! { ":cid": chara_id, ":from": from, ":to": to },
+                    )?;
+                }
+                tx.commit()?;
+                Ok(())
+            })
+            .await
     }
 
     /// Tier 4 #14 C — grant a stack to `retainer_id`'s personal

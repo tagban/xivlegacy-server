@@ -834,6 +834,14 @@ pub enum LuaCommand {
         player_id: u32,
         job_id: u8,
     },
+    /// `player:ChangeJob(mode)` — ChangeJobCommand (12017), sent by the
+    /// gear window's soul crystal slot: 1 takes up the job of the
+    /// player's class (they must hold its soul crystal), 2 goes back to
+    /// the class.
+    ChangeJob {
+        player_id: u32,
+        mode: u8,
+    },
     /// `player:SetNpcLs(id, state)` / `player:AddNpcLs(id)` and the
     /// quest-side `quest:NewNpcLsMsg(from)` all funnel here. State
     /// values mirror C# `Player.NPCLS_*` constants:

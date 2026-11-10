@@ -1311,6 +1311,16 @@ impl UserData for LuaPlayer {
             );
             Ok(())
         });
+        methods.add_method("ChangeJob", |_, this, mode: u8| {
+            push(
+                &this.queue,
+                LuaCommand::ChangeJob {
+                    player_id: this.snapshot.actor_id,
+                    mode,
+                },
+            );
+            Ok(())
+        });
         methods.add_method("SetCurrentJob", |_, this, job_id: u8| {
             push(
                 &this.queue,
