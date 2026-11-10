@@ -170,6 +170,29 @@ fn director_class(gd: &GuildleveGamedata) -> &'static str {
         .unwrap_or("PrivateGLBattleSweepNormal")
 }
 
+/// The Grand Company a GC leve belongs to (1 Maelstrom, 2 Twin Adder,
+/// 3 Immortal Flames), from its authority: 40065 leves start at Limsa
+/// Lominsa's camps, 40066 at Gridania's, 40067 at Ul'dah's.
+pub fn company_of(gd: &GuildleveGamedata) -> Option<u8> {
+    match gd.authority {
+        40065 => Some(1),
+        40066 => Some(2),
+        40067 => Some(3),
+        _ => None,
+    }
+}
+
+/// The leves a Grand Company officer of company `gc` offers: that
+/// company's GC leves (ids 20901 and up) that can run, lowest level first.
+pub fn company_offers(catalog: &HashMap<u32, GuildleveGamedata>, gc: u8) -> Vec<u32> {
+    let mut leves: Vec<&GuildleveGamedata> = catalog
+        .values()
+        .filter(|g| g.id >= 20_901 && company_of(g) == Some(gc) && is_supported(g))
+        .collect();
+    leves.sort_by_key(|g| (g.level, g.id));
+    leves.into_iter().map(|g| g.id).collect()
+}
+
 /// Up to 8 leves for a camp's leve set: the camp's regional battle leves
 /// at its base level (the lowest one it has; in 1.23b each camp's regional
 /// leves share one level, and the star menu raises it), rotated every 36
@@ -1533,6 +1556,28 @@ mod tests {
             mobs,
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn a_gc_officer_offers_its_own_companys_leves() {
+        let gc = |id, authority, level, mob| GuildleveGamedata {
+            authority,
+            ..leve(id, 1280004, level, 20036, [2, 0, 0, 0], [mob, 0, 0, 0])
+        };
+        let mut cat = HashMap::new();
+        for g in [
+            gc(20903, 40065, 40, 3200103),
+            gc(21422, 40065, 30, 3200103),
+            gc(20901, 40065, 40, 4000625),
+            gc(22523, 40066, 40, 3200103),
+            gc(10821, 40065, 1, 3200103),
+        ] {
+            cat.insert(g.id, g);
+        }
+        cat.get_mut(&20901).unwrap().mob_missing[0] = true;
+        assert_eq!(company_offers(&cat, 1), vec![21422, 20903]);
+        assert_eq!(company_offers(&cat, 2), vec![22523]);
+        assert!(company_offers(&cat, 3).is_empty());
     }
 
     #[test]

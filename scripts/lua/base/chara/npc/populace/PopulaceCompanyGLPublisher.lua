@@ -56,11 +56,36 @@ gcOfficer = {
 [1500227] = 3, -- Flame Sergeant Dalvag
 }
 
+-- A member of the officer's company is offered the company's leves one at
+-- a time (askLeveDetail is the same journal card the levemete shows). An
+-- accepted leve goes to the journal and is started at its camp aetheryte,
+-- like a regional leve (AetheryteParent.lua). Others get talkOutsider.
 function onEventStarted(player, npc, triggerName)
 
-    callClientFunction(player, "talkOutsider");
+	local gc = gcOfficer[npc:GetActorClassId()];
+	if (gc == nil or player:GetGC() ~= gc) then
+		callClientFunction(player, "talkOutsider");
+		callClientFunction(player, "finishTalkTurn");
+		player:EndEvent();
+		return;
+	end
 
-    callClientFunction(player, "finishTalkTurn");
-    player:EndEvent();
+	callClientFunction(player, "talkOfferWelcome", 0);
+	local offers = GetCompanyLeveOffers(gc);
+	if (callClientFunction(player, "askCompanyLeve") == 1) then
+		for i = 1, #offers do
+			local leveId = offers[i];
+			local accepted = callClientFunction(player, "askLeveDetail", leveId, 0, 0, 0, 0, 0, 0, false);
+			if (accepted == true) then
+				player:AddGuildleve(leveId);
+				callClientFunction(player, "talkAfterOffer");
+				break;
+			elseif (accepted == nil) then
+				break;
+			end
+		end
+	end
+
+	callClientFunction(player, "finishTalkTurn");
+	player:EndEvent();
 end
-
