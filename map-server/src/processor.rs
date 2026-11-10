@@ -6015,7 +6015,11 @@ impl PacketProcessor {
         let (from, to) = match mode {
             1 => {
                 let Some((job, crystal)) = crate::actor::job_of_class(class_id) else {
-                    tracing::info!(player = player_id, class_id, "ChangeJob: this class has no job");
+                    tracing::info!(
+                        player = player_id,
+                        class_id,
+                        "ChangeJob: this class has no job"
+                    );
                     return;
                 };
                 if current_job == job {
@@ -6070,7 +6074,9 @@ impl PacketProcessor {
             Ok(bar) => {
                 handle.character.write().await.chara.hotbar = bar;
             }
-            Err(e) => tracing::warn!(player = player_id, err = %e, "ChangeJob: hotbar reload failed"),
+            Err(e) => {
+                tracing::warn!(player = player_id, err = %e, "ChangeJob: hotbar reload failed")
+            }
         }
         for slot0 in 0..crate::runtime::quest_apply::HOTBAR_SLOTS {
             self.send_hotbar_slot_update(player_id, slot0).await;
