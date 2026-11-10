@@ -903,7 +903,7 @@ fn tracker_state(leve: &Leve) -> Vec<SubPacket> {
 /// area's monsters whose level range is closest to the leve's, nearest the
 /// leve spot first. `monsters` is (class, min level, max level, spawn spot).
 fn pick_beasts(
-    monsters: &[(u32, u32, u32, (f32, f32, f32))],
+    monsters: &[crate::database::ZoneMonster],
     center: (f32, f32, f32),
     level: u32,
     n: usize,

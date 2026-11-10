@@ -44,6 +44,9 @@ use crate::gamedata::{
 };
 
 /// A consumable's use data, from [`Database::usable_item`].
+/// An open-world monster spawn: (actor class, min level, max level, spot).
+pub type ZoneMonster = (u32, u32, u32, (f32, f32, f32));
+
 #[derive(Debug, Clone, Default)]
 pub struct UsableItem {
     /// `Normal/PotionItem`, `Normal/FoodItem`, `Normal/EnchantMedicineItem`, ...
@@ -475,10 +478,7 @@ impl Database {
 
     /// The open-world monsters of a zone: (actor class, level range, spawn
     /// position), for picking the beasts a Necrologos page summons.
-    pub async fn zone_monsters(
-        &self,
-        zone_id: u32,
-    ) -> Result<Vec<(u32, u32, u32, (f32, f32, f32))>> {
+    pub async fn zone_monsters(&self, zone_id: u32) -> Result<Vec<ZoneMonster>> {
         self.conn
             .call_db(move |c| {
                 let mut stmt = c.prepare(
