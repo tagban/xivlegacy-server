@@ -1,13 +1,14 @@
 require ("global")
 require ("questbattle")
-require ("quests/war/war0j1")
 
--- Pride and Duty (War0j1): three antling workers at the nest north of Curious
--- Gorge's cave. When every foe is down the content has no hostiles left,
--- which fires "battleComplete" to QuestDirectorWar0j101 (see questbattle.lua).
+-- Pride and Duty (War0j1): three antling workers at the nest north of Curious Gorge's cave.
+-- When every foe is down the content has no hostiles left, which fires
+-- "battleComplete" to the director (jobQuest.runFightDirector).
 
-BNPCS = { 3700, 3701, 3702 };
-FIGHT_LIMIT_SECONDS = 360;
+local BNPCS = { 3700, 3701, 3702 };
+local FIGHT_LIMIT_SECONDS = 360;
+-- Where a loss sets the player down (outside the trigger circle).
+local SPOT = { 172, -1262.0, 55.7, -132.0, 0.6 };
 
 function onCreate(player, contentArea, director)
 	questBattle.create(player, contentArea, director, BNPCS);
@@ -18,7 +19,9 @@ function onZoneIn(player, contentArea, director)
 end
 
 function onUpdate(tick, area)
-	questBattle.update(tick, area, FIGHT_LIMIT_SECONDS, loseWar0j1Fight);
+	questBattle.update(tick, area, FIGHT_LIMIT_SECONDS, function(player, timedOut)
+		questBattle.leave(player, SPOT);
+	end);
 end
 
 function onAbort(player, contentArea, director)

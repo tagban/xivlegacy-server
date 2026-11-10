@@ -1,4 +1,4 @@
--- server_battlenpc_pools: game data, 489 rows. Reloaded whole when this file changes.
+-- server_battlenpc_pools: game data, 493 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_pools`;
 INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId`, `currentJob`, `combatSkill`, `combatDelay`, `combatDmgMult`, `aggroType`, `immunity`, `linkType`, `spellListId`, `skillListId`) VALUES
@@ -490,4 +490,8 @@ INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId
 (31076, 2101405, 'wild_jackal', 3, 0, 1, 4200, 1.0, 1, 0, 0, 0, 3),
 (31081, 2105505, 'yarzon_scavenger', 39, 0, 1, 4200, 1.0, 1, 0, 0, 0, 39),
 (31082, 2105505, 'yarzon_scavenger', 39, 0, 1, 4200, 1.0, 1, 0, 0, 0, 39),
-(31300, 2203001, 'war0j1_antling_worker', 33, 0, 1, 4200, 1.0, 0, 0, 0, 0, 33);
+(31300, 2203001, 'war0j1_antling_worker', 33, 0, 1, 4200, 1.0, 0, 0, 0, 0, 33),
+(31301, 2100309, 'war0j2_sirocco', 2, 0, 1, 4200, 1.0, 0, 0, 0, 0, 2),
+(31302, 2201208, 'war0j3_canyon_condor', 41, 0, 1, 4200, 1.0, 0, 0, 0, 0, 41),
+(31303, 2100801, 'war0j5_audhumbla', 8, 0, 1, 4200, 1.0, 0, 0, 0, 0, 8),
+(31304, 2289037, 'war0j6_curious_gorge', 29, 0, 1, 6000, 0.25, 0, 0, 0, 0, 0);

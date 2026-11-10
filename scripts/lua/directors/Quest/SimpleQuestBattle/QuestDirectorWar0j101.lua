@@ -1,16 +1,17 @@
 require ("global")
 require ("questbattle")
-require ("quests/war/war0j1")
+require ("jobquest_fights")
 
--- Pride and Duty (War0j1): the antlings nesting north of Curious Gorge's cave.
--- Content SimpleContentWar0j101; a win is handled in quests/war/war0j1.lua.
+-- One of the client's SimpleQuestBattle directors for the job quests. It
+-- serves every job quest fight, not only War0j1's: the fight the player
+-- is in is looked up in jobQuest.fights (see jobquest.lua).
 
 function init()
 	return "/Director/Quest/SimpleQuestBattle/QuestDirectorWar0j101";
 end
 
 function onEventStarted(player, actor, triggerName)
-	questBattle.runDirector(player, actor, 111201, winWar0j1Fight);
+	jobQuest.runFightDirector(player, actor);
 end
 
 function main()

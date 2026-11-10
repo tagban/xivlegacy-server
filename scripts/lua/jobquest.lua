@@ -55,3 +55,39 @@ function jobQuest.chatterMarkers(quest, talks, seq)
 		end
 	end
 end
+
+-- Fights. A job quest fight runs as a SimpleQuestBattle duty
+-- (questbattle.lua). Only some fights have their own client director
+-- (War0j101, War0j301, Whm0j101, ...), so every job fight uses one of
+-- those, and the director asks this table which fight the player is in:
+-- jobQuest.fights[questId][sequence] = function(player, quest) run on a win.
+-- jobquest_fights.lua loads every job quest script so the table is full.
+jobQuest.fights = {};
+
+function jobQuest.registerFight(questId, sequence, onWin)
+	jobQuest.fights[questId] = jobQuest.fights[questId] or {};
+	jobQuest.fights[questId][sequence] = onWin;
+end
+
+-- Director side: hand the duty to questBattle with the current fight's win.
+function jobQuest.runFightDirector(player, actor)
+	for questId, bySequence in pairs(jobQuest.fights) do
+		if (player:HasQuest(questId)) then
+			local onWin = bySequence[player:GetQuest(questId):GetSequence()];
+			if (onWin ~= nil) then
+				questBattle.runDirector(player, actor, questId, onWin);
+				return;
+			end
+		end
+	end
+	player:EndEvent();
+end
+
+-- The client's own ending for a job quest finished away from its NPC: the
+-- "quest complete" notice, the new job ability, and the NPC linkpearl.
+function jobQuest.completeAway(player, quest)
+	callClientFunction(player, "delegateEvent", player, quest, "onJobQuestCompleteFirst");
+	callClientFunction(player, "delegateEvent", player, quest, "onJobQuestCompleteSecond");
+	callClientFunction(player, "delegateEvent", player, quest, "onJobQuestCompleteThird");
+	player:CompleteQuest(quest);
+end

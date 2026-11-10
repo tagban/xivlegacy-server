@@ -17,8 +17,7 @@ Company of Heroes, who keeps to a cave southeast of Camp Horizon in
 Western Thanalan (processEventStart). There Curious Gorge offers to teach
 you the warrior's art once you prove yourself on the antlings that nest
 north of his cave (processEventCurious). Walking into the nest starts the
-fight (SimpleContentWar0j101, the client's SimpleQuestBattle
-QuestDirectorWar0j101). Back at the cave he hands you the Soul of the
+fight (SimpleContentWar0j101). Back at the cave he hands you the Soul of the
 Warrior (processEventClear, processEventJob).
 
 Curious Gorge (1060028) had no class script and no spawn; he stands in the
@@ -27,23 +26,24 @@ quest. Journal steps 328-332 of the guild journal sheet.
 
 ]]
 
--- Sequence Numbers
-SEQ_000	= 0;	-- Find Curious Gorge's cave southeast of Camp Horizon.
-SEQ_010	= 10;	-- Slay the antlings nesting north of the cave.
-SEQ_020	= 20;	-- Tell Curious Gorge of your victory.
+-- Sequence Numbers (locals: jobquest_fights.lua loads every job quest
+-- script into one Lua state)
+local SEQ_000	= 0;	-- Find Curious Gorge's cave southeast of Camp Horizon.
+local SEQ_010	= 10;	-- Slay the antlings nesting north of the cave.
+local SEQ_020	= 20;	-- Tell Curious Gorge of your victory.
 
 -- Actor Class Ids
-ENPC_NEALE			= 1000090;
-ENPC_CURIOUS_GORGE	= 1060028;
-NEST_TRIGGER		= 1090900;
+local ENPC_NEALE			= 1000090;
+local ENPC_CURIOUS_GORGE	= 1060028;
+local NEST_TRIGGER		= 1090900;
 
-JOB_WARRIOR = 17;
+local JOB_WARRIOR = 17;
 
 -- Where the antling fight is fought (Western Thanalan, on the plateau
 -- north of the ravine), outside the nest's circle.
-FIGHT = { 172, -1262.0, 55.7, -132.0, 0.6 };
+local FIGHT = { 172, -1262.0, 55.7, -132.0, 0.6 };
 
-TALKS = {
+local TALKS = {
 	[SEQ_000] = { [ENPC_NEALE] = "processEventStartAfter" },
 	[SEQ_010] = {
 		[ENPC_NEALE] = "processEventStartAfter",
@@ -112,18 +112,13 @@ function onPush(player, quest, npc)
 	player:EndEvent();
 end
 
--- QuestDirectorWar0j101, once the antlings are down.
-function winWar0j1Fight(player, quest)
+-- Once the antlings are down (jobQuest.runFightDirector).
+jobQuest.registerFight(111201, SEQ_010, function(player, quest)
 	attentionMessage(player, 25225, quest:GetQuestId()); -- Objectives complete!
 	quest:StartSequence(SEQ_020);
 	player:EndEvent();
 	questBattle.leave(player, FIGHT);
-end
-
--- SimpleContentWar0j101, on a loss: walk back into the nest to retry.
-function loseWar0j1Fight(player, timedOut)
-	questBattle.leave(player, FIGHT);
-end
+end);
 
 function getJournalInformation(player, quest)
 	return 0, 0, 0, 0, 0;

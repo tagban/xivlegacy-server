@@ -1135,8 +1135,11 @@ pub(crate) fn push_other_player_spawn(
     let actor_id = character.base.actor_id;
     let position = character.base.position();
     let chara = &character.chara;
+    // A job levels with its class (class_of_job): its level and EXP are the class's.
     let active = if chara.current_job > 0 {
-        chara.current_job as usize
+        crate::actor::job::class_of_job(chara.current_job as u8)
+            .map(usize::from)
+            .unwrap_or(chara.class.max(0) as usize)
     } else {
         chara.class.max(0) as usize
     };
@@ -2158,8 +2161,11 @@ impl WorldManager {
         // rendered as a level-down at the next zone-in.
         let (active_level, active_skill_point) = {
             let c = actor_handle.character.read().await;
+            // A job levels with its class (class_of_job): its level and EXP are the class's.
             let active = if c.chara.current_job > 0 {
-                c.chara.current_job as usize
+                crate::actor::job::class_of_job(c.chara.current_job as u8)
+                    .map(usize::from)
+                    .unwrap_or(c.chara.class.max(0) as usize)
             } else {
                 c.chara.class.max(0) as usize
             };
