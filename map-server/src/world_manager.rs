@@ -1135,11 +1135,8 @@ pub(crate) fn push_other_player_spawn(
     let actor_id = character.base.actor_id;
     let position = character.base.position();
     let chara = &character.chara;
-    let active = if chara.current_job > 0 {
-        chara.current_job as usize
-    } else {
-        chara.class.max(0) as usize
-    };
+    // A job has its base class's level: levels are kept per class only.
+    let active = chara.class.max(0) as usize;
     let level = character
         .battle_save
         .skill_level
@@ -2150,19 +2147,17 @@ impl WorldManager {
                 c.chara.hotbar.clone(),
             )
         };
-        // Active-class progression for the `/_init` dump — job slot when
-        // one is active, class otherwise (state_mainSkill resolve order).
+        // Active-class progression for the `/_init` dump. A job has its
+        // base class's level and EXP (levels are kept per class only; the
+        // job slots of battle_save are never filled), so this always reads
+        // the class slot. Reading the job slot sent level 1 for every job.
         // battle_save is indexed by class id; the wire's `[class-1]`
         // shift happens inside the builder. Previously the bundle
         // hardcoded level 1 / 0 SP, so any EXP earned before a warp
         // rendered as a level-down at the next zone-in.
         let (active_level, active_skill_point) = {
             let c = actor_handle.character.read().await;
-            let active = if c.chara.current_job > 0 {
-                c.chara.current_job as usize
-            } else {
-                c.chara.class.max(0) as usize
-            };
+            let active = c.chara.class.max(0) as usize;
             (
                 c.battle_save
                     .skill_level
