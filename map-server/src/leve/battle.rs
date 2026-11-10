@@ -182,15 +182,28 @@ pub fn company_of(gd: &GuildleveGamedata) -> Option<u8> {
     }
 }
 
-/// The leves a Grand Company officer of company `gc` offers: that
-/// company's GC leves (ids 20901 and up) that can run, lowest level first.
-pub fn company_offers(catalog: &HashMap<u32, GuildleveGamedata>, gc: u8) -> Vec<u32> {
-    let mut leves: Vec<&GuildleveGamedata> = catalog
+/// The leve a Grand Company officer of company `gc` standing in zone
+/// `zone` offers ("the mission currently available"): one of that
+/// company's GC leves (ids 20901 and up) whose camp is in the officer's
+/// zone and that can run, changing every [`ROTATION_SECS`].
+pub fn company_offer(
+    catalog: &HashMap<u32, GuildleveGamedata>,
+    gc: u8,
+    zone: u32,
+    now_secs: u64,
+) -> Option<u32> {
+    let mut ids: Vec<u32> = catalog
         .values()
-        .filter(|g| g.id >= 20_901 && company_of(g) == Some(gc) && is_supported(g))
+        .filter(|g| {
+            g.id >= 20_901 && company_of(g) == Some(gc) && g.camp_zone == zone && is_supported(g)
+        })
+        .map(|g| g.id)
         .collect();
-    leves.sort_by_key(|g| (g.level, g.id));
-    leves.into_iter().map(|g| g.id).collect()
+    ids.sort_unstable();
+    if ids.is_empty() {
+        return None;
+    }
+    Some(ids[(now_secs / ROTATION_SECS) as usize % ids.len()])
 }
 
 /// Up to 8 leves for a camp's leve set: the camp's regional battle leves
@@ -1559,25 +1572,29 @@ mod tests {
     }
 
     #[test]
-    fn a_gc_officer_offers_its_own_companys_leves() {
-        let gc = |id, authority, level, mob| GuildleveGamedata {
+    fn a_gc_officer_offers_one_of_its_companys_leves_at_its_camp() {
+        let gc = |id, authority, camp_zone, mob| GuildleveGamedata {
             authority,
-            ..leve(id, 1280004, level, 20036, [2, 0, 0, 0], [mob, 0, 0, 0])
+            camp_zone,
+            ..leve(id, 1280004, 40, 20036, [2, 0, 0, 0], [mob, 0, 0, 0])
         };
         let mut cat = HashMap::new();
         for g in [
-            gc(20903, 40065, 40, 3200103),
-            gc(21422, 40065, 30, 3200103),
-            gc(20901, 40065, 40, 4000625),
-            gc(22523, 40066, 40, 3200103),
-            gc(10821, 40065, 1, 3200103),
+            gc(20903, 40065, 129, 3200103),
+            gc(20904, 40065, 129, 3200103),
+            gc(21422, 40065, 132, 3200103),
+            gc(20901, 40065, 129, 4000625),
+            gc(22523, 40066, 129, 3200103),
+            gc(10821, 40065, 129, 3200103),
         ] {
             cat.insert(g.id, g);
         }
         cat.get_mut(&20901).unwrap().mob_missing[0] = true;
-        assert_eq!(company_offers(&cat, 1), vec![21422, 20903]);
-        assert_eq!(company_offers(&cat, 2), vec![22523]);
-        assert!(company_offers(&cat, 3).is_empty());
+        assert_eq!(company_offer(&cat, 1, 129, 0), Some(20903));
+        assert_eq!(company_offer(&cat, 1, 129, ROTATION_SECS), Some(20904));
+        assert_eq!(company_offer(&cat, 1, 132, 0), Some(21422));
+        assert_eq!(company_offer(&cat, 2, 129, 0), Some(22523));
+        assert_eq!(company_offer(&cat, 3, 129, 0), None);
     }
 
     #[test]

@@ -831,7 +831,7 @@ pub(crate) fn push_npc_spawn(
         ];
         match map_object_init
             .clone()
-            .or_else(|| lua.and_then(|l| l.call_npc_init(&class_path_lower)))
+            .or_else(|| lua.and_then(|l| l.call_npc_init(&class_path_lower, actor_class_id)))
         {
             Some(tail) if !tail.is_empty() => p.extend(tail),
             // Monster classes without a base script (most open-world

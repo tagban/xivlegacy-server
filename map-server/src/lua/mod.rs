@@ -1211,10 +1211,16 @@ impl LuaEngine {
     /// initForEvent` ("invalid argument: 2, integer" → error 40000 →
     /// kicked to login) whenever a door's event condition was enabled.
     /// `None` when the script / `init` is missing or errors — callers
-    /// fall back to the populace-shaped tail.
-    pub fn call_npc_init(&self, class_path_lower: &str) -> Option<Vec<common::luaparam::LuaParam>> {
+    /// fall back to the populace-shaped tail. `init` gets the actor class
+    /// id, for base classes shared by npcs that differ (a GC officer's
+    /// company).
+    pub fn call_npc_init(
+        &self,
+        class_path_lower: &str,
+        actor_class_id: u32,
+    ) -> Option<Vec<common::luaparam::LuaParam>> {
         let path = self.resolver().base_class(class_path_lower);
-        self.call_init_at(&path)
+        self.call_init_at(&path, mlua::Value::Integer(i64::from(actor_class_id)))
     }
 
     /// An NPC's own `unique/<zone>/<class>/<uniqueId>.lua` `init`, the
@@ -1232,21 +1238,25 @@ impl LuaEngine {
             return None;
         }
         let path = self.resolver().npc(zone_name, class_name, unique_id);
-        self.call_init_at(&path)
+        self.call_init_at(&path, mlua::Value::Nil)
     }
 
-    fn call_init_at(&self, path: &Path) -> Option<Vec<common::luaparam::LuaParam>> {
+    fn call_init_at(
+        &self,
+        path: &Path,
+        npc: mlua::Value,
+    ) -> Option<Vec<common::luaparam::LuaParam>> {
         use common::luaparam::LuaParam;
         if !path.exists() {
             return None;
         }
         let (lua, _queue) = self.load_script(path).ok()?;
         let init: mlua::Function = lua.globals().get("init").ok()?;
-        // Base-class `init` implementations ignore the npc argument
-        // (they return constants); pass Nil rather than building a
-        // throwaway userdata. A script that does dereference it errors
-        // here and falls back to the default tail.
-        let ret: MultiValue = init.call(mlua::Value::Nil).ok()?;
+        // `init` implementations mostly ignore the npc argument (they
+        // return constants); it is the actor class id (base classes) or
+        // Nil rather than a throwaway userdata. A script that
+        // dereferences it errors here and falls back to the default tail.
+        let ret: MultiValue = init.call(npc).ok()?;
         let mut out = Vec::with_capacity(ret.len());
         for v in ret.iter() {
             out.push(match v {

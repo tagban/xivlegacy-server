@@ -1188,7 +1188,9 @@ impl Database {
                                  WHERE a.displayNameId = mob3 AND a.classPath LIKE '/Chara/Npc/Monster/%'),
                              mob4 != 0 AND NOT EXISTS (SELECT 1 FROM gamedata_actor_class a
                                  WHERE a.displayNameId = mob4 AND a.classPath LIKE '/Chara/Npc/Monster/%'),
-                             authority
+                             authority,
+                             (SELECT s.zoneId FROM server_spawn_locations s
+                                 WHERE s.actorClassId = aetheryte LIMIT 1)
                       FROM gamedata_guildleves",
                 )?;
                 let rows: Vec<(u32, GuildleveGamedata)> = stmt
@@ -1225,6 +1227,7 @@ impl Database {
                                     r.get::<_, i64>(27 + i).unwrap_or_default() != 0
                                 }),
                                 authority: r.get::<_, u32>(31).unwrap_or_default(),
+                                camp_zone: r.get::<_, u32>(32).unwrap_or_default(),
                             },
                         ))
                     })?

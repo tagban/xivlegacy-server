@@ -188,18 +188,25 @@ pub fn install_globals(
         globals.set("GetGuildleveOffers", f)?;
     }
 
-    // GetCompanyLeveOffers(gc) — the GC leves an officer of Grand Company
-    // `gc` (1 Maelstrom, 2 Twin Adder, 3 Immortal Flames) offers.
+    // GetCompanyLeveOffer(gc, zoneId) — the GC leve an officer of Grand
+    // Company `gc` (1 Maelstrom, 2 Twin Adder, 3 Immortal Flames) in that
+    // zone offers right now, or nil.
     {
         let cats = catalogs.clone();
-        let f = lua.create_function(move |_, gc: u8| -> mlua::Result<Vec<u32>> {
-            Ok(cats
-                .guildleves
-                .read()
-                .map(|m| crate::leve::battle::company_offers(&m, gc))
-                .unwrap_or_default())
-        })?;
-        globals.set("GetCompanyLeveOffers", f)?;
+        let f = lua.create_function(
+            move |_, (gc, zone): (u8, u32)| -> mlua::Result<Option<u32>> {
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or_default();
+                Ok(cats
+                    .guildleves
+                    .read()
+                    .ok()
+                    .and_then(|m| crate::leve::battle::company_offer(&m, gc, zone, now)))
+            },
+        )?;
+        globals.set("GetCompanyLeveOffer", f)?;
     }
 
     // GetRecipeResolver() → LuaRecipeResolver | nil. Mirrors Meteor's

@@ -725,6 +725,8 @@ pub struct GuildleveGamedata {
     /// the Grand Company (40065 Maelstrom, 40066 Twin Adder, 40067
     /// Immortal Flames).
     pub authority: u32,
+    /// Zone of the camp aetheryte (`aetheryte`), 0 when it isn't spawned.
+    pub camp_zone: u32,
 }
 
 // Gamedata row types (ItemData, InventoryItem) live in `crate::data`; import
