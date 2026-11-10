@@ -2314,20 +2314,22 @@ async fn battle_behavior_rage_of_halone() {
     let goring = by_name(&env, "goring_blade").clone();
     let spirits = by_name(&env, "spirits_within").clone();
     let mut sc = real_scene_at(&env, &roh, Recipient::Enemy, 50, 3).await;
+    // From the rear (no parry or block). `alone` keeps its misses (that is
+    // what it shows); the rest is compared with every hit landing and no
+    // crits, so only the ±4% damage roll is left: misses and crits across
+    // 15 presses moved the medians enough to fail CI now and then
+    // (combo 298 vs Goring Blade 379).
     stand_at(&sc, "rear").await;
     let alone = median_damage(&mut sc, &roh, None, 15).await;
+    {
+        let h = sc.registry.get(PLAYER).await.unwrap();
+        let mut c = h.character.write().await;
+        c.chara.mods.set(Modifier::RawHitRate, 100.0);
+        c.chara.mods.set(Modifier::RawCritRate, -100.0);
+    }
     let combo = median_damage(&mut sc, &roh, Some(&riot), 15).await;
     let goring_d = median_damage(&mut sc, &goring, None, 15).await;
     let spirits_d = median_damage(&mut sc, &spirits, None, 15).await;
-    {
-        let h = sc.registry.get(PLAYER).await.unwrap();
-        h.character
-            .write()
-            .await
-            .chara
-            .mods
-            .set(Modifier::RawHitRate, 100.0);
-    }
     let forced = median_damage(&mut sc, &roh, None, 15).await;
     let hp = mob_hp(50);
     println!(
