@@ -272,6 +272,71 @@ impl CommandProcessor {
         }
     }
 
+    /// `side <front|rear|left|right> [yalms]`: stand on that side of your
+    /// target, as its hit-direction rule sees it (for positional tests).
+    pub(super) async fn handle_side(&self, args: &Args<'_>) -> String {
+        let usage = "usage: side <front|rear|left|right> [yalms]";
+        let want: u8 = match args.tokens.first().map(|t| t.to_ascii_lowercase()) {
+            Some(t) if t == "front" => 1,
+            Some(t) if t == "right" => 2,
+            Some(t) if t == "rear" => 4,
+            Some(t) if t == "left" => 8,
+            _ => return usage.into(),
+        };
+        let dist = args
+            .tokens
+            .get(1)
+            .and_then(|t| t.parse::<f32>().ok())
+            .unwrap_or(2.0);
+        let me = match self.invoker_id(args).await {
+            Ok(id) => id,
+            Err(e) => return e,
+        };
+        let tid = match self.my_target(me).await {
+            Ok(t) => t,
+            Err(e) => return format!("{e} ({usage})"),
+        };
+        let Some((zone, x, y, z, rot)) = self.spot_of(tid).await else {
+            return "that actor is gone".into();
+        };
+        let centre = common::Vector3::new(x, y, z);
+        let at = |i: usize| {
+            let a = i as f32 / 64.0 * std::f32::consts::TAU;
+            common::Vector3::new(x + dist * a.cos(), y, z + dist * a.sin())
+        };
+        let hits: Vec<bool> = (0..64)
+            .map(|i| crate::status::hooks::hit_direction(centre, rot, at(i)) == want)
+            .collect();
+        // The middle of the run of matching angles (the run may wrap).
+        let Some(start) = (0..64).find(|&i| !hits[i] && hits[(i + 1) % 64]) else {
+            return "no such side".into();
+        };
+        let len = (1..=64).take_while(|k| hits[(start + k) % 64]).count();
+        let p = at((start + 1 + len / 2) % 64);
+        let my_name = args.invoker.unwrap_or_default().to_string();
+        let area = self.area_of(tid).await;
+        let (pa, pa_type) = area.unzip();
+        self.teleport(
+            &my_name,
+            Some(zone),
+            pa,
+            pa_type.unwrap_or(0),
+            (p.x, p.y, p.z),
+        )
+        .await;
+        format!(
+            "went to the {} of {} ({:.1} yalms; it is at {:.2},{:.2} facing {:.2}, you at {:.2},{:.2})",
+            args.tokens[0],
+            self.actor_label(tid).await,
+            dist,
+            x,
+            z,
+            rot,
+            p.x,
+            p.z
+        )
+    }
+
     /// `bring [name]`: someone to where you are; with no name, your target;
     /// or an NPC or monster in your zone by name, class id or actor id (it
     /// runs over and stays until a restart; `setpos` saves the spot).
@@ -985,7 +1050,8 @@ impl CommandProcessor {
         format!("{name}'s title is now {title}")
     }
 
-    /// `addeffect <status id> [seconds] [name]`.
+    /// `addeffect <status id> [seconds] [magnitude] [name | 0x<actor id>]`.
+    /// A `0x` actor id puts the status on any actor, a monster included.
     pub(super) async fn handle_addeffect(&self, args: &Args<'_>) -> String {
         let Some(status) = args.tokens.first().and_then(|t| t.parse::<u32>().ok()) else {
             return "usage: addeffect <status id> [seconds] [magnitude] [name]".into();
@@ -1006,9 +1072,16 @@ impl CommandProcessor {
                 "usage: addeffect <status id> [seconds] [magnitude] <name>".into()
             };
         };
-        let id = match self.online_id(&name).await {
-            Ok(id) => id,
-            Err(e) => return e,
+        let actor = name
+            .strip_prefix("0x")
+            .or_else(|| name.strip_prefix("0X"))
+            .and_then(|h| u32::from_str_radix(h, 16).ok());
+        let id = match actor {
+            Some(id) => id,
+            None => match self.online_id(&name).await {
+                Ok(id) => id,
+                Err(e) => return e,
+            },
         };
         self.run_lua(vec![LC::TryStatus {
             source_actor_id: id,

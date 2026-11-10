@@ -30,13 +30,6 @@ pub fn job_of_class(class_id: u8) -> Option<(u8, u32)> {
         .map(|(_, job, crystal)| (*job, *crystal))
 }
 
-/// The class a job belongs to.
-pub fn class_of_job(job_id: u8) -> Option<u8> {
-    JOBS.iter()
-        .find(|(_, job, _)| *job == job_id)
-        .map(|(class, _, _)| *class)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -46,8 +39,8 @@ mod tests {
         assert_eq!(job_of_class(4), Some((17, 2000203)));
         assert_eq!(job_of_class(23), Some((27, 2000206)));
         assert_eq!(job_of_class(29), None);
-        for (class, job, _) in JOBS {
-            assert_eq!(class_of_job(*job), Some(*class));
+        for (class, job, crystal) in JOBS {
+            assert_eq!(job_of_class(*class), Some((*job, *crystal)));
         }
     }
 }
