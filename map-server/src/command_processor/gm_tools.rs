@@ -730,14 +730,28 @@ impl CommandProcessor {
         match self.registry.get(target).await {
             Some(t) => {
                 let c = t.character.read().await;
-                format!(
+                let mut out = format!(
                     "target: actor {target} (0x{target:08X}), class {}, \"{}\", at {:.2} {:.2} {:.2}",
                     c.chara.actor_class_id,
                     c.base.display_name(),
                     c.base.position_x,
                     c.base.position_y,
                     c.base.position_z
-                )
+                );
+                // A monster's hate list (actor=enmity), most hated first.
+                let mut hate: Vec<_> = c
+                    .hate
+                    .entries()
+                    .map(|e| (e.actor_id, e.cumulative_enmity))
+                    .collect();
+                if !hate.is_empty() {
+                    hate.sort_by_key(|e| std::cmp::Reverse(e.1));
+                    out.push_str(", hate:");
+                    for (who, n) in hate {
+                        out.push_str(&format!(" {who}={n}"));
+                    }
+                }
+                out
             }
             None => format!("target: actor {target} (0x{target:08X})"),
         }
