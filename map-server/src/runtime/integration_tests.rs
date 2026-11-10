@@ -18821,7 +18821,15 @@ async fn collusion_moves_a_weaponskill_or_spells_enmity_too() {
             c.chara.max_hp = 30000;
             c.chara.level = 1;
         }
-        registry.get(1).await.unwrap().character.write().await.chara.class = class;
+        registry
+            .get(1)
+            .await
+            .unwrap()
+            .character
+            .write()
+            .await
+            .chara
+            .class = class;
         put_status(&registry, 1, 223097, "collusion", 1_048_601, 3).await;
         let collusion_on = |registry: Arc<ActorRegistry>| async move {
             let p = registry.get(1).await.unwrap();
