@@ -1,4 +1,4 @@
--- server_battlenpc_spawn_locations: game data, 4380 rows. Reloaded whole when this file changes.
+-- server_battlenpc_spawn_locations: game data, 4387 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_spawn_locations`;
 INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `groupId`, `positionX`, `positionY`, `positionZ`, `rotation`) VALUES
@@ -4388,4 +4388,11 @@ INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `
 (3706, 'war0j3_canyon_condor', 31302, -1338.0, 56.0, 420.0, 0.0),
 (3707, 'war0j3_canyon_condor', 31302, -1352.0, 56.1, 415.0, 0.0),
 (3708, 'war0j5_audhumbla', 31303, -322.0, 52.8, -1832.0, 0.0),
-(3709, 'war0j6_curious_gorge', 31304, -1368.0, 56.0, 561.0, 0.0);
+(3709, 'war0j6_curious_gorge', 31304, -1368.0, 56.0, 561.0, 0.0),
+(3710, 'mnk0j1_runagate_imp', 31305, 1146.2, 279.3, -418.4, 0.0),
+(3711, 'mnk0j1_runagate_imp', 31305, 1136.0, 278.0, -426.0, 0.0),
+(3712, 'mnk0j1_runagate_imp', 31305, 1148.0, 280.0, -434.0, 0.0),
+(3713, 'mnk0j2_gluttonous_gertrude', 31306, 623.2, 45.4, 240.5, 0.0),
+(3714, 'mnk0j3_prince_of_pestilence', 31307, -787.0, -14.7, -2360.0, 0.0),
+(3715, 'mnk0j4_apep', 31308, -1352.0, 55.8, -262.0, 0.0),
+(3716, 'mnk0j6_widargelt', 31309, 580.0, 55.4, 185.0, 0.0);

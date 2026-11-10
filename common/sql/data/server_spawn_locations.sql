@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1835 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1848 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -1839,4 +1839,17 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (30107, 1090906, 'war0j4_turning_leaf_armor', 153, '', 0, -1320.0, -2.3, 340.0, 0.0, 0, 0, NULL),
 (30108, 1090907, 'war0j4_craneperch_armor', 128, '', 0, 950.0, 45.4, 840.0, 0.0, 0, 0, NULL),
 (30109, 1090908, 'war0j5_iron_lake_cave_trigger', 135, '', 0, -330.0, 54.0, -1830.0, 0.0, 0, 0, NULL),
-(30110, 1090909, 'war0j6_silver_bazaar_trigger', 172, '', 0, -1380.0, 56.0, 561.0, 0.0, 0, 0, NULL);
+(30110, 1090909, 'war0j6_silver_bazaar_trigger', 172, '', 0, -1380.0, 56.0, 561.0, 0.0, 0, 0, NULL),
+(30111, 1060033, 'mnk_erik_chocobo_stables', 175, '', 0, -43.0, 192.1, 21.0, 1.6, 0, 0, NULL),
+(30112, 1060032, 'mnk_widargelt_little_ala_mhigo', 171, '', 0, 1128.0, 251.3, 212.0, 0.8, 0, 0, NULL),
+(30113, 1090910, 'mnk0j1_imp_trigger', 171, '', 0, 1150.0, 280.3, -410.0, 0.0, 0, 0, NULL),
+(30114, 1090911, 'mnk0j2_gertrude_trigger', 128, '', 0, 626.3, 46.1, 262.0, 0.0, 0, 0, NULL),
+(30115, 1090912, 'mnk0j3_prince_trigger', 157, '', 0, -787.0, -14.7, -2353.0, 0.0, 0, 0, NULL),
+(30116, 1090913, 'mnk0j3_measure_point', 157, '', 0, -700.0, -15.3, -2075.0, 0.0, 0, 0, NULL),
+(30117, 1090914, 'mnk0j4_apep_trigger', 172, '', 0, -1352.0, 55.7, -248.0, 0.0, 0, 0, NULL),
+(30118, 1090915, 'mnk0j5_dzemael_garb', 143, '', 0, 205.0, 301.5, -248.0, 0.0, 0, 0, NULL),
+(30119, 1090916, 'mnk0j5_ughamaro_garb', 135, '', 0, -186.3, 69.6, -1836.9, 0.0, 0, 0, NULL),
+(30120, 1090917, 'mnk0j5_turning_leaf_garb', 153, '', 0, -1342.0, -16.2, 318.0, 0.0, 0, 0, NULL),
+(30121, 1090918, 'mnk0j5_sagolii_cliff_garb', 170, '', 0, 166.9, 186.5, -363.5, 0.0, 0, 0, NULL),
+(30122, 1090919, 'mnk0j6_silvertear_trigger', 190, '', 0, 575.0, 56.0, 198.0, 0.0, 0, 0, NULL),
+(30123, 1060032, 'mnk0j6_widargelt_falls', 190, '', 0, 565.0, 55.6, 185.0, 0.8, 0, 0, NULL);
