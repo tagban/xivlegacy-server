@@ -18800,6 +18800,74 @@ async fn collusion_puts_the_hits_enmity_on_its_warrior() {
     );
 }
 
+/// Collusion also moves the enmity of a weaponskill (Heavy Swing) or a
+/// spell (Stone): "the next attack" is any attack, not only the swing.
+#[tokio::test]
+async fn collusion_moves_a_weaponskill_or_spells_enmity_too() {
+    for (cmd, class) in [(27190u16, 4i16), (27355, 23)] {
+        let (world, registry, zone) = party_hook_zone().await;
+        let db = Arc::new(crate::database::Database::open(tempdb()).await.expect("db"));
+        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../scripts/lua");
+        let lua = Arc::new(crate::lua::LuaEngine::new(&root));
+        let (catalog, by_level) = db.load_global_battle_command_list().await.unwrap();
+        let statuses = db.load_global_status_effect_list().await.unwrap();
+        lua.catalogs()
+            .install_battle_commands_with_level_index(catalog.clone(), by_level);
+        lua.catalogs().install_status_effects(statuses);
+        {
+            let h = registry.get(2).await.unwrap();
+            let mut c = h.character.write().await;
+            c.chara.hp = 30000;
+            c.chara.max_hp = 30000;
+            c.chara.level = 1;
+        }
+        registry.get(1).await.unwrap().character.write().await.chara.class = class;
+        put_status(&registry, 1, 223097, "collusion", 1_048_601, 3).await;
+        let collusion_on = |registry: Arc<ActorRegistry>| async move {
+            let p = registry.get(1).await.unwrap();
+            p.character.read().await.status_effects.has(223097)
+        };
+        for _ in 0..30 {
+            if !collusion_on(registry.clone()).await {
+                break;
+            }
+            {
+                let h = registry.get(1).await.unwrap();
+                let mut c = h.character.write().await;
+                c.chara.tp = 3000;
+                c.chara.mp = 5000;
+                c.chara.max_mp = 5000;
+            }
+            dispatch_battle_event(
+                &BattleEvent::ResolveAction {
+                    attacker_actor_id: 1,
+                    defender_actor_id: 2,
+                    command: catalog[&cmd].to_battle_command(),
+                },
+                &registry,
+                &world,
+                &zone,
+                Some(&lua),
+                Some(&db),
+            )
+            .await;
+        }
+        assert!(
+            !collusion_on(registry.clone()).await,
+            "command {cmd}: a hit landed and used Collusion up"
+        );
+        let mob = registry.get(2).await.unwrap();
+        let c = mob.character.read().await;
+        let warrior = c.hate.get(3).map_or(0, |e| e.cumulative_enmity);
+        let attacker = c.hate.get(1).map_or(0, |e| e.cumulative_enmity);
+        assert!(warrior > 0, "command {cmd}: the warrior holds the enmity");
+        assert!(
+            attacker <= 1,
+            "command {cmd}: the attacker holds none of the hit: {attacker}"
+        );
+    }
+}
+
 /// Fast Blade starts a combo, Savage Blade continues it for free and
 /// carries the combo step, and a weaponskill outside the chain ends it.
 #[tokio::test]
