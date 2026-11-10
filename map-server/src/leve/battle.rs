@@ -885,6 +885,12 @@ fn tracker_state(leve: &Leve) -> Vec<SubPacket> {
             b.add_byte(field, (-1i8) as u8);
         }));
     }
+    if let Some((done, max)) = round_line(leve.class, &leve.aim, &leve.now) {
+        subs.extend(director_packets(leve, "work/info", |b| {
+            b.add_byte("work.roundNumber", done);
+            b.add_byte("work.roundNumberMax", max);
+        }));
+    }
     subs.extend(director_packets(leve, "guildleveWork/marker", |b| {
         b.add_float("guildleveWork.markerX[0]", leve.marker.0);
         b.add_float("guildleveWork.markerY[0]", leve.marker.1);
@@ -931,6 +937,18 @@ fn pick_beasts(
             .then(a.0.cmp(&b.0))
     });
     ranked.into_iter().take(n).map(|(c, _)| c).collect()
+}
+
+/// The Round tracker's fifth line (PrivateGLBattleRoundNormal), always
+/// shown as `work.roundNumber/roundNumberMax`, "on" while the first is
+/// lower. The leve sheet has no round count, so the leve is one round:
+/// 0/1 while any objective is open, 1/1 once all are met.
+fn round_line(class: &str, aim: &[i8; 4], now: &[i8; 4]) -> Option<(u8, u8)> {
+    if class != "PrivateGLBattleRoundNormal" {
+        return None;
+    }
+    let met = (0..4).all(|i| now[i] >= aim[i]);
+    Some((met as u8, 1))
 }
 
 /// The `work` field behind a director class's fifth tracker line, for the
@@ -1751,6 +1769,23 @@ mod tests {
             Some("work.detectNumber")
         );
         assert_eq!(extra_line_field("PrivateGLBattleSweepNormal"), None);
+    }
+
+    #[test]
+    fn round_tracker_counts_one_round() {
+        let aim = [2, 0, 0, 0];
+        assert_eq!(
+            round_line("PrivateGLBattleRoundNormal", &aim, &[1, 0, 0, 0]),
+            Some((0, 1))
+        );
+        assert_eq!(
+            round_line("PrivateGLBattleRoundNormal", &aim, &[2, 0, 0, 0]),
+            Some((1, 1))
+        );
+        assert_eq!(
+            round_line("PrivateGLBattleSweepNormal", &aim, &[2, 0, 0, 0]),
+            None
+        );
     }
 
     #[test]
