@@ -823,6 +823,9 @@ impl HookActorChange {
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct HookSkill {
     pub id: u32,
+    /// The class or job the command belongs to (`skill.job`), 0 for the
+    /// auto-attack.
+    pub job: u8,
     pub command_type: u16,
     pub action_type: u8,
     pub num_hits: u8,
@@ -1201,6 +1204,7 @@ fn build_container(lua: &Lua, fx: &Arc<Mutex<Fx>>) -> mlua::Result<Table> {
 fn build_skill(lua: &Lua, s: &HookSkill) -> mlua::Result<Table> {
     let t = lua.create_table()?;
     t.set("id", s.id)?;
+    t.set("job", s.job)?;
     t.set("commandType", s.command_type)?;
     t.set("actionType", s.action_type)?;
     t.set("numHits", s.num_hits)?;
@@ -1468,6 +1472,10 @@ mod tests {
         let (k, d) = out.mod_deltas[0];
         assert_eq!(k, Modifier::Delay.as_u32());
         assert!((d + 0.6).abs() < 1e-9, "{d}");
+        // No size (a bare `!addeffect`): 20% faster, not a zero delay.
+        let out = run_on_gain(&root(), "haste", &owner(), fx(0.0)).unwrap();
+        let (_, d) = out.mod_deltas[0];
+        assert!((d + 0.6).abs() < 1e-9, "3.0 delay x0.8: {d}");
     }
 
     #[test]
@@ -1920,6 +1928,38 @@ mod tests {
                 .mod_deltas
                 .contains(&(Modifier::Defense.as_u32(), 60.0))
         );
+    }
+
+    #[test]
+    fn mighty_strikes_crits_axe_commands_and_swings_only() {
+        let (me, foe) = (actor(1), actor(2));
+        let crit = |job: u8, command_type: u16| {
+            let mut sk = skill(command_type);
+            sk.job = job;
+            run_hook(
+                &root(),
+                &call(
+                    "onPreAction",
+                    "mighty_strikes",
+                    &me,
+                    &foe,
+                    true,
+                    sk,
+                    Some(hit(100.0)),
+                ),
+            )
+            .unwrap()
+            .unwrap()
+            .action
+            .unwrap()
+            .crit_rate
+        };
+        // Warrior and marauder weaponskills, and auto-attacks.
+        assert_eq!(crit(17, 2), 100.0);
+        assert_eq!(crit(4, 2), 100.0);
+        assert_eq!(crit(0, 1), 100.0);
+        // A gladiator weaponskill (job 3, which the script used to check).
+        assert_eq!(crit(3, 2), 5.0);
     }
 
     #[test]
