@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1848 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1858 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -1852,4 +1852,19 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (30120, 1090917, 'mnk0j5_turning_leaf_garb', 153, '', 0, -1342.0, -16.2, 318.0, 0.0, 0, 0, NULL),
 (30121, 1090918, 'mnk0j5_sagolii_cliff_garb', 170, '', 0, 166.9, 186.5, -363.5, 0.0, 0, 0, NULL),
 (30122, 1090919, 'mnk0j6_silvertear_trigger', 190, '', 0, 575.0, 56.0, 198.0, 0.0, 0, 0, NULL),
-(30123, 1060032, 'mnk0j6_widargelt_falls', 190, '', 0, 565.0, 55.6, 185.0, 0.8, 0, 0, NULL);
+(30123, 1060032, 'mnk0j6_widargelt_falls', 190, '', 0, 565.0, 55.6, 185.0, 0.8, 0, 0, NULL),
+(30124, 1001570, 'whm_raya_o_senna_lake_cave', 152, '', 0, -1265.0, 19.4, -1735.0, 1.6, 0, 0, NULL),
+(30125, 1090920, 'whm0j1_vilekin_den_trigger', 157, '', 0, -845.0, -23.4, -2325.0, 0.0, 0, 0, NULL),
+(30126, 1090921, 'whm0j2_dunstan_trigger', 145, '', 0, 1440.0, 215.3, 790.0, 0.0, 0, 0, NULL),
+(30127, 1090922, 'whm0j3_cactuar_jack_trigger', 172, '', 0, -840.0, 119.4, -55.0, 0.0, 0, 0, NULL),
+(30128, 1090923, 'whm0j4_land_bridge_trigger', 128, '', 0, 45.0, 43.1, 170.0, 0.0, 0, 0, NULL),
+(30129, 1090924, 'whm0j5_dzemael_garb', 143, '', 0, 228.0, 302.2, -246.0, 0.0, 0, 0, NULL),
+(30130, 1090925, 'whm0j5_zahar_ak_garb', 174, '', 0, 2400.0, 247.8, 1540.0, 0.0, 0, 0, NULL),
+(30131, 1090926, 'whm0j5_turning_leaf_garb', 153, '', 0, -1345.0, -15.5, 330.0, 0.0, 0, 0, NULL),
+(30132, 1090927, 'whm0j5_tiger_helm_garb', 130, '', 0, 1620.0, 60.2, -455.0, 0.0, 0, 0, NULL),
+(30133, 1090928, 'whm0j6_keening_trigger', 150, '', 0, 200.0, 3.6, -505.0, 0.0, 0, 0, NULL),
+(30250, 1500222, 'storm_sergeant_hammil', 132, '', 0, 1346.50, -54.38, -868.00, -0.79, 0, 1045, NULL),
+(30251, 1500224, 'serpent_sergeant_cordwyk', 152, '', 0, -886.00, 33.61, -2184.00, -0.79, 0, 1045, NULL),
+(30252, 1500225, 'serpent_sergeant_lodall', 157, '', 0, -685.00, -15.31, -2061.00, -0.79, 0, 1045, NULL),
+(30253, 1500226, 'flame_sergeant_byrne', 171, '', 0, 1601.00, 256.07, -229.00, -0.79, 0, 1045, NULL),
+(30254, 1500227, 'flame_sergeant_dalvag', 176, '', 0, 83.00, 167.93, -1265.00, -0.79, 0, 1045, NULL);

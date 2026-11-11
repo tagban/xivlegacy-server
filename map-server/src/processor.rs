@@ -6269,6 +6269,17 @@ impl PacketProcessor {
             &self.world,
         )
         .await;
+        // a /poke can show a battle leve's disguised target
+        crate::leve::battle::on_emote(
+            actor_id,
+            target_actor_id,
+            emote_id,
+            &self.registry,
+            &self.world,
+            &self.db,
+            self.lua.as_ref(),
+        )
+        .await;
     }
 
     /// `player:SetSNpc(nickname, actorClassId, classType)` apply

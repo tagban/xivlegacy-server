@@ -105,6 +105,30 @@ fn plate_supported(plate_id: u32) -> bool {
 /// line is the tome (`item4`), cleared when every page is in.
 const PLATE_NECROLOGOS: u32 = 20023;
 const PLATE_SURVIVE: u32 = 20027;
+/// Grand Company "Epic" leves (PrivateGLBattleSweepEpic): the targets hide
+/// among the local wildlife, and the tracker says "Use the /poke emote to
+/// find enemies carrying luminous crystals". Each target starts as a
+/// disguise, a local beast; poking one shows the target in its place.
+/// Other local beasts stand among them and poking those does nothing.
+const PLATE_DISGUISED: u32 = 20049;
+/// The /poke emote's animation (EmoteStandardCommand.lua).
+const POKE_ANIM: u32 = 28;
+/// Grand Company rescue leves: a missing person is found under attack and
+/// must be kept alive (the client's CompanyleveRescueNormal, whose tracker
+/// is one bar, `work.npcHP` 0-100). The sheet's one "target" is the person
+/// to rescue: they stand at the leve spot on the players' side, local
+/// beasts set on them, and the leve is won when the beasts are dead and
+/// lost when the person falls.
+const PLATE_RESCUE: u32 = 20051;
+/// The person to rescue's hit points (the most an actor holds), and how
+/// many beasts set on them (this plus the difficulty).
+const RESCUEE_HP: u32 = 30_000;
+const RESCUE_ATTACKERS: usize = 2;
+/// How far around the person the beasts stand, and how close a player
+/// comes before they set on the person (the person is found under attack).
+const RESCUE_RING: f32 = 5.0;
+const RESCUE_NOTICE: f32 = 25.0;
+const RESCUE_CLASS: &str = "CompanyleveRescueNormal";
 const PLATE_GATHER: u32 = 20025;
 /// Chase leves ("Pursue and defeat the target enemies") run their
 /// objectives as stages: the first group, then a bigger one further out
@@ -324,6 +348,10 @@ struct Leve {
     necrologos: bool,
     /// Objectives run one at a time (Chase).
     staged: bool,
+    /// Disguised targets (PLATE_DISGUISED): the beasts hiding one, their
+    /// objective, and the local beast classes a lost disguise comes back as.
+    disguises: HashMap<u32, usize>,
+    disguise_classes: Vec<u32>,
     /// The camp and every monster spawn point of the zone, for placing a
     /// staged leve's next group.
     camp: (f32, f32, f32),
@@ -336,6 +364,12 @@ struct Leve {
     /// A class tutorial, and whether it has said a target is nearby.
     tutorial: bool,
     told_nearby: bool,
+    /// A rescue (PLATE_RESCUE): the person to keep alive, and their health
+    /// bar (percent) as last sent.
+    rescuee: Option<u32>,
+    npc_hp: u8,
+    /// The beasts that set on the person once a player comes near.
+    ambush: Vec<u32>,
 }
 
 static ACTIVE: Mutex<Vec<Leve>> = Mutex::new(Vec::new());
@@ -763,12 +797,17 @@ pub async fn start(
         marker: center,
         necrologos,
         staged: gd.plate_id == PLATE_CHASE,
+        disguises: HashMap::new(),
+        disguise_classes: Vec::new(),
         camp,
         points: points.clone(),
         dropped: Vec::new(),
         back_since: HashMap::new(),
         tutorial: TUTORIALS.contains(&gl_id),
         told_nearby: false,
+        rescuee: None,
+        npc_hp: 100,
+        ambush: Vec::new(),
     };
     for i in 0..4 {
         if leve.aim[i] > 0 && classes[i] == 0 && !(necrologos && i == 3) {
@@ -848,16 +887,45 @@ pub async fn start(
 
     send_all(registry, world, &everyone, tracker_state(&leve)).await;
 
+    if gd.plate_id == PLATE_RESCUE {
+        start_rescue(&mut leve, &gd, center, registry, world, db, lua).await;
+        log_start(&leve, center);
+        with_active(|a| a.push(leve));
+        return;
+    }
+
     // Targets: up to MAX_UP of each objective, plus decoys for mobs that
-    // don't count.
-    let mut wave: Vec<(u32, Option<usize>)> = Vec::new();
+    // don't count. Disguised targets start as local beasts, with as many
+    // plain ones among them.
+    if gd.plate_id == PLATE_DISGUISED {
+        let monsters = db.zone_monsters(zone_id).await.unwrap_or_default();
+        leve.disguise_classes = pick_beasts(&monsters, center, u32::from(gd.level), 3);
+    }
+    // (class, objective it counts for, objective it hides)
+    let mut wave: Vec<(u32, Option<usize>, Option<usize>)> = Vec::new();
     let first_stage = stage(&leve.aim, &leve.now);
     for i in 0..4 {
         if leve.classes[i] == 0 || (leve.staged && first_stage != Some(i)) {
             continue;
         }
-        for _ in 0..(leve.aim[i] as usize).min(MAX_UP) {
-            wave.push((leve.classes[i], Some(i)));
+        for k in 0..(leve.aim[i] as usize).min(MAX_UP) {
+            if leve.disguise_classes.is_empty() {
+                wave.push((leve.classes[i], Some(i), None));
+            } else {
+                // a plain beast and one hiding the target, in turn
+                let n = leve.disguise_classes.len();
+                let (hide, plain) = (
+                    leve.disguise_classes[k % n],
+                    leve.disguise_classes[(k + 1) % n],
+                );
+                if k % 2 == 0 {
+                    wave.push((hide, None, Some(i)));
+                    wave.push((plain, None, None));
+                } else {
+                    wave.push((plain, None, None));
+                    wave.push((hide, None, Some(i)));
+                }
+            }
         }
     }
     for (j, &mob) in gd.mobs.iter().enumerate() {
@@ -866,21 +934,31 @@ pub async fn start(
         }
         if let Ok(Some(class_id)) = db.monster_class_for_name(mob).await {
             for _ in 0..EXTRAS {
-                wave.push((class_id, None));
+                wave.push((class_id, None, None));
             }
         }
     }
-    for (class_id, objective) in wave {
-        if let Some(actor_id) = spawn_one(&mut leve, class_id, registry, world, db, lua).await {
+    for (class_id, objective, hides) in wave {
+        if let Some(actor_id) =
+            spawn_one(&mut leve, class_id, None, None, registry, world, db, lua).await
+        {
             leve.spawned.insert(actor_id, objective);
+            if let Some(i) = hides {
+                leve.disguises.insert(actor_id, i);
+            }
         }
     }
+    log_start(&leve, center);
+    with_active(|a| a.push(leve));
+}
+
+fn log_start(leve: &Leve, center: (f32, f32, f32)) {
     tracing::info!(
-        player = player_id,
-        gl_id,
-        difficulty,
-        zone_id,
-        director = format!("0x{director_id:08X}"),
+        player = leve.owner,
+        gl_id = leve.guildleve_id,
+        difficulty = leve.difficulty,
+        zone_id = leve.zone_id,
+        director = format!("0x{:08X}", leve.director_id),
         party = ?leve.members,
         targets = leve.spawned.len(),
         actors = ?leve
@@ -889,9 +967,14 @@ pub async fn start(
             .map(|a| format!("0x{a:08X}"))
             .collect::<Vec<_>>(),
         center = ?center,
+        disguises = ?leve
+            .disguises
+            .keys()
+            .map(|a| format!("0x{a:08X}"))
+            .collect::<Vec<_>>(),
+        rescuee = ?leve.rescuee.map(|a| format!("0x{a:08X}")),
         "battle leve started"
     );
-    with_active(|a| a.push(leve));
 }
 
 /// The guildleve director actor's spawn packets.
@@ -927,7 +1010,12 @@ fn tracker_state(leve: &Leve) -> Vec<SubPacket> {
     });
     subs.extend(director_packets(leve, "guildleveWork/infoVariable", |b| {
         for i in 0..4 {
-            if leve.aim[i] != 0 {
+            if leve.class == RESCUE_CLASS {
+                // one line, the person's health bar (work.npcHP)
+                if i == 0 {
+                    b.add_byte("guildleveWork.uiState[0]", 1);
+                }
+            } else if leve.aim[i] != 0 {
                 b.add_byte(&format!("guildleveWork.aimNum[{i}]"), leve.aim[i] as u8);
                 b.add_byte(
                     &format!("guildleveWork.uiState[{i}]"),
@@ -953,6 +1041,9 @@ fn tracker_state(leve: &Leve) -> Vec<SubPacket> {
             b.add_byte("work.roundNumber", done);
             b.add_byte("work.roundNumberMax", max);
         }));
+    }
+    if leve.class == RESCUE_CLASS {
+        subs.extend(npc_hp_packets(leve, leve.npc_hp));
     }
     subs.extend(director_packets(leve, "guildleveWork/marker", |b| {
         b.add_float("guildleveWork.markerX[0]", leve.marker.0);
@@ -999,6 +1090,221 @@ async fn tell_nearby(leve: &Leve, registry: &ActorRegistry, world: &WorldManager
     for p in leve.participants() {
         message(registry, world, p, TEXT_TUTORIAL_NEARBY, &[]).await;
     }
+}
+
+/// The rescue director's health bar for the person to rescue (percent).
+fn npc_hp_packets(leve: &Leve, pct: u8) -> Vec<SubPacket> {
+    director_packets(leve, "work/info", |b| {
+        b.add_byte("work.npcHP", pct);
+    })
+}
+
+/// A rescue's spawns: the person to rescue at the leve spot, on the
+/// players' side, and the local beasts that set on them when a player
+/// arrives ([`ambush`]). The beasts are the objective; the person counts
+/// for nothing.
+async fn start_rescue(
+    leve: &mut Leve,
+    gd: &GuildleveGamedata,
+    center: (f32, f32, f32),
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    db: &Database,
+    lua: Option<&Arc<LuaEngine>>,
+) {
+    let person = leve.classes[0];
+    leve.rescuee = spawn_one(
+        leve,
+        person,
+        Some(center),
+        Some(RESCUEE_HP),
+        registry,
+        world,
+        db,
+        lua,
+    )
+    .await;
+    if let Some(person) = leve.rescuee
+        && let Some(h) = registry.get(person).await
+    {
+        // they don't fight: the player has to put the beasts down
+        let mut c = h.character.write().await;
+        if let Some(ctrl) = c.ai_container.controller.as_mut() {
+            ctrl.auto_attack_enabled = false;
+            ctrl.casting_enabled = false;
+            ctrl.weapon_skill_enabled = false;
+            ctrl.battle.neutral = true;
+            ctrl.battle.skills.clear();
+            ctrl.battle.spells.clear();
+        }
+    }
+    let monsters = db.zone_monsters(leve.zone_id).await.unwrap_or_default();
+    let beasts = pick_beasts(&monsters, center, u32::from(gd.level), 2);
+    let n = if beasts.is_empty() {
+        0
+    } else {
+        RESCUE_ATTACKERS + usize::from(leve.difficulty)
+    };
+    leve.aim = [n as i8, 0, 0, 0];
+    leve.classes = [beasts.first().copied().unwrap_or(0), 0, 0, 0];
+    leve.ambush = (0..n).map(|k| beasts[k % beasts.len()]).collect();
+}
+
+/// The beasts appear around the person and set on them.
+async fn ambush(
+    leve: &Leve,
+    person: u32,
+    at: (f32, f32, f32),
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    db: &Database,
+    lua: Option<&Arc<LuaEngine>>,
+) {
+    let mut leve = leve.clone();
+    let n = leve.ambush.len();
+    let mut up = Vec::new();
+    for (k, class_id) in std::mem::take(&mut leve.ambush).into_iter().enumerate() {
+        let angle = k as f32 * std::f32::consts::TAU / n as f32;
+        let spot = (
+            at.0 + RESCUE_RING * angle.sin(),
+            at.1,
+            at.2 + RESCUE_RING * angle.cos(),
+        );
+        if let Some(actor_id) = spawn_one(
+            &mut leve,
+            class_id,
+            Some(spot),
+            None,
+            registry,
+            world,
+            db,
+            lua,
+        )
+        .await
+        {
+            leve.spawned.insert(actor_id, Some(0));
+            up.push(actor_id);
+        }
+    }
+    with_active(|a| {
+        if let Some(l) = a.iter_mut().find(|l| l.director_id == leve.director_id) {
+            l.ambush.clear();
+            l.next_spot = leve.next_spot;
+            for &actor_id in &up {
+                l.spawned.insert(actor_id, Some(0));
+            }
+        }
+    });
+    tracing::info!(
+        gl_id = leve.guildleve_id,
+        person = format!("0x{person:08X}"),
+        beasts = ?up.iter().map(|a| format!("0x{a:08X}")).collect::<Vec<_>>(),
+        "battle leve rescue ambush"
+    );
+    set_on(&leve, person, registry).await;
+}
+
+/// The beasts of the leve that aren't fighting set on `person`.
+async fn set_on(leve: &Leve, person: u32, registry: &ActorRegistry) {
+    for &actor_id in leve.spawned.keys() {
+        if let Some(h) = registry.get(actor_id).await {
+            let mut c = h.character.write().await;
+            if !c.ai_container.is_engaged() && c.hate.most_hated().is_none() {
+                c.hate.update_hate(person, 1);
+            }
+        }
+    }
+}
+
+/// A rescue's second: the beasts appear when a player comes near the
+/// person; then the person's health bar follows their HP, and when they
+/// fall the leve fails, else the idle beasts go for them again.
+async fn rescue_tick(
+    leve: &Leve,
+    person: u32,
+    now_ms: u64,
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    db: &Database,
+    lua: Option<&Arc<LuaEngine>>,
+) {
+    if !leve.ambush.is_empty() {
+        // waiting for a player to find them
+        let Some(at) = position(registry, person).await else {
+            return;
+        };
+        for p in leve.participants() {
+            if let Some(q) = position(registry, p).await
+                && ((q.0 - at.0).powi(2) + (q.2 - at.2).powi(2)).sqrt() <= RESCUE_NOTICE
+            {
+                ambush(leve, person, at, registry, world, db, lua).await;
+                break;
+            }
+        }
+        return;
+    }
+    let pct = match registry.get(person).await {
+        Some(h) => {
+            let c = h.character.read().await;
+            npc_hp_percent(
+                c.chara.hp,
+                c.chara.max_hp,
+                c.base.current_main_state == crate::actor::MAIN_STATE_DEAD,
+            )
+        }
+        None => 0,
+    };
+    if pct != leve.npc_hp {
+        with_active(|a| {
+            if let Some(l) = a.iter_mut().find(|l| l.director_id == leve.director_id) {
+                l.npc_hp = pct;
+            }
+        });
+        send_all(
+            registry,
+            world,
+            &leve.participants(),
+            npc_hp_packets(leve, pct),
+        )
+        .await;
+    }
+    if pct > 0 {
+        set_on(leve, person, registry).await;
+        return;
+    }
+    let here = present(leve, registry, world).await;
+    if let Some(ended) = finish(leve.owner, now_ms) {
+        wrap_up(&ended, registry, world, db).await;
+        for &p in &here {
+            say(
+                registry,
+                world,
+                p,
+                "The one you came to rescue has fallen. The levequest has failed.",
+            )
+            .await;
+        }
+        tracing::info!(
+            player = leve.owner,
+            gl_id = leve.guildleve_id,
+            "battle leve failed: the rescuee fell"
+        );
+    }
+}
+
+async fn position(registry: &ActorRegistry, actor_id: u32) -> Option<(f32, f32, f32)> {
+    let h = registry.get(actor_id).await?;
+    let c = h.character.read().await;
+    Some((c.base.position_x, c.base.position_y, c.base.position_z))
+}
+
+/// Health as the rescue bar shows it: 0 only when down, else at least 1.
+fn npc_hp_percent(hp: i16, max_hp: i16, dead: bool) -> u8 {
+    if dead || hp <= 0 {
+        return 0;
+    }
+    let max = i32::from(max_hp.max(1));
+    ((i32::from(hp) * 100 + max - 1) / max).clamp(1, 100) as u8
 }
 
 /// Up to `n` different monster classes for a Necrologos leve's pages: the
@@ -1138,9 +1444,12 @@ async fn rejoin_dropped(leve: &Leve, now_ms: u64, registry: &ActorRegistry, worl
 }
 
 /// Spawn one leve monster at the leve's next ground spot.
+#[allow(clippy::too_many_arguments)]
 async fn spawn_one(
     leve: &mut Leve,
     class_id: u32,
+    at: Option<(f32, f32, f32)>,
+    ally_hp: Option<u32>,
     registry: &ActorRegistry,
     world: &WorldManager,
     db: &Database,
@@ -1148,11 +1457,16 @@ async fn spawn_one(
 ) -> Option<u32> {
     let class = db.load_actor_class(class_id).await.ok().flatten()?;
     let genus = crate::processor::gm_spawn::genus_for(db, class_id, &class.class_path).await;
-    let (x, y, z) = leve.spots[leve.next_spot % leve.spots.len()];
-    leve.next_spot += 1;
-    // spread out a little around the spot
-    let k = leve.next_spot as f32;
-    let (x, z) = (x + 2.0 * (k * 2.4).sin(), z + 2.0 * (k * 2.4).cos());
+    let k = (leve.next_spot + 1) as f32;
+    let (x, y, z) = match at {
+        Some(p) => p,
+        None => {
+            let (x, y, z) = leve.spots[leve.next_spot % leve.spots.len()];
+            leve.next_spot += 1;
+            // spread out a little around the spot
+            (x + 2.0 * (k * 2.4).sin(), y, z + 2.0 * (k * 2.4).cos())
+        }
+    };
     let rotation = (k * 1.7) % std::f32::consts::TAU;
     let (bnpc_ids, group_id, pool_id) = db
         .gm_spawn_insert(
@@ -1165,6 +1479,11 @@ async fn spawn_one(
         )
         .await
         .ok()?;
+    if let Some(hp) = ally_hp
+        && let Err(e) = db.gm_spawn_make_ally(group_id, hp).await
+    {
+        tracing::warn!(error = %e, "guildleve: making the spawn an ally failed");
+    }
     let mut spawned = None;
     for bnpc_id in &bnpc_ids {
         let actor_id = (4 << 28) | (leve.zone_id << 19) | crate::processor::gm_spawn::next_number();
@@ -1204,30 +1523,44 @@ pub async fn on_death(
             matches!(l.phase, Phase::Running { .. }) && l.spawned.contains_key(&victim_id)
         })?;
         let objective = leve.spawned.remove(&victim_id)?;
+        if let Some(i) = leve.disguises.remove(&victim_id) {
+            // a disguise put down before it was found: another beast
+            // hides the target
+            return Some((leve.clone(), i, false, false, true));
+        }
         let i = objective?;
         if leve.now[i] >= leve.aim[i] {
             return None;
         }
         leve.now[i] += 1;
-        let up = leve.spawned.values().filter(|o| **o == Some(i)).count() as i8;
+        let up = (leve.spawned.values().filter(|o| **o == Some(i)).count()
+            + leve.disguises.values().filter(|o| **o == i).count()) as i8;
         let respawn = leve.now[i] + up < leve.aim[i];
         if leve.necrologos && (0..3).all(|k| leve.now[k] >= leve.aim[k]) {
             // every page is in: the tome is destroyed
             leve.now[3] = leve.aim[3];
         }
         let done = (0..4).all(|k| leve.now[k] >= leve.aim[k]);
-        Some((leve.clone(), i, respawn, done))
+        Some((leve.clone(), i, respawn, done, false))
     });
-    let Some((leve, i, respawn, done)) = hit else {
+    let Some((leve, i, respawn, done, lost_disguise)) = hit else {
         return;
     };
-    let subs = director_packets(&leve, "guildleveWork/infoVariable", |b| {
-        b.add_byte(&format!("guildleveWork.aimNumNow[{i}]"), leve.now[i] as u8);
-        if leve.necrologos && done {
-            b.add_byte("guildleveWork.aimNumNow[3]", leve.now[3] as u8);
+    if lost_disguise {
+        if let Some(db) = db {
+            hide_again(leve, i, registry, world, db, lua).await;
         }
-    });
-    send_all(registry, world, &leve.participants(), subs).await;
+        return;
+    }
+    if leve.rescuee.is_none() {
+        let subs = director_packets(&leve, "guildleveWork/infoVariable", |b| {
+            b.add_byte(&format!("guildleveWork.aimNumNow[{i}]"), leve.now[i] as u8);
+            if leve.necrologos && done {
+                b.add_byte("guildleveWork.aimNumNow[3]", leve.now[3] as u8);
+            }
+        });
+        send_all(registry, world, &leve.participants(), subs).await;
+    }
     tracing::info!(
         player = leve.owner,
         gl_id = leve.guildleve_id,
@@ -1265,8 +1598,15 @@ pub async fn on_death(
     }
     if respawn && let Some(db) = db {
         let mut leve = leve;
+        if !leve.disguise_classes.is_empty() {
+            // a target found and lost: it hides again
+            hide_again(leve, i, registry, world, db, lua).await;
+            return;
+        }
         let class_id = leve.classes[i];
-        if let Some(actor_id) = spawn_one(&mut leve, class_id, registry, world, db, lua).await {
+        if let Some(actor_id) =
+            spawn_one(&mut leve, class_id, None, None, registry, world, db, lua).await
+        {
             tracing::info!(
                 gl_id = leve.guildleve_id,
                 objective = i,
@@ -1281,6 +1621,86 @@ pub async fn on_death(
             });
         }
     }
+}
+
+/// A disguised target for objective `i` hides in a new local beast.
+async fn hide_again(
+    mut leve: Leve,
+    i: usize,
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    db: &Database,
+    lua: Option<&Arc<LuaEngine>>,
+) {
+    let n = leve.disguise_classes.len().max(1);
+    let Some(&class_id) = leve.disguise_classes.get(leve.next_spot % n) else {
+        return;
+    };
+    if let Some(actor_id) =
+        spawn_one(&mut leve, class_id, None, None, registry, world, db, lua).await
+    {
+        with_active(|a| {
+            if let Some(l) = a.iter_mut().find(|l| l.director_id == leve.director_id) {
+                l.spawned.insert(actor_id, None);
+                l.disguises.insert(actor_id, i);
+                l.next_spot = leve.next_spot;
+            }
+        });
+    }
+}
+
+/// `player` used an emote on `target`. A /poke on a beast hiding a
+/// disguised target of their leve shows the target in its place.
+pub async fn on_emote(
+    player: u32,
+    target: u32,
+    anim_id: u32,
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    db: &Database,
+    lua: Option<&Arc<LuaEngine>>,
+) {
+    if anim_id != POKE_ANIM || target == 0 {
+        return;
+    }
+    let found = with_active(|a| {
+        let leve = a.iter_mut().find(|l| {
+            matches!(l.phase, Phase::Running { .. })
+                && l.has(player)
+                && l.disguises.contains_key(&target)
+        })?;
+        let i = leve.disguises.remove(&target)?;
+        leve.spawned.remove(&target);
+        Some((leve.clone(), i))
+    });
+    let Some((mut leve, i)) = found else {
+        return;
+    };
+    let at = match registry.get(target).await {
+        Some(h) => {
+            let c = h.character.read().await;
+            Some((c.base.position_x, c.base.position_y, c.base.position_z))
+        }
+        None => None,
+    };
+    crate::runtime::quest_apply::apply_despawn_actor(leve.zone_id, target, registry, world).await;
+    let class_id = leve.classes[i];
+    let shown = spawn_one(&mut leve, class_id, at, None, registry, world, db, lua).await;
+    with_active(|a| {
+        if let Some(l) = a.iter_mut().find(|l| l.director_id == leve.director_id) {
+            if let Some(actor_id) = shown {
+                l.spawned.insert(actor_id, Some(i));
+            }
+            l.next_spot = leve.next_spot;
+        }
+    });
+    tracing::info!(
+        player,
+        gl_id = leve.guildleve_id,
+        disguise = format!("0x{target:08X}"),
+        shown = ?shown.map(|a| format!("0x{a:08X}")),
+        "battle leve disguise poked"
+    );
 }
 
 /// A staged leve's group is down: the next group appears further out, the
@@ -1310,7 +1730,9 @@ async fn next_stage(
     if leve.classes[next] != 0 {
         for _ in 0..(leve.aim[next] as usize).min(MAX_UP) {
             let class_id = leve.classes[next];
-            if let Some(actor_id) = spawn_one(&mut leve, class_id, registry, world, db, lua).await {
+            if let Some(actor_id) =
+                spawn_one(&mut leve, class_id, None, None, registry, world, db, lua).await
+            {
                 new.push(actor_id);
             }
         }
@@ -1409,7 +1831,7 @@ fn finish(player_id: u32, now_ms: u64) -> Option<Leve> {
 }
 
 async fn wrap_up(leve: &Leve, registry: &ActorRegistry, world: &WorldManager, db: &Database) {
-    for &actor_id in leve.spawned.keys() {
+    for &actor_id in leve.spawned.keys().chain(leve.rescuee.iter()) {
         crate::runtime::quest_apply::apply_despawn_actor(leve.zone_id, actor_id, registry, world)
             .await;
     }
@@ -1464,16 +1886,6 @@ async fn complete(
     for &p in &paid {
         crate::runtime::quest_apply::apply_add_gil(p, leve.reward_gil, registry, Some(world), db)
             .await;
-        say(
-            registry,
-            world,
-            p,
-            &format!(
-                "You receive {} gil for completing the levequest.",
-                leve.reward_gil
-            ),
-        )
-        .await;
     }
     tracing::info!(
         player = player_id,
@@ -1539,7 +1951,13 @@ pub async fn abandon(
 /// A member who leaves the zone (or logs out) drops off the leve; when the
 /// one running it leaves, it passes to a member still there, and fails
 /// when nobody is.
-pub async fn tick(now_ms: u64, registry: &ActorRegistry, world: &WorldManager, db: &Database) {
+pub async fn tick(
+    now_ms: u64,
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    db: &Database,
+    lua: Option<&Arc<LuaEngine>>,
+) {
     // once a second is plenty
     static LAST: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let last = LAST.load(std::sync::atomic::Ordering::Relaxed);
@@ -1592,6 +2010,9 @@ pub async fn tick(now_ms: u64, registry: &ActorRegistry, world: &WorldManager, d
                     rejoin_dropped(&leve, now_ms, registry, world).await;
                     if leve.tutorial && !leve.told_nearby {
                         tell_nearby(&leve, registry, world).await;
+                    }
+                    if let Some(person) = leve.rescuee {
+                        rescue_tick(&leve, person, now_ms, registry, world, db, lua).await;
                     }
                 }
                 if here.is_empty() || now_ms >= deadline_ms {
@@ -1668,14 +2089,21 @@ mod tests {
             gc(20904, 40065, 129, 3200103),
             gc(21422, 40065, 132, 3200103),
             gc(20901, 40065, 129, 4000625),
+            // a rescue runs too: its target is the person to save
+            GuildleveGamedata {
+                plate_id: 20051,
+                ..gc(20902, 40065, 129, 3200103)
+            },
             gc(22523, 40066, 129, 3200103),
             gc(10821, 40065, 129, 3200103),
         ] {
             cat.insert(g.id, g);
         }
         cat.get_mut(&20901).unwrap().mob_missing[0] = true;
-        assert_eq!(company_offer(&cat, 1, 129, 0), Some(20903));
-        assert_eq!(company_offer(&cat, 1, 129, ROTATION_SECS), Some(20904));
+        assert_eq!(company_offer(&cat, 1, 129, 0), Some(20902));
+        assert_eq!(company_offer(&cat, 1, 129, ROTATION_SECS), Some(20903));
+        assert_eq!(company_offer(&cat, 1, 129, 2 * ROTATION_SECS), Some(20904));
+        assert_eq!(company_offer(&cat, 1, 129, 3 * ROTATION_SECS), Some(20902));
         assert_eq!(company_offer(&cat, 1, 132, 0), Some(21422));
         assert_eq!(company_offer(&cat, 2, 129, 0), Some(22523));
         assert_eq!(company_offer(&cat, 3, 129, 0), None);
@@ -1690,6 +2118,15 @@ mod tests {
         cat.insert(tutorial.id, tutorial);
         cat.insert(regular.id, regular);
         assert_eq!(offers(&cat, 1280032, 0), vec![11621]);
+    }
+
+    #[test]
+    fn the_rescue_bar_reads_zero_only_when_the_person_is_down() {
+        assert_eq!(npc_hp_percent(3000, 3000, false), 100);
+        assert_eq!(npc_hp_percent(1500, 3000, false), 50);
+        assert_eq!(npc_hp_percent(1, 3000, false), 1);
+        assert_eq!(npc_hp_percent(0, 3000, false), 0);
+        assert_eq!(npc_hp_percent(200, 3000, true), 0);
     }
 
     #[test]

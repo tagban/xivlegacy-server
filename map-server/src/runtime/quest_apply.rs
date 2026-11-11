@@ -1060,6 +1060,17 @@ pub async fn apply_runtime_lua_command(
                     world,
                 ))
                 .await;
+                // a /poke can show a battle leve's disguised target
+                Box::pin(crate::leve::battle::on_emote(
+                    actor_id,
+                    target_actor_id,
+                    emote_id,
+                    registry,
+                    world,
+                    db,
+                    lua,
+                ))
+                .await;
             }
             true
         }
