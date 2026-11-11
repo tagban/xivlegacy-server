@@ -3438,6 +3438,20 @@ impl Database {
             .await
     }
 
+    /// Make a [`Database::gm_spawn_insert`] group spawn on the players' side
+    /// (allegiance 1) with `hp` hit points.
+    pub async fn gm_spawn_make_ally(&self, group_id: u32, hp: u32) -> Result<()> {
+        self.conn
+            .call_db(move |c| {
+                c.execute(
+                    "UPDATE server_battlenpc_groups SET allegiance = 1, hp = ?2 WHERE groupId = ?1",
+                    common::sql::params![group_id, hp],
+                )?;
+                Ok(())
+            })
+            .await
+    }
+
     /// Remove the rows [`Database::gm_spawn_insert`] made.
     pub async fn gm_spawn_delete(
         &self,
