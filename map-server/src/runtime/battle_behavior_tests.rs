@@ -1076,11 +1076,14 @@ async fn battle_behavior_combos() {
             problems.push(format!("{a} -> {b}: status lasts {got:?} s, want {secs}"));
         }
     }
-    // Inside 8 yalms Piercing Arrow starts no combo: Shadowbind keeps its
-    // plain duration.
-    {
-        let opener = by_name(&env, "piercing_arrow").clone();
-        let fin = by_name(&env, "shadowbind").clone();
+    // Inside 8 yalms Heavy Shot and Piercing Arrow start no combo: the
+    // finisher keeps its plain duration.
+    for (a, b, combo_secs) in [
+        ("heavy_shot", "leaden_arrow", 60u32),
+        ("piercing_arrow", "shadowbind", 30),
+    ] {
+        let opener = by_name(&env, a).clone();
+        let fin = by_name(&env, b).clone();
         let mut sc = real_scene(&env, &fin, Recipient::Enemy).await;
         let mut got = None;
         for _ in 0..12 {
@@ -1098,9 +1101,9 @@ async fn battle_behavior_combos() {
                 break;
             }
         }
-        println!("piercing_arrow -> shadowbind at 3 yalms: status lasts {got:?} s");
-        if got == Some(30) {
-            problems.push("piercing_arrow combo from 3 yalms".to_string());
+        println!("{a} -> {b} at 3 yalms: status lasts {got:?} s");
+        if got == Some(combo_secs) {
+            problems.push(format!("{a} -> {b} from 3 yalms: status {got:?} s"));
         }
     }
     // Skull Sunder in combo draws more enmity.
@@ -1876,14 +1879,19 @@ async fn battle_behavior_toggles_enmity_and_decoy() {
             c.status_effects.get(rs.status_id).map(|e| e.tier)
         };
         let atk3 = mod_of(&sc, PLAYER, Modifier::Attack).await;
-        // A miss drops the stacks.
+        // Any missed attack (here a Heavy Shot, not a Light Shot) ends
+        // the effect and its stacks (1.20 notes).
         {
             let h = sc.registry.get(PLAYER).await.unwrap();
             let mut c = h.character.write().await;
             c.chara.mods.set(Modifier::RawHitRate, -100.0);
         }
-        press(&mut sc, &ls).await;
+        let hs = by_name(&env, "heavy_shot").clone();
+        press(&mut sc, &hs).await;
         let atk_miss = mod_of(&sc, PLAYER, Modifier::Attack).await;
+        if has_status(&sc, PLAYER, rs.status_id).await {
+            problems.push("raging_strike survived a missed heavy_shot".to_string());
+        }
         println!(
             "raging_strike: tier after 5 light shots {tier:?}, attack {atk0} -> {atk3} -> {atk_miss} after a miss"
         );
@@ -1896,6 +1904,29 @@ async fn battle_behavior_toggles_enmity_and_decoy() {
         if (atk3 - atk0 - want).abs() > 1.0 || (atk_miss - atk0).abs() > 0.5 {
             problems.push(format!(
                 "raging_strike attack {atk0} -> {atk3} (want +{want}) -> {atk_miss} after a miss"
+            ));
+        }
+    }
+
+    // Enhanced Raging Strike (ARC 36 trait 27243): the effect is x1.5.
+    for (level, want) in [(14i16, 100.0), (36, 150.0)] {
+        let rs = by_name(&env, "raging_strike").clone();
+        let mut sc = real_scene_at(&env, &rs, Recipient::Caster, level, 7).await;
+        {
+            let h = sc.registry.get(PLAYER).await.unwrap();
+            let mut c = h.character.write().await;
+            c.traits = if level >= 36 { vec![27243] } else { Vec::new() };
+        }
+        land_self_buff(&mut sc, &rs).await;
+        let mag = {
+            let h = sc.registry.get(PLAYER).await.unwrap();
+            let c = h.character.read().await;
+            c.status_effects.get(rs.status_id).map(|e| e.magnitude)
+        };
+        println!("raging_strike at ARC {level}: magnitude {mag:?}");
+        if mag != Some(want) {
+            problems.push(format!(
+                "raging_strike at ARC {level}: magnitude {mag:?}, want {want}"
             ));
         }
     }

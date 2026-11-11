@@ -1522,8 +1522,11 @@ async fn send_timing_flags(actor_id: u32, registry: &ActorRegistry, world: &Worl
     }
 }
 const COMBO_SECONDS: u32 = 13;
-/// Piercing Arrow's minimum distance for a combo.
-const PIERCING_ARROW_COMBO_YALMS: f32 = 8.0;
+/// Heavy Shot and Piercing Arrow open a combo only from at least this
+/// far (both descriptions: "at least 8 yalms ... for use in a combo";
+/// 1.20 patch notes, JP wiki "コンボ成立射程：8m以上").
+const ARCHER_COMBO_MIN_YALMS: f32 = 8.0;
+const ARCHER_RANGED_OPENERS: [&str; 2] = ["heavy_shot", "piercing_arrow"];
 
 /// How far each knockback level pushes (ours, no 1.0 source: STUCK.md
 /// 2026-11-06). Level 1 = 2 yalms, 3 = 6.
@@ -2392,14 +2395,14 @@ async fn resolve_action(
     // its hit, a link that continues one runs its script's `onCombo`
     // (Thundara's potency, Bloodletter's status…) and costs nothing.
     let mut combo = player_combo(&attacker_handle, command).await;
-    // Piercing Arrow counts toward a combo only from at least 8 yalms
-    // (its command description).
-    if combo.is_combo && command.name == "piercing_arrow" {
+    // Heavy Shot and Piercing Arrow count toward a combo only from at
+    // least 8 yalms (their command descriptions).
+    if combo.is_combo && ARCHER_RANGED_OPENERS.contains(&command.name.as_str()) {
         let near = match registry.get(defender_actor_id).await {
             Some(d) => {
                 let d = d.character.read().await;
                 let (dx, dz) = (d.base.position_x - atk_pos.x, d.base.position_z - atk_pos.z);
-                dx * dx + dz * dz < PIERCING_ARROW_COMBO_YALMS * PIERCING_ARROW_COMBO_YALMS
+                dx * dx + dz * dz < ARCHER_COMBO_MIN_YALMS * ARCHER_COMBO_MIN_YALMS
             }
             None => false,
         };
