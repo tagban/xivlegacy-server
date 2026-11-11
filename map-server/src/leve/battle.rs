@@ -518,7 +518,7 @@ async fn say(registry: &ActorRegistry, world: &WorldManager, player_id: u32, tex
     .await;
 }
 
-fn gamedata(lua: Option<&Arc<LuaEngine>>, gl_id: u32) -> Option<GuildleveGamedata> {
+pub(crate) fn gamedata(lua: Option<&Arc<LuaEngine>>, gl_id: u32) -> Option<GuildleveGamedata> {
     lua?.catalogs()
         .guildleves
         .read()
