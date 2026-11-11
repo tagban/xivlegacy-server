@@ -1852,4 +1852,9 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (30120, 1090917, 'mnk0j5_turning_leaf_garb', 153, '', 0, -1342.0, -16.2, 318.0, 0.0, 0, 0, NULL),
 (30121, 1090918, 'mnk0j5_sagolii_cliff_garb', 170, '', 0, 166.9, 186.5, -363.5, 0.0, 0, 0, NULL),
 (30122, 1090919, 'mnk0j6_silvertear_trigger', 190, '', 0, 575.0, 56.0, 198.0, 0.0, 0, 0, NULL),
-(30123, 1060032, 'mnk0j6_widargelt_falls', 190, '', 0, 565.0, 55.6, 185.0, 0.8, 0, 0, NULL);
+(30123, 1060032, 'mnk0j6_widargelt_falls', 190, '', 0, 565.0, 55.6, 185.0, 0.8, 0, 0, NULL),
+(30124, 1500222, 'storm_sergeant_hammil', 132, '', 0, 1346.50, -54.38, -868.00, -0.79, 0, 1045, NULL),
+(30125, 1500224, 'serpent_sergeant_cordwyk', 152, '', 0, -886.00, 33.61, -2184.00, -0.79, 0, 1045, NULL),
+(30126, 1500225, 'serpent_sergeant_lodall', 157, '', 0, -685.00, -15.31, -2061.00, -0.79, 0, 1045, NULL),
+(30127, 1500226, 'flame_sergeant_byrne', 171, '', 0, 1601.00, 256.07, -229.00, -0.79, 0, 1045, NULL),
+(30128, 1500227, 'flame_sergeant_dalvag', 176, '', 0, 83.00, 167.93, -1265.00, -0.79, 0, 1045, NULL);
