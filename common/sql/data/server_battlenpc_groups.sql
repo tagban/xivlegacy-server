@@ -1,4 +1,4 @@
--- server_battlenpc_groups: game data, 769 rows. Reloaded whole when this file changes.
+-- server_battlenpc_groups: game data, 781 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_groups`;
 INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLevel`, `maxLevel`, `respawnTime`, `hp`, `mp`, `dropListId`, `allegiance`, `spawnType`, `animationId`, `actorState`, `privateAreaName`, `privateAreaLevel`, `zoneId`) VALUES
@@ -771,4 +771,16 @@ INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLe
 (31313, 31313, 'whm0j3_cactuar_jack', 38, 38, 0, 1600, 0, 0, 0, 16, 0, 0, '', 0, 172),
 (31314, 31314, 'whm0j4_bandit', 36, 36, 0, 500, 0, 0, 0, 16, 0, 0, '', 0, 128),
 (31315, 31315, 'whm0j6_wind_elemental', 45, 45, 0, 1500, 0, 0, 0, 16, 0, 0, '', 0, 150),
-(31316, 31316, 'whm0j6_earth_elemental', 45, 45, 0, 1500, 0, 0, 0, 16, 0, 0, '', 0, 150);
+(31316, 31316, 'whm0j6_earth_elemental', 45, 45, 0, 1500, 0, 0, 0, 16, 0, 0, '', 0, 150),
+(30490, 30490, 'man2l0_emerick', 13, 13, 0, 550, 0, 0, 0, 16, 0, 0, '', 0, 192),
+(30491, 30491, 'man2l0_merodaulyn', 13, 13, 0, 550, 0, 0, 0, 16, 0, 0, '', 0, 192),
+(30492, 30492, 'man2g0_spirit_of_the_wood', 28, 28, 0, 2930, 2680, 0, 0, 16, 0, 0, '', 0, 151),
+(30493, 30493, 'man2g0_grinnaux', 16, 16, 0, 800, 0, 0, 1, 16, 0, 0, '', 0, 151),
+(30494, 30494, 'man2g0_handeloup', 16, 16, 0, 800, 0, 0, 1, 16, 0, 0, '', 0, 151),
+(30495, 30495, 'man2g0_tkebbe', 16, 16, 0, 600, 0, 0, 1, 16, 0, 0, '', 0, 151),
+(30496, 30496, 'man2u0_minemite', 14, 14, 0, 260, 0, 0, 0, 16, 0, 0, '', 0, 175),
+(30497, 30497, 'man2u0_niellefresne', 16, 16, 0, 700, 0, 0, 1, 16, 0, 0, '', 0, 175),
+(30498, 30498, 'man2u0_greinfarr', 16, 16, 0, 900, 0, 0, 1, 16, 0, 0, '', 0, 175),
+(30499, 30499, 'etc3u1_unsavory_character', 15, 15, 0, 450, 0, 0, 0, 16, 0, 0, '', 0, 170),
+(30500, 30500, 'etc3u1_unsavory_character', 15, 15, 0, 450, 0, 0, 0, 16, 0, 0, '', 0, 170),
+(30501, 30501, 'etc3u1_unsavory_character', 15, 15, 0, 450, 0, 0, 0, 16, 0, 0, '', 0, 170);

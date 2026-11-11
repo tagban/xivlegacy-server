@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1858 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1862 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -38,7 +38,6 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (34, 1200022, 'chocobo_standard', 133, '', 0, -438.76, 19.0, 207.6, 3.14, 0, 0, NULL),
 (35, 1200027, 'retainer_bell', 133, '', 0, -432.0, 40.0, 202.0, -1.0, 0, 0, NULL),
 (36, 1200193, 'task_board', 133, '', 0, -464.77, 41.71, 183.27, 0.0, 0, 0, NULL),
-(37, 1001424, 'gegeissa', 170, '', 0, -56.69, 192.0, -6.59, 2.89, 0, 0, NULL),
 (38, 1001425, 'gdatnan', 170, '', 0, -46.93, 191.98, -3.62, 2.89, 0, 0, NULL),
 (39, 1090078, '', 170, '', 0, -25.71, 181.36, -82.63, 0.0, 0, 0, NULL),
 (40, 1090464, '', 170, '', 0, -40.55, 186.25, -48.05, 1.24, 0, 0, NULL),
@@ -78,7 +77,7 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (74, 1001260, 'ipaghlo', 175, '', 0, -145.89, 185.45, 122.34, -2.18, 0, 0, NULL),
 (75, 1001371, 'totonawa', 175, '', 0, -54.07, 196.47, 52.49, -0.9, 0, 1041, NULL),
 (76, 1001372, 'eustace', 175, '', 0, -52.83, 196.01, 53.44, -0.34, 0, 1016, NULL),
-(77, 1001424, 'gegeissa', 175, '', 0, -56.69, 192.0, -6.59, 2.89, 0, 0, NULL),
+(77, 1001424, 'gegeissa', 175, '', 0, -41.0, 192.1, 11.0, -0.56, 0, 0, NULL),
 (78, 1001426, 'hehena', 175, '', 0, 67.72, 192.0, 209.29, 1.27, 0, 0, NULL),
 (79, 1001427, 'guillaunaux', 175, '', 0, 70.42, 191.98, 199.33, 1.27, 0, 0, NULL),
 (80, 1001428, 'yuyuhase', 175, '', 0, -218.1, 190.0, 23.69, 0.65, 0, 1041, NULL),
@@ -1862,4 +1861,9 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (30130, 1090925, 'whm0j5_zahar_ak_garb', 174, '', 0, 2400.0, 247.8, 1540.0, 0.0, 0, 0, NULL),
 (30131, 1090926, 'whm0j5_turning_leaf_garb', 153, '', 0, -1345.0, -15.5, 330.0, 0.0, 0, 0, NULL),
 (30132, 1090927, 'whm0j5_tiger_helm_garb', 130, '', 0, 1620.0, 60.2, -455.0, 0.0, 0, 0, NULL),
-(30133, 1090928, 'whm0j6_keening_trigger', 150, '', 0, 200.0, 3.6, -505.0, 0.0, 0, 0, NULL);
+(30133, 1090928, 'whm0j6_keening_trigger', 150, '', 0, 200.0, 3.6, -505.0, 0.0, 0, 0, NULL),
+(30200, 1091000, 'etc3u1_wreck_trigger', 170, '', 0, -425.0, 184.87, -134.0, 0.0, 0, 0, NULL),
+(30201, 1001578, 'etc3u1_nymiene', 170, '', 0, -450.0, 183.84, -134.0, 1.57, 0, 0, NULL),
+(30202, 1001579, 'etc3u1_aergfloh', 170, '', 0, -447.0, 184.0, -127.0, 2.36, 0, 0, NULL),
+(30203, 1001839, 'etc2i2_foxe', 145, '', 0, 2550.0, 175.08, 1300.0, -2.36, 0, 0, NULL),
+(30204, 1001641, 'etc201_leleyo', 143, '', 0, 222.0, 302.07, -252.0, -0.8, 0, 0, NULL);

@@ -1,5 +1,6 @@
 require ("global")
 require ("quest")
+require ("questbattle")
 
 --[[
 
@@ -11,9 +12,11 @@ Id: 	110012
 Prereq: Golden Sacrifices (Man1u0 - 110011), Level 13
 
 Rebuilt from the client's own man2u0 script, journal and dialogue sheets.
-The minemite battle after the coach ride is a duty this server can't run
-yet, so it is skipped: walking onto the battlefield plays its closing
-scene. Every cutscene that ends with startFadeInCutSceneAfterWarp is
+After the coach ride you fight Corguevais's minemites beside Niellefresne
+and Greinfarr (content SimpleContentMan2u001): they come one or two at a
+time, and the duty fails if both allies fall (Gamer Escape walkthrough and
+journal, 1.x). A loss leaves you by the battlefield; walking back onto it
+starts the fight again. Every cutscene that ends with startFadeInCutSceneAfterWarp is
 followed by its own warp: two such scenes back to back with one warp
 after them leave the player unable to move.
 
@@ -21,7 +24,7 @@ after them leave the player unable to move.
 
 -- Sequence Numbers
 SEQ_000	= 0;  	-- Ask after the city guard at the chocobo stables.
-SEQ_005	= 5;  	-- The minemites (battle skipped): onto the battlefield.
+SEQ_005	= 5;  	-- The minemites: the battlefield duty (retry: walk onto it).
 SEQ_010	= 10;  	-- Visit F'lhaminn at the Phrontistery.
 SEQ_015	= 15;  	-- Find her sickroom (echo).
 SEQ_020	= 20;  	-- Leave the Phrontistery.
@@ -57,6 +60,18 @@ PHRONTISTERY_DOOR			= {209, nil, -212.0, 229.6, 284.0, 0.6};
 SICKROOM					= {209, 5, -218.0, 229.5, 306.0, 0.6};
 OSSUARY_PLAZA				= {209, nil, -258.0, 202.0, 203.0, 0.8};
 QUICKSAND					= {175, nil, -75.242, 195.009, 74.572, -0.046};
+
+-- The minemite fight: battle npcs 3466-3471 minemites (in waves of 1-2),
+-- 3472 Niellefresne, 3473 Greinfarr.
+MAN2U0_FIGHT = {
+	allies = { 3472, 3473 },
+	waves = { { 3466 }, { 3467, 3468 }, { 3469 }, { 3470, 3471 } },
+	limitSeconds = 20 * 60,
+	failWhenAlliesFall = true,
+	winSignal = "allyFightWon",
+};
+-- In the duty: the battlefield spot (zone, x, y, z, rotation).
+MINEMITE_FIGHT_SPOT = {175, -147.0, 205.0, -163.0, 1.57};
 
 -- Msg pack for the Npc LS (Momodi)
 NPCLS_MSGS = {
@@ -119,10 +134,10 @@ function onTalk(player, quest, npc)
 	elseif (sequence == SEQ_000) then
 		if (classId == RURURAJI) then
 			-- The coach after Corguevais, and the minemites he calls up
+			-- man2u020 ends with an after-warp fade: the duty's entry is it.
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent005");
-			player:EndEvent();
 			quest:StartSequence(SEQ_005);
-			warpTo(player, BATTLEFIELD);
+			questBattle.start(player, "Man2u001", MINEMITE_FIGHT_SPOT, "Quest/QuestDirectorMan2u001");
 			return;
 		elseif (classId == MOMODI) then
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent000_2");
@@ -171,11 +186,8 @@ function onPush(player, quest, npc)
 	local classId = npc:GetActorClassId();
 
 	if (sequence == SEQ_005 and classId == BATTLEFIELD_TRIGGER) then
-		-- The minemites beaten; F'lhaminn hurt and taken to the Phrontistery
-		callClientFunction(player, "delegateEvent", player, quest, "processEvent030");
-		player:EndEvent();
-		quest:StartSequence(SEQ_010);
-		warpTo(player, PHRONTISTERY_DOOR);
+		-- Back for another try at the minemites.
+		questBattle.start(player, "Man2u001", MINEMITE_FIGHT_SPOT, "Quest/QuestDirectorMan2u001");
 		return;
 	elseif (sequence == SEQ_010 and classId == PHRONTISTERY_TRIGGER) then
 		-- Damielliot greets you, then excuses himself
@@ -240,4 +252,22 @@ end
 
 function warpTo(player, spot)
 	GetWorldManager():DoZoneChange(player, spot[1], spot[2] and "PrivateAreaMasterPast" or nil, spot[2] or 0, 15, spot[3], spot[4], spot[5], spot[6]);
+end
+
+-- The minemites beaten (the director calls this): F'lhaminn hurt and taken
+-- to the Phrontistery. man2u030 ends with an after-warp fade.
+function finishMan2u0Fight(player, quest)
+	callClientFunction(player, "delegateEvent", player, quest, "processEvent030");
+	player:EndEvent();
+	quest:StartSequence(SEQ_010);
+	player:SetMod(modifiersGlobal.MinimumHpLock, 0);
+	player:GetZone():ContentFinished();
+	warpTo(player, PHRONTISTERY_DOOR);
+end
+
+-- A loss (the content calls this): back beside the battlefield, a few steps
+-- west of its trigger.
+function loseMan2u0Fight(player, area, why)
+	area:ContentFinished();
+	warpTo(player, BATTLEFIELD);
 end
