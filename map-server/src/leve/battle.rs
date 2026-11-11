@@ -83,7 +83,7 @@ const TUTORIALS: [u32; 6] = [10801, 10802, 11601, 11602, 12401, 12402];
 /// Survive leves (a timed hold-out) need mechanics this doesn't have yet,
 /// so they aren't offered.
 fn plate_supported(plate_id: u32) -> bool {
-    plate_id != PLATE_SURVIVE
+    plate_id != PLATE_SURVIVE && plate_id != PLATE_RESCUE
 }
 
 /// Necrologos leves (PrivateGLBattleOrbNormal): gather the torn pages of the
@@ -92,6 +92,19 @@ fn plate_supported(plate_id: u32) -> bool {
 /// line is the tome (`item4`), cleared when every page is in.
 const PLATE_NECROLOGOS: u32 = 20023;
 const PLATE_SURVIVE: u32 = 20027;
+/// Grand Company "Epic" leves (PrivateGLBattleSweepEpic): the targets hide
+/// among the local wildlife, and the tracker says "Use the /poke emote to
+/// find enemies carrying luminous crystals". Each target starts as a
+/// disguise, a local beast; poking one shows the target in its place.
+/// Other local beasts stand among them and poking those does nothing.
+const PLATE_DISGUISED: u32 = 20049;
+/// The /poke emote's animation (EmoteStandardCommand.lua).
+const POKE_ANIM: u32 = 28;
+/// Grand Company rescue leves: find a missing person and keep them alive
+/// (the client's CompanyleveRescueNormal, an npcHP bar). The sheet's one
+/// "target" is the person to rescue, so running them as a sweep would
+/// have the player kill them; not offered until they run as rescues.
+const PLATE_RESCUE: u32 = 20051;
 const PLATE_GATHER: u32 = 20025;
 /// Chase leves ("Pursue and defeat the target enemies") run their
 /// objectives as stages: the first group, then a bigger one further out
@@ -306,6 +319,10 @@ struct Leve {
     necrologos: bool,
     /// Objectives run one at a time (Chase).
     staged: bool,
+    /// Disguised targets (PLATE_DISGUISED): the beasts hiding one, their
+    /// objective, and the local beast classes a lost disguise comes back as.
+    disguises: HashMap<u32, usize>,
+    disguise_classes: Vec<u32>,
     /// The camp and every monster spawn point of the zone, for placing a
     /// staged leve's next group.
     camp: (f32, f32, f32),
@@ -742,6 +759,8 @@ pub async fn start(
         marker: center,
         necrologos,
         staged: gd.plate_id == PLATE_CHASE,
+        disguises: HashMap::new(),
+        disguise_classes: Vec::new(),
         camp,
         points: points.clone(),
         dropped: Vec::new(),
@@ -822,15 +841,37 @@ pub async fn start(
     send_all(registry, world, &everyone, tracker_state(&leve)).await;
 
     // Targets: up to MAX_UP of each objective, plus decoys for mobs that
-    // don't count.
-    let mut wave: Vec<(u32, Option<usize>)> = Vec::new();
+    // don't count. Disguised targets start as local beasts, with as many
+    // plain ones among them.
+    if gd.plate_id == PLATE_DISGUISED {
+        let monsters = db.zone_monsters(zone_id).await.unwrap_or_default();
+        leve.disguise_classes = pick_beasts(&monsters, center, u32::from(gd.level), 3);
+    }
+    // (class, objective it counts for, objective it hides)
+    let mut wave: Vec<(u32, Option<usize>, Option<usize>)> = Vec::new();
     let first_stage = stage(&leve.aim, &leve.now);
     for i in 0..4 {
         if leve.classes[i] == 0 || (leve.staged && first_stage != Some(i)) {
             continue;
         }
-        for _ in 0..(leve.aim[i] as usize).min(MAX_UP) {
-            wave.push((leve.classes[i], Some(i)));
+        for k in 0..(leve.aim[i] as usize).min(MAX_UP) {
+            if leve.disguise_classes.is_empty() {
+                wave.push((leve.classes[i], Some(i), None));
+            } else {
+                // a plain beast and one hiding the target, in turn
+                let n = leve.disguise_classes.len();
+                let (hide, plain) = (
+                    leve.disguise_classes[k % n],
+                    leve.disguise_classes[(k + 1) % n],
+                );
+                if k % 2 == 0 {
+                    wave.push((hide, None, Some(i)));
+                    wave.push((plain, None, None));
+                } else {
+                    wave.push((plain, None, None));
+                    wave.push((hide, None, Some(i)));
+                }
+            }
         }
     }
     for (j, &mob) in gd.mobs.iter().enumerate() {
@@ -839,13 +880,17 @@ pub async fn start(
         }
         if let Ok(Some(class_id)) = db.monster_class_for_name(mob).await {
             for _ in 0..EXTRAS {
-                wave.push((class_id, None));
+                wave.push((class_id, None, None));
             }
         }
     }
-    for (class_id, objective) in wave {
-        if let Some(actor_id) = spawn_one(&mut leve, class_id, registry, world, db, lua).await {
+    for (class_id, objective, hides) in wave {
+        if let Some(actor_id) = spawn_one(&mut leve, class_id, None, registry, world, db, lua).await
+        {
             leve.spawned.insert(actor_id, objective);
+            if let Some(i) = hides {
+                leve.disguises.insert(actor_id, i);
+            }
         }
     }
     tracing::info!(
@@ -862,6 +907,11 @@ pub async fn start(
             .map(|a| format!("0x{a:08X}"))
             .collect::<Vec<_>>(),
         center = ?center,
+        disguises = ?leve
+            .disguises
+            .keys()
+            .map(|a| format!("0x{a:08X}"))
+            .collect::<Vec<_>>(),
         "battle leve started"
     );
     with_active(|a| a.push(leve));
@@ -1075,6 +1125,7 @@ async fn rejoin_dropped(leve: &Leve, now_ms: u64, registry: &ActorRegistry, worl
 async fn spawn_one(
     leve: &mut Leve,
     class_id: u32,
+    at: Option<(f32, f32, f32)>,
     registry: &ActorRegistry,
     world: &WorldManager,
     db: &Database,
@@ -1082,11 +1133,16 @@ async fn spawn_one(
 ) -> Option<u32> {
     let class = db.load_actor_class(class_id).await.ok().flatten()?;
     let genus = crate::processor::gm_spawn::genus_for(db, class_id, &class.class_path).await;
-    let (x, y, z) = leve.spots[leve.next_spot % leve.spots.len()];
-    leve.next_spot += 1;
-    // spread out a little around the spot
-    let k = leve.next_spot as f32;
-    let (x, z) = (x + 2.0 * (k * 2.4).sin(), z + 2.0 * (k * 2.4).cos());
+    let k = (leve.next_spot + 1) as f32;
+    let (x, y, z) = match at {
+        Some(p) => p,
+        None => {
+            let (x, y, z) = leve.spots[leve.next_spot % leve.spots.len()];
+            leve.next_spot += 1;
+            // spread out a little around the spot
+            (x + 2.0 * (k * 2.4).sin(), y, z + 2.0 * (k * 2.4).cos())
+        }
+    };
     let rotation = (k * 1.7) % std::f32::consts::TAU;
     let (bnpc_ids, group_id, pool_id) = db
         .gm_spawn_insert(
@@ -1138,23 +1194,35 @@ pub async fn on_death(
             matches!(l.phase, Phase::Running { .. }) && l.spawned.contains_key(&victim_id)
         })?;
         let objective = leve.spawned.remove(&victim_id)?;
+        if let Some(i) = leve.disguises.remove(&victim_id) {
+            // a disguise put down before it was found: another beast
+            // hides the target
+            return Some((leve.clone(), i, false, false, true));
+        }
         let i = objective?;
         if leve.now[i] >= leve.aim[i] {
             return None;
         }
         leve.now[i] += 1;
-        let up = leve.spawned.values().filter(|o| **o == Some(i)).count() as i8;
+        let up = (leve.spawned.values().filter(|o| **o == Some(i)).count()
+            + leve.disguises.values().filter(|o| **o == i).count()) as i8;
         let respawn = leve.now[i] + up < leve.aim[i];
         if leve.necrologos && (0..3).all(|k| leve.now[k] >= leve.aim[k]) {
             // every page is in: the tome is destroyed
             leve.now[3] = leve.aim[3];
         }
         let done = (0..4).all(|k| leve.now[k] >= leve.aim[k]);
-        Some((leve.clone(), i, respawn, done))
+        Some((leve.clone(), i, respawn, done, false))
     });
-    let Some((leve, i, respawn, done)) = hit else {
+    let Some((leve, i, respawn, done, lost_disguise)) = hit else {
         return;
     };
+    if lost_disguise {
+        if let Some(db) = db {
+            hide_again(leve, i, registry, world, db, lua).await;
+        }
+        return;
+    }
     let subs = director_packets(&leve, "guildleveWork/infoVariable", |b| {
         b.add_byte(&format!("guildleveWork.aimNumNow[{i}]"), leve.now[i] as u8);
         if leve.necrologos && done {
@@ -1184,8 +1252,14 @@ pub async fn on_death(
     }
     if respawn && let Some(db) = db {
         let mut leve = leve;
+        if !leve.disguise_classes.is_empty() {
+            // a target found and lost: it hides again
+            hide_again(leve, i, registry, world, db, lua).await;
+            return;
+        }
         let class_id = leve.classes[i];
-        if let Some(actor_id) = spawn_one(&mut leve, class_id, registry, world, db, lua).await {
+        if let Some(actor_id) = spawn_one(&mut leve, class_id, None, registry, world, db, lua).await
+        {
             tracing::info!(
                 gl_id = leve.guildleve_id,
                 objective = i,
@@ -1200,6 +1274,84 @@ pub async fn on_death(
             });
         }
     }
+}
+
+/// A disguised target for objective `i` hides in a new local beast.
+async fn hide_again(
+    mut leve: Leve,
+    i: usize,
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    db: &Database,
+    lua: Option<&Arc<LuaEngine>>,
+) {
+    let n = leve.disguise_classes.len().max(1);
+    let Some(&class_id) = leve.disguise_classes.get(leve.next_spot % n) else {
+        return;
+    };
+    if let Some(actor_id) = spawn_one(&mut leve, class_id, None, registry, world, db, lua).await {
+        with_active(|a| {
+            if let Some(l) = a.iter_mut().find(|l| l.director_id == leve.director_id) {
+                l.spawned.insert(actor_id, None);
+                l.disguises.insert(actor_id, i);
+                l.next_spot = leve.next_spot;
+            }
+        });
+    }
+}
+
+/// `player` used an emote on `target`. A /poke on a beast hiding a
+/// disguised target of their leve shows the target in its place.
+pub async fn on_emote(
+    player: u32,
+    target: u32,
+    anim_id: u32,
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    db: &Database,
+    lua: Option<&Arc<LuaEngine>>,
+) {
+    if anim_id != POKE_ANIM || target == 0 {
+        return;
+    }
+    let found = with_active(|a| {
+        let leve = a.iter_mut().find(|l| {
+            matches!(l.phase, Phase::Running { .. })
+                && l.has(player)
+                && l.disguises.contains_key(&target)
+        })?;
+        let i = leve.disguises.remove(&target)?;
+        leve.spawned.remove(&target);
+        Some((leve.clone(), i))
+    });
+    let Some((mut leve, i)) = found else {
+        return;
+    };
+    let at = match registry.get(target).await {
+        Some(h) => {
+            let c = h.character.read().await;
+            Some((c.base.position_x, c.base.position_y, c.base.position_z))
+        }
+        None => None,
+    };
+    crate::runtime::quest_apply::apply_despawn_actor(leve.zone_id, target, registry, world).await;
+    let class_id = leve.classes[i];
+    let shown = spawn_one(&mut leve, class_id, at, registry, world, db, lua).await;
+    with_active(|a| {
+        if let Some(l) = a.iter_mut().find(|l| l.director_id == leve.director_id) {
+            if let Some(actor_id) = shown {
+                l.spawned.insert(actor_id, Some(i));
+            }
+            l.next_spot = leve.next_spot;
+        }
+    });
+    tracing::info!(
+        player,
+        gl_id = leve.guildleve_id,
+        disguise = format!("0x{target:08X}"),
+        shown = ?shown.map(|a| format!("0x{a:08X}")),
+        "battle leve disguise poked"
+    );
 }
 
 /// A staged leve's group is down: the next group appears further out, the
@@ -1229,7 +1381,9 @@ async fn next_stage(
     if leve.classes[next] != 0 {
         for _ in 0..(leve.aim[next] as usize).min(MAX_UP) {
             let class_id = leve.classes[next];
-            if let Some(actor_id) = spawn_one(&mut leve, class_id, registry, world, db, lua).await {
+            if let Some(actor_id) =
+                spawn_one(&mut leve, class_id, None, registry, world, db, lua).await
+            {
                 new.push(actor_id);
             }
         }
@@ -1383,16 +1537,6 @@ async fn complete(
     for &p in &paid {
         crate::runtime::quest_apply::apply_add_gil(p, leve.reward_gil, registry, Some(world), db)
             .await;
-        say(
-            registry,
-            world,
-            p,
-            &format!(
-                "You receive {} gil for completing the levequest.",
-                leve.reward_gil
-            ),
-        )
-        .await;
     }
     tracing::info!(
         player = player_id,
@@ -1584,6 +1728,11 @@ mod tests {
             gc(20904, 40065, 129, 3200103),
             gc(21422, 40065, 132, 3200103),
             gc(20901, 40065, 129, 4000625),
+            // a rescue: its target is the person to save
+            GuildleveGamedata {
+                plate_id: 20051,
+                ..gc(20902, 40065, 129, 3200103)
+            },
             gc(22523, 40066, 129, 3200103),
             gc(10821, 40065, 129, 3200103),
         ] {
@@ -1592,6 +1741,7 @@ mod tests {
         cat.get_mut(&20901).unwrap().mob_missing[0] = true;
         assert_eq!(company_offer(&cat, 1, 129, 0), Some(20903));
         assert_eq!(company_offer(&cat, 1, 129, ROTATION_SECS), Some(20904));
+        assert_eq!(company_offer(&cat, 1, 129, 2 * ROTATION_SECS), Some(20903));
         assert_eq!(company_offer(&cat, 1, 132, 0), Some(21422));
         assert_eq!(company_offer(&cat, 2, 129, 0), Some(22523));
         assert_eq!(company_offer(&cat, 3, 129, 0), None);

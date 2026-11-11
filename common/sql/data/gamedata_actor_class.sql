@@ -24888,7 +24888,23 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
 (1500219, '', 1600170, 0, NULL),
 (1500220, '', 1600251, 0, NULL),
 (1500221, '', 1600271, 0, NULL),
-(1500222, '', 2200035, 0, NULL),
+(1500222, '/Chara/Npc/Populace/PopulaceCompanyGLPublisher', 2200035, 19, '{
+  "talkEventConditions": [
+    {
+      "unknown1": 4,
+      "unknown2": 0,
+      "conditionName": "talkDefault"
+    }
+  ],
+  "noticeEventConditions": [
+    {
+      "unknown1": 0,
+      "unknown2": 1,
+      "conditionName": "noticeEvent"
+    }
+  ]
+}
+'),
 (1500223, '/Chara/Npc/Populace/PopulaceCompanyGLPublisher', 2200045, 19, '{
   "talkEventConditions": [
     {
@@ -24906,10 +24922,74 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
   ]
 }
 '),
-(1500224, '', 2200067, 0, NULL),
-(1500225, '', 2200070, 0, NULL),
-(1500226, '', 2200077, 0, NULL),
-(1500227, '', 2200089, 0, NULL),
+(1500224, '/Chara/Npc/Populace/PopulaceCompanyGLPublisher', 2200067, 19, '{
+  "talkEventConditions": [
+    {
+      "unknown1": 4,
+      "unknown2": 0,
+      "conditionName": "talkDefault"
+    }
+  ],
+  "noticeEventConditions": [
+    {
+      "unknown1": 0,
+      "unknown2": 1,
+      "conditionName": "noticeEvent"
+    }
+  ]
+}
+'),
+(1500225, '/Chara/Npc/Populace/PopulaceCompanyGLPublisher', 2200070, 19, '{
+  "talkEventConditions": [
+    {
+      "unknown1": 4,
+      "unknown2": 0,
+      "conditionName": "talkDefault"
+    }
+  ],
+  "noticeEventConditions": [
+    {
+      "unknown1": 0,
+      "unknown2": 1,
+      "conditionName": "noticeEvent"
+    }
+  ]
+}
+'),
+(1500226, '/Chara/Npc/Populace/PopulaceCompanyGLPublisher', 2200077, 19, '{
+  "talkEventConditions": [
+    {
+      "unknown1": 4,
+      "unknown2": 0,
+      "conditionName": "talkDefault"
+    }
+  ],
+  "noticeEventConditions": [
+    {
+      "unknown1": 0,
+      "unknown2": 1,
+      "conditionName": "noticeEvent"
+    }
+  ]
+}
+'),
+(1500227, '/Chara/Npc/Populace/PopulaceCompanyGLPublisher', 2200089, 19, '{
+  "talkEventConditions": [
+    {
+      "unknown1": 4,
+      "unknown2": 0,
+      "conditionName": "talkDefault"
+    }
+  ],
+  "noticeEventConditions": [
+    {
+      "unknown1": 0,
+      "unknown2": 1,
+      "conditionName": "noticeEvent"
+    }
+  ]
+}
+'),
 (1500228, '/Chara/Npc/Populace/PopulaceStandard', 4000621, 19, '{
   "talkEventConditions": [
     {
