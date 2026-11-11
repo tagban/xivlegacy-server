@@ -1228,6 +1228,7 @@ impl Database {
                                 }),
                                 authority: r.get::<_, u32>(31).unwrap_or_default(),
                                 camp_zone: r.get::<_, u32>(32).unwrap_or_default(),
+                                survive: None,
                             },
                         ))
                     })?
@@ -1235,7 +1236,39 @@ impl Database {
                 Ok(rows)
             })
             .await?;
-        Ok(rows.into_iter().collect())
+        let mut leves: HashMap<u32, GuildleveGamedata> = rows.into_iter().collect();
+        for (id, hold) in self.survive_holds().await? {
+            if let Some(gd) = leves.get_mut(&id) {
+                gd.survive = Some(hold);
+            }
+        }
+        Ok(leves)
+    }
+
+    /// Survive leves' hold phases (`server_guildleve_survive`).
+    async fn survive_holds(&self) -> Result<Vec<(u32, crate::gamedata::SurviveHold)>> {
+        self.conn
+            .call_db(|c| {
+                let mut stmt = c.prepare(
+                    "SELECT guildleveId, holdSeconds, holdSecondsRecorded, holdMob, holdUp
+                     FROM server_guildleve_survive",
+                )?;
+                let rows = stmt
+                    .query_map([], |r| {
+                        Ok((
+                            r.get::<_, u32>(0)?,
+                            crate::gamedata::SurviveHold {
+                                seconds: r.get(1)?,
+                                recorded: r.get::<_, u8>(2)? != 0,
+                                mob: r.get(3)?,
+                                up: r.get(4)?,
+                            },
+                        ))
+                    })?
+                    .collect::<common::sql::Result<_>>()?;
+                Ok(rows)
+            })
+            .await
     }
 
     /// Load every row of `gamedata_recipes` into a [`RecipeResolver`].
