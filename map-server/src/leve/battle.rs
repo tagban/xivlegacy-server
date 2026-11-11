@@ -76,9 +76,22 @@ const LINGER_MS: u64 = 15_000;
 const ROTATION_SECS: u64 = 36 * 3600;
 /// Leve sets show 8 cards.
 const CARDS: usize = 8;
-/// "My Very First Adventure" and the other class tutorials: they run their
-/// own scripted director.
+/// "My Very First Adventure" and the other class tutorials. They aren't on
+/// the camp cards: the levemete's Tutorial menu offers them (10801 Limsa
+/// Lominsa, 12401 Gridania, 11601 Ul'dah; 10802 is a copy of 10801, and
+/// 11602/12402 name a camp and a monster the data doesn't have). They run
+/// as sweeps on the client's PrivateGLBattleTutorial director, with the
+/// tutorial's hints in the log.
 const TUTORIALS: [u32; 6] = [10801, 10802, 11601, 11602, 12401, 12402];
+/// Tutorial hints (worldMaster texts): what regional leves are, the
+/// minimap, "your target is nearby", the target count, and experience.
+const TEXT_TUTORIAL_INTRO: u16 = 50101;
+const TEXT_TUTORIAL_MINIMAP: u16 = 50102;
+const TEXT_TUTORIAL_NEARBY: u16 = 50105;
+const TEXT_TUTORIAL_COUNT: u16 = 50107;
+const TEXT_TUTORIAL_EXP: u16 = 50110;
+/// How close a target is when the tutorial says it is nearby.
+const TUTORIAL_NEAR: f32 = 25.0;
 
 /// Survive leves (a timed hold-out) need mechanics this doesn't have yet,
 /// so they aren't offered.
@@ -151,7 +164,6 @@ pub fn is_supported(gd: &GuildleveGamedata) -> bool {
     }
     let counted = |i: usize| gd.aim_num[i] > 0 && target_of(gd, i) != 0;
     gd.class_type == 1
-        && !TUTORIALS.contains(&gd.id)
         && plate_supported(gd.plate_id)
         && (0..4).any(|i| counted(i) || carried_by_local_beasts(gd, i))
         && (0..4).all(|i| !counted(i) || !target_missing(gd, i))
@@ -261,7 +273,13 @@ pub fn offers(
     }
     let mine: Vec<&GuildleveGamedata> = catalog
         .values()
-        .filter(|g| g.aetheryte == aetheryte && g.level > 0 && is_regional(g.id) && is_supported(g))
+        .filter(|g| {
+            g.aetheryte == aetheryte
+                && g.level > 0
+                && is_regional(g.id)
+                && !TUTORIALS.contains(&g.id)
+                && is_supported(g)
+        })
         .filter(|g| copies.get(&key(g)) == Some(&1))
         .collect();
     let Some(base) = mine.iter().map(|g| g.level).min() else {
@@ -343,6 +361,9 @@ struct Leve {
     dropped: Vec<u32>,
     /// When each dropped member was first seen back.
     back_since: HashMap<u32, u64>,
+    /// A class tutorial, and whether it has said a target is nearby.
+    tutorial: bool,
+    told_nearby: bool,
     /// A rescue (PLATE_RESCUE): the person to keep alive, and their health
     /// bar (percent) as last sent.
     rescuee: Option<u32>,
@@ -782,6 +803,8 @@ pub async fn start(
         points: points.clone(),
         dropped: Vec::new(),
         back_since: HashMap::new(),
+        tutorial: TUTORIALS.contains(&gl_id),
+        told_nearby: false,
         rescuee: None,
         npc_hp: 100,
         ambush: Vec::new(),
@@ -856,6 +879,10 @@ pub async fn start(
             &[LuaParam::Int32(gd.time_limit as i32)],
         )
         .await;
+        if leve.tutorial {
+            message(registry, world, p, TEXT_TUTORIAL_INTRO, &[]).await;
+            message(registry, world, p, TEXT_TUTORIAL_MINIMAP, &[]).await;
+        }
     }
 
     send_all(registry, world, &everyone, tracker_state(&leve)).await;
@@ -1024,6 +1051,45 @@ fn tracker_state(leve: &Leve) -> Vec<SubPacket> {
         b.add_float("guildleveWork.markerZ[0]", leve.marker.2);
     }));
     subs
+}
+
+/// A tutorial says "your target is nearby" the first time a player of it
+/// comes within [`TUTORIAL_NEAR`] of a target.
+async fn tell_nearby(leve: &Leve, registry: &ActorRegistry, world: &WorldManager) {
+    let mut targets = Vec::new();
+    for &actor_id in leve.spawned.keys() {
+        if let Some(h) = registry.get(actor_id).await {
+            let c = h.character.read().await;
+            targets.push((c.base.position_x, c.base.position_z));
+        }
+    }
+    let mut near = Vec::new();
+    for p in leve.participants() {
+        let Some(h) = registry.get(p).await else {
+            continue;
+        };
+        let (x, z) = {
+            let c = h.character.read().await;
+            (c.base.position_x, c.base.position_z)
+        };
+        if targets
+            .iter()
+            .any(|t| ((t.0 - x).powi(2) + (t.1 - z).powi(2)).sqrt() <= TUTORIAL_NEAR)
+        {
+            near.push(p);
+        }
+    }
+    if near.is_empty() {
+        return;
+    }
+    with_active(|a| {
+        if let Some(l) = a.iter_mut().find(|l| l.director_id == leve.director_id) {
+            l.told_nearby = true;
+        }
+    });
+    for p in leve.participants() {
+        message(registry, world, p, TEXT_TUTORIAL_NEARBY, &[]).await;
+    }
 }
 
 /// The rescue director's health bar for the person to rescue (percent).
@@ -1503,6 +1569,21 @@ pub async fn on_death(
         aim = leve.aim[i],
         "battle leve kill"
     );
+    if leve.tutorial && !done && leve.now.iter().map(|n| i32::from(*n)).sum::<i32>() == 1 {
+        // the first kill: how many there are, and where experience comes from
+        let total: i32 = leve.aim.iter().map(|a| i32::from(*a)).sum();
+        for p in leve.participants() {
+            message(
+                registry,
+                world,
+                p,
+                TEXT_TUTORIAL_COUNT,
+                &[LuaParam::Int32(total)],
+            )
+            .await;
+            message(registry, world, p, TEXT_TUTORIAL_EXP, &[]).await;
+        }
+    }
     if done {
         if let Some(db) = db {
             complete(leve.owner, registry, world, db, now_ms).await;
@@ -1927,6 +2008,9 @@ pub async fn tick(
                 }
                 if !here.is_empty() && now_ms < deadline_ms {
                     rejoin_dropped(&leve, now_ms, registry, world).await;
+                    if leve.tutorial && !leve.told_nearby {
+                        tell_nearby(&leve, registry, world).await;
+                    }
                     if let Some(person) = leve.rescuee {
                         rescue_tick(&leve, person, now_ms, registry, world, db, lua).await;
                     }
@@ -2023,6 +2107,17 @@ mod tests {
         assert_eq!(company_offer(&cat, 1, 132, 0), Some(21422));
         assert_eq!(company_offer(&cat, 2, 129, 0), Some(22523));
         assert_eq!(company_offer(&cat, 3, 129, 0), None);
+    }
+
+    #[test]
+    fn tutorials_run_but_stay_off_the_camp_cards() {
+        let tutorial = leve(11601, 1280032, 1, 20021, [3, 0, 0, 0], [3205702, 0, 0, 0]);
+        let regular = leve(11621, 1280032, 1, 20021, [3, 0, 0, 0], [3205703, 0, 0, 0]);
+        assert!(is_supported(&tutorial));
+        let mut cat = HashMap::new();
+        cat.insert(tutorial.id, tutorial);
+        cat.insert(regular.id, regular);
+        assert_eq!(offers(&cat, 1280032, 0), vec![11621]);
     }
 
     #[test]
