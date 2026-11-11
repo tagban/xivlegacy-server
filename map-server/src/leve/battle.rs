@@ -80,18 +80,75 @@ const CARDS: usize = 8;
 /// own scripted director.
 const TUTORIALS: [u32; 6] = [10801, 10802, 11601, 11602, 12401, 12402];
 
-/// Necrologos (orbs) and escort/survive leves need mechanics this doesn't
-/// have yet, so they aren't offered.
+/// Survive leves (a timed hold-out) need mechanics this doesn't have yet,
+/// so they aren't offered.
 fn plate_supported(plate_id: u32) -> bool {
-    !matches!(plate_id, 20023 | 20027)
+    plate_id != PLATE_SURVIVE
 }
 
-/// A battle leve this runtime can run: has at least one target to defeat.
+/// Necrologos leves (PrivateGLBattleOrbNormal): gather the torn pages of the
+/// Necrologos, each summoning a beast that must be put down, then destroy
+/// the tome. Objectives 1-3 are pages (`item1..3`, `aimNum1..3`); the fourth
+/// line is the tome (`item4`), cleared when every page is in.
+const PLATE_NECROLOGOS: u32 = 20023;
+const PLATE_SURVIVE: u32 = 20027;
+const PLATE_GATHER: u32 = 20025;
+/// Chase leves ("Pursue and defeat the target enemies") run their
+/// objectives as stages: the first group, then a bigger one further out
+/// (the sheet's counts grow stage by stage, often of the same monster).
+const PLATE_CHASE: u32 = 20022;
+/// How far (yalms) a Chase leve's next group is from the last one.
+const STAGE_STEP: f32 = 40.0;
+
+/// An objective whose item is carried by monsters of the area: a Necrologos
+/// page, or a Gather leve's item when the sheet names no monster for it.
+fn carried_by_local_beasts(gd: &GuildleveGamedata, i: usize) -> bool {
+    match gd.plate_id {
+        PLATE_NECROLOGOS => is_page(gd, i),
+        PLATE_GATHER => gd.aim_num[i] > 0 && gd.items[i] != 0 && target_of(gd, i) == 0,
+        _ => false,
+    }
+}
+
+/// A Necrologos leve's page objectives: those with a count and a page item.
+fn is_page(gd: &GuildleveGamedata, i: usize) -> bool {
+    i < 3 && gd.aim_num[i] > 0 && gd.items[i] != 0
+}
+
+/// A battle leve this runtime can run: has at least one target to defeat,
+/// and every target it counts has a monster to spawn.
 pub fn is_supported(gd: &GuildleveGamedata) -> bool {
+    if gd.plate_id == PLATE_NECROLOGOS {
+        // a page's beast is the leve's own mob when it names one, else a
+        // monster of the area
+        return gd.class_type == 1
+            && (0..3).any(|i| is_page(gd, i))
+            && (0..3).all(|i| !is_page(gd, i) || gd.mobs[i] == 0 || !gd.mob_missing[i]);
+    }
+    let counted = |i: usize| gd.aim_num[i] > 0 && target_of(gd, i) != 0;
     gd.class_type == 1
         && !TUTORIALS.contains(&gd.id)
         && plate_supported(gd.plate_id)
-        && (0..4).any(|i| gd.aim_num[i] > 0 && target_of(gd, i) != 0)
+        && (0..4).any(|i| counted(i) || carried_by_local_beasts(gd, i))
+        && (0..4).all(|i| !counted(i) || !target_missing(gd, i))
+}
+
+/// Objective `i`'s target has no monster class (its own mob, or the
+/// first one it falls back to).
+fn target_missing(gd: &GuildleveGamedata, i: usize) -> bool {
+    if gd.mobs[i] != 0 {
+        gd.mob_missing[i]
+    } else {
+        gd.mob_missing[0]
+    }
+}
+
+/// The regional leves a camp's levemete hands out (`10801..`). The rows
+/// below are faction leves (`1001..1120`, Operation/Wanted: they need
+/// faction credit and come from the faction menus) and the ones above are
+/// Grand Company leves (`20901..`, from the company's leve officers).
+pub fn is_regional(gl_id: u32) -> bool {
+    (10_801..20_000).contains(&gl_id)
 }
 
 /// The display-name id objective `i` counts: its own mob, or for a single
@@ -113,9 +170,10 @@ fn director_class(gd: &GuildleveGamedata) -> &'static str {
         .unwrap_or("PrivateGLBattleSweepNormal")
 }
 
-/// Up to 8 leves for a camp's leve set: the camp's battle leves at its
-/// base level (the lowest one it has), rotated every 36 hours when it has
-/// more than 8.
+/// Up to 8 leves for a camp's leve set: the camp's regional battle leves
+/// at its base level (the lowest one it has; in 1.23b each camp's regional
+/// leves share one level, and the star menu raises it), rotated every 36
+/// hours when it has more than 8.
 pub fn offers(
     catalog: &HashMap<u32, GuildleveGamedata>,
     aetheryte: u32,
@@ -143,7 +201,7 @@ pub fn offers(
     }
     let mine: Vec<&GuildleveGamedata> = catalog
         .values()
-        .filter(|g| g.aetheryte == aetheryte && g.level > 0 && is_supported(g))
+        .filter(|g| g.aetheryte == aetheryte && g.level > 0 && is_regional(g.id) && is_supported(g))
         .filter(|g| copies.get(&key(g)) == Some(&1))
         .collect();
     let Some(base) = mine.iter().map(|g| g.level).min() else {
@@ -208,6 +266,14 @@ struct Leve {
     /// `guildleveWork.startTime` and the target marker, for the same.
     start_secs: u32,
     marker: (f32, f32, f32),
+    /// A Necrologos leve: objective 4 is the tome, done when the pages are.
+    necrologos: bool,
+    /// Objectives run one at a time (Chase).
+    staged: bool,
+    /// The camp and every monster spawn point of the zone, for placing a
+    /// staged leve's next group.
+    camp: (f32, f32, f32),
+    points: Vec<(f32, f32, f32)>,
     /// Members who dropped off (left the zone, logged out); they rejoin
     /// when they are back in the zone and still in the party.
     dropped: Vec<u32>,
@@ -556,19 +622,45 @@ pub async fn start(
         spots.push(center);
     }
 
+    let necrologos = gd.plate_id == PLATE_NECROLOGOS;
     let mut classes = [0u32; 4];
     let mut targets = [0u32; 4];
-    for i in 0..4 {
-        if gd.aim_num[i] <= 0 {
-            continue;
+    if necrologos || (0..4).any(|i| carried_by_local_beasts(&gd, i)) {
+        // each page's beast: the leve's own mob, or a monster of the area
+        // around the leve spot near its level (a different one per page)
+        let monsters = db.zone_monsters(zone_id).await.unwrap_or_default();
+        let local = pick_beasts(&monsters, center, u32::from(gd.level), 3);
+        for i in (0..4)
+            .filter(|&i| carried_by_local_beasts(&gd, i) || (!necrologos && gd.aim_num[i] > 0))
+        {
+            targets[i] = if necrologos {
+                gd.mobs[i]
+            } else {
+                target_of(&gd, i)
+            };
+            classes[i] = if targets[i] != 0 {
+                db.monster_class_for_name(targets[i])
+                    .await
+                    .ok()
+                    .flatten()
+                    .unwrap_or(0)
+            } else {
+                local.get(i % local.len().max(1)).copied().unwrap_or(0)
+            };
         }
-        targets[i] = target_of(&gd, i);
-        classes[i] = db
-            .monster_class_for_name(targets[i])
-            .await
-            .ok()
-            .flatten()
-            .unwrap_or(0);
+    } else {
+        for i in 0..4 {
+            if gd.aim_num[i] <= 0 {
+                continue;
+            }
+            targets[i] = target_of(&gd, i);
+            classes[i] = db
+                .monster_class_for_name(targets[i])
+                .await
+                .ok()
+                .flatten()
+                .unwrap_or(0);
+        }
     }
     let director_id = (6 << 28)
         | (zone_id << 19)
@@ -589,7 +681,16 @@ pub async fn start(
         director_id,
         // the client's difficulty menu: each star past the first is enemy level +3
         monster_level: u32::from(gd.level.max(1)) + 3 * u32::from(difficulty - 1),
-        aim: gd.aim_num.map(|a| a.max(0)),
+        aim: if necrologos {
+            // the pages, then the tome (one, destroyed when they're in)
+            std::array::from_fn(|i| match i {
+                3 => 1,
+                _ if is_page(&gd, i) => gd.aim_num[i],
+                _ => 0,
+            })
+        } else {
+            gd.aim_num.map(|a| a.max(0))
+        },
         now: [0; 4],
         targets,
         classes,
@@ -603,11 +704,15 @@ pub async fn start(
         class: director_class(&gd),
         start_secs,
         marker: center,
+        necrologos,
+        staged: gd.plate_id == PLATE_CHASE,
+        camp,
+        points: points.clone(),
         dropped: Vec::new(),
         back_since: HashMap::new(),
     };
     for i in 0..4 {
-        if leve.aim[i] > 0 && classes[i] == 0 {
+        if leve.aim[i] > 0 && classes[i] == 0 && !(necrologos && i == 3) {
             tracing::warn!(
                 gl_id,
                 target = targets[i],
@@ -616,7 +721,12 @@ pub async fn start(
             leve.aim[i] = 0;
         }
     }
-    if leve.aim.iter().all(|a| *a == 0) {
+    if leve
+        .aim
+        .iter()
+        .zip(leve.classes)
+        .all(|(a, c)| *a == 0 || c == 0)
+    {
         say(
             registry,
             world,
@@ -678,7 +788,11 @@ pub async fn start(
     // Targets: up to MAX_UP of each objective, plus decoys for mobs that
     // don't count.
     let mut wave: Vec<(u32, Option<usize>)> = Vec::new();
+    let first_stage = stage(&leve.aim, &leve.now);
     for i in 0..4 {
+        if leve.classes[i] == 0 || (leve.staged && first_stage != Some(i)) {
+            continue;
+        }
         for _ in 0..(leve.aim[i] as usize).min(MAX_UP) {
             wave.push((leve.classes[i], Some(i)));
         }
@@ -706,6 +820,11 @@ pub async fn start(
         director = format!("0x{director_id:08X}"),
         party = ?leve.members,
         targets = leve.spawned.len(),
+        actors = ?leve
+            .spawned
+            .keys()
+            .map(|a| format!("0x{a:08X}"))
+            .collect::<Vec<_>>(),
         center = ?center,
         "battle leve started"
     );
@@ -747,19 +866,100 @@ fn tracker_state(leve: &Leve) -> Vec<SubPacket> {
         for i in 0..4 {
             if leve.aim[i] != 0 {
                 b.add_byte(&format!("guildleveWork.aimNum[{i}]"), leve.aim[i] as u8);
-                b.add_byte(&format!("guildleveWork.uiState[{i}]"), 1);
+                b.add_byte(
+                    &format!("guildleveWork.uiState[{i}]"),
+                    ui_state(leve.staged, &leve.aim, &leve.now, i),
+                );
                 if leve.now[i] != 0 {
                     b.add_byte(&format!("guildleveWork.aimNumNow[{i}]"), leve.now[i] as u8);
                 }
             }
         }
     }));
+    // Hunt and Detect trackers have a fifth line (an item or a count of
+    // targets found) read from `work.searchNumber` / `work.detectNumber`;
+    // the client hides it at -1. Nothing here fills it, so hide it rather
+    // than show an empty "[en] 0".
+    if let Some(field) = extra_line_field(leve.class) {
+        subs.extend(director_packets(leve, "work/info", |b| {
+            b.add_byte(field, (-1i8) as u8);
+        }));
+    }
+    if let Some((done, max)) = round_line(leve.class, &leve.aim, &leve.now) {
+        subs.extend(director_packets(leve, "work/info", |b| {
+            b.add_byte("work.roundNumber", done);
+            b.add_byte("work.roundNumberMax", max);
+        }));
+    }
     subs.extend(director_packets(leve, "guildleveWork/marker", |b| {
         b.add_float("guildleveWork.markerX[0]", leve.marker.0);
         b.add_float("guildleveWork.markerY[0]", leve.marker.1);
         b.add_float("guildleveWork.markerZ[0]", leve.marker.2);
     }));
     subs
+}
+
+/// Up to `n` different monster classes for a Necrologos leve's pages: the
+/// area's monsters whose level range is closest to the leve's, nearest the
+/// leve spot first. `monsters` is (class, min level, max level, spawn spot).
+fn pick_beasts(
+    monsters: &[crate::database::ZoneMonster],
+    center: (f32, f32, f32),
+    level: u32,
+    n: usize,
+) -> Vec<u32> {
+    let gap = |lo: u32, hi: u32| {
+        if level < lo {
+            lo - level
+        } else {
+            level.saturating_sub(hi)
+        }
+    };
+    let mut best: HashMap<u32, (u32, f32)> = HashMap::new();
+    for &(class, lo, hi, (x, _, z)) in monsters {
+        let score = (
+            gap(lo, hi),
+            ((x - center.0).powi(2) + (z - center.2).powi(2)).sqrt(),
+        );
+        best.entry(class)
+            .and_modify(|b| {
+                if score.0 < b.0 || (score.0 == b.0 && score.1 < b.1) {
+                    *b = score;
+                }
+            })
+            .or_insert(score);
+    }
+    let mut ranked: Vec<(u32, (u32, f32))> = best.into_iter().collect();
+    ranked.sort_by(|a, b| {
+        a.1.0
+            .cmp(&b.1.0)
+            .then(a.1.1.total_cmp(&b.1.1))
+            .then(a.0.cmp(&b.0))
+    });
+    ranked.into_iter().take(n).map(|(c, _)| c).collect()
+}
+
+/// The Round tracker's fifth line (PrivateGLBattleRoundNormal), always
+/// shown as `work.roundNumber/roundNumberMax`, "on" while the first is
+/// lower. The leve sheet has no round count, so the leve is one round:
+/// 0/1 while any objective is open, 1/1 once all are met.
+fn round_line(class: &str, aim: &[i8; 4], now: &[i8; 4]) -> Option<(u8, u8)> {
+    if class != "PrivateGLBattleRoundNormal" {
+        return None;
+    }
+    let met = (0..4).all(|i| now[i] >= aim[i]);
+    Some((met as u8, 1))
+}
+
+/// The `work` field behind a director class's fifth tracker line, for the
+/// classes that hide it at -1 (PrivateGLBattleHuntNormal and
+/// PrivateGLBattleDetectNormal in the 1.23b client scripts).
+fn extra_line_field(class: &str) -> Option<&'static str> {
+    match class {
+        "PrivateGLBattleHuntNormal" => Some("work.searchNumber"),
+        "PrivateGLBattleDetectNormal" => Some("work.detectNumber"),
+        _ => None,
+    }
 }
 
 /// A dropped member back in the zone this long (ms) rejoins: long enough
@@ -909,6 +1109,10 @@ pub async fn on_death(
         leve.now[i] += 1;
         let up = leve.spawned.values().filter(|o| **o == Some(i)).count() as i8;
         let respawn = leve.now[i] + up < leve.aim[i];
+        if leve.necrologos && (0..3).all(|k| leve.now[k] >= leve.aim[k]) {
+            // every page is in: the tome is destroyed
+            leve.now[3] = leve.aim[3];
+        }
         let done = (0..4).all(|k| leve.now[k] >= leve.aim[k]);
         Some((leve.clone(), i, respawn, done))
     });
@@ -917,6 +1121,9 @@ pub async fn on_death(
     };
     let subs = director_packets(&leve, "guildleveWork/infoVariable", |b| {
         b.add_byte(&format!("guildleveWork.aimNumNow[{i}]"), leve.now[i] as u8);
+        if leve.necrologos && done {
+            b.add_byte("guildleveWork.aimNumNow[3]", leve.now[3] as u8);
+        }
     });
     send_all(registry, world, &leve.participants(), subs).await;
     tracing::info!(
@@ -933,10 +1140,22 @@ pub async fn on_death(
         }
         return;
     }
+    if leve.staged && leve.now[i] >= leve.aim[i] {
+        if let Some(db) = db {
+            next_stage(leve, registry, world, db, lua).await;
+        }
+        return;
+    }
     if respawn && let Some(db) = db {
         let mut leve = leve;
         let class_id = leve.classes[i];
         if let Some(actor_id) = spawn_one(&mut leve, class_id, registry, world, db, lua).await {
+            tracing::info!(
+                gl_id = leve.guildleve_id,
+                objective = i,
+                actor = format!("0x{actor_id:08X}"),
+                "battle leve target respawned"
+            );
             with_active(|a| {
                 if let Some(l) = a.iter_mut().find(|l| l.director_id == leve.director_id) {
                     l.spawned.insert(actor_id, Some(i));
@@ -945,6 +1164,115 @@ pub async fn on_death(
             });
         }
     }
+}
+
+/// A staged leve's group is down: the next group appears further out, the
+/// marker moves to it and the tracker lights its line.
+async fn next_stage(
+    mut leve: Leve,
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    db: &Database,
+    lua: Option<&Arc<LuaEngine>>,
+) {
+    let Some(next) = stage(&leve.aim, &leve.now) else {
+        return;
+    };
+    let center = next_stage_center(&leve.points, leve.camp, leve.marker);
+    let mut spots = leve.points.clone();
+    let d = |a: &(f32, f32, f32)| (a.0 - center.0).powi(2) + (a.2 - center.2).powi(2);
+    spots.sort_by(|a, b| d(a).total_cmp(&d(b)));
+    spots.truncate(24);
+    if spots.is_empty() {
+        spots.push(center);
+    }
+    leve.spots = spots;
+    leve.next_spot = 0;
+    leve.marker = center;
+    let mut new = Vec::new();
+    if leve.classes[next] != 0 {
+        for _ in 0..(leve.aim[next] as usize).min(MAX_UP) {
+            let class_id = leve.classes[next];
+            if let Some(actor_id) = spawn_one(&mut leve, class_id, registry, world, db, lua).await {
+                new.push(actor_id);
+            }
+        }
+    }
+    let director_id = leve.director_id;
+    let still_running = with_active(|a| {
+        let Some(l) = a
+            .iter_mut()
+            .find(|l| l.director_id == director_id && matches!(l.phase, Phase::Running { .. }))
+        else {
+            return false;
+        };
+        l.spots = leve.spots.clone();
+        l.next_spot = leve.next_spot;
+        l.marker = leve.marker;
+        for a in &new {
+            l.spawned.insert(*a, Some(next));
+        }
+        true
+    });
+    if !still_running {
+        for a in new {
+            crate::runtime::quest_apply::apply_despawn_actor(leve.zone_id, a, registry, world)
+                .await;
+        }
+        return;
+    }
+    send_all(registry, world, &leve.participants(), tracker_state(&leve)).await;
+    tracing::info!(
+        gl_id = leve.guildleve_id,
+        stage = next,
+        center = ?center,
+        actors = ?new.iter().map(|a| format!("0x{a:08X}")).collect::<Vec<_>>(),
+        "battle leve next stage"
+    );
+}
+
+/// The objective a staged leve is on: the first one not yet met.
+fn stage(aim: &[i8; 4], now: &[i8; 4]) -> Option<usize> {
+    (0..4).find(|&i| aim[i] > 0 && now[i] < aim[i])
+}
+
+/// `guildleveWork.uiState` of objective `i`: shown (1) for a leve that runs
+/// its objectives at once; for a staged one, cleared (2) once met, shown
+/// while it's the current stage and hidden (0) before that.
+fn ui_state(staged: bool, aim: &[i8; 4], now: &[i8; 4], i: usize) -> u8 {
+    if !staged {
+        return 1;
+    }
+    if now[i] >= aim[i] {
+        2
+    } else if stage(aim, now) == Some(i) {
+        1
+    } else {
+        0
+    }
+}
+
+/// Where a staged leve's next group waits: the spawn point nearest the last
+/// group that is at least [`STAGE_STEP`] from it and no closer to the camp,
+/// so the chase leads away from camp; any point [`STAGE_STEP`] away when
+/// none is; the last spot when there are none.
+fn next_stage_center(
+    points: &[(f32, f32, f32)],
+    camp: (f32, f32, f32),
+    from: (f32, f32, f32),
+) -> (f32, f32, f32) {
+    let d =
+        |a: (f32, f32, f32), b: (f32, f32, f32)| ((a.0 - b.0).powi(2) + (a.2 - b.2).powi(2)).sqrt();
+    let nearest = |ok: &dyn Fn(&(f32, f32, f32)) -> bool| {
+        points
+            .iter()
+            .copied()
+            .filter(|p| d(*p, from) >= STAGE_STEP && ok(p))
+            .min_by(|a, b| d(*a, from).total_cmp(&d(*b, from)))
+    };
+    nearest(&|p| d(*p, camp) >= d(from, camp))
+        .or_else(|| nearest(&|_| true))
+        .unwrap_or(from)
 }
 
 /// End the running leve `player_id` owns; returns it with its phase set to
@@ -1252,6 +1580,58 @@ mod tests {
     }
 
     #[test]
+    fn levemete_offers_regional_leves_only() {
+        let mut cat = HashMap::new();
+        cat.insert(
+            11641,
+            leve(11641, 1280033, 10, 20021, [5, 0, 0, 0], [3200101, 0, 0, 0]),
+        );
+        // a faction leve and a Grand Company leve at the same camp and level
+        cat.insert(
+            1101,
+            leve(1101, 1280033, 10, 20021, [1, 0, 0, 0], [3200102, 0, 0, 0]),
+        );
+        cat.insert(
+            20901,
+            leve(20901, 1280033, 10, 20049, [3, 0, 0, 0], [3200103, 0, 0, 0]),
+        );
+        assert_eq!(offers(&cat, 1280033, 0), vec![11641]);
+    }
+
+    #[test]
+    fn a_target_with_no_monster_is_not_offered() {
+        // Securing Horizon's Edge: footpads and raiders have no monster class
+        let mut footpads = leve(
+            11661,
+            1280034,
+            20,
+            20021,
+            [5, 5, 0, 0],
+            [3280101, 3280105, 0, 0],
+        );
+        footpads.mob_missing = [true, true, false, false];
+        assert!(!is_supported(&footpads));
+        // one counted target missing is enough
+        footpads.mob_missing = [false, true, false, false];
+        assert!(!is_supported(&footpads));
+        // a Detect leve's decoy without a monster doesn't matter
+        let mut imps = leve(
+            11668,
+            1280034,
+            20,
+            20028,
+            [2, 0, 0, 0],
+            [3202603, 3280114, 0, 3209901],
+        );
+        imps.mob_missing = [false, true, false, false];
+        assert!(is_supported(&imps));
+        // an objective with no mob of its own counts the first one
+        let mut fallback = leve(1, 1280034, 20, 20021, [2, 3, 0, 0], [3280101, 0, 0, 0]);
+        fallback.mob_missing = [true, false, false, false];
+        assert!(!is_supported(&fallback));
+    }
+
+    #[test]
     fn needs_a_target_to_be_supported() {
         assert!(!is_supported(&leve(
             10863,
@@ -1269,6 +1649,143 @@ mod tests {
             [4, 0, 0, 0],
             [3202603, 3206004, 0, 0]
         )));
+    }
+
+    #[test]
+    fn necrologos_leves_are_supported_by_their_pages() {
+        // Necrologos: Lords of Skyey Realms: three charred pages, then the tome
+        let mut orb = leve(10846, 1280007, 30, 20023, [3, 0, 0, 0], [0; 4]);
+        orb.items = [12000003, 0, 0, 12000004];
+        assert!(is_supported(&orb));
+        assert!(is_page(&orb, 0) && !is_page(&orb, 1) && !is_page(&orb, 3));
+        // no page, nothing to do
+        orb.items = [0, 0, 0, 12000004];
+        assert!(!is_supported(&orb));
+        // a page whose named beast has no monster
+        orb.items = [12000003, 0, 0, 12000004];
+        orb.mobs = [3280101, 0, 0, 0];
+        orb.mob_missing = [true, false, false, false];
+        assert!(!is_supported(&orb));
+        // Survive is still out
+        assert!(!is_supported(&leve(
+            10907,
+            1280004,
+            40,
+            20027,
+            [1, 0, 0, 0],
+            [3203101, 0, 0, 0]
+        )));
+    }
+
+    #[test]
+    fn a_gather_leve_with_no_monster_uses_local_beasts() {
+        // To Catch a Thief: three items, no monster named
+        let mut thief = leve(10863, 1280005, 20, 20025, [3, 0, 0, 0], [0; 4]);
+        thief.items = [12000058, 0, 0, 0];
+        assert!(carried_by_local_beasts(&thief, 0));
+        assert!(is_supported(&thief));
+        // a Gather leve that names its monster keeps it
+        let mut claws = leve(
+            10883,
+            1280003,
+            10,
+            20025,
+            [2, 2, 0, 0],
+            [3200101, 3204102, 0, 0],
+        );
+        claws.items = [12000043, 12000044, 0, 0];
+        assert!(!carried_by_local_beasts(&claws, 0));
+        assert!(is_supported(&claws));
+        // a Sweep leve with nothing to defeat stays out
+        assert!(!is_supported(&leve(
+            11004,
+            1280050,
+            100,
+            20021,
+            [3, 0, 0, 0],
+            [0; 4]
+        )));
+    }
+
+    #[test]
+    fn necrologos_beasts_are_local_and_near_the_leve_level() {
+        let at = |x: f32| (x, 0.0, 0.0);
+        let monsters = [
+            (2201, 1, 5, at(10.0)),    // too weak
+            (2230, 28, 32, at(400.0)), // right level, far
+            (2231, 29, 31, at(50.0)),  // right level, near
+            (2231, 29, 31, at(900.0)),
+            (2240, 33, 36, at(20.0)), // a little strong
+        ];
+        let picked = pick_beasts(&monsters, at(0.0), 30, 3);
+        assert_eq!(picked, vec![2231, 2230, 2240]);
+        assert!(pick_beasts(&[], at(0.0), 30, 3).is_empty());
+    }
+
+    #[test]
+    fn chase_stages_run_in_order() {
+        // Sating the Simians: 2, then 4, then 6 galagos
+        let aim = [2, 4, 6, 0];
+        assert_eq!(stage(&aim, &[0, 0, 0, 0]), Some(0));
+        assert_eq!(stage(&aim, &[2, 0, 0, 0]), Some(1));
+        assert_eq!(stage(&aim, &[2, 4, 5, 0]), Some(2));
+        assert_eq!(stage(&aim, &[2, 4, 6, 0]), None);
+        // the tracker: cleared, current, hidden
+        let now = [2, 1, 0, 0];
+        assert_eq!(ui_state(true, &aim, &now, 0), 2);
+        assert_eq!(ui_state(true, &aim, &now, 1), 1);
+        assert_eq!(ui_state(true, &aim, &now, 2), 0);
+        // a leve that isn't staged shows every line
+        assert_eq!(ui_state(false, &aim, &now, 2), 1);
+    }
+
+    #[test]
+    fn the_next_chase_group_is_further_from_camp() {
+        let camp = (0.0, 0.0, 0.0);
+        let from = (50.0, 0.0, 0.0);
+        let points = [
+            (60.0, 0.0, 0.0),  // too close to the last group
+            (10.0, 0.0, 0.0),  // back towards camp
+            (95.0, 0.0, 10.0), // away from camp, 40+ out
+            (200.0, 0.0, 0.0),
+        ];
+        assert_eq!(next_stage_center(&points, camp, from), (95.0, 0.0, 10.0));
+        // nothing further out: any point far enough
+        assert_eq!(
+            next_stage_center(&[(10.0, 0.0, 0.0), (55.0, 0.0, 0.0)], camp, from),
+            (10.0, 0.0, 0.0)
+        );
+        assert_eq!(next_stage_center(&[], camp, from), from);
+    }
+
+    #[test]
+    fn hunt_and_detect_trackers_hide_their_fifth_line() {
+        assert_eq!(
+            extra_line_field("PrivateGLBattleHuntNormal"),
+            Some("work.searchNumber")
+        );
+        assert_eq!(
+            extra_line_field("PrivateGLBattleDetectNormal"),
+            Some("work.detectNumber")
+        );
+        assert_eq!(extra_line_field("PrivateGLBattleSweepNormal"), None);
+    }
+
+    #[test]
+    fn round_tracker_counts_one_round() {
+        let aim = [2, 0, 0, 0];
+        assert_eq!(
+            round_line("PrivateGLBattleRoundNormal", &aim, &[1, 0, 0, 0]),
+            Some((0, 1))
+        );
+        assert_eq!(
+            round_line("PrivateGLBattleRoundNormal", &aim, &[2, 0, 0, 0]),
+            Some((1, 1))
+        );
+        assert_eq!(
+            round_line("PrivateGLBattleSweepNormal", &aim, &[2, 0, 0, 0]),
+            None
+        );
     }
 
     #[test]

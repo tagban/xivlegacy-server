@@ -715,6 +715,12 @@ pub struct GuildleveGamedata {
     /// Per objective: how many, and the target's display-name id.
     pub aim_num: [i8; 4],
     pub mobs: [u32; 4],
+    /// Per objective: the leve item it collects (Gather and Necrologos
+    /// leves; a Necrologos leve's fourth is the tome itself).
+    pub items: [u32; 4],
+    /// Per objective: its display name has no monster class to spawn
+    /// (leve-only humans and named monsters with no model yet).
+    pub mob_missing: [bool; 4],
 }
 
 // Gamedata row types (ItemData, InventoryItem) live in `crate::data`; import

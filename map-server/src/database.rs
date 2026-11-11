@@ -44,6 +44,9 @@ use crate::gamedata::{
 };
 
 /// A consumable's use data, from [`Database::usable_item`].
+/// An open-world monster spawn: (actor class, min level, max level, spot).
+pub type ZoneMonster = (u32, u32, u32, (f32, f32, f32));
+
 #[derive(Debug, Clone, Default)]
 pub struct UsableItem {
     /// `Normal/PotionItem`, `Normal/FoodItem`, `Normal/EnchantMedicineItem`, ...
@@ -468,6 +471,38 @@ impl Database {
                     |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
                 )
                 .optional()
+            })
+            .await
+            .context("leve data query")
+    }
+
+    /// The open-world monsters of a zone: (actor class, level range, spawn
+    /// position), for picking the beasts a Necrologos page summons.
+    pub async fn zone_monsters(&self, zone_id: u32) -> Result<Vec<ZoneMonster>> {
+        self.conn
+            .call_db(move |c| {
+                let mut stmt = c.prepare(
+                    r"SELECT p.actorClassId, g.minLevel, g.maxLevel,
+                             s.positionX, s.positionY, s.positionZ
+                      FROM server_battlenpc_spawn_locations s
+                      JOIN server_battlenpc_groups g ON g.groupId = s.groupId
+                      JOIN server_battlenpc_pools p ON p.poolId = g.poolId
+                      JOIN gamedata_actor_class a ON a.id = p.actorClassId
+                      WHERE g.zoneId = ?1
+                        AND (g.privateAreaName IS NULL OR g.privateAreaName = '')
+                        AND a.classPath LIKE '/Chara/Npc/Monster/%'",
+                )?;
+                let rows = stmt
+                    .query_map([zone_id], |r| {
+                        Ok((
+                            r.get(0)?,
+                            r.get(1)?,
+                            r.get(2)?,
+                            (r.get(3)?, r.get(4)?, r.get(5)?),
+                        ))
+                    })?
+                    .collect::<common::sql::Result<_>>()?;
+                Ok(rows)
             })
             .await
             .context("leve data query")
@@ -1143,7 +1178,16 @@ impl Database {
                     r"SELECT id, zoneId, name, difficulty, leveType, rewardExp, rewardGil,
                              classType, location, level, aetheryte, plateId, borderId,
                              timeLimit, favorCount, aimNum1, aimNum2, aimNum3, aimNum4,
-                             mob1, mob2, mob3, mob4
+                             mob1, mob2, mob3, mob4,
+                             item1, item2, item3, item4,
+                             mob1 != 0 AND NOT EXISTS (SELECT 1 FROM gamedata_actor_class a
+                                 WHERE a.displayNameId = mob1 AND a.classPath LIKE '/Chara/Npc/Monster/%'),
+                             mob2 != 0 AND NOT EXISTS (SELECT 1 FROM gamedata_actor_class a
+                                 WHERE a.displayNameId = mob2 AND a.classPath LIKE '/Chara/Npc/Monster/%'),
+                             mob3 != 0 AND NOT EXISTS (SELECT 1 FROM gamedata_actor_class a
+                                 WHERE a.displayNameId = mob3 AND a.classPath LIKE '/Chara/Npc/Monster/%'),
+                             mob4 != 0 AND NOT EXISTS (SELECT 1 FROM gamedata_actor_class a
+                                 WHERE a.displayNameId = mob4 AND a.classPath LIKE '/Chara/Npc/Monster/%')
                       FROM gamedata_guildleves",
                 )?;
                 let rows: Vec<(u32, GuildleveGamedata)> = stmt
@@ -1172,6 +1216,12 @@ impl Database {
                                 }),
                                 mobs: std::array::from_fn(|i| {
                                     r.get::<_, u32>(19 + i).unwrap_or_default()
+                                }),
+                                items: std::array::from_fn(|i| {
+                                    r.get::<_, u32>(23 + i).unwrap_or_default()
+                                }),
+                                mob_missing: std::array::from_fn(|i| {
+                                    r.get::<_, i64>(27 + i).unwrap_or_default() != 0
                                 }),
                             },
                         ))
