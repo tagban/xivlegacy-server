@@ -1,4 +1,4 @@
--- server_battlenpc_groups: game data, 769 rows. Reloaded whole when this file changes.
+-- server_battlenpc_groups: game data, 773 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_groups`;
 INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLevel`, `maxLevel`, `respawnTime`, `hp`, `mp`, `dropListId`, `allegiance`, `spawnType`, `animationId`, `actorState`, `privateAreaName`, `privateAreaLevel`, `zoneId`) VALUES
@@ -771,4 +771,8 @@ INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLe
 (31313, 31313, 'whm0j3_cactuar_jack', 38, 38, 0, 1600, 0, 0, 0, 16, 0, 0, '', 0, 172),
 (31314, 31314, 'whm0j4_bandit', 36, 36, 0, 500, 0, 0, 0, 16, 0, 0, '', 0, 128),
 (31315, 31315, 'whm0j6_wind_elemental', 45, 45, 0, 1500, 0, 0, 0, 16, 0, 0, '', 0, 150),
-(31316, 31316, 'whm0j6_earth_elemental', 45, 45, 0, 1500, 0, 0, 0, 16, 0, 0, '', 0, 150);
+(31316, 31316, 'whm0j6_earth_elemental', 45, 45, 0, 1500, 0, 0, 0, 16, 0, 0, '', 0, 150),
+(31317, 31317, 'blm0j1_guano_gnat', 28, 28, 0, 700, 0, 0, 0, 16, 0, 0, '', 0, 172),
+(31318, 31318, 'blm0j2_daddy_longlegs', 33, 33, 0, 1400, 0, 0, 0, 16, 0, 0, '', 0, 172),
+(31319, 31319, 'blm0j3_whitetalon', 38, 38, 0, 1600, 0, 0, 0, 16, 0, 0, '', 0, 129),
+(31320, 31320, 'blm0j6_barbatos', 46, 46, 0, 2500, 0, 0, 0, 16, 0, 0, '', 0, 174);

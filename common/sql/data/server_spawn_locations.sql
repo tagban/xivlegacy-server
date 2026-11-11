@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1858 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1871 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -1862,4 +1862,17 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (30130, 1090925, 'whm0j5_zahar_ak_garb', 174, '', 0, 2400.0, 247.8, 1540.0, 0.0, 0, 0, NULL),
 (30131, 1090926, 'whm0j5_turning_leaf_garb', 153, '', 0, -1345.0, -15.5, 330.0, 0.0, 0, 0, NULL),
 (30132, 1090927, 'whm0j5_tiger_helm_garb', 130, '', 0, 1620.0, 60.2, -455.0, 0.0, 0, 0, NULL),
-(30133, 1090928, 'whm0j6_keening_trigger', 150, '', 0, 200.0, 3.6, -505.0, 0.0, 0, 0, NULL);
+(30133, 1090928, 'whm0j6_keening_trigger', 150, '', 0, 200.0, 3.6, -505.0, 0.0, 0, 0, NULL),
+(30134, 1060034, 'blm_lalai_sacrarium', 209, '', 0, -298.0, 206.0, 232.0, 2.6, 0, 0, NULL),
+(30135, 1060036, 'blm_kazagg_chah_cave', 172, '', 0, -1460.0, 48.1, -150.0, 1.6, 0, 0, NULL),
+(30136, 1060037, 'blm_dozol_meloc_cave', 172, '', 0, -1455.0, 47.5, -145.0, 1.6, 0, 0, NULL),
+(30137, 1060038, 'blm_da_za_cave', 172, '', 0, -1465.0, 48.3, -145.0, 1.6, 0, 0, NULL),
+(30138, 1090929, 'blm0j1_guano_gnat_trigger', 172, '', 0, -865.0, 87.8, 260.0, 0.0, 0, 0, NULL),
+(30139, 1090930, 'blm0j2_daddy_longlegs_trigger', 172, '', 0, -1000.0, 92.0, 385.0, 0.0, 0, 0, NULL),
+(30140, 1090931, 'blm0j3_whitetalon_trigger', 129, '', 0, -990.0, 52.2, -1020.0, 0.0, 0, 0, NULL),
+(30141, 1090932, 'blm0j4_mossy_stela', 153, '', 0, -1395.0, -14.6, 255.0, 0.0, 0, 0, NULL),
+(30142, 1090933, 'blm0j5_aurum_vale_garb', 147, '', 0, -260.0, 238.4, 1160.0, 0.0, 0, 0, NULL),
+(30143, 1090934, 'blm0j5_dusk_vigil_garb', 148, '', 0, -1800.0, 304.0, -280.0, 0.0, 0, 0, NULL),
+(30144, 1090935, 'blm0j5_brittlebark_cave_garb', 190, '', 0, 392.0, 19.6, 640.0, 0.0, 0, 0, NULL),
+(30145, 1090936, 'blm0j5_broken_water_cave_garb', 174, '', 0, 1690.0, 296.5, 1080.0, 0.0, 0, 0, NULL),
+(30146, 1090937, 'blm0j6_nalds_reflection_trigger', 174, '', 0, 1580.0, 360.6, 990.0, 0.0, 0, 0, NULL);

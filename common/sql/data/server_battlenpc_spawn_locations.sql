@@ -1,4 +1,4 @@
--- server_battlenpc_spawn_locations: game data, 4397 rows. Reloaded whole when this file changes.
+-- server_battlenpc_spawn_locations: game data, 4402 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_spawn_locations`;
 INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `groupId`, `positionX`, `positionY`, `positionZ`, `rotation`) VALUES
@@ -4405,4 +4405,9 @@ INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `
 (3723, 'whm0j4_bandit', 31314, 55.0, 46.0, 190.0, 0.0),
 (3724, 'whm0j4_bandit', 31314, 30.0, 43.2, 190.0, 0.0),
 (3725, 'whm0j6_wind_elemental', 31315, 195.0, 4.0, -485.0, 0.0),
-(3726, 'whm0j6_earth_elemental', 31316, 182.0, 4.0, -495.0, 0.0);
+(3726, 'whm0j6_earth_elemental', 31316, 182.0, 4.0, -495.0, 0.0),
+(3727, 'blm0j1_guano_gnat', 31317, -850.0, 88.3, 250.0, 0.0),
+(3728, 'blm0j1_guano_gnat', 31317, -865.0, 90.5, 240.0, 0.0),
+(3729, 'blm0j2_daddy_longlegs', 31318, -1010.0, 89.2, 385.0, 0.0),
+(3730, 'blm0j3_whitetalon', 31319, -980.0, 54.5, -1030.0, 0.0),
+(3731, 'blm0j6_barbatos', 31320, 1575.0, 359.4, 1005.0, 0.0);
