@@ -1190,7 +1190,8 @@ impl Database {
                                  WHERE a.displayNameId = mob4 AND a.classPath LIKE '/Chara/Npc/Monster/%'),
                              authority,
                              (SELECT s.zoneId FROM server_spawn_locations s
-                                 WHERE s.actorClassId = aetheryte LIMIT 1)
+                                 WHERE s.actorClassId = aetheryte LIMIT 1),
+                             factionCreditRequired
                       FROM gamedata_guildleves",
                 )?;
                 let rows: Vec<(u32, GuildleveGamedata)> = stmt
@@ -1228,6 +1229,7 @@ impl Database {
                                 }),
                                 authority: r.get::<_, u32>(31).unwrap_or_default(),
                                 camp_zone: r.get::<_, u32>(32).unwrap_or_default(),
+                                faction_credit_required: r.get::<_, u32>(33).unwrap_or_default(),
                             },
                         ))
                     })?
@@ -2313,6 +2315,10 @@ impl Database {
             .load_guildleves_regional(chara_id)
             .await
             .unwrap_or_default();
+        player.faction_credits = self
+            .load_faction_credits(chara_id)
+            .await
+            .unwrap_or_default();
         player.npc_linkshells = self.load_npc_linkshells(chara_id).await.unwrap_or_default();
 
         for (target, ty) in [
@@ -3067,6 +3073,53 @@ impl Database {
                 } else if is_abandoned {
                     activity::quest(c, chara_id, "leve", gl_id, "abandon", 0);
                 }
+                Ok(())
+            })
+            .await?;
+        Ok(())
+    }
+
+    /// A character's faction credits, by faction (1..=3 in the table).
+    async fn load_faction_credits(&self, chara_id: u32) -> Result<[u16; 3]> {
+        let credits = self
+            .conn
+            .call_db(move |c| {
+                let mut stmt = c.prepare(
+                    r"SELECT faction, credits FROM characters_faction_credit
+                      WHERE characterId = :cid",
+                )?;
+                let rows: Vec<(i64, i64)> = stmt
+                    .query_map(named_params! { ":cid": chara_id }, |r| {
+                        Ok((r.get(0)?, r.get(1)?))
+                    })?
+                    .collect::<common::sql::Result<_>>()?;
+                let mut credits = [0u16; 3];
+                for (faction, n) in rows {
+                    if (1..=3).contains(&faction) {
+                        credits[(faction - 1) as usize] = n.clamp(0, i64::from(u16::MAX)) as u16;
+                    }
+                }
+                Ok(credits)
+            })
+            .await?;
+        Ok(credits)
+    }
+
+    /// Store a character's credits with `faction` (1..=3).
+    pub async fn save_faction_credits(
+        &self,
+        chara_id: u32,
+        faction: u8,
+        credits: u16,
+    ) -> Result<()> {
+        self.conn
+            .call_db(move |c| {
+                c.execute(
+                    r"INSERT INTO characters_faction_credit (characterId, faction, credits)
+                      VALUES (:cid, :f, :n)
+                      ON DUPLICATE KEY UPDATE credits = VALUES(credits)",
+                    named_params! { ":cid": chara_id, ":f": faction, ":n": credits },
+                )?;
                 Ok(())
             })
             .await?;
