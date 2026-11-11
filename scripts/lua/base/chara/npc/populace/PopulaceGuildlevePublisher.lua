@@ -32,6 +32,9 @@ battlePacks = {
 
 GIL = 0xF4241;
 
+-- The class tutorial leve each city's levemete offers from the Tutorial menu.
+TUTORIAL_LEVES = { [133] = 10801, [155] = 12401, [175] = 11601 };
+
 -- Faction menu codes eventTalkType returns (with the level band picked:
 -- 20, 30 or 40) and the faction each one is: 1 Brotherhood of the Broken
 -- Blade, 2 Azeyma's Shields, 3 the Horn and Hand.
@@ -184,8 +187,21 @@ function onEventStarted(player, npc)
 				end
 			end
 		end
-	--Tutorial
+	--Tutorial: the city's class tutorial leve
 	elseif (menuChoice == 6) then
+		local leveId = TUTORIAL_LEVES[player:GetZoneID()] or TUTORIAL_LEVES[133];
+		local chosen = callClientFunction(player, "eventTalkCard", leveId, 0, 0, 0, 0, 0, 0, 0);
+		if (chosen == 1) then
+			local gl = GetGuildleveGamedata(leveId);
+			local gil = 0;
+			if (gl ~= nil) then gil = gl.rewardGil; end
+			local accepted = callClientFunction(player, "eventTalkDetail", leveId, 0, GIL, gil, 0, 0, 0, false, nil);
+			if (accepted == true) then
+				player:AddGuildleve(leveId);
+				callClientFunction(player, "eventTalkAfterOffer");
+			end
+		end
+		goto MENU_LOOP;
 	--End of Info
 	elseif (menuChoice == 7) then	
 	--Quit
