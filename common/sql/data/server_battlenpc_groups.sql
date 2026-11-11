@@ -1,4 +1,4 @@
--- server_battlenpc_groups: game data, 773 rows. Reloaded whole when this file changes.
+-- server_battlenpc_groups: game data, 780 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_groups`;
 INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLevel`, `maxLevel`, `respawnTime`, `hp`, `mp`, `dropListId`, `allegiance`, `spawnType`, `animationId`, `actorState`, `privateAreaName`, `privateAreaLevel`, `zoneId`) VALUES
@@ -775,4 +775,11 @@ INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLe
 (31317, 31317, 'blm0j1_guano_gnat', 28, 28, 0, 700, 0, 0, 0, 16, 0, 0, '', 0, 172),
 (31318, 31318, 'blm0j2_daddy_longlegs', 33, 33, 0, 1400, 0, 0, 0, 16, 0, 0, '', 0, 172),
 (31319, 31319, 'blm0j3_whitetalon', 38, 38, 0, 1600, 0, 0, 0, 16, 0, 0, '', 0, 129),
-(31320, 31320, 'blm0j6_barbatos', 46, 46, 0, 2500, 0, 0, 0, 16, 0, 0, '', 0, 174);
+(31320, 31320, 'blm0j6_barbatos', 46, 46, 0, 2500, 0, 0, 0, 16, 0, 0, '', 0, 174),
+(31321, 31321, 'pld0j1_skeleton_swordbearer', 28, 28, 0, 700, 0, 0, 0, 16, 0, 0, '', 0, 172),
+(31322, 31322, 'pld0j1_revenant', 28, 28, 0, 700, 0, 0, 0, 16, 0, 0, '', 0, 172),
+(31323, 31323, 'pld0j2_alux', 33, 33, 0, 1400, 0, 0, 0, 16, 0, 0, '', 0, 157),
+(31324, 31324, 'pld0j3_old_six_arms', 38, 38, 0, 1600, 0, 0, 0, 16, 0, 0, '', 0, 128),
+(31325, 31325, 'pld0j5_jenlyns', 43, 43, 0, 700, 0, 0, 0, 16, 0, 0, '', 0, 170),
+(31326, 31326, 'pld0j5_sultansworn_elite', 41, 41, 0, 1000, 0, 0, 0, 16, 0, 0, '', 0, 170),
+(31327, 31326, 'pld0j6_sultansworn_elite', 45, 45, 0, 1000, 0, 0, 0, 16, 0, 0, '', 0, 173);
