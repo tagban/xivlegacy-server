@@ -721,6 +721,12 @@ pub struct GuildleveGamedata {
     /// Per objective: its display name has no monster class to spawn
     /// (leve-only humans and named monsters with no model yet).
     pub mob_missing: [bool; 4],
+    /// Who issues the leve: the camp's city (40001...) or, for GC leves,
+    /// the Grand Company (40065 Maelstrom, 40066 Twin Adder, 40067
+    /// Immortal Flames).
+    pub authority: u32,
+    /// Zone of the camp aetheryte (`aetheryte`), 0 when it isn't spawned.
+    pub camp_zone: u32,
 }
 
 // Gamedata row types (ItemData, InventoryItem) live in `crate::data`; import

@@ -188,6 +188,27 @@ pub fn install_globals(
         globals.set("GetGuildleveOffers", f)?;
     }
 
+    // GetCompanyLeveOffer(gc, zoneId) — the GC leve an officer of Grand
+    // Company `gc` (1 Maelstrom, 2 Twin Adder, 3 Immortal Flames) in that
+    // zone offers right now, or nil.
+    {
+        let cats = catalogs.clone();
+        let f = lua.create_function(
+            move |_, (gc, zone): (u8, u32)| -> mlua::Result<Option<u32>> {
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or_default();
+                Ok(cats
+                    .guildleves
+                    .read()
+                    .ok()
+                    .and_then(|m| crate::leve::battle::company_offer(&m, gc, zone, now)))
+            },
+        )?;
+        globals.set("GetCompanyLeveOffer", f)?;
+    }
+
     // GetRecipeResolver() → LuaRecipeResolver | nil. Mirrors Meteor's
     // `Server.ResolveRecipe()`. Returns `nil` if the recipe catalog
     // hasn't been loaded yet — CraftCommand.lua will simply fail its
