@@ -1,0 +1,32 @@
+require ("global")
+require ("questbattle")
+
+-- Whm0j3: Cactuar Jack east of Camp Horizon.
+-- When every foe is down the content has no hostiles left, which fires
+-- "battleComplete" to the director (jobQuest.runFightDirector).
+
+local BNPCS = { 3721 };
+local FIGHT_LIMIT_SECONDS = 480;
+-- Where a loss sets the player down (outside the trigger circle).
+local SPOT = { 172, -810, 119.6, -55, 0 };
+
+function onCreate(player, contentArea, director)
+	questBattle.create(player, contentArea, director, BNPCS);
+end
+
+function onZoneIn(player, contentArea, director)
+	player:ChangeMusic(37); -- the 1.x duty theme
+end
+
+function onUpdate(tick, area)
+	questBattle.update(tick, area, FIGHT_LIMIT_SECONDS, function(player, timedOut)
+		questBattle.leave(player, SPOT);
+	end);
+end
+
+function onAbort(player, contentArea, director)
+	questBattle.abort(player);
+end
+
+function onDestroy()
+end

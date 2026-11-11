@@ -1,4 +1,4 @@
--- server_battlenpc_spawn_locations: game data, 4387 rows. Reloaded whole when this file changes.
+-- server_battlenpc_spawn_locations: game data, 4397 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_spawn_locations`;
 INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `groupId`, `positionX`, `positionY`, `positionZ`, `rotation`) VALUES
@@ -4395,4 +4395,14 @@ INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `
 (3713, 'mnk0j2_gluttonous_gertrude', 31306, 623.2, 45.4, 240.5, 0.0),
 (3714, 'mnk0j3_prince_of_pestilence', 31307, -787.0, -14.7, -2360.0, 0.0),
 (3715, 'mnk0j4_apep', 31308, -1352.0, 55.8, -262.0, 0.0),
-(3716, 'mnk0j6_widargelt', 31309, 580.0, 55.4, 185.0, 0.0);
+(3716, 'mnk0j6_widargelt', 31309, 580.0, 55.4, 185.0, 0.0),
+(3717, 'whm0j1_diremite_straggler', 31310, -853.0, -23.4, -2327.0, 0.0),
+(3718, 'whm0j1_miteling', 31311, -855.0, -23.4, -2320.0, 0.0),
+(3719, 'whm0j1_miteling', 31311, -850.0, -23.4, -2333.0, 0.0),
+(3720, 'whm0j2_downy_dunstan', 31312, 1425.0, 220.5, 795.0, 0.0),
+(3721, 'whm0j3_cactuar_jack', 31313, -848.9, 117.9, -31.9, 0.0),
+(3722, 'whm0j4_bandit', 31314, 40.0, 43.7, 185.0, 0.0),
+(3723, 'whm0j4_bandit', 31314, 55.0, 46.0, 190.0, 0.0),
+(3724, 'whm0j4_bandit', 31314, 30.0, 43.2, 190.0, 0.0),
+(3725, 'whm0j6_wind_elemental', 31315, 195.0, 4.0, -485.0, 0.0),
+(3726, 'whm0j6_earth_elemental', 31316, 182.0, 4.0, -495.0, 0.0);

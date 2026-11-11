@@ -1,4 +1,4 @@
--- server_battlenpc_groups: game data, 762 rows. Reloaded whole when this file changes.
+-- server_battlenpc_groups: game data, 769 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_groups`;
 INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLevel`, `maxLevel`, `respawnTime`, `hp`, `mp`, `dropListId`, `allegiance`, `spawnType`, `animationId`, `actorState`, `privateAreaName`, `privateAreaLevel`, `zoneId`) VALUES
@@ -764,4 +764,11 @@ INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLe
 (31306, 31306, 'mnk0j2_gluttonous_gertrude', 33, 33, 0, 1400, 0, 0, 0, 16, 0, 0, '', 0, 128),
 (31307, 31307, 'mnk0j3_prince_of_pestilence', 38, 38, 0, 1500, 0, 0, 0, 16, 0, 0, '', 0, 157),
 (31308, 31308, 'mnk0j4_apep', 43, 43, 0, 3000, 0, 0, 0, 16, 0, 0, '', 0, 172),
-(31309, 31309, 'mnk0j6_widargelt', 48, 48, 0, 700, 0, 0, 0, 16, 0, 0, '', 0, 190);
+(31309, 31309, 'mnk0j6_widargelt', 48, 48, 0, 700, 0, 0, 0, 16, 0, 0, '', 0, 190),
+(31310, 31310, 'whm0j1_diremite_straggler', 29, 29, 0, 900, 0, 0, 0, 16, 0, 0, '', 0, 157),
+(31311, 31311, 'whm0j1_miteling', 27, 27, 0, 500, 0, 0, 0, 16, 0, 0, '', 0, 157),
+(31312, 31312, 'whm0j2_downy_dunstan', 33, 33, 0, 1400, 0, 0, 0, 16, 0, 0, '', 0, 145),
+(31313, 31313, 'whm0j3_cactuar_jack', 38, 38, 0, 1600, 0, 0, 0, 16, 0, 0, '', 0, 172),
+(31314, 31314, 'whm0j4_bandit', 36, 36, 0, 500, 0, 0, 0, 16, 0, 0, '', 0, 128),
+(31315, 31315, 'whm0j6_wind_elemental', 45, 45, 0, 1500, 0, 0, 0, 16, 0, 0, '', 0, 150),
+(31316, 31316, 'whm0j6_earth_elemental', 45, 45, 0, 1500, 0, 0, 0, 16, 0, 0, '', 0, 150);
