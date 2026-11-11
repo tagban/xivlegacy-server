@@ -307,6 +307,9 @@ pub struct CharaState {
     /// PlayerState split as `npc_linkshells` above. (Kodama parity.)
     pub guildleves_local: Vec<crate::gamedata::GuildleveLocalEntry>,
     pub guildleves_regional: Vec<crate::gamedata::GuildleveRegionalEntry>,
+    /// Faction credits (`characters_faction_credit`), by faction: Broken
+    /// Blade, Azeyma's Shields, Horn and Hand.
+    pub faction_credits: [u16; 3],
     /// Equipped title (`characters.currentTitle`), hydrated at
     /// session-begin so the zone-in bundle emits `SetPlayerTitle`. The
     /// authoritative runtime copy; `PlayerState.current_title` stays as
@@ -418,6 +421,7 @@ impl Default for CharaState {
             npc_linkshells: Vec::new(),
             guildleves_local: Vec::new(),
             guildleves_regional: Vec::new(),
+            faction_credits: [0; 3],
             current_title: 0,
             unlocked_aetherytes: std::collections::HashSet::new(),
             snpc_nickname: String::new(),

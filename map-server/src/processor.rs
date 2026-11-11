@@ -477,6 +477,7 @@ impl PacketProcessor {
         // re-emits them (previously loaded into LoadedPlayer, then dropped).
         character.chara.guildleves_local = loaded.guildleves_local.clone();
         character.chara.guildleves_regional = loaded.guildleves_regional.clone();
+        character.chara.faction_credits = loaded.faction_credits;
         // Equipped-title hydration — mirror `currentTitle` so the zone-in
         // bundle can emit `SetPlayerTitle`; the DB column already loaded into
         // `loaded.current_title` but was never applied to the runtime actor.
@@ -2049,6 +2050,34 @@ impl PacketProcessor {
                     guildleve_id,
                     &self.registry,
                     &self.world,
+                    &self.db,
+                )
+                .await;
+            }
+            LC::AcceptFactionLeve {
+                player_id,
+                guildleve_id,
+            } => {
+                crate::leve::faction::accept(
+                    player_id,
+                    guildleve_id,
+                    &self.registry,
+                    &self.world,
+                    &self.db,
+                    self.lua.as_ref(),
+                )
+                .await;
+            }
+            LC::AddFactionCredits {
+                player_id,
+                faction,
+                amount,
+            } => {
+                crate::leve::faction::add_credits(
+                    player_id,
+                    faction,
+                    amount,
+                    &self.registry,
                     &self.db,
                 )
                 .await;
@@ -11285,6 +11314,7 @@ pub(crate) fn build_player_snapshot_for_login(
         rental_expire_time: c.chara.rental_expire_time,
         rental_min_left: c.chara.rental_min_left,
         gc_current: c.chara.gc_current,
+        faction_credits: c.chara.faction_credits,
         gc_rank_limsa: c.chara.gc_rank_limsa,
         gc_rank_gridania: c.chara.gc_rank_gridania,
         gc_rank_uldah: c.chara.gc_rank_uldah,

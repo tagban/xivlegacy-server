@@ -4,7 +4,8 @@ PopulaceGuildlevePublisher Script
 
 Functions:
 
-eventTalkType(level (changes factionLeves), sayIntro, brokenBladePoints, shieldsPoints, hornhandPoints, showTutorialLeves, doOmen (!=0), menuId (to Jump), leveAllowances, ?, ?, ?)
+eventTalkType(level (unlocks the faction level entries), sayIntro, brokenBladePoints, shieldsPoints, hornhandPoints, showTutorialLeves, doOmen (!=0), menuId (to Jump), leveAllowances, adventurersGuildFaction (-1 hides), namedLeveFaction, namedLeveText)
+	returns menu code, and for the faction menus (0x29-0x2B) the level band picked (20, 30, 40)
 eventTalkPack(startGuildlevePack, endGuildlevePack)
 eventTalkCard(card1,card2,card3,card4,card5,card6,card7,card8)
 eventTalkDetail(guildLeveId, factionEvaluating, rewardType1, rewardQuantity1, rewardType2, rewardQuantity2, boostPoint, previouslyCompleted, completionBonus)
@@ -31,6 +32,53 @@ battlePacks = {
 
 GIL = 0xF4241;
 
+-- Faction menu codes eventTalkType returns (with the level band picked:
+-- 20, 30 or 40) and the faction each one is: 1 Brotherhood of the Broken
+-- Blade, 2 Azeyma's Shields, 3 the Horn and Hand.
+FACTION_MENU = { [0x29] = 1, [0x2A] = 2, [0x2B] = 3 };
+
+-- The faction leve cards for a faction and level band, padded with 0.
+function factionCards(faction, level)
+	local cards = {0, 0, 0, 0, 0, 0, 0, 0};
+	local offers = GetFactionLeveOffers(faction, level);
+	for i = 1, math.min(#offers, 8) do
+		cards[i] = offers[i];
+	end
+	return cards;
+end
+
+-- Show a faction's leves at `level`; a card accepted costs its credits.
+function factionLeves(player, faction, level, credits)
+	local cards = factionCards(faction, level);
+	if (cards[1] == 0) then
+		player:SendMessage(0x20, "", "There are no faction levequests of that rank available here.");
+		return;
+	end
+	::FACTION_CARDS::
+	local chosen = callClientFunction(player, "eventTalkCard", cards[1], cards[2], cards[3], cards[4], cards[5], cards[6], cards[7], cards[8]);
+	if (chosen == nil or chosen == -1 or cards[chosen] == nil or cards[chosen] == 0) then
+		return;
+	end
+	local leveId = cards[chosen];
+	local gl = GetGuildleveGamedata(leveId);
+	local gil, cost = 0, 0;
+	if (gl ~= nil) then
+		gil = gl.rewardGil;
+		cost = gl.factionCreditRequired or 0;
+	end
+	local accepted = callClientFunction(player, "eventTalkDetail", leveId, 0, GIL, gil, 0, 0, 0, false, nil);
+	if (accepted == true) then
+		if (credits[faction] < cost) then
+			player:SendMessage(0x20, "", "You lack the faction credits needed to accept this levequest.");
+		else
+			credits[faction] = credits[faction] - cost;
+			player:AcceptFactionLeve(leveId);
+			callClientFunction(player, "eventTalkAfterOffer");
+		end
+	end
+	goto FACTION_CARDS;
+end
+
 function init(npc)
 	return false, false, 0, 0;	
 end
@@ -55,9 +103,14 @@ end
 function onEventStarted(player, npc)
 
 	local packs = battlePacks[player:GetZoneID()] or battlePacks[133];
+	local credits = { player:GetFactionCredits() };
+	-- the faction menu's level entries unlock by the player's level
+	local level = player:GetHighestLevel() or 1;
 
 	::MENU_LOOP::
-	menuChoice = callClientFunction(player, "eventTalkType", 0x30, true, 0x02CE, 0x356, 0x367, true, 0, nil, 0x29, 0,0,0);	
+	-- R10 -1 hides the "Assisting the Adventurers' Guild" entries, R11 0
+	-- the named leve entry.
+	menuChoice, menuLevel = callClientFunction(player, "eventTalkType", level, true, credits[1], credits[2], credits[3], true, 0, nil, 0x29, -1, 0, 0);
 	--Battlecraft
 	if (menuChoice == 1) then
 		::PACK_LOOP::
@@ -78,7 +131,8 @@ function onEventStarted(player, npc)
 				local gl = GetGuildleveGamedata(leveId);
 				local gil = 0;
 				if (gl ~= nil) then gil = gl.rewardGil; end
-				wasAccepted = callClientFunction(player, "eventTalkDetail", leveId, 0, GIL, gil, 0, 0, 0, false, 0);
+				-- the 9th argument picks a levemete remark when it isn't nil
+				wasAccepted = callClientFunction(player, "eventTalkDetail", leveId, 0, GIL, gil, 0, 0, 0, false, nil);
 
 				if (wasAccepted == true) then
 					player:AddGuildleve(leveId);
@@ -98,12 +152,14 @@ function onEventStarted(player, npc)
 	elseif (menuChoice == 0x17) then
 	--FieldCraft Quit
 	elseif (menuChoice == 0x18) then
-	--Faction Broken Blade
-	elseif (menuChoice == 0x29) then
-	--Faction Shields
-	elseif (menuChoice == 0x2A) then
-	--Faction Horn and Hand
-	elseif (menuChoice == 0x2B) then
+	--Faction Broken Blade / Shields / Horn and Hand, at a level band
+	elseif (FACTION_MENU[menuChoice] ~= nil) then
+		factionLeves(player, FACTION_MENU[menuChoice], menuLevel or 20, credits);
+		goto MENU_LOOP;
+	--Faction special missions (0x2C-0x34): not offered yet
+	elseif (menuChoice ~= nil and menuChoice >= 0x2C and menuChoice <= 0x34) then
+		player:SendMessage(0x20, "", "There are no special missions available right now.");
+		goto MENU_LOOP;
 	--Leve Evaluation
 	elseif (menuChoice == 5) then
 		-- Hand-in / evaluation flow. Retail drives this via
