@@ -2295,6 +2295,9 @@ pub(crate) async fn apply_content_finished(
             {
                 member.active_content_script = None;
                 member.pending_content_kick_event = None;
+                if let Some(h) = registry.by_session(member.id).await {
+                    h.character.write().await.chara.content_area_name.clear();
+                }
                 world.upsert_session(member).await;
             }
         }
@@ -2340,6 +2343,7 @@ pub(crate) async fn apply_content_finished(
             {
                 let mut c = player.character.write().await;
                 c.chara.mods.set(crate::actor::Modifier::MinimumHpLock, 0.0);
+                c.chara.content_area_name.clear();
                 if c.chara.login_director_actor_id == director_id {
                     c.chara.login_director_actor_id = 0;
                 }
@@ -2444,15 +2448,14 @@ pub(crate) async fn join_party_to_copy(
             }
             world.upsert_session(snap).await;
         }
-        if hp_lock != 0.0
-            && let Some(h) = registry.get(member_id).await
-        {
-            h.character
-                .write()
-                .await
-                .chara
-                .mods
-                .set(crate::actor::Modifier::MinimumHpLock, hp_lock);
+        if let Some(h) = registry.get(member_id).await {
+            let mut c = h.character.write().await;
+            c.chara.content_area_name = owner_active.area_name.clone();
+            if hp_lock != 0.0 {
+                c.chara
+                    .mods
+                    .set(crate::actor::Modifier::MinimumHpLock, hp_lock);
+            }
         }
     }
 }
@@ -2512,12 +2515,9 @@ async fn leave_copy_player_cleanup(
     lua: Option<&Arc<LuaEngine>>,
 ) {
     if let Some(h) = registry.get(player_id).await {
-        h.character
-            .write()
-            .await
-            .chara
-            .mods
-            .set(crate::actor::Modifier::MinimumHpLock, 0.0);
+        let mut c = h.character.write().await;
+        c.chara.mods.set(crate::actor::Modifier::MinimumHpLock, 0.0);
+        c.chara.content_area_name.clear();
     }
     close_content_timer(player_id, registry, world).await;
     if let Some(engine) = lua
