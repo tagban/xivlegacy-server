@@ -1,4 +1,4 @@
--- server_battlenpc_groups: game data, 802 rows. Reloaded whole when this file changes.
+-- server_battlenpc_groups: game data, 818 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_groups`;
 INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLevel`, `maxLevel`, `respawnTime`, `hp`, `mp`, `dropListId`, `allegiance`, `spawnType`, `animationId`, `actorState`, `privateAreaName`, `privateAreaLevel`, `zoneId`) VALUES
@@ -804,4 +804,20 @@ INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLe
 (30498, 30498, 'man2u0_greinfarr', 16, 16, 0, 900, 0, 0, 1, 16, 0, 0, '', 0, 175),
 (30499, 30499, 'etc3u1_unsavory_character', 15, 15, 0, 450, 0, 0, 0, 16, 0, 0, '', 0, 170),
 (30500, 30500, 'etc3u1_unsavory_character', 15, 15, 0, 450, 0, 0, 0, 16, 0, 0, '', 0, 170),
-(30501, 30501, 'etc3u1_unsavory_character', 15, 15, 0, 450, 0, 0, 0, 16, 0, 0, '', 0, 170);
+(30501, 30501, 'etc3u1_unsavory_character', 15, 15, 0, 450, 0, 0, 0, 16, 0, 0, '', 0, 170),
+(31083, 31083, 'aurelia', 17, 19, 90, 390, 0, 0, 0, 0, 0, 0, '', 0, 235),
+(31084, 31084, 'black_bat', 15, 16, 90, 300, 0, 0, 0, 0, 0, 0, '', 0, 235),
+(31085, 31085, 'giant_remora', 19, 19, 1800, 2695, 0, 0, 0, 0, 0, 0, '', 0, 235),
+(31086, 31086, 'gloom_lurker', 17, 18, 90, 360, 0, 0, 0, 0, 0, 0, '', 0, 235),
+(31087, 31087, 'gloom_seeker', 15, 15, 90, 300, 0, 0, 0, 0, 0, 0, '', 0, 235),
+(31088, 31088, 'gripper', 15, 17, 90, 330, 0, 0, 0, 0, 0, 0, '', 0, 235),
+(31089, 31089, 'jackal_pup', 18, 21, 90, 420, 0, 0, 0, 0, 0, 0, '', 0, 235),
+(31090, 31090, 'lone_coeurl', 22, 22, 1800, 3728, 0, 0, 0, 0, 0, 0, '', 0, 235),
+(31091, 31091, 'remora', 15, 15, 1800, 1475, 0, 0, 0, 0, 0, 0, '', 0, 235),
+(31092, 31092, 'shade_lurker', 15, 16, 90, 300, 0, 0, 0, 0, 0, 0, '', 0, 235),
+(31093, 31093, 'shade_seeker', 15, 15, 90, 300, 0, 0, 0, 0, 0, 0, '', 0, 235),
+(31094, 31094, 'shadow_lurker', 16, 17, 90, 330, 0, 0, 0, 0, 0, 0, '', 0, 235),
+(31095, 31095, 'shadow_seeker', 15, 15, 90, 300, 0, 0, 0, 0, 0, 0, '', 0, 235),
+(31096, 31096, 'shearing_sheridan', 20, 20, 1800, 2870, 0, 0, 0, 0, 0, 0, '', 0, 235),
+(31097, 31097, 'spawning_orobon', 16, 19, 90, 360, 0, 0, 0, 0, 0, 0, '', 0, 235),
+(31098, 31098, 'spelaean_slug', 16, 19, 90, 360, 0, 0, 0, 0, 0, 0, '', 0, 235);
