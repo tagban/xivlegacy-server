@@ -51,6 +51,7 @@
 
 pub mod battle;
 pub mod data;
+pub mod faction;
 pub mod resolver;
 pub mod view;
 

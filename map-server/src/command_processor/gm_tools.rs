@@ -235,6 +235,30 @@ impl CommandProcessor {
         format!("leve {guildleve_id} at {difficulty} star(s)")
     }
 
+    /// `factioncredit <faction> <amount>`: add (or, negative, take away)
+    /// credits with faction 1 Broken Blade, 2 Azeyma's Shields, 3 Horn and
+    /// Hand (crate::leve::faction).
+    pub(super) async fn handle_faction_credit(&self, args: &Args<'_>) -> String {
+        let usage = "usage: factioncredit <faction 1-3> <amount>";
+        let me = match self.invoker_id(args).await {
+            Ok(id) => id,
+            Err(e) => return e,
+        };
+        let (Ok(faction), Ok(amount)) = (args.parse_u8(0), args.parse_i32(1)) else {
+            return usage.into();
+        };
+        if !(1..=3).contains(&faction) {
+            return usage.into();
+        }
+        self.run_lua(vec![LC::AddFactionCredits {
+            player_id: me,
+            faction,
+            amount,
+        }])
+        .await;
+        format!("faction {faction} credits {amount:+}")
+    }
+
     /// `goto [name]`: to your target, a player, or an NPC or monster in your
     /// zone (by name, class id or actor id).
     pub(super) async fn handle_goto(&self, args: &Args<'_>) -> String {

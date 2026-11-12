@@ -246,7 +246,14 @@ impl GameTicker {
             };
             self.tick_zone(now_ms, zone_id, &zone_arc).await;
         }
-        crate::leve::battle::tick(now_ms, &self.registry, &self.world, &self.db).await;
+        crate::leve::battle::tick(
+            now_ms,
+            &self.registry,
+            &self.world,
+            &self.db,
+            self.lua.as_ref(),
+        )
+        .await;
         // Lua coroutine scheduler — resume every parked-on-time
         // coroutine whose deadline passed this frame (director
         // `main` scripts that yielded on `wait(N)`, player-script

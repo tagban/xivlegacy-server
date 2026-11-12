@@ -1190,7 +1190,8 @@ impl Database {
                                  WHERE a.displayNameId = mob4 AND a.classPath LIKE '/Chara/Npc/Monster/%'),
                              authority,
                              (SELECT s.zoneId FROM server_spawn_locations s
-                                 WHERE s.actorClassId = aetheryte LIMIT 1)
+                                 WHERE s.actorClassId = aetheryte LIMIT 1),
+                             factionCreditRequired
                       FROM gamedata_guildleves",
                 )?;
                 let rows: Vec<(u32, GuildleveGamedata)> = stmt
@@ -1228,6 +1229,8 @@ impl Database {
                                 }),
                                 authority: r.get::<_, u32>(31).unwrap_or_default(),
                                 camp_zone: r.get::<_, u32>(32).unwrap_or_default(),
+                                faction_credit_required: r.get::<_, u32>(33).unwrap_or_default(),
+                                survive: None,
                             },
                         ))
                     })?
@@ -1235,7 +1238,39 @@ impl Database {
                 Ok(rows)
             })
             .await?;
-        Ok(rows.into_iter().collect())
+        let mut leves: HashMap<u32, GuildleveGamedata> = rows.into_iter().collect();
+        for (id, hold) in self.survive_holds().await? {
+            if let Some(gd) = leves.get_mut(&id) {
+                gd.survive = Some(hold);
+            }
+        }
+        Ok(leves)
+    }
+
+    /// Survive leves' hold phases (`server_guildleve_survive`).
+    async fn survive_holds(&self) -> Result<Vec<(u32, crate::gamedata::SurviveHold)>> {
+        self.conn
+            .call_db(|c| {
+                let mut stmt = c.prepare(
+                    "SELECT guildleveId, holdSeconds, holdSecondsRecorded, holdMob, holdUp
+                     FROM server_guildleve_survive",
+                )?;
+                let rows = stmt
+                    .query_map([], |r| {
+                        Ok((
+                            r.get::<_, u32>(0)?,
+                            crate::gamedata::SurviveHold {
+                                seconds: r.get(1)?,
+                                recorded: r.get::<_, u8>(2)? != 0,
+                                mob: r.get(3)?,
+                                up: r.get(4)?,
+                            },
+                        ))
+                    })?
+                    .collect::<common::sql::Result<_>>()?;
+                Ok(rows)
+            })
+            .await
     }
 
     /// Load every row of `gamedata_recipes` into a [`RecipeResolver`].
@@ -2313,6 +2348,10 @@ impl Database {
             .load_guildleves_regional(chara_id)
             .await
             .unwrap_or_default();
+        player.faction_credits = self
+            .load_faction_credits(chara_id)
+            .await
+            .unwrap_or_default();
         player.npc_linkshells = self.load_npc_linkshells(chara_id).await.unwrap_or_default();
 
         for (target, ty) in [
@@ -3073,6 +3112,53 @@ impl Database {
         Ok(())
     }
 
+    /// A character's faction credits, by faction (1..=3 in the table).
+    async fn load_faction_credits(&self, chara_id: u32) -> Result<[u16; 3]> {
+        let credits = self
+            .conn
+            .call_db(move |c| {
+                let mut stmt = c.prepare(
+                    r"SELECT faction, credits FROM characters_faction_credit
+                      WHERE characterId = :cid",
+                )?;
+                let rows: Vec<(i64, i64)> = stmt
+                    .query_map(named_params! { ":cid": chara_id }, |r| {
+                        Ok((r.get(0)?, r.get(1)?))
+                    })?
+                    .collect::<common::sql::Result<_>>()?;
+                let mut credits = [0u16; 3];
+                for (faction, n) in rows {
+                    if (1..=3).contains(&faction) {
+                        credits[(faction - 1) as usize] = n.clamp(0, i64::from(u16::MAX)) as u16;
+                    }
+                }
+                Ok(credits)
+            })
+            .await?;
+        Ok(credits)
+    }
+
+    /// Store a character's credits with `faction` (1..=3).
+    pub async fn save_faction_credits(
+        &self,
+        chara_id: u32,
+        faction: u8,
+        credits: u16,
+    ) -> Result<()> {
+        self.conn
+            .call_db(move |c| {
+                c.execute(
+                    r"INSERT INTO characters_faction_credit (characterId, faction, credits)
+                      VALUES (:cid, :f, :n)
+                      ON DUPLICATE KEY UPDATE credits = VALUES(credits)",
+                    named_params! { ":cid": chara_id, ":f": faction, ":n": credits },
+                )?;
+                Ok(())
+            })
+            .await?;
+        Ok(())
+    }
+
     pub async fn save_guildleve(&self, chara_id: u32, gl_id: u32, slot: i32) -> Result<()> {
         self.conn
             .call_db(move |c| {
@@ -3434,6 +3520,20 @@ impl Database {
                 }
                 tx.commit()?;
                 Ok((ids, group_id, created))
+            })
+            .await
+    }
+
+    /// Make a [`Database::gm_spawn_insert`] group spawn on the players' side
+    /// (allegiance 1) with `hp` hit points.
+    pub async fn gm_spawn_make_ally(&self, group_id: u32, hp: u32) -> Result<()> {
+        self.conn
+            .call_db(move |c| {
+                c.execute(
+                    "UPDATE server_battlenpc_groups SET allegiance = 1, hp = ?2 WHERE groupId = ?1",
+                    common::sql::params![group_id, hp],
+                )?;
+                Ok(())
             })
             .await
     }
