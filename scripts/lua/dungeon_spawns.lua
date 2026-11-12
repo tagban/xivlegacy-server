@@ -5,7 +5,7 @@
 
 DUNGEON_SPAWNS = {
 	[159] = {{3319, 3456}, {3457, 3459}},	-- Toto-Rak; Antares, Sargas, Shaula
-	[231] = {{3179, 3318}},
+	[231] = {{3179, 3318}, {2000, 2101}},	-- bosses, then filler packs and adds
 	[245] = {{3001, 3091}},
 	[246] = {{3092, 3178}},
 }

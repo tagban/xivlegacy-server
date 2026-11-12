@@ -1,4 +1,4 @@
--- server_battlenpc_groups: game data, 802 rows. Reloaded whole when this file changes.
+-- server_battlenpc_groups: game data, 808 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_groups`;
 INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLevel`, `maxLevel`, `respawnTime`, `hp`, `mp`, `dropListId`, `allegiance`, `spawnType`, `animationId`, `actorState`, `privateAreaName`, `privateAreaLevel`, `zoneId`) VALUES
@@ -804,4 +804,10 @@ INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLe
 (30498, 30498, 'man2u0_greinfarr', 16, 16, 0, 900, 0, 0, 1, 16, 0, 0, '', 0, 175),
 (30499, 30499, 'etc3u1_unsavory_character', 15, 15, 0, 450, 0, 0, 0, 16, 0, 0, '', 0, 170),
 (30500, 30500, 'etc3u1_unsavory_character', 15, 15, 0, 450, 0, 0, 0, 16, 0, 0, '', 0, 170),
-(30501, 30501, 'etc3u1_unsavory_character', 15, 15, 0, 450, 0, 0, 0, 16, 0, 0, '', 0, 170);
+(30501, 30501, 'etc3u1_unsavory_character', 15, 15, 0, 450, 0, 0, 0, 16, 0, 0, '', 0, 170),
+(31150, 30046, 'batraal', 56, 56, 0, 23300, 0, 0, 0, 1, 0, 0, '', 0, 231),
+(31151, 30047, 'all_seeing_eye', 54, 54, 0, 20800, 0, 0, 0, 1, 0, 0, '', 0, 231),
+(31152, 30048, 'soulgazer', 54, 54, 0, 20800, 0, 0, 0, 1, 0, 0, '', 0, 231),
+(31153, 30059, 'deepvoid_slave', 55, 55, 0, 4234, 0, 0, 0, 1, 0, 0, '', 0, 231),
+(31154, 30070, 'chain_bearer', 55, 55, 0, 4234, 0, 0, 0, 1, 0, 0, '', 0, 231),
+(31155, 30071, 'purgatory_mage', 55, 55, 0, 4234, 0, 0, 0, 1, 0, 0, '', 0, 231);

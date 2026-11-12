@@ -141,6 +141,33 @@ pub const BOSS_ROOMS: &[BossRoom] = &[
         radius: 34.5,
         outside: (1308.4, -63.9, 561.6, -1.2),
     },
+    BossRoom {
+        zone_id: 231,
+        name: "Batraal",
+        bnpc_id: 2000,
+        gates: &[],
+        centre: (69.0, 148.7, -141.0),
+        radius: 30.0,
+        outside: (43.0, 151.5, -119.0, 2.27),
+    },
+    BossRoom {
+        zone_id: 231,
+        name: "All-seeing Eye",
+        bnpc_id: 2001,
+        gates: &[],
+        centre: (-219.0, 169.7, -11.0),
+        radius: 15.0,
+        outside: (-215.0, 173.1, 15.0, -2.99),
+    },
+    BossRoom {
+        zone_id: 231,
+        name: "Soulgazer",
+        bnpc_id: 2002,
+        gates: &[],
+        centre: (-111.0, 153.6, -275.0),
+        radius: 15.0,
+        outside: (-109.0, 153.2, -255.0, -3.04),
+    },
 ];
 
 /// Where a dungeon copy starts (`DUNGEONS[..].entry` in
