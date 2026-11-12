@@ -4,7 +4,8 @@ require("battleutils")
 -- Attack each Light Shot stack adds, as a share of the archer's Attack when
 -- the first stack lands. No 1.0 source gives the size: this is a default
 -- (STUCK.md, 2026-11-05) the user can change here. The status magnitude
--- (100, 150 with Enhanced Raging Strike) scales it.
+-- (100, 150 with the level 36 trait Enhanced Raging Strike, which the 1.20
+-- notes give as +50%) scales it.
 RAGING_STRIKE_ATTACK_PER_STACK = 0.10
 RAGING_STRIKE_MAX_STACKS = 3
 LIGHT_SHOT = 27259
@@ -27,12 +28,10 @@ function onHit(effect, attacker, defender, skill, action, actionContainer)
     attacker.AddMod(modifiersGlobal.Attack, effect.GetExtra())
 end
 
--- A missed Light Shot loses every stack. (The mods hooks add are tracked
--- with the effect, so they also come off when it ends.)
+-- Any missed attack ends Raging Strike (patch 1.20 notes: "effect ends
+-- when an attack misses"), not only a missed Light Shot: auto-attacks and
+-- other weaponskills count too. The Attack the stacks added is tracked
+-- with the effect, so it comes off with it.
 function onMiss(effect, attacker, defender, skill, action, actionContainer)
-    if skill.id ~= LIGHT_SHOT or stacks(effect) == 0 then
-        return
-    end
-    attacker.SubtractMod(modifiersGlobal.Attack, effect.GetExtra() * stacks(effect))
-    effect.SetTier(1)
+    attacker.statusEffects.RemoveStatusEffect(effect, actionContainer, 30331, false)
 end
