@@ -80,7 +80,7 @@ INSERT INTO `server_zones` (`id`, `regionId`, `zoneName`, `placeName`, `serverIp
 (232, 202, 'sea0Office01', 'Maelstrom Command', '127.0.0.1', 1989, '/Area/Zone/ZoneMasterOfficeSeaS0', 3, 0, 0, 0, 0, 0, 0, 0, 0),
 (233, 205, 'wil0Office01', 'Hall of Flames', '127.0.0.1', 1989, '/Area/Zone/ZoneMasterOfficeWilW0', 4, 0, 0, 0, 0, 0, 0, 0, 0),
 (234, 204, 'fst0Office01', 'Adders'' Nest', '127.0.0.1', 1989, '/Area/Zone/ZoneMasterOfficeFstF0', 2, 0, 0, 0, 0, 0, 0, 0, 0),
-(235, 101, NULL, 'Shposhae', '127.0.0.1', 1989, '', 0, 0, 0, 0, 0, 0, 0, 0, 0),
+(235, 101, 'sea0Dungeon04', 'Shposhae', '127.0.0.1', 1989, '/Area/Zone/ZoneMasterSeaS0', 0, 0, 0, 0, 0, 0, 0, 0, 0),
 (236, 101, 'sea1Field01', 'Locke''s Lie', '127.0.0.1', 1989, '/Area/Zone/ZoneMasterSeaS1', 0, 0, 0, 0, 0, 0, 0, 0, 0),
 (237, 101, NULL, 'Turtleback Island', '127.0.0.1', 1989, '', 0, 0, 0, 0, 0, 0, 0, 0, 0),
 (238, 103, 'fst0Field04', 'Thornmarch', '127.0.0.1', 1989, '', 0, 0, 0, 0, 0, 0, 0, 0, 0),

@@ -1,4 +1,4 @@
--- gamedata_actor_appearance: game data, 7834 rows. Reloaded whole when this file changes.
+-- gamedata_actor_appearance: game data, 7835 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `gamedata_actor_appearance`;
 INSERT INTO `gamedata_actor_appearance` (`id`, `base`, `size`, `hairStyle`, `hairHighlightColor`, `hairVariation`, `faceType`, `characteristics`, `characteristicsColor`, `faceEyebrows`, `faceIrisSize`, `faceEyeShape`, `faceNose`, `faceFeatures`, `faceMouth`, `ears`, `hairColor`, `skinColor`, `eyeColor`, `voice`, `mainHand`, `offHand`, `spMainHand`, `spOffHand`, `throwing`, `pack`, `pouch`, `head`, `body`, `legs`, `hands`, `feet`, `waist`, `neck`, `leftEar`, `rightEar`, `leftIndex`, `rightIndex`, `leftFinger`, `rightFinger`) VALUES
@@ -2902,6 +2902,7 @@ INSERT INTO `gamedata_actor_appearance` (`id`, `base`, `size`, `hairStyle`, `hai
 (1090551, 10999, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1024, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
 (1090552, 10999, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1024, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
 (1090553, 10999, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1024, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+(1091001, 20997, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5120, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
 (1099001, 10999, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1024, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
 (1099002, 10999, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1024, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
 (1099003, 10999, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1024, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),

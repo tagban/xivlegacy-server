@@ -10,6 +10,13 @@ Code: 	Etc2l3
 Id: 	110646
 Prereq: Level 17, Any Class
 
+F'ongho waits at the mouth of Shposhae in Lower La Noscea. The ??? that
+holds the Mistbeard insignia ring is inside: from the north spur of the
+top floor (map 5,2) go down one level; it is at map (4,4) of that floor
+(Gamer Escape, "A Misty Past"). Class 1091001 is a "???" (name 4000257)
+standing in the open dungeon, zone 235. Back at the entrance F'ongho
+asks which monster you saw; the answer is Shearing Sheridan.
+
 ]]
 
 -- Rewards (the client's reward table; EXP from its row, or the level-band estimate)
@@ -21,7 +28,7 @@ SEQ_005	= 5;  -- Talk to F'ongho and think about what NM you saw.
 SEQ_010	= 10; -- Talk to F'ongho and tell her what it was.
 
 -- Actor Class Ids
-QUEST_OBJECTIVE	= 1000359;
+QUEST_OBJECTIVE	= 1091001;	-- the ??? in Shposhae (was Ryssfloh's class)
 FONGHO 			= 1000367;
 
 -- Quest Markers
@@ -45,7 +52,7 @@ function onStateChange(player, quest, sequence)
 
 	if (sequence == SEQ_000) then
         quest:SetENpc(FONGHO);
-		quest:SetENpc(QUEST_OBJECTIVE, QFLAG_PUSH);
+		quest:SetENpc(QUEST_OBJECTIVE, QFLAG_TALK);
 	elseif (sequence == SEQ_005) then	
 		quest:SetENpc(QUEST_OBJECTIVE);
 		quest:SetENpc(FONGHO, QFLAG_TALK);
@@ -73,6 +80,7 @@ function onTalk(player, quest, npc, eventName)
         if (npcClassId == FONGHO) then
             callClientFunction(player, "delegateEvent", player, quest, "processEvent_000");
 		elseif (npcClassId == QUEST_OBJECTIVE) then
+			player:GetItemPackage(INVENTORY_KEYITEMS):AddItem(RING_ITEMID, 1, 1);
 			attentionMessage(player, 25246, RING_ITEMID, 1); -- You obtain <item>
 			quest:StartSequence(SEQ_005);
 		end
@@ -89,6 +97,7 @@ function onTalk(player, quest, npc, eventName)
 			if (monsterChoice == 1) then
 				callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
 				player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
+				player:GetItemPackage(INVENTORY_KEYITEMS):RemoveItem(RING_ITEMID, 1);
 				player:CompleteQuest(quest);
 			end
 		end

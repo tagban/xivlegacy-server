@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1858 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1866 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -1829,6 +1829,8 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (29959, 1090809, 'cassiopeia_hollow_exit1', 132, '', 0, 1131.0, 20.15, -726.0, 0.0, 0, 0, NULL),
 (29960, 1090810, 'mistbeard_cove_entrance1', 129, '', 0, -1750, 21.5, -1452, 0.0, 0, 0, NULL),
 (29961, 1090811, 'mistbeard_cove_exit1', 131, '', 0, -1815.0, -18.25, -1496.0, 0.0, 0, 0, NULL),
+(29962, 1090812, 'shposhae_entrance1', 128, '', 0, 283.00, 23.60, 302.00, 0.0, 0, 0, NULL),
+(29963, 1090813, 'shposhae_exit1', 235, '', 0, 291.00, 13.23, 269.00, 0.0, 0, 0, NULL),
 (30100, 1060028, 'war0j1_curious_gorge', 172, '', 0, -1282.0, 40.0, -62.0, 0.6, 0, 0, NULL),
 (30101, 1090900, 'war0j1_antling_nest_trigger', 172, '', 0, -1250.0, 56.0, -122.0, 0.0, 0, 0, NULL),
 (30102, 1090901, 'war0j2_sirocco_trigger', 150, '', 0, -342.0, 3.0, -636.0, 0.0, 0, 0, NULL),
@@ -1863,6 +1865,7 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (30131, 1090926, 'whm0j5_turning_leaf_garb', 153, '', 0, -1345.0, -15.5, 330.0, 0.0, 0, 0, NULL),
 (30132, 1090927, 'whm0j5_tiger_helm_garb', 130, '', 0, 1620.0, 60.2, -455.0, 0.0, 0, 0, NULL),
 (30133, 1090928, 'whm0j6_keening_trigger', 150, '', 0, 200.0, 3.6, -505.0, 0.0, 0, 0, NULL),
+(30205, 1091001, 'etc2l3_misty_past', 235, '', 0, -97.00, -89.06, -111.00, 0.0, 0, 0, NULL),
 (30250, 1500222, 'storm_sergeant_hammil', 132, '', 0, 1346.50, -54.38, -868.00, -0.79, 0, 1045, NULL),
 (30251, 1500224, 'serpent_sergeant_cordwyk', 152, '', 0, -886.00, 33.61, -2184.00, -0.79, 0, 1045, NULL),
 (30252, 1500225, 'serpent_sergeant_lodall', 157, '', 0, -685.00, -15.31, -2061.00, -0.79, 0, 1045, NULL),

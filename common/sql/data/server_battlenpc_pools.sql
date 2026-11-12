@@ -1,4 +1,4 @@
--- server_battlenpc_pools: game data, 505 rows. Reloaded whole when this file changes.
+-- server_battlenpc_pools: game data, 521 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_pools`;
 INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId`, `currentJob`, `combatSkill`, `combatDelay`, `combatDmgMult`, `aggroType`, `immunity`, `linkType`, `spellListId`, `skillListId`) VALUES
@@ -490,6 +490,22 @@ INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId
 (31076, 2101405, 'wild_jackal', 3, 0, 1, 4200, 1.0, 1, 0, 0, 0, 3),
 (31081, 2105505, 'yarzon_scavenger', 39, 0, 1, 4200, 1.0, 1, 0, 0, 0, 39),
 (31082, 2105505, 'yarzon_scavenger', 39, 0, 1, 4200, 1.0, 1, 0, 0, 0, 39),
+(31083, 2105401, 'aurelia', 20, 0, 1, 4200, 1.0, 1, 0, 0, 0, 20),
+(31084, 2104103, 'black_bat', 43, 0, 1, 4200, 1.0, 0, 0, 0, 0, 43),
+(31085, 2104514, 'giant_remora', 17, 0, 1, 4200, 1.0, 1, 0, 0, 0, 17),
+(31086, 2109915, 'gloom_lurker', 53, 0, 1, 4200, 1.0, 1, 0, 0, 0, 53),
+(31087, 2109914, 'gloom_seeker', 53, 0, 1, 4200, 1.0, 0, 0, 0, 0, 53),
+(31088, 2107617, 'gripper', 22, 0, 1, 4200, 1.0, 1, 0, 0, 0, 35),
+(31089, 2101416, 'jackal_pup', 3, 0, 1, 4200, 1.0, 1, 0, 0, 0, 3),
+(31090, 2103203, 'lone_coeurl', 5, 0, 1, 4200, 1.0, 1, 0, 0, 0, 5),
+(31091, 2104513, 'remora', 17, 0, 1, 4200, 1.0, 1, 0, 0, 0, 17),
+(31092, 2109907, 'shade_lurker', 53, 0, 1, 4200, 1.0, 1, 0, 0, 0, 53),
+(31093, 2109906, 'shade_seeker', 53, 0, 1, 4200, 1.0, 0, 0, 0, 0, 53),
+(31094, 2109913, 'shadow_lurker', 53, 0, 1, 4200, 1.0, 1, 0, 0, 0, 53),
+(31095, 2109912, 'shadow_seeker', 53, 0, 1, 4200, 1.0, 0, 0, 0, 0, 53),
+(31096, 2107619, 'shearing_sheridan', 22, 0, 1, 4200, 1.0, 1, 0, 0, 0, 35),
+(31097, 2104511, 'spawning_orobon', 17, 0, 1, 4200, 1.0, 1, 0, 0, 0, 17),
+(31098, 2104215, 'spelaean_slug', 21, 0, 1, 4200, 1.0, 1, 0, 0, 0, 21),
 (31300, 2203001, 'war0j1_antling_worker', 33, 0, 1, 4200, 1.0, 0, 0, 0, 0, 33),
 (31301, 2100309, 'war0j2_sirocco', 2, 0, 1, 4200, 1.0, 0, 0, 0, 0, 2),
 (31302, 2201208, 'war0j3_canyon_condor', 41, 0, 1, 4200, 1.0, 0, 0, 0, 0, 41),
