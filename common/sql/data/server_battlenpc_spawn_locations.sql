@@ -1,4 +1,4 @@
--- server_battlenpc_spawn_locations: game data, 4506 rows. Reloaded whole when this file changes.
+-- server_battlenpc_spawn_locations: game data, 4524 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_spawn_locations`;
 INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `groupId`, `positionX`, `positionY`, `positionZ`, `rotation`) VALUES
@@ -4437,6 +4437,24 @@ INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `
 (3754, 'drg0j5_stollenwurm', 31336, -1775.0, 273.9, -95.0, 0.0),
 (3755, 'drg0j6_drake', 31337, 1502.0, 230.8, 484.0, 0.0),
 (3756, 'drg0j6_drake', 31337, 1502.0, 234.1, 496.0, 0.0),
+(3460, 'man2l0_emerick', 30490, 1818.5, 11.85, 1825.0, 1.57),
+(3461, 'man2l0_merodaulyn', 30491, 1823.0, 11.85, 1826.0, -1.57),
+(3462, 'man2g0_spirit_of_the_wood', 30492, 1701.0, 21.26, -889.0, -0.6),
+(3463, 'man2g0_grinnaux', 30493, 1693.0, 20.25, -876.0, 2.6),
+(3464, 'man2g0_handeloup', 30494, 1695.0, 20.75, -883.0, 2.6),
+(3465, 'man2g0_tkebbe', 30495, 1687.0, 20.64, -882.0, 2.6),
+(3466, 'man2u0_minemite', 30496, -139.0, 205.0, -161.0, -1.57),
+(3467, 'man2u0_minemite', 30496, -127.0, 205.0, -161.0, -1.57),
+(3468, 'man2u0_minemite', 30496, -127.0, 205.0, -165.0, -1.57),
+(3469, 'man2u0_minemite', 30496, -124.0, 205.0, -163.0, -1.57),
+(3470, 'man2u0_minemite', 30496, -121.0, 205.0, -161.0, -1.57),
+(3471, 'man2u0_minemite', 30496, -121.0, 205.0, -165.0, -1.57),
+(3472, 'man2u0_niellefresne', 30497, -148.5, 205.0, -161.0, 1.57),
+(3473, 'man2u0_greinfarr', 30498, -146.0, 205.0, -165.0, 1.57),
+(3474, 'etc3u1_unsavory_character', 30499, -432.0, 184.44, -131.0, -0.8),
+(3475, 'etc3u1_unsavory_character', 30500, -436.0, 184.93, -136.0, -0.8),
+(3476, 'etc3u1_unsavory_character', 30501, -446.0, 184.66, -152.0, 0.8),
+(3477, 'etc3u1_unsavory_character', 30499, -449.0, 184.66, -149.0, 0.8),
 (110399, '', 31083, 163.0, -95.40, 21.0, -1.41),
 (110400, '', 31083, 95.0, -53.90, 217.0, 2.13),
 (110401, '', 31083, 177.0, -95.02, -13.0, -0.41),
@@ -4491,7 +4509,8 @@ INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `
 (110450, '', 31093, -13.0, -51.48, 189.0, -2.85),
 (110451, '', 31094, 69.0, -110.26, 245.0, 2.31),
 (110452, '', 31094, 81.0, -92.84, -33.0, -1.17),
-(110453, '', 31094, 149.0, -95.40, -21.0, 2.09),
+(110453, '', 31094, 149.0, -95.40, -21.0, 2.09);
+INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `groupId`, `positionX`, `positionY`, `positionZ`, `rotation`) VALUES
 (110454, '', 31094, 195.0, -93.52, 41.0, 2.60),
 (110455, '', 31095, 25.0, -111.40, 239.0, 2.30),
 (110456, '', 31095, -25.0, -53.51, 155.0, 2.69),
@@ -4509,8 +4528,7 @@ INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `
 (110468, '', 31097, 305.0, -23.40, 101.0, -0.03),
 (110469, '', 31098, 165.0, -93.19, 75.0, 1.19),
 (110470, '', 31098, 321.0, -93.71, 29.0, -0.29),
-(110471, '', 31098, 143.0, -93.87, 99.0, 0.38);
-INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `groupId`, `positionX`, `positionY`, `positionZ`, `rotation`) VALUES
+(110471, '', 31098, 143.0, -93.87, 99.0, 0.38),
 (110472, '', 31098, -19.0, -39.40, 61.0, -2.92),
 (110473, '', 31098, -107.0, -107.57, 215.0, -1.42),
 (110474, '', 31098, 301.0, -21.73, 147.0, 2.01),

@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1910 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1914 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -38,7 +38,6 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (34, 1200022, 'chocobo_standard', 133, '', 0, -438.76, 19.0, 207.6, 3.14, 0, 0, NULL),
 (35, 1200027, 'retainer_bell', 133, '', 0, -432.0, 40.0, 202.0, -1.0, 0, 0, NULL),
 (36, 1200193, 'task_board', 133, '', 0, -464.77, 41.71, 183.27, 0.0, 0, 0, NULL),
-(37, 1001424, 'gegeissa', 170, '', 0, -56.69, 192.0, -6.59, 2.89, 0, 0, NULL),
 (38, 1001425, 'gdatnan', 170, '', 0, -46.93, 191.98, -3.62, 2.89, 0, 0, NULL),
 (39, 1090078, '', 170, '', 0, -25.71, 181.36, -82.63, 0.0, 0, 0, NULL),
 (40, 1090464, '', 170, '', 0, -40.55, 186.25, -48.05, 1.24, 0, 0, NULL),
@@ -78,7 +77,7 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (74, 1001260, 'ipaghlo', 175, '', 0, -145.89, 185.45, 122.34, -2.18, 0, 0, NULL),
 (75, 1001371, 'totonawa', 175, '', 0, -54.07, 196.47, 52.49, -0.9, 0, 1041, NULL),
 (76, 1001372, 'eustace', 175, '', 0, -52.83, 196.01, 53.44, -0.34, 0, 1016, NULL),
-(77, 1001424, 'gegeissa', 175, '', 0, -56.69, 192.0, -6.59, 2.89, 0, 0, NULL),
+(77, 1001424, 'gegeissa', 175, '', 0, -34.0, 192.1, 19.0, -0.56, 0, 0, NULL),
 (78, 1001426, 'hehena', 175, '', 0, 67.72, 192.0, 209.29, 1.27, 0, 0, NULL),
 (79, 1001427, 'guillaunaux', 175, '', 0, 70.42, 191.98, 199.33, 1.27, 0, 0, NULL),
 (80, 1001428, 'yuyuhase', 175, '', 0, -218.1, 190.0, 23.69, 0.65, 0, 1041, NULL),
@@ -501,9 +500,9 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (500, 5900011, 'limsa_shipport', 230, '', 0, -846.89, 5.0, 240.0, 0.0, 0, 0, NULL),
 (501, 1000042, 'ascilia', 184, '', 0, -1.5, 196.0, 124.5, 1.8, 0, 0, NULL),
 (502, 1000186, 'warburton', 184, '', 0, -0.2, 196.0, 123.26, -0.8, 0, 0, NULL),
-(503, 1001644, 'stocky_stranger', 184, '', 0, 12.18, 196.0, 133.42, -1.26, 0, 1017, NULL);
+(503, 1001644, 'stocky_stranger', 184, '', 0, 12.18, 196.0, 133.42, -1.26, 0, 1017, NULL),
+(504, 1000840, 'rururaji', 184, '', 0, 9.07, 196.0, 126.69, -1.26, 0, 1017, NULL);
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
-(504, 1000840, 'rururaji', 184, '', 0, 9.07, 196.0, 126.69, -1.26, 0, 1017, NULL),
 (505, 1001490, 'big-bellied_barker', 184, '', 0, -19.7, 196.0, 79.93, -0.38, 0, 1009, NULL),
 (506, 1001491, 'fretful_farmhand', 184, '', 0, 3.4, 196.0, 115.5, 2.7, 0, 1021, NULL),
 (507, 1001492, 'debauched_demoness', 184, '', 0, 0.8, 196.0, 103.18, -1.13, 0, 1015, NULL),
@@ -1002,9 +1001,9 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (1025, 1000869, 'man0l1_adventurer1', 230, 'PrivateAreaMasterPast', 3, -602.241, 43.0, -62.3205, 0.75078, 0, 1022, NULL),
 (1026, 1000870, 'man0l1_adventurer2', 230, 'PrivateAreaMasterPast', 3, -602.516, 43.0, -61.557, 1.206, 0, 1022, NULL),
 (1027, 1000871, 'man0l1_adventurer3', 230, 'PrivateAreaMasterPast', 3, -612.158, 43.0, -60.8377, -2.89358, 0, 1022, NULL),
-(1028, 1000142, 'man0l1_mannskoen', 230, 'PrivateAreaMasterPast', 3, -626.34, 43.631, -63.504, 1.07, 0, 1015, NULL);
+(1028, 1000142, 'man0l1_mannskoen', 230, 'PrivateAreaMasterPast', 3, -626.34, 43.631, -63.504, 1.07, 0, 1015, NULL),
+(1029, 1000107, 'man0l1_overeager_barracuda', 230, 'PrivateAreaMasterPast', 3, -605.868, 43.0, -75.147, -0.715, 0, 0, NULL);
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
-(1029, 1000107, 'man0l1_overeager_barracuda', 230, 'PrivateAreaMasterPast', 3, -605.868, 43.0, -75.147, -0.715, 0, 0, NULL),
 (1030, 1000108, 'man0l1_sophisticated_barracuda', 230, 'PrivateAreaMasterPast', 3, -619.348, 43.631, -77.254, 0.965, 0, 1015, NULL),
 (1031, 1000161, 'man0l1_totoruto', 230, 'PrivateAreaMasterPast', 3, -603.41, 43.0, -70.45, -1.21, 0, 1026, NULL),
 (1032, 1000109, 'man0l1_smirking_barracuda', 230, 'PrivateAreaMasterPast', 3, -612.586, 43.0, -78.737, -0.175, 0, 1002, NULL),
@@ -1503,9 +1502,9 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (27713, 1500204, 'com0l5_urianger', 130, '', 0, 1030.0, 70.0, -846.0, 1.57, 0, 0, NULL),
 (27714, 1000185, 'com0l5_thancred', 232, '', 0, 158.5, 0.0, -183.5, 1.57, 0, 0, NULL),
 (27715, 1000706, 'com0l5_corsair_free', 232, '', 0, 159.0, 0.0, -189.0, 1.57, 0, 0, NULL),
-(27716, 1000707, 'com0l5_corsair_saltwife', 232, '', 0, 162.0, 0.0, -189.0, 1.57, 0, 0, NULL);
+(27716, 1000707, 'com0l5_corsair_saltwife', 232, '', 0, 162.0, 0.0, -189.0, 1.57, 0, 0, NULL),
+(27717, 1000095, 'com0l5_barracuda_knight', 232, '', 0, 153.0, 0.0, -177.0, 1.57, 0, 0, NULL);
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
-(27717, 1000095, 'com0l5_barracuda_knight', 232, '', 0, 153.0, 0.0, -177.0, 1.57, 0, 0, NULL),
 (27718, 1000185, 'com0g5_thancred_stage', 206, '', 0, -96.5, 9.96, -1636.5, 0.0, 0, 0, NULL),
 (27719, 1000851, 'com0g5_stalwart_wailer', 206, '', 0, -89.56, 11.3, -1631.43, 3.14, 0, 0, NULL),
 (27720, 1001896, 'com0g5_serpent_captain', 206, '', 0, -86.71, 11.96, -1626.99, 3.14, 0, 0, NULL),
@@ -1912,6 +1911,11 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (30252, 1500225, 'serpent_sergeant_lodall', 157, '', 0, -685.00, -15.31, -2061.00, -0.79, 0, 1045, NULL),
 (30253, 1500226, 'flame_sergeant_byrne', 171, '', 0, 1601.00, 256.07, -229.00, -0.79, 0, 1045, NULL),
 (30254, 1500227, 'flame_sergeant_dalvag', 176, '', 0, 83.00, 167.93, -1265.00, -0.79, 0, 1045, NULL),
+(30200, 1091000, 'etc3u1_wreck_trigger', 170, '', 0, -425.0, 184.87, -134.0, 0.0, 0, 0, NULL),
+(30201, 1001578, 'etc3u1_nymiene', 170, '', 0, -450.0, 183.84, -134.0, 1.57, 0, 0, NULL),
+(30202, 1001579, 'etc3u1_aergfloh', 170, '', 0, -447.0, 184.0, -127.0, 2.36, 0, 0, NULL),
+(30203, 1001839, 'etc2i2_foxe', 145, '', 0, 2550.0, 175.08, 1300.0, -2.36, 0, 0, NULL),
+(30204, 1001641, 'etc201_leleyo', 143, '', 0, 222.0, 302.07, -252.0, -0.8, 0, 0, NULL),
 (29962, 1090812, 'shposhae_entrance1', 128, '', 0, 283.00, 23.60, 302.00, 0.0, 0, 0, NULL),
 (29963, 1090813, 'shposhae_exit1', 235, '', 0, 291.00, 13.23, 269.00, 0.0, 0, 0, NULL),
 (30205, 1091001, 'etc2l3_misty_past', 235, '', 0, -97.00, -89.06, -111.00, 0.0, 0, 0, NULL);

@@ -1,5 +1,6 @@
 require ("global")
 require ("quest")
+require ("questbattle")
 
 --[[
 
@@ -16,7 +17,8 @@ Prereq: Legends Adrift (Man1l0 - 110003)
 SEQ_000	= 0;  	-- Talk to Captain Hob.
 SEQ_010	= 10;  	-- Ship instance, enter the hold.
 SEQ_015	= 15;  	-- Exit the hold, go back upstairs.
-SEQ_020	= 20;  	-- Duty, fight Emerick and Merodaulyn
+SEQ_020	= 20;  	-- Duty: Emerick and Merodaulyn quarrel on deck; pick a side
+					-- (content SimpleContentMan2l001)
 SEQ_035	= 35;  	-- Head to Baderon and chat.
 SEQ_037	= 37;  	-- Head to outcrop in La Noscea.
 SEQ_040	= 40;  	-- Talk to Baderon on the Link Pearl
@@ -45,7 +47,10 @@ TRIGGER_SEAFLD1				= 1090082;
 TRIGGER_SEAFLD2				= 1090086;
 TRIGGER_SEAFLD3				= 1090087;
 
--- Quest Markers
+-- The deck duty: Emerick and Merodaulyn (battle npcs 3460/3461, classes
+-- 2290011/2290012), and where the duty puts you (zone, x, y, z, rot).
+MAN2L0_DUELISTS			= { 3460, 3461 };
+DUEL_SPOT				= {192, 1820.5, 11.85, 1830.5, 3.14};
 
 -- Quest Markers (the journal map's own, in step order)
 MRKR_HOB				= 11000401;
@@ -93,7 +98,11 @@ function onStateChange(player, quest, sequence)
 		quest:SetENpc(EVENTDOOR_SHIP2, QFLAG_PUSH, false, true);
 		quest:SetENpc(TRIGGER_DUTYSTART, QFLAG_PUSH, false, true);
 	elseif (sequence == SEQ_020) then
-		-- DUTY HAPPENS HERE
+		-- A lost duel leaves you on deck with the trigger live.
+		quest:SetENpc(HOB);
+		quest:SetENpc(BARRACUDA_KNIGHT1);
+		quest:SetENpc(BARRACUDA_KNIGHT2);
+		quest:SetENpc(TRIGGER_DUTYSTART, QFLAG_PUSH, false, true);
 	elseif (sequence == SEQ_035) then
 		quest:SetENpc(BADERON, QFLAG_TALK);
 	elseif (sequence == SEQ_037) then
@@ -243,18 +252,27 @@ function onPush(player, quest, npc)
 			elseif (classId == TRIGGER_DUTYSTART) then
 				local result = callClientFunction(player, "delegateEvent", player, quest, "contentsJoinAskInBasaClass");
 				if (result == 1) then
-					-- DO COMBAT DUTY HERE				
-					-- For now just skip the sequence
+					-- Emerick and Merodaulyn at each other's throats: pick a
+					-- side (or stay out of it). The director finishes it.
 					quest:StartSequence(SEQ_020);
-					math.randomseed(os.time());
-					local randomVal = math.random(1, 2); -- Randomize the winner for now
-					callClientFunction(player, "delegateEvent", player, quest, "processEvent020", randomVal);
-					player:EndEvent();
-					quest:StartSequence(SEQ_035);
-					GetWorldManager():DoZoneChange(player, 230, nil, 0, 0, -639.325, 1, 403.967, 1.655);
+					questBattle.start(player, "Man2l001", DUEL_SPOT, "Quest/QuestDirectorMan2l001");
 					return;
 				end
 				player:EndEvent();
+			end
+		elseif (sequence == SEQ_020) then
+			-- Back on deck after a lost duel: the trigger takes you back in.
+			if (classId == TRIGGER_DUTYSTART) then
+				local result = callClientFunction(player, "delegateEvent", player, quest, "contentsJoinAskInBasaClass");
+				if (result == 1) then
+					questBattle.start(player, "Man2l001", DUEL_SPOT, "Quest/QuestDirectorMan2l001");
+					return;
+				end
+				player:EndEvent();
+			elseif (classId == EVENTDOOR_SHIP2) then
+				player:EndEvent();
+				GetWorldManager():WarpToPrivateArea(player, "PrivateAreaMasterPast", 0, 1821.675, 10.352, 1814.964, 2.288);
+				return;
 			end
 		end
 	elseif (sequence == SEQ_037 and classId == TRIGGER_SEAFLD1) then
@@ -278,6 +296,22 @@ function onPush(player, quest, npc)
 	
 	player:EndEvent();
 	quest:UpdateENPCs();
+end
+
+-- The duel is over (director QuestDirectorMan2l001): the deck scenes, then
+-- back to Limsa. man2l020 ends with an after-warp fade; the warp is it.
+function finishMan2l0Duel(player, quest)
+	callClientFunction(player, "delegateEvent", player, quest, "processEvent020", 1);
+	quest:StartSequence(SEQ_035);
+	player:EndEvent();
+	player:SetMod(modifiersGlobal.MinimumHpLock, 0);
+	player:GetZone():ContentFinished();
+	GetWorldManager():DoZoneChange(player, 230, nil, 0, 15, -639.325, 1, 403.967, 1.655);
+end
+
+-- A lost duel: back on deck by Hob, outside the trigger.
+function warpToDeck(player)
+	GetWorldManager():DoZoneChange(player, 192, "PrivateAreaMasterPast", 0, 15, 1819.0, 11.85, 1830.5, 1.55);
 end
 
 function onNotice(player, quest, target)
