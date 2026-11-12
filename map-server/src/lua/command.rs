@@ -437,6 +437,19 @@ pub enum LuaCommand {
         player_id: u32,
         guildleve_id: u32,
     },
+    /// `player:AcceptFactionLeve(id)` at the levemete: spend the faction
+    /// leve's credits and take it (`crate::leve::faction::accept`).
+    AcceptFactionLeve {
+        player_id: u32,
+        guildleve_id: u32,
+    },
+    /// `player:AddFactionCredits(faction, n)`: change the credits held
+    /// with faction 1..=3 by `amount` (`crate::leve::faction`).
+    AddFactionCredits {
+        player_id: u32,
+        faction: u8,
+        amount: i32,
+    },
     /// `player:StartGuildleve(id, difficulty)` at a camp aetheryte.
     StartBattleleve {
         player_id: u32,
