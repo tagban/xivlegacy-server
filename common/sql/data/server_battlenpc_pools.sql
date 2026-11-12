@@ -1,4 +1,4 @@
--- server_battlenpc_pools: game data, 524 rows. Reloaded whole when this file changes.
+-- server_battlenpc_pools: game data, 536 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_pools`;
 INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId`, `currentJob`, `combatSkill`, `combatDelay`, `combatDmgMult`, `aggroType`, `immunity`, `linkType`, `spellListId`, `skillListId`) VALUES
@@ -501,7 +501,8 @@ INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId
 (31308, 2100709, 'mnk0j4_apep', 31, 0, 1, 4200, 1.0, 0, 0, 0, 0, 31),
 (31309, 2289039, 'mnk0j6_widargelt', 29, 0, 1, 6000, 0.25, 0, 0, 0, 0, 0),
 (31310, 2201115, 'whm0j1_diremite_straggler', 35, 0, 1, 4200, 1.0, 0, 0, 0, 0, 35),
-(31311, 2101109, 'whm0j1_miteling', 35, 0, 1, 4200, 1.0, 0, 0, 0, 0, 35),
+(31311, 2101109, 'whm0j1_miteling', 35, 0, 1, 4200, 1.0, 0, 0, 0, 0, 35);
+INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId`, `currentJob`, `combatSkill`, `combatDelay`, `combatDmgMult`, `aggroType`, `immunity`, `linkType`, `spellListId`, `skillListId`) VALUES
 (31312, 2106017, 'whm0j2_downy_dunstan', 7, 0, 1, 4200, 1.0, 0, 0, 0, 0, 7),
 (31313, 2100910, 'whm0j3_cactuar_jack', 13, 0, 1, 4200, 1.0, 0, 0, 0, 0, 13),
 (31314, 2180125, 'whm0j4_bandit', 3, 0, 1, 6000, 1.0, 0, 0, 0, 0, 124),
@@ -525,4 +526,16 @@ INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId
 (31333, 2101403, 'drg0j1_dreadwolf', 3, 0, 1, 4200, 1.0, 0, 0, 0, 0, 3),
 (31334, 2101610, 'drg0j2_bomb_baron', 64, 0, 1, 4200, 1.0, 0, 0, 0, 0, 64),
 (31335, 2106208, 'drg0j3_spitfire', 50, 0, 1, 4200, 1.0, 0, 0, 0, 0, 50),
-(31336, 2302201, 'drg0j5_stollenwurm', 30, 0, 1, 6000, 1.0, 0, 0, 0, 0, 30);
+(31336, 2302201, 'drg0j5_stollenwurm', 30, 0, 1, 6000, 1.0, 0, 0, 0, 0, 30),
+(30490, 2290011, 'man2l0_emerick', 29, 0, 1, 4500, 1.0, 0, 0, 0, 0, 0),
+(30491, 2290012, 'man2l0_merodaulyn', 29, 0, 1, 4500, 1.0, 0, 0, 0, 0, 0),
+(30492, 2205201, 'man2g0_spirit_of_the_wood', 56, 0, 1, 4200, 1.0, 1, 0, 0, 0, 102),
+(30493, 2290015, 'man2g0_grinnaux', 29, 2, 1, 4200, 1.0, 0, 0, 0, 0, 122),
+(30494, 2290016, 'man2g0_handeloup', 29, 2, 1, 4200, 1.0, 0, 0, 0, 0, 122),
+(30495, 2290017, 'man2g0_tkebbe', 29, 23, 1, 4200, 1.0, 0, 0, 0, 121, 0),
+(30496, 2202106, 'man2u0_minemite', 38, 0, 1, 4200, 1.0, 0, 0, 0, 0, 38),
+(30497, 2290003, 'man2u0_niellefresne', 29, 23, 1, 4200, 1.0, 0, 0, 0, 121, 0),
+(30498, 2290014, 'man2u0_greinfarr', 29, 2, 1, 4200, 1.0, 0, 0, 0, 0, 122),
+(30499, 2280174, 'etc3u1_unsavory_character', 29, 0, 1, 4500, 1.0, 0, 0, 0, 0, 0),
+(30500, 2280175, 'etc3u1_unsavory_character', 29, 0, 1, 4500, 1.0, 0, 0, 0, 0, 0),
+(30501, 2280176, 'etc3u1_unsavory_character', 29, 0, 1, 4500, 1.0, 0, 0, 0, 0, 0);

@@ -1,5 +1,6 @@
 require ("global")
 require ("quest")
+require ("questbattle")
 
 --[[
 
@@ -15,7 +16,8 @@ Prereq: Whispers in the Wood (Man1g0 - 110007), Level 8
 -- Sequence Numbers
 SEQ_000	= 0;  	-- Visit the ARC guild and speak to Nonolato.
 SEQ_003	= 3;  	-- Echo instance just before fight.
-SEQ_004	= 4;  	-- Battle elemental duty.
+SEQ_004	= 4;  	-- Battle elemental duty (content SimpleContentMan2g001); a KO
+				-- comes back here, in the echo with O-App-Pesi.
 SEQ_005	= 5;  	-- Return to CRP guild.
 SEQ_010	= 10;  	-- Talk to Miounne on the LS.
 SEQ_015	= 15;	-- Go to CNJ guild.
@@ -91,6 +93,18 @@ ARC_GUILD			= {206, nil, 232.6, 12.0, -1271.7, 2.6};
 CNJ_ECHO			= {206, 10, -320.3, 7.5, -1700.8, -1.48};	-- on the path east of Stillglade Fane
 CNJ_GUILD			= {206, nil, -320.3, 7.5, -1700.8, -1.48};
 
+-- The Spirit of the Wood battle, East Shroud by Camp Nine Ivies (spots
+-- walked on the client's collision floor: tools/terrain). Battle npcs:
+-- 3462 the spirit, 3463-3465 Grinnaux, Handeloup, T'kebbe.
+SPIRIT_FIGHT_SPOT	= {151, 1690.0, 20.49, -878.0, 2.6};
+MAN2G0_FIGHT = {
+	allies = { 3463, 3464, 3465 },
+	waves = { { 3462 } },
+	limitSeconds = 20 * 60,
+	foesOnAllies = true,
+	winSignal = "allyFightWon",
+};
+
 -- Msg packs for the Npc LS
 NPCLS_MSGS = {
 	{65, 66, 67}, 			-- SEQ_010
@@ -125,7 +139,7 @@ function onStateChange(player, quest, sequence)
 	elseif (sequence == SEQ_000) then
 		quest:SetENpc(NONOLATO, QFLAG_TALK);
 		quest:SetENpc(MIOUNNE);
-	elseif (sequence == SEQ_003) then
+	elseif (sequence == SEQ_003 or sequence == SEQ_004) then
 		quest:SetENpc(O_APP_PESI, QFLAG_TALK);
 		quest:SetENpc(NONOLATO);
 	elseif (sequence == SEQ_005) then
@@ -220,14 +234,12 @@ function onTalk(player, quest, npc)
 		end
 	elseif (sequence == SEQ_003 or sequence == SEQ_004) then
 		if (classId == O_APP_PESI) then
-			if (sequence == SEQ_003) then
-				if (callClientFunction(player, "delegateEvent", player, quest, "processEvent007_2") == 1) then
-					startDuty(player, quest);
-				end
+			-- The first ask, then the shorter one on a retry.
+			local ask = (sequence == SEQ_003) and "processEvent007_2" or "processEvent007_2_2";
+			if (callClientFunction(player, "delegateEvent", player, quest, ask) == 1) then
+				startDuty(player, quest);
 			else
-				if (callClientFunction(player, "delegateEvent", player, quest, "processEvent007_2_2") == 1) then
-					startDuty(player, quest);
-				end
+				player:EndEvent();
 			end
 			return;
 		elseif (classId == NONOLATO) then
@@ -486,13 +498,27 @@ function getJournalMapMarkerList(player, quest)
 	end	
 end
 
--- The elemental battle (content area, director, monsters) isn't ported:
--- accepting it skips to the battle's aftermath, as man200 does with its
--- naming duty.
+-- O-App-Pesi's battle against the Spirit of the Wood (content
+-- SimpleContentMan2g001, director QuestDirectorMan2g001).
 function startDuty(player, quest)
-	player:EndEvent();
+	quest:StartSequence(SEQ_004);
+	questBattle.start(player, "Man2g001", SPIRIT_FIGHT_SPOT, "Quest/QuestDirectorMan2g001");
+end
+
+-- The spirit is down: back to the guild (the director calls this).
+function finishMan2g0Fight(player, quest)
 	quest:StartSequence(SEQ_005);
+	player:EndEvent();
+	player:SetMod(modifiersGlobal.MinimumHpLock, 0);
+	player:GetZone():ContentFinished();
 	warpTo(player, ARC_GUILD);
+end
+
+-- A KO (or time up): you come to outside Quiver's Hold, and Nonolato puts
+-- you back in the echo with O-App-Pesi to try again (the content calls this).
+function loseMan2g0Fight(player, area, why)
+	area:ContentFinished();
+	warpTo(player, ARC_ECHO);
 end
 
 function warpTo(player, spot)
