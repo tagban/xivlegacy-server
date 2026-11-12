@@ -91,6 +91,7 @@ sethp = 3
 settp = 3
 usemove = 3
 leve = 3
+factioncredit = 3
 die = 3
 # only while the finaldays module is enabled (modules/finaldays)
 worldend = 3

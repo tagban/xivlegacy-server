@@ -271,7 +271,7 @@ function onCreate(starterPlayer, contentArea, director)
 end
 
 -- Entry TEXT lives in onUpdate's first-sighting latch (round 9 — it
--- needs Sisipu's actor id for the 51005 param and runs post-ack): this
+-- runs post-ack): this
 -- hook fires inside apply_do_zone_change_content immediately after the
 -- bundle flush — ~4s BEFORE the client's RX 0x0007 (wire-proven
 -- 2026-07-03 14:24: 0x0157 game messages shipped into the Now-Loading
@@ -397,10 +397,8 @@ function onUpdate(tick, area)
 			-- loaded — 0x0157 is safe). Retail entry order: journal →
 			-- 34108 (Rust-side, rides the content-warp path) →
 			-- protect → bound → timer, then Sisipu's send-off. 51005
-			-- resolves "<displayName>" from the actor-id param — this
-			-- is why the banner set lives HERE and not in the
-			-- director, which has no handle on her.
-			owner:SendGameMessage(GetWorldMaster(), TEXT_PROTECT_SISIPU, 0x20, escort.actorId);
+			-- takes her display-name id (SISIPU_NAME_ID, man0l1.lua).
+			owner:SendGameMessage(GetWorldMaster(), TEXT_PROTECT_SISIPU, 0x20, SISIPU_NAME_ID, 1);
 			owner:SendGameMessage(GetWorldMaster(), TEXT_BOUND_BY_DUTY, 0x20);
 			owner:SendGameMessage(GetWorldMaster(), TEXT_TIME_REMAINING, 0x20, ESCORT_LIMIT_MINUTES);
 			QueueContentTimer(state, tick, state.startTick + ESCORT_LIMIT_TICKS);

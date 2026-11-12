@@ -3081,8 +3081,9 @@ mod tests {
         );
         // First live sighting of Sisipu → the duty-entry banner set
         // (sheet-decoded worldMaster ids — man0l1.lua TEXT_*): 51005
-        // "Protect <displayName> from harm." carries her actor id as
-        // the param, 50011 "You are now bound by duty.", 25018 "There
+        // "Protect <displayName> from harm." carries her display-name
+        // id (1500024) and 1 for the single-escortee wording (an actor
+        // id raises a client Lua error), 50011 "You are now bound by duty.", 25018 "There
         // are <N> minutes remaining." carries the 30-minute limit.
         assert!(
             result.commands.iter().any(|c| matches!(
@@ -3092,9 +3093,9 @@ mod tests {
                     text_id: 51005,
                     params,
                     ..
-                } if params.as_slice() == [0x4008_0001_i64]
+                } if params.as_slice() == [1_500_024_i64, 1]
             )),
-            "duty start must announce 51005 Protect <Sisipu> with her actor id as param; got {:?}",
+            "duty start must announce 51005 Protect <Sisipu> with her display-name id; got {:?}",
             result.commands,
         );
         assert!(

@@ -71,9 +71,11 @@ pub fn guildleve_script_for_plate(guildleve_id: u32, plate_id: u32) -> Option<&'
         20027 => "Guildleve/PrivateGLBattleSurviveNormal",
         20028 => "Guildleve/PrivateGLBattleDetectNormal",
         // GC leves. The client's Special and Epic directors are the Sweep
-        // tracker with their own map markers.
+        // tracker with their own map markers; the rescue director's one
+        // line is the rescued person's health bar.
         20036 => "Guildleve/PrivateGLBattleSweepSpecial",
-        20049 | 20051 => "Guildleve/PrivateGLBattleSweepEpic",
+        20049 => "Guildleve/PrivateGLBattleSweepEpic",
+        20051 => "Guildleve/CompanyleveRescueNormal",
         _ => return None,
     })
 }
