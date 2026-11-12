@@ -1,4 +1,4 @@
--- server_battlenpc_pools: game data, 505 rows. Reloaded whole when this file changes.
+-- server_battlenpc_pools: game data, 509 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_pools`;
 INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId`, `currentJob`, `combatSkill`, `combatDelay`, `combatDmgMult`, `aggroType`, `immunity`, `linkType`, `spellListId`, `skillListId`) VALUES
@@ -506,4 +506,8 @@ INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId
 (31313, 2100910, 'whm0j3_cactuar_jack', 13, 0, 1, 4200, 1.0, 0, 0, 0, 0, 13),
 (31314, 2180125, 'whm0j4_bandit', 3, 0, 1, 6000, 1.0, 0, 0, 0, 0, 124),
 (31315, 2104801, 'whm0j6_wind_elemental', 59, 0, 1, 6000, 0.4, 0, 0, 0, 0, 102),
-(31316, 2104901, 'whm0j6_earth_elemental', 56, 0, 1, 6500, 0.4, 0, 0, 0, 0, 102);
+(31316, 2104901, 'whm0j6_earth_elemental', 56, 0, 1, 6500, 0.4, 0, 0, 0, 0, 102),
+(31317, 2200608, 'blm0j1_guano_gnat', 37, 0, 1, 4200, 1.0, 0, 0, 0, 0, 37),
+(31318, 2105513, 'blm0j2_daddy_longlegs', 39, 0, 1, 4200, 1.0, 0, 0, 0, 0, 39),
+(31319, 2200407, 'blm0j3_whitetalon', 44, 0, 1, 4200, 1.0, 0, 0, 0, 0, 44),
+(31320, 2203503, 'blm0j6_barbatos', 52, 0, 1, 4200, 1.0, 0, 0, 0, 0, 107);
