@@ -93,10 +93,10 @@ const TEXT_TUTORIAL_EXP: u16 = 50110;
 /// How close a target is when the tutorial says it is nearby.
 const TUTORIAL_NEAR: f32 = 25.0;
 
-/// Survive leves (a timed hold-out) need mechanics this doesn't have yet,
-/// so they aren't offered.
-fn plate_supported(plate_id: u32) -> bool {
-    plate_id != PLATE_SURVIVE
+/// Survive leves run only when their hold phase is known (a
+/// `server_guildleve_survive` row); the others aren't offered.
+fn plate_supported(gd: &GuildleveGamedata) -> bool {
+    gd.plate_id != PLATE_SURVIVE || gd.survive.is_some()
 }
 
 /// Necrologos leves (PrivateGLBattleOrbNormal): gather the torn pages of the
@@ -104,7 +104,16 @@ fn plate_supported(plate_id: u32) -> bool {
 /// the tome. Objectives 1-3 are pages (`item1..3`, `aimNum1..3`); the fourth
 /// line is the tome (`item4`), cleared when every page is in.
 const PLATE_NECROLOGOS: u32 = 20023;
+/// Survive leves (PrivateGLBattleSurviveNormal, "Defend the area"): a
+/// player reaching the leve spot starts the hold, a countdown on the
+/// tracker's fifth line during which the hold monster keeps attacking;
+/// when it runs out the leve's own targets appear, and killing them wins.
+/// Everyone on it falling, or the leve's time running out, fails it.
 const PLATE_SURVIVE: u32 = 20027;
+/// How close a player comes to the spot to start the hold, and how far
+/// around it the hold monsters appear.
+const HOLD_NOTICE: f32 = 25.0;
+const HOLD_RING: f32 = 8.0;
 /// Grand Company "Epic" leves (PrivateGLBattleSweepEpic): the targets hide
 /// among the local wildlife, and the tracker says "Use the /poke emote to
 /// find enemies carrying luminous crystals". Each target starts as a
@@ -164,7 +173,7 @@ pub fn is_supported(gd: &GuildleveGamedata) -> bool {
     }
     let counted = |i: usize| gd.aim_num[i] > 0 && target_of(gd, i) != 0;
     gd.class_type == 1
-        && plate_supported(gd.plate_id)
+        && plate_supported(gd)
         && (0..4).any(|i| counted(i) || carried_by_local_beasts(gd, i))
         && (0..4).all(|i| !counted(i) || !target_missing(gd, i))
 }
@@ -370,6 +379,15 @@ struct Leve {
     npc_hp: u8,
     /// The beasts that set on the person once a player comes near.
     ambush: Vec<u32>,
+    /// A Survive leve's hold ([`PLATE_SURVIVE`]): its data and monster
+    /// class; `holding` until the targets appear; when it ends (0 until a
+    /// player reaches the spot) and when it began, in seconds from the
+    /// leve's start (the tracker's countdown counts from there).
+    hold: Option<crate::gamedata::SurviveHold>,
+    hold_class: u32,
+    holding: bool,
+    hold_end_ms: u64,
+    hold_offset: u16,
 }
 
 static ACTIVE: Mutex<Vec<Leve>> = Mutex::new(Vec::new());
@@ -808,7 +826,32 @@ pub async fn start(
         rescuee: None,
         npc_hp: 100,
         ambush: Vec::new(),
+        hold: None,
+        hold_class: 0,
+        holding: false,
+        hold_end_ms: 0,
+        hold_offset: 0,
     };
+    if let Some(hold) = gd.survive.clone().filter(|_| gd.plate_id == PLATE_SURVIVE) {
+        leve.hold_class = db
+            .monster_class_for_name(hold.mob)
+            .await
+            .ok()
+            .flatten()
+            .unwrap_or(0);
+        if leve.hold_class == 0 {
+            say(
+                registry,
+                world,
+                player_id,
+                "This levequest's targets couldn't be found.",
+            )
+            .await;
+            return;
+        }
+        leve.hold = Some(hold);
+        leve.holding = true;
+    }
     for i in 0..4 {
         if leve.aim[i] > 0 && classes[i] == 0 && !(necrologos && i == 3) {
             tracing::warn!(
@@ -889,6 +932,12 @@ pub async fn start(
 
     if gd.plate_id == PLATE_RESCUE {
         start_rescue(&mut leve, &gd, center, registry, world, db, lua).await;
+        log_start(&leve, center);
+        with_active(|a| a.push(leve));
+        return;
+    }
+    if leve.holding {
+        // the targets wait for the hold to end
         log_start(&leve, center);
         with_active(|a| a.push(leve));
         return;
@@ -1019,7 +1068,11 @@ fn tracker_state(leve: &Leve) -> Vec<SubPacket> {
                 b.add_byte(&format!("guildleveWork.aimNum[{i}]"), leve.aim[i] as u8);
                 b.add_byte(
                     &format!("guildleveWork.uiState[{i}]"),
-                    ui_state(leve.staged, &leve.aim, &leve.now, i),
+                    if leve.holding {
+                        0
+                    } else {
+                        ui_state(leve.staged, &leve.aim, &leve.now, i)
+                    },
                 );
                 if leve.now[i] != 0 {
                     b.add_byte(&format!("guildleveWork.aimNumNow[{i}]"), leve.now[i] as u8);
@@ -1045,12 +1098,207 @@ fn tracker_state(leve: &Leve) -> Vec<SubPacket> {
     if leve.class == RESCUE_CLASS {
         subs.extend(npc_hp_packets(leve, leve.npc_hp));
     }
+    if leve.hold.is_some() {
+        subs.extend(survive_packets(leve));
+    }
     subs.extend(director_packets(leve, "guildleveWork/marker", |b| {
         b.add_float("guildleveWork.markerX[0]", leve.marker.0);
         b.add_float("guildleveWork.markerY[0]", leve.marker.1);
         b.add_float("guildleveWork.markerZ[0]", leve.marker.2);
     }));
     subs
+}
+
+/// The Survive director's countdown line: the hold's length, frozen
+/// (`surviveStop`) until a player reaches the spot, counting from
+/// `surviveStartTime` (seconds after the leve's start); 0 once it's over.
+fn survive_packets(leve: &Leve) -> Vec<SubPacket> {
+    let seconds = leve.hold.as_ref().map_or(0, |h| h.seconds);
+    director_packets(leve, "work/info", |b| {
+        b.add_byte(
+            "work.surviveStop",
+            u8::from(leve.holding && leve.hold_end_ms == 0),
+        );
+        b.add_short(
+            "work.surviveTime",
+            if leve.holding {
+                seconds.min(u32::from(u16::MAX)) as u16
+            } else {
+                0
+            },
+        );
+        b.add_short("work.surviveStartTime", leve.hold_offset);
+    })
+}
+
+/// A Survive leve's second: the hold starts when a player reaches the
+/// spot; while it lasts the hold monsters are kept up and set on the
+/// players; when it ends they go and the targets appear.
+async fn hold_tick(
+    leve: &Leve,
+    now_ms: u64,
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    db: &Database,
+    lua: Option<&Arc<LuaEngine>>,
+) {
+    let Some(hold) = leve.hold.clone() else {
+        return;
+    };
+    let mut leve = leve.clone();
+    let mut new: Vec<(u32, Option<usize>)> = Vec::new();
+    if leve.hold_end_ms == 0 {
+        let mut arrived = false;
+        for p in leve.participants() {
+            if let Some(q) = position(registry, p).await
+                && ((q.0 - leve.marker.0).powi(2) + (q.2 - leve.marker.2).powi(2)).sqrt()
+                    <= HOLD_NOTICE
+            {
+                arrived = true;
+            }
+        }
+        if !arrived {
+            return;
+        }
+        let now_secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as u32)
+            .unwrap_or_default();
+        leve.hold_end_ms = now_ms + u64::from(hold.seconds) * 1000;
+        leve.hold_offset = now_secs
+            .saturating_sub(leve.start_secs)
+            .min(u32::from(u16::MAX)) as u16;
+        send_all(
+            registry,
+            world,
+            &leve.participants(),
+            survive_packets(&leve),
+        )
+        .await;
+        tracing::info!(
+            gl_id = leve.guildleve_id,
+            seconds = hold.seconds,
+            recorded = hold.recorded,
+            "battle leve hold started"
+        );
+    }
+    if now_ms < leve.hold_end_ms {
+        // keep the hold monsters up
+        let up = leve.spawned.values().filter(|o| o.is_none()).count();
+        for k in up..usize::from(hold.up) {
+            let angle = (leve.next_spot + k) as f32 * 2.4;
+            let at = (
+                leve.marker.0 + HOLD_RING * angle.sin(),
+                leve.marker.1,
+                leve.marker.2 + HOLD_RING * angle.cos(),
+            );
+            let class_id = leve.hold_class;
+            if let Some(actor_id) = spawn_one(
+                &mut leve,
+                class_id,
+                Some(at),
+                None,
+                registry,
+                world,
+                db,
+                lua,
+            )
+            .await
+            {
+                leve.spawned.insert(actor_id, None);
+                new.push((actor_id, None));
+            }
+        }
+        set_on(&leve, leve.owner, registry).await;
+        store_hold(&leve, &new, &[]);
+        return;
+    }
+    // the hold is over: its monsters go, the targets come
+    let gone: Vec<u32> = leve
+        .spawned
+        .iter()
+        .filter(|(_, o)| o.is_none())
+        .map(|(id, _)| *id)
+        .collect();
+    for &actor_id in &gone {
+        crate::runtime::quest_apply::apply_despawn_actor(leve.zone_id, actor_id, registry, world)
+            .await;
+    }
+    leve.spawned.retain(|_, o| o.is_some());
+    leve.holding = false;
+    for i in 0..4 {
+        if leve.classes[i] == 0 {
+            continue;
+        }
+        for k in 0..(leve.aim[i] as usize).min(MAX_UP) {
+            let angle = (k + 4 * i) as f32 * 1.3;
+            let at = (
+                leve.marker.0 + 4.0 * angle.sin(),
+                leve.marker.1,
+                leve.marker.2 + 4.0 * angle.cos(),
+            );
+            let class_id = leve.classes[i];
+            if let Some(actor_id) = spawn_one(
+                &mut leve,
+                class_id,
+                Some(at),
+                None,
+                registry,
+                world,
+                db,
+                lua,
+            )
+            .await
+            {
+                leve.spawned.insert(actor_id, Some(i));
+                new.push((actor_id, Some(i)));
+            }
+        }
+    }
+    send_all(registry, world, &leve.participants(), tracker_state(&leve)).await;
+    set_on(&leve, leve.owner, registry).await;
+    store_hold(&leve, &new, &gone);
+    tracing::info!(
+        gl_id = leve.guildleve_id,
+        targets = ?leve
+            .spawned
+            .keys()
+            .map(|a| format!("0x{a:08X}"))
+            .collect::<Vec<_>>(),
+        "battle leve hold over"
+    );
+}
+
+/// Write a hold's progress back to the running leve: its timing, the
+/// actors it spawned and the ones it took away.
+fn store_hold(leve: &Leve, new: &[(u32, Option<usize>)], gone: &[u32]) {
+    with_active(|a| {
+        if let Some(l) = a.iter_mut().find(|l| l.director_id == leve.director_id) {
+            l.holding = leve.holding;
+            l.hold_end_ms = leve.hold_end_ms;
+            l.hold_offset = leve.hold_offset;
+            l.next_spot = leve.next_spot;
+            for id in gone {
+                l.spawned.remove(id);
+            }
+            for (id, o) in new {
+                l.spawned.insert(*id, *o);
+            }
+        }
+    });
+}
+
+/// Everyone on a leve is down.
+async fn all_down(leve: &Leve, registry: &ActorRegistry) -> bool {
+    for p in leve.participants() {
+        if let Some(h) = registry.get(p).await {
+            let c = h.character.read().await;
+            if c.chara.hp > 0 && c.base.current_main_state != crate::actor::MAIN_STATE_DEAD {
+                return false;
+            }
+        }
+    }
+    true
 }
 
 /// A tutorial says "your target is nearby" the first time a player of it
@@ -2014,6 +2262,30 @@ pub async fn tick(
                     if let Some(person) = leve.rescuee {
                         rescue_tick(&leve, person, now_ms, registry, world, db, lua).await;
                     }
+                    if leve.hold.is_some() {
+                        if all_down(&leve, registry).await {
+                            if let Some(ended) = finish(leve.owner, now_ms) {
+                                wrap_up(&ended, registry, world, db).await;
+                                for &p in &here {
+                                    say(
+                                        registry,
+                                        world,
+                                        p,
+                                        "You have fallen. The levequest has failed.",
+                                    )
+                                    .await;
+                                }
+                                tracing::info!(
+                                    gl_id = leve.guildleve_id,
+                                    "battle leve failed: everyone fell"
+                                );
+                            }
+                            continue;
+                        }
+                        if leve.holding {
+                            hold_tick(&leve, now_ms, registry, world, db, lua).await;
+                        }
+                    }
                 }
                 if here.is_empty() || now_ms >= deadline_ms {
                     let owner = here.first().copied().unwrap_or(leve.owner);
@@ -2107,6 +2379,30 @@ mod tests {
         assert_eq!(company_offer(&cat, 1, 132, 0), Some(21422));
         assert_eq!(company_offer(&cat, 2, 129, 0), Some(22523));
         assert_eq!(company_offer(&cat, 3, 129, 0), None);
+    }
+
+    #[test]
+    fn a_survive_leve_runs_only_with_its_hold_known() {
+        let mut sweet_revenge = leve(
+            12528,
+            1280073,
+            40,
+            PLATE_SURVIVE,
+            [2, 0, 0, 0],
+            [3201303, 0, 0, 0],
+        );
+        assert!(!is_supported(&sweet_revenge));
+        sweet_revenge.survive = Some(crate::gamedata::SurviveHold {
+            seconds: 300,
+            recorded: true,
+            mob: 3200107,
+            up: 3,
+        });
+        assert!(is_supported(&sweet_revenge));
+        // a hold with no final targets on the sheet still can't run
+        let mut horde = leve(10908, 1280004, 40, PLATE_SURVIVE, [0; 4], [0; 4]);
+        horde.survive = sweet_revenge.survive.clone();
+        assert!(!is_supported(&horde));
     }
 
     #[test]
