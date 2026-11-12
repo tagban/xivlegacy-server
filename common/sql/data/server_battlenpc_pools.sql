@@ -1,4 +1,4 @@
--- server_battlenpc_pools: game data, 515 rows. Reloaded whole when this file changes.
+-- server_battlenpc_pools: game data, 520 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_pools`;
 INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId`, `currentJob`, `combatSkill`, `combatDelay`, `combatDmgMult`, `aggroType`, `immunity`, `linkType`, `spellListId`, `skillListId`) VALUES
@@ -516,4 +516,9 @@ INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId
 (31323, 2102609, 'pld0j2_alux', 52, 0, 1, 4200, 1.0, 0, 0, 0, 0, 52),
 (31324, 2107614, 'pld0j3_old_six_arms', 22, 0, 1, 4200, 1.0, 0, 0, 0, 0, 22),
 (31325, 2289035, 'pld0j5_jenlyns', 29, 0, 1, 6000, 0.25, 0, 0, 0, 0, 0),
-(31326, 2289036, 'pld_sultansworn_elite', 29, 0, 1, 6000, 0.25, 0, 0, 0, 0, 0);
+(31326, 2289036, 'pld_sultansworn_elite', 29, 0, 1, 6000, 0.25, 0, 0, 0, 0, 0),
+(31328, 2106304, 'brd0j1_qiqirn_shirrer', 25, 0, 1, 4200, 1.0, 0, 0, 0, 0, 25),
+(31329, 2101413, 'brd0j2_bardi', 3, 0, 1, 4200, 1.0, 0, 0, 0, 0, 3),
+(31330, 2101509, 'brd0j3_phaia', 9, 0, 1, 4200, 1.0, 0, 0, 0, 0, 9),
+(31331, 2206409, 'brd0j4_ixali_limbcutter', 24, 0, 1, 4200, 1.0, 0, 0, 0, 0, 24),
+(31332, 2206411, 'brd0j6_ixali_cloudwalker', 24, 0, 1, 6000, 1.0, 0, 0, 0, 0, 24);

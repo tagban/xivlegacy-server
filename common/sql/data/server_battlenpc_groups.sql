@@ -1,4 +1,4 @@
--- server_battlenpc_groups: game data, 780 rows. Reloaded whole when this file changes.
+-- server_battlenpc_groups: game data, 785 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_groups`;
 INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLevel`, `maxLevel`, `respawnTime`, `hp`, `mp`, `dropListId`, `allegiance`, `spawnType`, `animationId`, `actorState`, `privateAreaName`, `privateAreaLevel`, `zoneId`) VALUES
@@ -782,4 +782,9 @@ INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLe
 (31324, 31324, 'pld0j3_old_six_arms', 38, 38, 0, 1600, 0, 0, 0, 16, 0, 0, '', 0, 128),
 (31325, 31325, 'pld0j5_jenlyns', 43, 43, 0, 700, 0, 0, 0, 16, 0, 0, '', 0, 170),
 (31326, 31326, 'pld0j5_sultansworn_elite', 41, 41, 0, 1000, 0, 0, 0, 16, 0, 0, '', 0, 170),
-(31327, 31326, 'pld0j6_sultansworn_elite', 45, 45, 0, 1000, 0, 0, 0, 16, 0, 0, '', 0, 173);
+(31327, 31326, 'pld0j6_sultansworn_elite', 45, 45, 0, 1000, 0, 0, 0, 16, 0, 0, '', 0, 173),
+(31328, 31328, 'brd0j1_qiqirn_shirrer', 30, 30, 0, 800, 0, 0, 0, 16, 0, 0, '', 0, 154),
+(31329, 31329, 'brd0j2_bardi', 35, 35, 0, 1400, 0, 0, 0, 16, 0, 0, '', 0, 176),
+(31330, 31330, 'brd0j3_phaia', 40, 40, 0, 1600, 0, 0, 0, 16, 0, 0, '', 0, 150),
+(31331, 31331, 'brd0j4_ixali_limbcutter', 42, 42, 0, 800, 0, 0, 0, 16, 0, 0, '', 0, 152),
+(31332, 31332, 'brd0j6_ixali_cloudwalker', 45, 45, 0, 700, 0, 0, 0, 16, 0, 0, '', 0, 152);
