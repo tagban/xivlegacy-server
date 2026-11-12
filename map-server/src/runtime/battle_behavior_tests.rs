@@ -2565,8 +2565,10 @@ async fn battle_behavior_monster_statuses_every_band() {
             }
             give_status(&env, &sc, PLAYER, PARALYSIS, 60, 0.0).await;
             let para = player_hit_share(&env, &sc, 200).await;
+            // 80 tries (about 20 fail): a 40-try sample fell under its
+            // floor about once in 250 runs.
             let mut ws_fails = 0;
-            for _ in 0..40 {
+            for _ in 0..80 {
                 reset_enemy(&sc).await;
                 let o = press(&mut sc, &fast_blade).await;
                 if o.errors.is_empty() && o.damage_main <= 0 {
@@ -2585,11 +2587,11 @@ async fn battle_behavior_monster_statuses_every_band() {
                     .set(Modifier::RawHitRate, 0.0);
             }
             println!(
-                "L{level} paralysis: {para:.2} of sure swings land, {ws_fails}/40 WS fail, {clean:.2} after"
+                "L{level} paralysis: {para:.2} of sure swings land, {ws_fails}/80 WS fail, {clean:.2} after"
             );
-            if !(0.6..=0.9).contains(&para) || !(3..=20).contains(&ws_fails) || clean < 0.99 {
+            if !(0.6..=0.9).contains(&para) || !(6..=34).contains(&ws_fails) || clean < 0.99 {
                 problems.push(format!(
-                    "L{level} paralysis: {para:.2} land, WS fails {ws_fails}/40, after {clean:.2}"
+                    "L{level} paralysis: {para:.2} land, WS fails {ws_fails}/80, after {clean:.2}"
                 ));
             }
         }

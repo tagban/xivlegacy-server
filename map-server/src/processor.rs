@@ -477,6 +477,7 @@ impl PacketProcessor {
         // re-emits them (previously loaded into LoadedPlayer, then dropped).
         character.chara.guildleves_local = loaded.guildleves_local.clone();
         character.chara.guildleves_regional = loaded.guildleves_regional.clone();
+        character.chara.faction_credits = loaded.faction_credits;
         // Equipped-title hydration — mirror `currentTitle` so the zone-in
         // bundle can emit `SetPlayerTitle`; the DB column already loaded into
         // `loaded.current_title` but was never applied to the runtime actor.
@@ -2053,6 +2054,34 @@ impl PacketProcessor {
                 )
                 .await;
             }
+            LC::AcceptFactionLeve {
+                player_id,
+                guildleve_id,
+            } => {
+                crate::leve::faction::accept(
+                    player_id,
+                    guildleve_id,
+                    &self.registry,
+                    &self.world,
+                    &self.db,
+                    self.lua.as_ref(),
+                )
+                .await;
+            }
+            LC::AddFactionCredits {
+                player_id,
+                faction,
+                amount,
+            } => {
+                crate::leve::faction::add_credits(
+                    player_id,
+                    faction,
+                    amount,
+                    &self.registry,
+                    &self.db,
+                )
+                .await;
+            }
             LC::StartBattleleve {
                 player_id,
                 guildleve_id,
@@ -2696,7 +2725,8 @@ impl PacketProcessor {
             return;
         };
         let snapshot = {
-            let c = handle.character.read().await;
+            let mut c = handle.character.write().await;
+            c.chara.content_area_name = area_name.clone();
             build_player_snapshot_from_character(&c)
         };
 
@@ -6238,6 +6268,17 @@ impl PacketProcessor {
             emote_id,
             &self.registry,
             &self.world,
+        )
+        .await;
+        // a /poke can show a battle leve's disguised target
+        crate::leve::battle::on_emote(
+            actor_id,
+            target_actor_id,
+            emote_id,
+            &self.registry,
+            &self.world,
+            &self.db,
+            self.lua.as_ref(),
         )
         .await;
     }
@@ -11285,6 +11326,7 @@ pub(crate) fn build_player_snapshot_for_login(
         rental_expire_time: c.chara.rental_expire_time,
         rental_min_left: c.chara.rental_min_left,
         gc_current: c.chara.gc_current,
+        faction_credits: c.chara.faction_credits,
         gc_rank_limsa: c.chara.gc_rank_limsa,
         gc_rank_gridania: c.chara.gc_rank_gridania,
         gc_rank_uldah: c.chara.gc_rank_uldah,
@@ -11342,6 +11384,7 @@ pub(crate) fn build_player_snapshot_for_login(
         traits: Vec::new(),
         inventory: Vec::new(),
         login_director_actor_id: c.chara.login_director_actor_id,
+        content_area_name: c.chara.content_area_name.clone(),
         // Login snapshot never has a retainer spawned — the tutorial
         // hook runs before the player has even hit the world map.
         spawned_retainer: None,

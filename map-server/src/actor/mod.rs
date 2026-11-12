@@ -115,6 +115,10 @@ pub struct BaseActor {
     /// the mesh + collision baked into the zone (closed doors, gates).
     pub mapobj_layout_id: u32,
     pub mapobj_instance_id: u32,
+    /// Quests a seeded NPC belongs to (`SpawnLocation::quest_ids`); the
+    /// private-area zone-in bundle sends it only to a player holding one.
+    /// Empty = everyone.
+    pub spawn_quest_ids: Vec<u32>,
 }
 
 impl BaseActor {
@@ -307,6 +311,9 @@ pub struct CharaState {
     /// PlayerState split as `npc_linkshells` above. (Kodama parity.)
     pub guildleves_local: Vec<crate::gamedata::GuildleveLocalEntry>,
     pub guildleves_regional: Vec<crate::gamedata::GuildleveRegionalEntry>,
+    /// Faction credits (`characters_faction_credit`), by faction: Broken
+    /// Blade, Azeyma's Shields, Horn and Hand.
+    pub faction_credits: [u16; 3],
     /// Equipped title (`characters.currentTitle`), hydrated at
     /// session-begin so the zone-in bundle emits `SetPlayerTitle`. The
     /// authoritative runtime copy; `PlayerState.current_title` stays as
@@ -346,6 +353,12 @@ pub struct CharaState {
     /// the director's 7-packet spawn sequence so the `Actor(…)` reference
     /// resolves on the client side.
     pub login_director_actor_id: u32,
+    /// The duty (content area) the player is in, e.g. `"Mnk0j601"`: set
+    /// when `CreateContentArea` opens it (owner and party members), cleared
+    /// when the player's copy is torn down. Empty outside a duty. Lua reads
+    /// it with `player:GetContentAreaName()`; several job quests share one
+    /// client director, so the director needs it to know whose duty it is.
+    pub content_area_name: String,
     pub animation_id: u32,
     pub current_target: u32,
     pub current_locked_target: u32,
@@ -418,6 +431,7 @@ impl Default for CharaState {
             npc_linkshells: Vec::new(),
             guildleves_local: Vec::new(),
             guildleves_regional: Vec::new(),
+            faction_credits: [0; 3],
             current_title: 0,
             unlocked_aetherytes: std::collections::HashSet::new(),
             snpc_nickname: String::new(),
@@ -425,6 +439,7 @@ impl Default for CharaState {
             snpc_personality: 0,
             snpc_coordinate: 0,
             login_director_actor_id: 0,
+            content_area_name: String::new(),
             animation_id: 0,
             current_target: 0,
             current_locked_target: 0,

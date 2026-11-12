@@ -1,4 +1,4 @@
--- gamedata_actor_class: game data, 8045 rows. Reloaded whole when this file changes.
+-- gamedata_actor_class: game data, 8091 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `gamedata_actor_class`;
 INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propertyFlags`, `eventConditions`) VALUES
@@ -14143,13 +14143,103 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
     }
   ]
 }'),
-(1060034, '', 1400197, 0, NULL),
+(1060034, '/Chara/Npc/Populace/PopulaceStandard', 1400197, 19, '{
+  "talkEventConditions": [
+    {
+      "unknown1": 4,
+      "unknown2": 0,
+      "conditionName": "talkDefault"
+    }
+  ],
+  "noticeEventConditions": [
+    {
+      "unknown1": 0,
+      "unknown2": 1,
+      "conditionName": "noticeEvent"
+    }
+  ]
+}'),
 (1060035, '', 1500186, 0, NULL),
-(1060036, '', 2420027, 0, NULL),
-(1060037, '', 2430006, 0, NULL),
-(1060038, '', 2440001, 0, NULL),
-(1060039, '', 1200133, 0, NULL),
-(1060040, '', 1200199, 0, NULL),
+(1060036, '/Chara/Npc/Populace/PopulaceStandard', 2420027, 19, '{
+  "talkEventConditions": [
+    {
+      "unknown1": 4,
+      "unknown2": 0,
+      "conditionName": "talkDefault"
+    }
+  ],
+  "noticeEventConditions": [
+    {
+      "unknown1": 0,
+      "unknown2": 1,
+      "conditionName": "noticeEvent"
+    }
+  ]
+}'),
+(1060037, '/Chara/Npc/Populace/PopulaceStandard', 2430006, 19, '{
+  "talkEventConditions": [
+    {
+      "unknown1": 4,
+      "unknown2": 0,
+      "conditionName": "talkDefault"
+    }
+  ],
+  "noticeEventConditions": [
+    {
+      "unknown1": 0,
+      "unknown2": 1,
+      "conditionName": "noticeEvent"
+    }
+  ]
+}'),
+(1060038, '/Chara/Npc/Populace/PopulaceStandard', 2440001, 19, '{
+  "talkEventConditions": [
+    {
+      "unknown1": 4,
+      "unknown2": 0,
+      "conditionName": "talkDefault"
+    }
+  ],
+  "noticeEventConditions": [
+    {
+      "unknown1": 0,
+      "unknown2": 1,
+      "conditionName": "noticeEvent"
+    }
+  ]
+}'),
+(1060039, '/Chara/Npc/Populace/PopulaceStandard', 1200133, 19, '{
+  "talkEventConditions": [
+    {
+      "unknown1": 4,
+      "unknown2": 0,
+      "conditionName": "talkDefault"
+    }
+  ],
+  "noticeEventConditions": [
+    {
+      "unknown1": 0,
+      "unknown2": 1,
+      "conditionName": "noticeEvent"
+    }
+  ]
+}'),
+(1060040, '/Chara/Npc/Populace/PopulaceStandard', 1200199, 19, '{
+  "talkEventConditions": [
+    {
+      "unknown1": 4,
+      "unknown2": 0,
+      "conditionName": "talkDefault"
+    }
+  ],
+  "noticeEventConditions": [
+    {
+      "unknown1": 0,
+      "unknown2": 1,
+      "conditionName": "noticeEvent"
+    }
+  ]
+}'),
 (1060041, '', 1600175, 0, NULL),
 (1060042, '/Chara/Npc/Populace/PopulaceStandard', 1000146, 19, '{
   "talkEventConditions": [
@@ -24888,7 +24978,23 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
 (1500219, '', 1600170, 0, NULL),
 (1500220, '', 1600251, 0, NULL),
 (1500221, '', 1600271, 0, NULL),
-(1500222, '', 2200035, 0, NULL),
+(1500222, '/Chara/Npc/Populace/PopulaceCompanyGLPublisher', 2200035, 19, '{
+  "talkEventConditions": [
+    {
+      "unknown1": 4,
+      "unknown2": 0,
+      "conditionName": "talkDefault"
+    }
+  ],
+  "noticeEventConditions": [
+    {
+      "unknown1": 0,
+      "unknown2": 1,
+      "conditionName": "noticeEvent"
+    }
+  ]
+}
+'),
 (1500223, '/Chara/Npc/Populace/PopulaceCompanyGLPublisher', 2200045, 19, '{
   "talkEventConditions": [
     {
@@ -24906,10 +25012,74 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
   ]
 }
 '),
-(1500224, '', 2200067, 0, NULL),
-(1500225, '', 2200070, 0, NULL),
-(1500226, '', 2200077, 0, NULL),
-(1500227, '', 2200089, 0, NULL),
+(1500224, '/Chara/Npc/Populace/PopulaceCompanyGLPublisher', 2200067, 19, '{
+  "talkEventConditions": [
+    {
+      "unknown1": 4,
+      "unknown2": 0,
+      "conditionName": "talkDefault"
+    }
+  ],
+  "noticeEventConditions": [
+    {
+      "unknown1": 0,
+      "unknown2": 1,
+      "conditionName": "noticeEvent"
+    }
+  ]
+}
+'),
+(1500225, '/Chara/Npc/Populace/PopulaceCompanyGLPublisher', 2200070, 19, '{
+  "talkEventConditions": [
+    {
+      "unknown1": 4,
+      "unknown2": 0,
+      "conditionName": "talkDefault"
+    }
+  ],
+  "noticeEventConditions": [
+    {
+      "unknown1": 0,
+      "unknown2": 1,
+      "conditionName": "noticeEvent"
+    }
+  ]
+}
+'),
+(1500226, '/Chara/Npc/Populace/PopulaceCompanyGLPublisher', 2200077, 19, '{
+  "talkEventConditions": [
+    {
+      "unknown1": 4,
+      "unknown2": 0,
+      "conditionName": "talkDefault"
+    }
+  ],
+  "noticeEventConditions": [
+    {
+      "unknown1": 0,
+      "unknown2": 1,
+      "conditionName": "noticeEvent"
+    }
+  ]
+}
+'),
+(1500227, '/Chara/Npc/Populace/PopulaceCompanyGLPublisher', 2200089, 19, '{
+  "talkEventConditions": [
+    {
+      "unknown1": 4,
+      "unknown2": 0,
+      "conditionName": "talkDefault"
+    }
+  ],
+  "noticeEventConditions": [
+    {
+      "unknown1": 0,
+      "unknown2": 1,
+      "conditionName": "noticeEvent"
+    }
+  ]
+}
+'),
 (1500228, '/Chara/Npc/Populace/PopulaceStandard', 4000621, 19, '{
   "talkEventConditions": [
     {
@@ -31376,8 +31546,8 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
 (2289032, '', 3280314, 0, NULL),
 (2289033, '/Chara/Npc/Monster/Pirate/PirateStandard', 3280315, 0, NULL),
 (2289034, '', 3280316, 0, NULL),
-(2289035, '', 3280317, 0, NULL),
-(2289036, '', 3280318, 0, NULL),
+(2289035, '/Chara/Npc/Monster/Pirate/PirateStandard', 3280317, 0, NULL),
+(2289036, '/Chara/Npc/Monster/Pirate/PirateStandard', 3280318, 0, NULL),
 (2289037, '/Chara/Npc/Monster/Pirate/PirateStandard', 3280319, 0, NULL),
 (2289038, '', 3280320, 0, NULL),
 (2289039, '/Chara/Npc/Monster/Pirate/PirateStandard', 3280321, 0, NULL),
@@ -31496,15 +31666,15 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
 (2290042, '', 1000030, 0, NULL),
 (2290043, '', 1900195, 0, NULL),
 (2290044, '', 1000087, 0, NULL),
-(2290045, '', 4000622, 0, NULL),
-(2290046, '', 4000623, 0, NULL),
-(2290047, '', 4000624, 0, NULL),
-(2290048, '', 4000625, 0, NULL),
-(2290049, '', 4000626, 0, NULL),
-(2290050, '', 4000627, 0, NULL),
-(2290051, '', 4000628, 0, NULL),
-(2290052, '/Chara/Npc/Monster/Pirate/PirateStandard', 4000629, 0, NULL),
-(2290053, '', 4000630, 0, NULL),
+(2290045, '/Chara/Npc/Monster/Fighter/FighterAllyOpeningAttacker', 4000622, 0, NULL),
+(2290046, '/Chara/Npc/Monster/Fighter/FighterAllyOpeningAttacker', 4000623, 0, NULL),
+(2290047, '/Chara/Npc/Monster/Fighter/FighterAllyOpeningAttacker', 4000624, 0, NULL),
+(2290048, '/Chara/Npc/Monster/Fighter/FighterAllyOpeningAttacker', 4000625, 0, NULL),
+(2290049, '/Chara/Npc/Monster/Fighter/FighterAllyOpeningAttacker', 4000626, 0, NULL),
+(2290050, '/Chara/Npc/Monster/Fighter/FighterAllyOpeningAttacker', 4000627, 0, NULL),
+(2290051, '/Chara/Npc/Monster/Fighter/FighterAllyOpeningAttacker', 4000628, 0, NULL),
+(2290052, '/Chara/Npc/Monster/Fighter/FighterAllyOpeningAttacker', 4000629, 0, NULL),
+(2290053, '/Chara/Npc/Monster/Fighter/FighterAllyOpeningAttacker', 4000630, 0, NULL),
 (2290054, '', 3290008, 0, NULL),
 (2290055, '', 3290002, 0, NULL),
 (2290056, '', 3290009, 0, NULL),
@@ -34831,6 +35001,512 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
   ]
 }'),
 (1090919, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "6.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090920, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "5.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090921, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "6.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090922, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "6.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090923, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "6.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090924, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "3.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090925, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "3.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090926, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "3.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090927, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "3.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090928, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "6.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090929, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "5.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090930, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "5.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090931, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "6.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090932, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "4.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090933, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "3.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090934, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "3.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090935, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "3.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090936, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "3.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090937, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "6.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090938, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "6.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090939, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "6.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090940, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "6.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090941, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "3.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090942, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "3.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090943, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "3.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090944, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "3.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090945, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "6.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090946, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "6.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090947, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "5.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090948, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "5.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090949, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "5.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090950, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "6.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090951, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "3.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090952, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "3.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090953, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "3.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090954, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "3.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090955, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "6.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090956, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "6.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090957, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "5.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090958, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "5.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090959, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "5.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090960, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "3.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090961, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "3.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090962, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "3.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090963, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "3.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090964, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "5.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090965, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
   "pushWithCircleEventConditions": [
     {
       "isEnabled": "false",

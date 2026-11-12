@@ -161,6 +161,7 @@ pub fn install_globals(
             t.set("borderId", gd.border_id)?;
             t.set("timeLimit", gd.time_limit)?;
             t.set("favorCount", gd.favor_count)?;
+            t.set("factionCreditRequired", gd.faction_credit_required)?;
             t.set("aimNum", gd.aim_num.to_vec())?;
             t.set("mob", gd.mobs.to_vec())?;
             Ok(Value::Table(t))
@@ -186,6 +187,23 @@ pub fn install_globals(
             Ok(offers)
         })?;
         globals.set("GetGuildleveOffers", f)?;
+    }
+
+    // GetFactionLeveOffers(faction, level) — the faction leves (faction 1
+    // Broken Blade, 2 Azeyma's Shields, 3 Horn and Hand) the levemete lists
+    // at that level band: up to 8 ids (crate::leve::faction).
+    {
+        let cats = catalogs.clone();
+        let f = lua.create_function(
+            move |_, (faction, level): (u8, u32)| -> mlua::Result<Vec<u32>> {
+                Ok(cats
+                    .guildleves
+                    .read()
+                    .map(|m| crate::leve::faction::offers(&m, faction, level))
+                    .unwrap_or_default())
+            },
+        )?;
+        globals.set("GetFactionLeveOffers", f)?;
     }
 
     // GetCompanyLeveOffer(gc, zoneId) — the GC leve an officer of Grand
