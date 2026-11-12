@@ -15,6 +15,8 @@ A duty is a table handed to the content script's hooks:
 		escortees = {                     -- spawned in onCreate, first one leads
 			{ bnpcId = 52, look = function(player) return classId end,
 			  name = function(player) return "Nickname" end },
+			-- or nameId = 1900054 (the display-name id): a catalog-named lead
+			-- gets the "Protect <name>" banner; a custom-named one gets none
 		},
 		mobs = { 53, 54, 55 },            -- enemies, spawned in onCreate
 		legs = {                          -- walked in order
@@ -48,7 +50,7 @@ require ("contenttimer")
 escortGlobal = {};
 
 -- worldMaster duty texts (the client's duty block, as the openings use them).
-local TEXT_PROTECT_ESCORTEE	= 51005;	-- "Protect <displayName> from harm."
+local TEXT_PROTECT_ESCORTEE	= 51005;	-- "Protect ~<displayName>/<displayName>'s group~ from harm."
 local TEXT_TIME_REMAINING	= 25018;	-- "There are <N> minutes remaining."
 
 -- Pacing and geometry, from the opening escorts (500 ms ticks).
@@ -221,10 +223,14 @@ function escortGlobal.Update(duty, tick, area)
 			return;
 		end
 		state.started = true;
-		-- "Protect <name>" reads the lead's catalog name; for a custom-named
-		-- escortee (a Path companion) the client script errors on it.
-		if (duty.escortees[1].name == nil) then
-			owner:SendGameMessage(GetWorldMaster(), TEXT_PROTECT_ESCORTEE, 0x20, lead.actorId);
+		-- "Protect <name>" takes the lead's display-name id (an actor id
+		-- raises a client Lua error), then 1 for one escortee or 0 for
+		-- "<name>'s group". A custom-named lead (a Path companion) has no
+		-- display-name id, so it gets no banner.
+		local nameId = duty.escortees[1].nameId;
+		if (nameId ~= nil) then
+			owner:SendGameMessage(GetWorldMaster(), TEXT_PROTECT_ESCORTEE, 0x20, nameId,
+				(#duty.escortees > 1) and 0 or 1);
 		end
 		-- "You are now bound by duty." is the client's own, on joining the
 		-- content group.
