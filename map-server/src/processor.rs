@@ -2725,7 +2725,8 @@ impl PacketProcessor {
             return;
         };
         let snapshot = {
-            let c = handle.character.read().await;
+            let mut c = handle.character.write().await;
+            c.chara.content_area_name = area_name.clone();
             build_player_snapshot_from_character(&c)
         };
 
@@ -11383,6 +11384,7 @@ pub(crate) fn build_player_snapshot_for_login(
         traits: Vec::new(),
         inventory: Vec::new(),
         login_director_actor_id: c.chara.login_director_actor_id,
+        content_area_name: c.chara.content_area_name.clone(),
         // Login snapshot never has a retainer spawned — the tutorial
         // hook runs before the player has even hit the world map.
         spawned_retainer: None,

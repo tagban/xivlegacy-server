@@ -626,6 +626,8 @@ pub struct PlayerSnapshot {
     /// so its `player:KickEvent(player:GetDirector(), "noticeEvent")`
     /// call lands on the right actor id.
     pub login_director_actor_id: u32,
+    /// `chara.content_area_name`: the duty the player is in, empty outside one.
+    pub content_area_name: String,
     /// Mirror of `Session.spawned_retainer` at the time the snapshot
     /// was built. Lets scripts read `player:HasSpawnedRetainer()` +
     /// `player:GetSpawnedRetainer()` without a round-trip.
@@ -786,6 +788,7 @@ impl From<&crate::actor::Player> for PlayerSnapshot {
             traits,
             inventory,
             login_director_actor_id: p.character.chara.login_director_actor_id,
+            content_area_name: p.character.chara.content_area_name.clone(),
             // The From<&Player> impl can't reach the session store
             // (Player is in the registry, Session lives on
             // WorldManager). Default to None here and let the
@@ -3014,6 +3017,15 @@ impl UserData for LuaPlayer {
             Ok(())
         });
         methods.add_method("RemoveDirector", |_, _this, _director: Value| Ok(()));
+        // `player:GetContentAreaName()` — the duty the player is in (the
+        // area name its quest passed to `CreateContentArea`, e.g.
+        // "Mnk0j601"), or nil outside one. Not a pmeteor binding: the job
+        // quests share client directors, and the director uses this to
+        // credit the win to the quest whose duty it is.
+        methods.add_method("GetContentAreaName", |_, this, ()| {
+            Ok((!this.snapshot.content_area_name.is_empty())
+                .then(|| this.snapshot.content_area_name.clone()))
+        });
         methods.add_method("GetDirector", |lua, this, _id: Option<u32>| {
             // `zone.lua:onZoneIn` calls `player:GetDirector()` to recover
             // the login director attached earlier by `onBeginLogin`'s

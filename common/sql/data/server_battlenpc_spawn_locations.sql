@@ -1,4 +1,4 @@
--- server_battlenpc_spawn_locations: game data, 4415 rows. Reloaded whole when this file changes.
+-- server_battlenpc_spawn_locations: game data, 4445 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_spawn_locations`;
 INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `groupId`, `positionX`, `positionY`, `positionZ`, `rotation`) VALUES
@@ -1002,13 +1002,13 @@ INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `
 (100307, 'forest_funguar', 10046, 769.602, 31.528, -683.718, 2.435),
 (100308, 'forest_funguar', 10046, 789.107, 46.278, -665.34, -1.4178),
 (100309, 'chigoe', 10047, 735.773, 32.0, -544.663, -2.2649),
-(100310, 'chigoe', 10047, 717.336, 23.226, -541.54, -0.5733),
+(100310, 'chigoe', 10047, 717.336, 23.226, -541.54, -0.5733);
+INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `groupId`, `positionX`, `positionY`, `positionZ`, `rotation`) VALUES
 (100311, 'chigoe', 10047, 706.026, 15.441, -522.85, 1.0824),
 (100312, 'chigoe', 10047, 688.609, 27.841, -537.24, -1.1168),
 (100313, 'chigoe', 10047, 680.11, 23.501, -558.121, 0.7093),
 (100314, 'chigoe', 10047, 696.728, 16.364, -566.627, -0.847),
-(100315, 'chigoe', 10047, 717.307, 25.338, -581.958, -1.2403);
-INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `groupId`, `positionX`, `positionY`, `positionZ`, `rotation`) VALUES
+(100315, 'chigoe', 10047, 717.307, 25.338, -581.958, -1.2403),
 (100316, 'chigoe', 10047, 725.595, 28.805, -569.909, 0.7694),
 (100317, 'goblin_headman', 10048, 683.726, 26.887, -343.871, 1.9553),
 (100318, 'goblin_headman', 10048, 670.238, 27.082, -336.191, 0.4892),
@@ -1503,13 +1503,13 @@ INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `
 (100807, 'bloodshore_bell', 10100, 1331.373, 0.0, -1488.631, -2.4564),
 (100808, 'bloodshore_bell', 10100, 1359.303, 0.0, -1474.372, -1.6978),
 (100809, 'bloodshore_bell', 10100, 1362.387, 0.0, -1459.751, 0.6036),
-(100810, 'giant_crab', 10101, 1046.809, 53.871, -1541.435, 0.8326),
+(100810, 'giant_crab', 10101, 1046.809, 53.871, -1541.435, 0.8326);
+INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `groupId`, `positionX`, `positionY`, `positionZ`, `rotation`) VALUES
 (100811, 'giant_crab', 10101, 1055.866, 54.093, -1517.432, 1.1855),
 (100812, 'giant_crab', 10101, 1037.273, 52.651, -1504.902, 2.7166),
 (100813, 'giant_crab', 10101, 1024.046, 53.261, -1514.176, 2.6604),
 (100814, 'giant_crab', 10101, 1015.756, 56.058, -1527.534, -0.4842),
-(100815, 'giant_crab', 10101, 1009.868, 57.595, -1539.893, 0.0309);
-INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `groupId`, `positionX`, `positionY`, `positionZ`, `rotation`) VALUES
+(100815, 'giant_crab', 10101, 1009.868, 57.595, -1539.893, 0.0309),
 (100816, 'giant_crab', 10101, 992.084, 62.733, -1549.335, -1.5521),
 (100817, 'giant_crab', 10101, 988.757, 65.007, -1569.783, -0.9977),
 (100818, 'giant_crab', 10101, 1021.542, 61.827, -1563.573, -0.275),
@@ -2004,13 +2004,13 @@ INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `
 (101307, 'venomtongue_assassin', 10153, 1491.526, 258.506, -194.114, 2.7386),
 (101308, 'venomtongue_assassin', 10153, 1514.328, 322.469, -214.402, 1.2267),
 (101309, 'venomtongue_assassin', 10153, 1532.991, 319.45, -212.981, 0.2344),
-(101310, 'venomtongue_assassin', 10153, 1539.066, 269.745, -202.115, 0.8899),
+(101310, 'venomtongue_assassin', 10153, 1539.066, 269.745, -202.115, 0.8899);
+INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `groupId`, `positionX`, `positionY`, `positionZ`, `rotation`) VALUES
 (101311, 'deathstroke_assassin', 10154, 1444.685, 260.556, -41.315, 2.7172),
 (101312, 'deathstroke_assassin', 10154, 1428.184, 325.975, -16.933, -2.5533),
 (101313, 'deathstroke_assassin', 10154, 1409.141, 316.753, -22.064, -0.7184),
 (101314, 'deathstroke_assassin', 10154, 1409.644, 257.752, -47.629, 0.6743),
-(101315, 'deathstroke_assassin', 10154, 1419.206, 255.634, -63.966, -1.1717);
-INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `groupId`, `positionX`, `positionY`, `positionZ`, `rotation`) VALUES
+(101315, 'deathstroke_assassin', 10154, 1419.206, 255.634, -63.966, -1.1717),
 (101316, 'deathstroke_assassin', 10154, 1448.412, 256.776, -59.221, 0.5928),
 (101317, 'stuffed_dodo', 10155, -12.562, 188.789, -933.178, 0.6853),
 (101318, 'stuffed_dodo', 10155, -29.072, 201.305, -934.228, 2.1252),
@@ -2505,13 +2505,13 @@ INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `
 (101807, 'black_bat', 10232, 830.884, 68.904, -742.726, -2.5166),
 (101808, 'black_bat', 10232, 826.27, 68.217, -731.384, 1.7007),
 (101809, 'black_bat', 10232, 818.22, 67.074, -739.111, -1.4958),
-(101810, 'black_bat', 10232, 813.52, 65.777, -749.491, 1.3106),
+(101810, 'black_bat', 10232, 813.52, 65.777, -749.491, 1.3106);
+INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `groupId`, `positionX`, `positionY`, `positionZ`, `rotation`) VALUES
 (101811, 'black_bat', 10232, 827.245, 70.228, -756.951, -0.2238),
 (101812, 'black_bat', 10232, 831.495, 69.701, -749.989, 0.2693),
 (101813, 'bloodshore_bell', 10233, 1047.423, 53.353, -1537.846, 1.8208),
 (101814, 'bloodshore_bell', 10233, 1028.656, 54.093, -1519.99, 0.8388),
-(101815, 'bloodshore_bell', 10233, 1008.137, 58.168, -1529.379, 1.8909);
-INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `groupId`, `positionX`, `positionY`, `positionZ`, `rotation`) VALUES
+(101815, 'bloodshore_bell', 10233, 1008.137, 58.168, -1529.379, 1.8909),
 (101816, 'bloodshore_bell', 10233, 1004.585, 59.836, -1545.118, -3.0195),
 (101817, 'bloodshore_bell', 10233, 1025.684, 63.369, -1565.904, -2.3769),
 (101818, 'bloodshore_bell', 10233, 1051.418, 59.177, -1557.283, 0.654),
@@ -3006,13 +3006,13 @@ INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `
 (102307, 'little_apkallu', 10315, 1618.358, 58.27, -432.036, 0.6233),
 (102308, 'little_apkallu', 10315, 1609.982, 62.468, -447.409, -3.1048),
 (102309, 'little_apkallu', 10315, 1621.031, 58.422, -460.397, 0.7642),
-(102310, 'little_apkallu', 10315, 1637.367, 58.044, -460.558, 2.6125),
+(102310, 'little_apkallu', 10315, 1637.367, 58.044, -460.558, 2.6125);
+INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `groupId`, `positionX`, `positionY`, `positionZ`, `rotation`) VALUES
 (102311, 'lone_wolf', 10316, -1131.061, 20.221, -1950.647, 1.8051),
 (102312, 'lone_wolf', 10316, -1134.368, 20.881, -1932.384, -1.5575),
 (102313, 'lone_wolf', 10316, -1154.437, 26.23, -1937.902, -2.0003),
 (102314, 'lone_wolf', 10316, -1156.173, 24.806, -1959.28, 0.1096),
-(102315, 'lone_wolf', 10316, -1151.656, 23.237, -1975.91, 1.3765);
-INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `groupId`, `positionX`, `positionY`, `positionZ`, `rotation`) VALUES
+(102315, 'lone_wolf', 10316, -1151.656, 23.237, -1975.91, 1.3765),
 (102316, 'lone_wolf', 10316, -1134.804, 20.876, -1961.431, -1.2202),
 (102317, 'lone_wolf', 10317, -829.952, 4.2, -2447.196, -0.483),
 (102318, 'lone_wolf', 10317, -834.77, 3.22, -2429.293, -1.4848),
@@ -3507,13 +3507,13 @@ INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `
 (102807, 'sirocco', 10398, -340.602, 28.898, -676.604, 1.7528),
 (102808, 'sirocco', 10398, -327.588, 5.425, -671.847, 3.1239),
 (102809, 'slippery_sykes', 10399, 1342.412, 46.374, -435.66, -2.9929),
-(102810, 'slippery_sykes', 10399, 1328.169, 42.977, -434.809, -1.0864),
+(102810, 'slippery_sykes', 10399, 1328.169, 42.977, -434.809, -1.0864);
+INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `groupId`, `positionX`, `positionY`, `positionZ`, `rotation`) VALUES
 (102811, 'slippery_sykes', 10399, 1317.826, 40.527, -436.375, 0.3586),
 (102812, 'slippery_sykes', 10399, 1311.966, 44.002, -447.991, 0.643),
 (102813, 'slippery_sykes', 10399, 1323.467, 41.536, -470.771, -0.1574),
 (102814, 'slippery_sykes', 10399, 1334.5, 45.202, -456.488, 1.1065),
-(102815, 'smolenkos', 10400, -1537.124, 340.182, 251.59, 0.6731);
-INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `groupId`, `positionX`, `positionY`, `positionZ`, `rotation`) VALUES
+(102815, 'smolenkos', 10400, -1537.124, 340.182, 251.59, 0.6731),
 (102816, 'smolenkos', 10400, -1555.466, 327.77, 255.369, 0.9053),
 (102817, 'smolenkos', 10400, -1577.86, 304.717, 259.908, -2.6195),
 (102818, 'smolenkos', 10400, -1574.252, 324.993, 237.312, -0.7728),
@@ -4008,7 +4008,8 @@ INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `
 (110097, '', 31024, -801.0, -23.82, -2097.0, -0.31),
 (110130, '', 31031, -889.0, -35.97, -2193.0, -2.94),
 (110131, '', 31031, -915.0, -23.83, -2131.0, 0.9),
-(110132, '', 31031, -817.0, -36.7, -2215.0, -0.01),
+(110132, '', 31031, -817.0, -36.7, -2215.0, -0.01);
+INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `groupId`, `positionX`, `positionY`, `positionZ`, `rotation`) VALUES
 (110133, '', 31031, -683.0, -14.72, -2287.0, -1.17),
 (110134, '', 31031, -689.0, -10.7, -2383.0, 1.57),
 (110135, '', 31031, -855.0, -35.7, -2225.0, -0.87),
@@ -4406,6 +4407,36 @@ INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `
 (3724, 'whm0j4_bandit', 31314, 30.0, 43.2, 190.0, 0.0),
 (3725, 'whm0j6_wind_elemental', 31315, 195.0, 4.0, -485.0, 0.0),
 (3726, 'whm0j6_earth_elemental', 31316, 182.0, 4.0, -495.0, 0.0),
+(3727, 'blm0j1_guano_gnat', 31317, -850.0, 88.3, 250.0, 0.0),
+(3728, 'blm0j1_guano_gnat', 31317, -865.0, 90.5, 240.0, 0.0),
+(3729, 'blm0j2_daddy_longlegs', 31318, -1010.0, 89.2, 385.0, 0.0),
+(3730, 'blm0j3_whitetalon', 31319, -980.0, 54.5, -1030.0, 0.0),
+(3731, 'blm0j6_barbatos', 31320, 1575.0, 359.4, 1005.0, 0.0),
+(3732, 'pld0j1_skeleton_swordbearer', 31321, -1746.0, 55.7, -250.0, 0.0),
+(3733, 'pld0j1_skeleton_swordbearer', 31321, -1706.0, 56.4, -250.0, 0.0),
+(3734, 'pld0j1_revenant', 31322, -1726.0, 57.5, -230.0, 0.0),
+(3735, 'pld0j2_alux', 31323, -783.0, -23.8, -2287.0, 0.0),
+(3736, 'pld0j3_old_six_arms', 31324, 631.2, 45.1, 367.5, 0.0),
+(3737, 'pld0j5_jenlyns', 31325, 60.0, 199.0, -620.0, 0.0),
+(3738, 'pld0j5_sultansworn_elite', 31326, 30.0, 197.8, -590.0, 0.0),
+(3739, 'pld0j5_sultansworn_elite', 31326, 120.0, 199.8, -590.0, 0.0),
+(3740, 'pld0j6_sultansworn_elite', 31327, -80.0, 280.1, -1590.0, 0.0),
+(3741, 'pld0j6_sultansworn_elite', 31327, -95.0, 280.6, -1590.0, 0.0),
+(3742, 'pld0j6_sultansworn_elite', 31327, -110.0, 282.0, -1605.0, 0.0),
+(3743, 'brd0j1_qiqirn_shirrer', 31328, 830.0, -12.2, 1080.0, 0.0),
+(3744, 'brd0j2_bardi', 31329, -173.0, 168.7, -1323.0, 0.0),
+(3745, 'brd0j3_phaia', 31330, -170.0, -4.4, -330.0, 0.0),
+(3746, 'brd0j4_ixali_limbcutter', 31331, -1020.0, 20.1, -2015.0, 0.0),
+(3747, 'brd0j4_ixali_limbcutter', 31331, -1020.0, 19.7, -2030.0, 0.0),
+(3748, 'brd0j6_ixali_cloudwalker', 31332, -1225.0, 21.7, -2245.0, 0.0),
+(3749, 'brd0j6_ixali_cloudwalker', 31332, -1210.0, 22.1, -2245.0, 0.0),
+(3750, 'drg0j1_dreadwolf', 31333, 1665.0, 25.4, -885.0, 0.0),
+(3751, 'drg0j1_dreadwolf', 31333, 1680.0, 21.1, -885.0, 0.0),
+(3752, 'drg0j2_bomb_baron', 31334, 1325.0, -54.9, -812.0, 0.0),
+(3753, 'drg0j3_spitfire', 31335, 1885.0, 127.1, 700.0, 0.0),
+(3754, 'drg0j5_stollenwurm', 31336, -1775.0, 273.9, -95.0, 0.0),
+(3755, 'drg0j6_drake', 31337, 1502.0, 230.8, 484.0, 0.0),
+(3756, 'drg0j6_drake', 31337, 1502.0, 234.1, 496.0, 0.0),
 (3460, 'man2l0_emerick', 30490, 1818.5, 11.85, 1825.0, 1.57),
 (3461, 'man2l0_merodaulyn', 30491, 1823.0, 11.85, 1826.0, -1.57),
 (3462, 'man2g0_spirit_of_the_wood', 30492, 1701.0, 21.26, -889.0, -0.6),

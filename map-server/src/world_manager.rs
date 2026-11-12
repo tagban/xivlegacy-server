@@ -3044,6 +3044,28 @@ impl WorldManager {
                     .collect(),
             }
         };
+        // A private area several Echoes share (zone 209
+        // PrivateAreaMasterPast 5) holds every one of their casts. A seeded
+        // NPC tagged with quests (`server_spawn_location_quests`) goes only
+        // to a player holding one of them, so one Echo's scene doesn't
+        // stand in another's.
+        if session.current_private_area_name.is_some() {
+            let mut kept = Vec::with_capacity(neighbours.len());
+            for neighbour in neighbours {
+                let gate = match registry.get(neighbour.0).await {
+                    Some(handle) => handle.character.read().await.base.spawn_quest_ids.clone(),
+                    None => Vec::new(),
+                };
+                if !gate.is_empty() {
+                    let player = actor_handle.character.read().await;
+                    if !gate.iter().any(|&q| player.quest_journal.has(q)) {
+                        continue;
+                    }
+                }
+                kept.push(neighbour);
+            }
+            neighbours = kept;
+        }
         // Seamless-partner-zone neighbours. pmeteor's Player.
         // SendInstanceUpdate scans BOTH `zone` and `zone2` (Player.cs:
         // 2285-2288); a zone-in near the 133/230 Limsa seam must do the
