@@ -186,6 +186,24 @@ pub const BOSS_ROOMS: &[BossRoom] = &[
         radius: 36.0,
         outside: (-987.5, 179.8, 1096.5, 2.8),
     },
+    BossRoom {
+        zone_id: 246,
+        name: "Myrmidon Princess",
+        bnpc_id: 2600,
+        gates: &[],
+        centre: (-1472.0, 247.5, -1470.5),
+        radius: 24.0,
+        outside: (-1390.0, 253.3, -1494.5, -1.29),
+    },
+    BossRoom {
+        zone_id: 246,
+        name: "Chimera",
+        bnpc_id: 2601,
+        gates: &[],
+        centre: (-1314.0, 249.8, -1828.5),
+        radius: 16.0,
+        outside: (-1296.0, 249.7, -1814.5, -2.23),
+    },
 ];
 
 /// Where a dungeon copy starts (`DUNGEONS[..].entry` in
@@ -197,7 +215,7 @@ pub const ENTRANCES: &[(u32, Spot)] = &[
     (159, (885.0, -22.7, 651.0, 1.57)),
     (231, (64.0, 181.25, 192.0, std::f32::consts::PI)),
     (245, (-686.9, 171.3, 1359.9, 0.0)),
-    (246, (-1402.0, 252.2, -1455.0, 0.0)),
+    (246, (-911.0, 250.8, -1532.5, -1.57)),
 ];
 
 pub fn entrance(zone_id: u32) -> Option<Spot> {
