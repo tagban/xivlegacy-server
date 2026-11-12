@@ -30,7 +30,11 @@ require ("quests/man/man0u1")
 
 -- worldMaster duty-block text ids (sheet-decoded during the man0l1
 -- escort work).
-TEXT_PROTECT_ESCORTEE	= 51005;	-- "Protect <displayName> from harm."
+TEXT_PROTECT_ESCORTEE	= 51005;	-- "Protect ~<displayName>/<displayName>'s group~ from harm."
+-- 51005 takes the escortee's display-name id (not an actor id: the client
+-- text macro cannot expand that and raises a Lua error), then 1 for "Protect
+-- <name>", 0 for "Protect <name>'s group".
+FLHAMINN_NAME_ID		= 1900054;
 TEXT_BOUND_BY_DUTY		= 50011;	-- "You are now bound by duty."
 TEXT_UNBOUND_FROM_DUTY	= 50012;	-- "You are no longer bound by duty."
 TEXT_TIME_REMAINING		= 25018;	-- "There ~is/are~ <N> ~minute/minutes~ remaining."
@@ -227,7 +231,7 @@ function onUpdate(tick, area)
 			-- First live sighting = the duty is underway. Retail entry
 			-- order: protect banner → bound-by-duty → timer → her
 			-- "dangers along the way" opener.
-			owner:SendGameMessage(GetWorldMaster(), TEXT_PROTECT_ESCORTEE, 0x20, flhaminn.actorId);
+			owner:SendGameMessage(GetWorldMaster(), TEXT_PROTECT_ESCORTEE, 0x20, FLHAMINN_NAME_ID, 1);
 			owner:SendGameMessage(GetWorldMaster(), TEXT_BOUND_BY_DUTY, 0x20);
 			owner:SendGameMessage(GetWorldMaster(), TEXT_TIME_REMAINING, 0x20, ESCORT_LIMIT_MINUTES);
 			QueueContentTimer(state, tick, state.startTick + ESCORT_LIMIT_TICKS);

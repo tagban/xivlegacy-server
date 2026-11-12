@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1902 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1907 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -1906,4 +1906,9 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (30174, 1090962, 'drg0j4_ughamaro_mail', 135, '', 0, -186.3, 69.6, -1836.9, 0.0, 0, 0, NULL),
 (30175, 1090963, 'drg0j4_bluefog_cave_mail', 173, '', 0, -175.0, 280.0, -1735.0, 0.0, 0, 0, NULL),
 (30176, 1090964, 'drg0j5_stollenwurm_trigger', 148, '', 0, -1790.0, 272.0, -95.0, 0.0, 0, 0, NULL),
-(30177, 1090965, 'drg0j6_griffin_bridge_trigger', 145, '', 0, 1500.0, 232.8, 490.0, 0.0, 0, 0, NULL);
+(30177, 1090965, 'drg0j6_griffin_bridge_trigger', 145, '', 0, 1500.0, 232.8, 490.0, 0.0, 0, 0, NULL),
+(30250, 1500222, 'storm_sergeant_hammil', 132, '', 0, 1346.50, -54.38, -868.00, -0.79, 0, 1045, NULL),
+(30251, 1500224, 'serpent_sergeant_cordwyk', 152, '', 0, -886.00, 33.61, -2184.00, -0.79, 0, 1045, NULL),
+(30252, 1500225, 'serpent_sergeant_lodall', 157, '', 0, -685.00, -15.31, -2061.00, -0.79, 0, 1045, NULL),
+(30253, 1500226, 'flame_sergeant_byrne', 171, '', 0, 1601.00, 256.07, -229.00, -0.79, 0, 1045, NULL),
+(30254, 1500227, 'flame_sergeant_dalvag', 176, '', 0, 83.00, 167.93, -1265.00, -0.79, 0, 1045, NULL);

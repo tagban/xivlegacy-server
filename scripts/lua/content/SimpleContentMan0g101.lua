@@ -36,7 +36,11 @@ require ("quests/man/man0g1")
 -- escort work (direct client text-sheet DAT decode; see
 -- quests/man/man0l1.lua TEXT_*). Global rows, redeclared here because
 -- this VM requires man0g1, not man0l1.
-TEXT_PROTECT_ESCORTEE	= 51005;	-- "Protect <displayName> from harm."
+TEXT_PROTECT_ESCORTEE	= 51005;	-- "Protect ~<displayName>/<displayName>'s group~ from harm."
+-- 51005 takes the escortee's display-name id (not an actor id: the client
+-- text macro cannot expand that and raises a Lua error), then 1 for "Protect
+-- <name>", 0 for "Protect <name>'s group".
+POWLE_NAME_ID			= 1000029;
 TEXT_BOUND_BY_DUTY		= 50011;	-- "You are now bound by duty."
 TEXT_UNBOUND_FROM_DUTY	= 50012;	-- "You are no longer bound by duty."
 TEXT_TIME_REMAINING		= 25018;	-- "There ~is/are~ <N> ~minute/minutes~ remaining."
@@ -374,9 +378,9 @@ function onUpdate(tick, area)
 		if not state.sawKids then
 			-- First live sighting = the duty is underway. Retail entry
 			-- order (man0l1 wire shape): protect banner → bound-by-duty
-			-- → timer. 51005 resolves "<displayName>" from the actor-id
-			-- param — Powle fronts the pair on the walk.
-			owner:SendGameMessage(GetWorldMaster(), TEXT_PROTECT_ESCORTEE, 0x20, powle.actorId);
+			-- → timer. Powle fronts the pair on the walk ("Protect
+			-- Powle's group from harm.").
+			owner:SendGameMessage(GetWorldMaster(), TEXT_PROTECT_ESCORTEE, 0x20, POWLE_NAME_ID, 0);
 			owner:SendGameMessage(GetWorldMaster(), TEXT_BOUND_BY_DUTY, 0x20);
 			owner:SendGameMessage(GetWorldMaster(), TEXT_TIME_REMAINING, 0x20, ESCORT_LIMIT_MINUTES);
 			QueueContentTimer(state, tick, state.startTick + ESCORT_LIMIT_TICKS);

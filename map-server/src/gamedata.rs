@@ -493,6 +493,8 @@ pub struct LoadedPlayer {
     pub quest_scenario: Vec<QuestScenarioEntry>,
     pub guildleves_local: Vec<GuildleveLocalEntry>,
     pub guildleves_regional: Vec<GuildleveRegionalEntry>,
+    /// Faction credits, by faction (Broken Blade, Shields, Horn and Hand).
+    pub faction_credits: [u16; 3],
     pub npc_linkshells: Vec<NpcLinkshellEntry>,
 
     pub inventory_normal: Vec<InventoryItem>,
@@ -727,6 +729,23 @@ pub struct GuildleveGamedata {
     pub authority: u32,
     /// Zone of the camp aetheryte (`aetheryte`), 0 when it isn't spawned.
     pub camp_zone: u32,
+    /// Faction leves: the credits accepting one costs.
+    pub faction_credit_required: u32,
+    /// Survive leves: the hold phase (`server_guildleve_survive`); none
+    /// when the leve's details aren't known yet.
+    pub survive: Option<SurviveHold>,
+}
+
+/// A Survive leve's hold: how long the area is held, and the monster that
+/// attacks meanwhile (display-name id, how many at once). Then the leve's
+/// own targets appear.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SurviveHold {
+    pub seconds: u32,
+    /// The time comes from a 1.0 account (false: the 5-minute default).
+    pub recorded: bool,
+    pub mob: u32,
+    pub up: u8,
 }
 
 // Gamedata row types (ItemData, InventoryItem) live in `crate::data`; import
