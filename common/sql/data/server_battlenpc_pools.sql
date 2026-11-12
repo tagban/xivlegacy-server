@@ -1,4 +1,4 @@
--- server_battlenpc_pools: game data, 566 rows. Reloaded whole when this file changes.
+-- server_battlenpc_pools: game data, 575 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_pools`;
 INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId`, `currentJob`, `combatSkill`, `combatDelay`, `combatDmgMult`, `aggroType`, `immunity`, `linkType`, `spellListId`, `skillListId`) VALUES
@@ -568,4 +568,13 @@ INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId
 (31182, 2104208, 'shroud_hare', 21, 0, 1, 4200, 1.0, 0, 0, 0, 0, 21),
 (31183, 2101904, 'skeleton_soldier', 47, 0, 1, 4200, 1.0, 1, 0, 0, 0, 125),
 (31184, 2104019, 'spiny_dormouse', 12, 0, 1, 4200, 1.0, 0, 0, 0, 0, 12),
-(31192, 2101501, 'wild_hog', 9, 0, 1, 4200, 1.0, 1, 0, 0, 0, 9);
+(31192, 2101501, 'wild_hog', 9, 0, 1, 4200, 1.0, 1, 0, 0, 0, 9),
+(31170, 2109908, 'alchemist_s_tinder', 53, 0, 1, 4200, 1.0, 1, 0, 0, 0, 53),
+(31176, 2106604, 'kobold_prelate', 29, 0, 1, 4200, 1.0, 1, 0, 0, 0, 27),
+(31185, 2106665, 'third_order_patriarch_zu_ga', 29, 0, 1, 4200, 1.0, 1, 0, 0, 0, 27),
+(31186, 2106650, 'u_ghamaro_ashman', 29, 0, 1, 4200, 1.0, 1, 0, 0, 0, 27),
+(31187, 2106655, 'u_ghamaro_gateman', 29, 0, 1, 4200, 1.0, 1, 0, 0, 0, 27),
+(31188, 2106643, 'u_ghamaro_gurneyman', 29, 0, 1, 4200, 1.0, 1, 0, 0, 0, 27),
+(31189, 2106656, 'u_ghamaro_junkman', 29, 0, 1, 4200, 1.0, 1, 0, 0, 0, 27),
+(31190, 2106651, 'u_ghamaro_overman', 29, 0, 1, 4200, 1.0, 1, 0, 0, 0, 27),
+(31191, 2106645, 'u_ghamaro_underman', 29, 0, 1, 4200, 1.0, 1, 0, 0, 0, 27);

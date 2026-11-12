@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1916 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1918 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -1920,4 +1920,6 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (29963, 1090813, 'shposhae_exit1', 235, '', 0, 291.00, 13.23, 269.00, 0.0, 0, 0, NULL),
 (30205, 1091001, 'etc2l3_misty_past', 235, '', 0, -97.00, -89.06, -111.00, 0.0, 0, 0, NULL),
 (29980, 1090820, 'tam_tara_deepcroft_entrance1', 150, '', 0, 300, 15.0, -262, 0.0, 0, 0, NULL),
-(29981, 1090821, 'tam_tara_deepcroft_exit1', 158, '', 0, 283.0, -3.01, -258.0, 0.0, 0, 0, NULL);
+(29981, 1090821, 'tam_tara_deepcroft_exit1', 158, '', 0, 283.0, -3.01, -258.0, 0.0, 0, 0, NULL),
+(29982, 1090822, 'u_ghamaro_mines_entrance1', 135, '', 0, 97.5, 61.7, -2713, 0.0, 0, 0, NULL),
+(29983, 1090823, 'u_ghamaro_mines_exit1', 137, '', 0, 78.0, 48.6, -2801.0, 0.0, 0, 0, NULL);
