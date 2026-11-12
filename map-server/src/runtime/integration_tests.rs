@@ -19729,10 +19729,10 @@ async fn party_copy_owner_leaving_hands_over_the_roster() {
     crate::content_instance::release(active.instance_id);
 }
 
-/// Any zone change out of a party copy's zone leaves the copy; one inside
-/// that zone, or out of a quest duty's copy, doesn't.
+/// Any zone change out of a copy's zone leaves the copy, a party's or a
+/// quest duty's; one inside that zone doesn't.
 #[test]
-fn zone_changes_out_of_a_party_copy_leave_it() {
+fn zone_changes_out_of_a_copy_leave_it() {
     let inst = crate::content_instance::allocate(159).expect("slot");
     let mut active = crate::data::ActiveContentScript {
         parent_zone_id: 159,
@@ -19747,15 +19747,13 @@ fn zone_changes_out_of_a_party_copy_leave_it() {
         instance_id: inst.id,
         party_member: false,
     };
-    use crate::runtime::quest_apply::leaves_party_copy;
-    assert!(!leaves_party_copy(&active, 154), "a quest duty's copy");
+    use crate::runtime::quest_apply::leaves_copy;
+    assert!(leaves_copy(&active, 154), "a quest duty's copy");
+    assert!(!leaves_copy(&active, 159), "a warp inside the duty's zone");
     crate::content_instance::mark_party(inst.id);
-    assert!(leaves_party_copy(&active, 154));
-    assert!(
-        !leaves_party_copy(&active, 159),
-        "a warp inside the dungeon"
-    );
+    assert!(leaves_copy(&active, 154), "a party copy");
+    assert!(!leaves_copy(&active, 159), "a warp inside the dungeon");
     active.instance_id = 0;
-    assert!(!leaves_party_copy(&active, 154), "untracked content");
+    assert!(leaves_copy(&active, 154), "untracked content");
     crate::content_instance::release(inst.id);
 }

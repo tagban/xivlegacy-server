@@ -85,7 +85,9 @@ pub fn mark_party(instance_id: u32) {
     }
 }
 
-/// Whether a live copy was entered by a party ([`mark_party`]).
+/// Whether a live copy was entered by a party ([`mark_party`]). Only the
+/// tests ask: leaving a copy by zone change no longer depends on it.
+#[cfg(test)]
 pub fn is_party(instance_id: u32) -> bool {
     let r = registry().lock().unwrap_or_else(|e| e.into_inner());
     r.party.contains(&instance_id)
