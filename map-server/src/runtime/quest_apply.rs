@@ -2528,13 +2528,13 @@ async fn leave_copy_player_cleanup(
 }
 
 /// Whether a zone change to `dest_zone` takes a player out of their
-/// content copy for good: a copy entered as a party (the dungeons and the
-/// Grand Company duties), and a zone other than the copy's. Warps inside
-/// the copy's zone stay in it.
-pub(crate) fn leaves_party_copy(active: &crate::data::ActiveContentScript, dest_zone: u32) -> bool {
-    active.instance_id != 0
-        && dest_zone != active.parent_zone_id
-        && crate::content_instance::is_party(active.instance_id)
+/// content copy for good: any zone other than the copy's. Warps inside the
+/// copy's zone stay in it. Quest duties included: their scripts finish
+/// the content before warping out, so this only catches the other ways
+/// out (a GM `!zone`, Return, a teleport), which left the duty, its
+/// monsters and its timer up for good.
+pub(crate) fn leaves_copy(active: &crate::data::ActiveContentScript, dest_zone: u32) -> bool {
+    dest_zone != active.parent_zone_id
 }
 
 /// A player leaving a content copy (walking out, warping away, logging
@@ -2821,23 +2821,23 @@ pub(crate) async fn apply_do_zone_change(
         tracing::debug!(player = player_id, "DoZoneChange: no session (NPC?)");
         return;
     }
-    // Out of a party's dungeon copy by any other way than its exit (a
-    // GM warp, Return, a teleport, a home point after a fall): leave it
-    // like the exit does, so it goes on with the party or ends. Without
-    // this the copy and its monsters stayed up for good, and the player
+    // Out of a content copy by any other way than its exit (a GM warp,
+    // Return, a teleport, a home point after a fall): leave it like the
+    // exit does, so it goes on with the party or ends. Without this the
+    // copy, its monsters and its timer stayed up for good, and the player
     // carried its content group into the field.
     if let Some(active) = world
         .session(session_id)
         .await
         .and_then(|s| s.active_content_script)
-        && leaves_party_copy(&active, zone_id)
+        && leaves_copy(&active, zone_id)
     {
         tracing::info!(
             player = player_id,
             instance = active.instance_id,
             from_zone = active.parent_zone_id,
             to_zone = zone_id,
-            "zone change out of a party copy: leaving it",
+            "zone change out of a content copy: leaving it",
         );
         apply_leave_content(player_id, registry, world, lua).await;
     }
