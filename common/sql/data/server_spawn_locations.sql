@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1891 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1902 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -1895,4 +1895,15 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (30163, 1090952, 'brd0j5_zahar_ak_attire', 174, '', 0, 2400.0, 247.8, 1540.0, 0.0, 0, 0, NULL),
 (30164, 1090953, 'brd0j5_turning_leaf_attire', 153, '', 0, -1320.0, -2.3, 340.0, 0.0, 0, 0, NULL),
 (30165, 1090954, 'brd0j5_iron_lake_cave_attire', 135, '', 0, -330.0, 54.0, -1830.0, 0.0, 0, 0, NULL),
-(30166, 1090955, 'brd0j6_griffin_crossing_trigger', 152, '', 0, -1240.0, 20.3, -2245.0, 0.0, 0, 0, NULL);
+(30166, 1090955, 'brd0j6_griffin_crossing_trigger', 152, '', 0, -1240.0, 20.3, -2245.0, 0.0, 0, 0, NULL),
+(30167, 1060040, 'drg_alberic_gates_of_judgement', 145, '', 0, 1380.0, 233.0, 420.0, 1.6, 0, 0, NULL),
+(30168, 1090956, 'drg0j1_nine_ivies_cull_trigger', 151, '', 0, 1665.0, 27.9, -900.0, 0.0, 0, 0, NULL),
+(30169, 1090957, 'drg0j2_bomb_baron_trigger', 132, '', 0, 1340.0, -54.4, -850.0, 0.0, 0, 0, NULL),
+(30170, 1090958, 'drg0j3_spitfire_trigger', 145, '', 0, 1900.0, 126.3, 685.0, 0.0, 0, 0, NULL),
+(30171, 1090959, 'drg0j4_skyfire_foothills_trigger', 145, '', 0, 1265.0, 240.5, 600.0, 0.0, 0, 0, NULL),
+(30172, 1090960, 'drg0j4_aurum_vale_mail', 147, '', 0, -260.0, 238.4, 1160.0, 0.0, 0, 0, NULL),
+(30173, 1090961, 'drg0j4_brittlebark_cave_mail', 190, '', 0, 487.0, 17.0, 600.0, 0.0, 0, 0, NULL),
+(30174, 1090962, 'drg0j4_ughamaro_mail', 135, '', 0, -186.3, 69.6, -1836.9, 0.0, 0, 0, NULL),
+(30175, 1090963, 'drg0j4_bluefog_cave_mail', 173, '', 0, -175.0, 280.0, -1735.0, 0.0, 0, 0, NULL),
+(30176, 1090964, 'drg0j5_stollenwurm_trigger', 148, '', 0, -1790.0, 272.0, -95.0, 0.0, 0, 0, NULL),
+(30177, 1090965, 'drg0j6_griffin_bridge_trigger', 145, '', 0, 1500.0, 232.8, 490.0, 0.0, 0, 0, NULL);

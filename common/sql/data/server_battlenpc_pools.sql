@@ -1,4 +1,4 @@
--- server_battlenpc_pools: game data, 520 rows. Reloaded whole when this file changes.
+-- server_battlenpc_pools: game data, 524 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_pools`;
 INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId`, `currentJob`, `combatSkill`, `combatDelay`, `combatDmgMult`, `aggroType`, `immunity`, `linkType`, `spellListId`, `skillListId`) VALUES
@@ -521,4 +521,8 @@ INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId
 (31329, 2101413, 'brd0j2_bardi', 3, 0, 1, 4200, 1.0, 0, 0, 0, 0, 3),
 (31330, 2101509, 'brd0j3_phaia', 9, 0, 1, 4200, 1.0, 0, 0, 0, 0, 9),
 (31331, 2206409, 'brd0j4_ixali_limbcutter', 24, 0, 1, 4200, 1.0, 0, 0, 0, 0, 24),
-(31332, 2206411, 'brd0j6_ixali_cloudwalker', 24, 0, 1, 6000, 1.0, 0, 0, 0, 0, 24);
+(31332, 2206411, 'brd0j6_ixali_cloudwalker', 24, 0, 1, 6000, 1.0, 0, 0, 0, 0, 24),
+(31333, 2101403, 'drg0j1_dreadwolf', 3, 0, 1, 4200, 1.0, 0, 0, 0, 0, 3),
+(31334, 2101610, 'drg0j2_bomb_baron', 64, 0, 1, 4200, 1.0, 0, 0, 0, 0, 64),
+(31335, 2106208, 'drg0j3_spitfire', 50, 0, 1, 4200, 1.0, 0, 0, 0, 0, 50),
+(31336, 2302201, 'drg0j5_stollenwurm', 30, 0, 1, 6000, 1.0, 0, 0, 0, 0, 30);
