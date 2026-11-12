@@ -1,4 +1,4 @@
--- server_battlenpc_spawn_locations: game data, 4402 rows. Reloaded whole when this file changes.
+-- server_battlenpc_spawn_locations: game data, 4413 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_spawn_locations`;
 INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `groupId`, `positionX`, `positionY`, `positionZ`, `rotation`) VALUES
@@ -4410,4 +4410,15 @@ INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `
 (3728, 'blm0j1_guano_gnat', 31317, -865.0, 90.5, 240.0, 0.0),
 (3729, 'blm0j2_daddy_longlegs', 31318, -1010.0, 89.2, 385.0, 0.0),
 (3730, 'blm0j3_whitetalon', 31319, -980.0, 54.5, -1030.0, 0.0),
-(3731, 'blm0j6_barbatos', 31320, 1575.0, 359.4, 1005.0, 0.0);
+(3731, 'blm0j6_barbatos', 31320, 1575.0, 359.4, 1005.0, 0.0),
+(3732, 'pld0j1_skeleton_swordbearer', 31321, -1746.0, 55.7, -250.0, 0.0),
+(3733, 'pld0j1_skeleton_swordbearer', 31321, -1706.0, 56.4, -250.0, 0.0),
+(3734, 'pld0j1_revenant', 31322, -1726.0, 57.5, -230.0, 0.0),
+(3735, 'pld0j2_alux', 31323, -783.0, -23.8, -2287.0, 0.0),
+(3736, 'pld0j3_old_six_arms', 31324, 631.2, 45.1, 367.5, 0.0),
+(3737, 'pld0j5_jenlyns', 31325, 60.0, 199.0, -620.0, 0.0),
+(3738, 'pld0j5_sultansworn_elite', 31326, 30.0, 197.8, -590.0, 0.0),
+(3739, 'pld0j5_sultansworn_elite', 31326, 120.0, 199.8, -590.0, 0.0),
+(3740, 'pld0j6_sultansworn_elite', 31327, -80.0, 280.1, -1590.0, 0.0),
+(3741, 'pld0j6_sultansworn_elite', 31327, -95.0, 280.6, -1590.0, 0.0),
+(3742, 'pld0j6_sultansworn_elite', 31327, -110.0, 282.0, -1605.0, 0.0);

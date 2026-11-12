@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1876 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1885 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -1876,6 +1876,15 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (30144, 1090935, 'blm0j5_brittlebark_cave_garb', 190, '', 0, 392.0, 19.6, 640.0, 0.0, 0, 0, NULL),
 (30145, 1090936, 'blm0j5_broken_water_cave_garb', 174, '', 0, 1690.0, 296.5, 1080.0, 0.0, 0, 0, NULL),
 (30146, 1090937, 'blm0j6_nalds_reflection_trigger', 174, '', 0, 1580.0, 360.6, 990.0, 0.0, 0, 0, NULL),
+(30147, 1090938, 'pld0j1_undead_trigger', 172, '', 0, -1726.0, 56.1, -250.0, 0.0, 0, 0, NULL),
+(30148, 1090939, 'pld0j2_alux_trigger', 157, '', 0, -761.0, -23.3, -2285.0, 0.0, 0, 0, NULL),
+(30149, 1090940, 'pld0j3_old_six_arms_trigger', 128, '', 0, 640.4, 45.1, 344.3, 0.0, 0, 0, NULL),
+(30150, 1090941, 'pld0j4_aurum_vale_armor', 147, '', 0, -255.0, 237.1, 1150.0, 0.0, 0, 0, NULL),
+(30151, 1090942, 'pld0j4_natalan_armor', 143, '', 0, 950.0, 288.3, -40.0, 0.0, 0, 0, NULL),
+(30152, 1090943, 'pld0j4_brittlebark_cave_armor', 190, '', 0, 487.0, 17.0, 600.0, 0.0, 0, 0, NULL),
+(30153, 1090944, 'pld0j4_crimson_bark_cave_armor', 153, '', 0, -1523.0, -0.7, -579.0, 0.0, 0, 0, NULL),
+(30154, 1090945, 'pld0j5_parley_trigger', 170, '', 0, 60.0, 200.2, -560.0, 0.0, 0, 0, NULL),
+(30155, 1090946, 'pld0j6_bluefog_battle_trigger', 173, '', 0, -95.0, 280.0, -1605.0, 0.0, 0, 0, NULL),
 (30250, 1500222, 'storm_sergeant_hammil', 132, '', 0, 1346.50, -54.38, -868.00, -0.79, 0, 1045, NULL),
 (30251, 1500224, 'serpent_sergeant_cordwyk', 152, '', 0, -886.00, 33.61, -2184.00, -0.79, 0, 1045, NULL),
 (30252, 1500225, 'serpent_sergeant_lodall', 157, '', 0, -685.00, -15.31, -2061.00, -0.79, 0, 1045, NULL),
