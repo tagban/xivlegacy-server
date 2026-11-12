@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1880 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1891 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -1884,4 +1884,15 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (30152, 1090943, 'pld0j4_brittlebark_cave_armor', 190, '', 0, 487.0, 17.0, 600.0, 0.0, 0, 0, NULL),
 (30153, 1090944, 'pld0j4_crimson_bark_cave_armor', 153, '', 0, -1523.0, -0.7, -579.0, 0.0, 0, 0, NULL),
 (30154, 1090945, 'pld0j5_parley_trigger', 170, '', 0, 60.0, 200.2, -560.0, 0.0, 0, 0, NULL),
-(30155, 1090946, 'pld0j6_bluefog_battle_trigger', 173, '', 0, -95.0, 280.0, -1605.0, 0.0, 0, 0, NULL);
+(30155, 1090946, 'pld0j6_bluefog_battle_trigger', 173, '', 0, -95.0, 280.0, -1605.0, 0.0, 0, 0, NULL),
+(30156, 1060039, 'brd_jehantel_tranquil', 154, '', 0, 714.0, -11.5, 1100.0, 1.6, 0, 0, NULL),
+(30157, 1001936, 'brd_pukno_poki_tranquil', 154, '', 0, 890.0, -12.4, 1090.0, -1.6, 0, 0, NULL),
+(30158, 1090947, 'brd0j1_shirrer_trigger', 154, '', 0, 850.0, -12.6, 1080.0, 0.0, 0, 0, NULL),
+(30159, 1090948, 'brd0j2_bardi_trigger', 176, '', 0, -159.0, 167.5, -1299.0, 0.0, 0, 0, NULL),
+(30160, 1090949, 'brd0j3_phaia_trigger', 150, '', 0, -144.8, 2.3, -333.4, 0.0, 0, 0, NULL),
+(30161, 1090950, 'brd0j4_hyrstmill_north_trigger', 152, '', 0, -1035.0, 19.3, -2000.0, 0.0, 0, 0, NULL),
+(30162, 1090951, 'brd0j5_cutters_cry_attire', 173, '', 0, -700.0, 279.6, -2232.0, 0.0, 0, 0, NULL),
+(30163, 1090952, 'brd0j5_zahar_ak_attire', 174, '', 0, 2400.0, 247.8, 1540.0, 0.0, 0, 0, NULL),
+(30164, 1090953, 'brd0j5_turning_leaf_attire', 153, '', 0, -1320.0, -2.3, 340.0, 0.0, 0, 0, NULL),
+(30165, 1090954, 'brd0j5_iron_lake_cave_attire', 135, '', 0, -330.0, 54.0, -1830.0, 0.0, 0, 0, NULL),
+(30166, 1090955, 'brd0j6_griffin_crossing_trigger', 152, '', 0, -1240.0, 20.3, -2245.0, 0.0, 0, 0, NULL);

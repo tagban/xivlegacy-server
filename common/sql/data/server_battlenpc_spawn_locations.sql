@@ -1,4 +1,4 @@
--- server_battlenpc_spawn_locations: game data, 4413 rows. Reloaded whole when this file changes.
+-- server_battlenpc_spawn_locations: game data, 4420 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_spawn_locations`;
 INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `groupId`, `positionX`, `positionY`, `positionZ`, `rotation`) VALUES
@@ -4421,4 +4421,11 @@ INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `
 (3739, 'pld0j5_sultansworn_elite', 31326, 120.0, 199.8, -590.0, 0.0),
 (3740, 'pld0j6_sultansworn_elite', 31327, -80.0, 280.1, -1590.0, 0.0),
 (3741, 'pld0j6_sultansworn_elite', 31327, -95.0, 280.6, -1590.0, 0.0),
-(3742, 'pld0j6_sultansworn_elite', 31327, -110.0, 282.0, -1605.0, 0.0);
+(3742, 'pld0j6_sultansworn_elite', 31327, -110.0, 282.0, -1605.0, 0.0),
+(3743, 'brd0j1_qiqirn_shirrer', 31328, 830.0, -12.2, 1080.0, 0.0),
+(3744, 'brd0j2_bardi', 31329, -173.0, 168.7, -1323.0, 0.0),
+(3745, 'brd0j3_phaia', 31330, -170.0, -4.4, -330.0, 0.0),
+(3746, 'brd0j4_ixali_limbcutter', 31331, -1020.0, 20.1, -2015.0, 0.0),
+(3747, 'brd0j4_ixali_limbcutter', 31331, -1020.0, 19.7, -2030.0, 0.0),
+(3748, 'brd0j6_ixali_cloudwalker', 31332, -1225.0, 21.7, -2245.0, 0.0),
+(3749, 'brd0j6_ixali_cloudwalker', 31332, -1210.0, 22.1, -2245.0, 0.0);
