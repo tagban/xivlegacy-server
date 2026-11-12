@@ -1,4 +1,4 @@
--- server_battlenpc_groups: game data, 818 rows. Reloaded whole when this file changes.
+-- server_battlenpc_groups: game data, 832 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_groups`;
 INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLevel`, `maxLevel`, `respawnTime`, `hp`, `mp`, `dropListId`, `allegiance`, `spawnType`, `animationId`, `actorState`, `privateAreaName`, `privateAreaLevel`, `zoneId`) VALUES
@@ -820,4 +820,18 @@ INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLe
 (31095, 31095, 'shadow_seeker', 15, 15, 90, 300, 0, 0, 0, 0, 0, 0, '', 0, 235),
 (31096, 31096, 'shearing_sheridan', 20, 20, 1800, 2870, 0, 0, 0, 0, 0, 0, '', 0, 235),
 (31097, 31097, 'spawning_orobon', 16, 19, 90, 360, 0, 0, 0, 0, 0, 0, '', 0, 235),
-(31098, 31098, 'spelaean_slug', 16, 19, 90, 360, 0, 0, 0, 0, 0, 0, '', 0, 235);
+(31098, 31098, 'spelaean_slug', 16, 19, 90, 360, 0, 0, 0, 0, 0, 0, '', 0, 235),
+(31171, 31171, 'black_eft', 40, 40, 90, 1825, 0, 0, 0, 0, 0, 0, '', 0, 158),
+(31172, 31172, 'devilet', 41, 44, 90, 2069, 0, 0, 0, 0, 0, 0, '', 0, 158),
+(31173, 31173, 'floating_eye', 40, 42, 90, 1947, 0, 0, 0, 0, 0, 0, '', 0, 158),
+(31174, 31174, 'friar_s_lantern', 35, 39, 90, 1347, 0, 0, 0, 0, 0, 0, '', 0, 158),
+(31175, 31175, 'goblin_freesword', 40, 40, 90, 1825, 0, 0, 0, 0, 0, 0, '', 0, 158),
+(31177, 31177, 'lemur', 45, 49, 90, 2752, 0, 0, 0, 0, 0, 0, '', 0, 158),
+(31178, 31178, 'plain_pudding', 44, 44, 90, 2314, 0, 0, 0, 0, 0, 0, '', 0, 158),
+(31179, 31179, 'pus_gnat', 40, 43, 90, 1947, 0, 0, 0, 0, 0, 0, '', 0, 158),
+(31180, 31180, 'rotting_corpse', 45, 49, 90, 2752, 0, 0, 0, 0, 0, 0, '', 0, 158),
+(31181, 31181, 'scarred_kalong', 45, 49, 90, 2752, 0, 0, 0, 0, 0, 0, '', 0, 158),
+(31182, 31182, 'shroud_hare', 40, 42, 90, 1947, 0, 0, 0, 0, 0, 0, '', 0, 158),
+(31183, 31183, 'skeleton_soldier', 40, 44, 90, 2069, 0, 0, 0, 0, 0, 0, '', 0, 158),
+(31184, 31184, 'spiny_dormouse', 45, 49, 90, 2752, 0, 0, 0, 0, 0, 0, '', 0, 158),
+(31192, 31192, 'wild_hog', 40, 40, 90, 1825, 0, 0, 0, 0, 0, 0, '', 0, 158);
