@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1911 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1914 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -77,7 +77,7 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (74, 1001260, 'ipaghlo', 175, '', 0, -145.89, 185.45, 122.34, -2.18, 0, 0, NULL),
 (75, 1001371, 'totonawa', 175, '', 0, -54.07, 196.47, 52.49, -0.9, 0, 1041, NULL),
 (76, 1001372, 'eustace', 175, '', 0, -52.83, 196.01, 53.44, -0.34, 0, 1016, NULL),
-(77, 1001424, 'gegeissa', 175, '', 0, -41.0, 192.1, 11.0, -0.56, 0, 0, NULL),
+(77, 1001424, 'gegeissa', 175, '', 0, -34.0, 192.1, 19.0, -0.56, 0, 0, NULL),
 (78, 1001426, 'hehena', 175, '', 0, 67.72, 192.0, 209.29, 1.27, 0, 0, NULL),
 (79, 1001427, 'guillaunaux', 175, '', 0, 70.42, 191.98, 199.33, 1.27, 0, 0, NULL),
 (80, 1001428, 'yuyuhase', 175, '', 0, -218.1, 190.0, 23.69, 0.65, 0, 1041, NULL),
@@ -1915,4 +1915,7 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (30201, 1001578, 'etc3u1_nymiene', 170, '', 0, -450.0, 183.84, -134.0, 1.57, 0, 0, NULL),
 (30202, 1001579, 'etc3u1_aergfloh', 170, '', 0, -447.0, 184.0, -127.0, 2.36, 0, 0, NULL),
 (30203, 1001839, 'etc2i2_foxe', 145, '', 0, 2550.0, 175.08, 1300.0, -2.36, 0, 0, NULL),
-(30204, 1001641, 'etc201_leleyo', 143, '', 0, 222.0, 302.07, -252.0, -0.8, 0, 0, NULL);
+(30204, 1001641, 'etc201_leleyo', 143, '', 0, 222.0, 302.07, -252.0, -0.8, 0, 0, NULL),
+(29962, 1090812, 'shposhae_entrance1', 128, '', 0, 283.00, 23.60, 302.00, 0.0, 0, 0, NULL),
+(29963, 1090813, 'shposhae_exit1', 235, '', 0, 291.00, 13.23, 269.00, 0.0, 0, 0, NULL),
+(30205, 1091001, 'etc2l3_misty_past', 235, '', 0, -97.00, -89.06, -111.00, 0.0, 0, 0, NULL);

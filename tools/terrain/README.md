@@ -45,6 +45,12 @@ sliding the dungeon's monster spawns over the layout's floor until every one lan
 | 231 Dzemael Darkhold | `roc_r0_dun01` | -12.0, 187.7, 34.0 | 140 / 140 |
 | 245 Aurum Vale | `roc_r0_dun04` | -938.5, 195.5, 1377.5 | 91 / 91 |
 | 246 Cutter's Cry | `wil_w0_dun05` | -1213.0, 251.4, -1627.5 | 87 / 87 |
+| 235 Shposhae | `sea_s0_dun04` | 256.0, 20.3, 288.0 | see below |
+
+Shposhae had no monsters to slide, so its x and z come from fitting the layout's floor over
+its five client floor maps (map ids 1091-1099, map sheet area 114). Its y comes from the
+Lower La Noscea cave that the dungeon's first passage overlaps. In the client, four points on
+different floors landed within 0.3 yalm of the layout floor.
 
 The y offset is the median (multi-level dungeons spread a few yalms). This is how Toto-Rak's
 three boss chambers were found: round rooms by the chamber doors with no monsters in them.
