@@ -1,4 +1,4 @@
--- server_battlenpc_groups: game data, 785 rows. Reloaded whole when this file changes.
+-- server_battlenpc_groups: game data, 790 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_groups`;
 INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLevel`, `maxLevel`, `respawnTime`, `hp`, `mp`, `dropListId`, `allegiance`, `spawnType`, `animationId`, `actorState`, `privateAreaName`, `privateAreaLevel`, `zoneId`) VALUES
@@ -787,4 +787,9 @@ INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLe
 (31329, 31329, 'brd0j2_bardi', 35, 35, 0, 1400, 0, 0, 0, 16, 0, 0, '', 0, 176),
 (31330, 31330, 'brd0j3_phaia', 40, 40, 0, 1600, 0, 0, 0, 16, 0, 0, '', 0, 150),
 (31331, 31331, 'brd0j4_ixali_limbcutter', 42, 42, 0, 800, 0, 0, 0, 16, 0, 0, '', 0, 152),
-(31332, 31332, 'brd0j6_ixali_cloudwalker', 45, 45, 0, 700, 0, 0, 0, 16, 0, 0, '', 0, 152);
+(31332, 31332, 'brd0j6_ixali_cloudwalker', 45, 45, 0, 700, 0, 0, 0, 16, 0, 0, '', 0, 152),
+(31333, 31333, 'drg0j1_dreadwolf', 30, 30, 0, 700, 0, 0, 0, 16, 0, 0, '', 0, 151),
+(31334, 31334, 'drg0j2_bomb_baron', 35, 35, 0, 1400, 0, 0, 0, 16, 0, 0, '', 0, 132),
+(31335, 31335, 'drg0j3_spitfire', 40, 40, 0, 1600, 0, 0, 0, 16, 0, 0, '', 0, 145),
+(31336, 31336, 'drg0j5_stollenwurm', 45, 45, 0, 1500, 0, 0, 0, 16, 0, 0, '', 0, 148),
+(31337, 31336, 'drg0j6_drake', 45, 45, 0, 700, 0, 0, 0, 16, 0, 0, '', 0, 145);

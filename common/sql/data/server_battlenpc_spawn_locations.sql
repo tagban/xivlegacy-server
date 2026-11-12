@@ -1,4 +1,4 @@
--- server_battlenpc_spawn_locations: game data, 4420 rows. Reloaded whole when this file changes.
+-- server_battlenpc_spawn_locations: game data, 4427 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_spawn_locations`;
 INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `groupId`, `positionX`, `positionY`, `positionZ`, `rotation`) VALUES
@@ -4428,4 +4428,11 @@ INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `
 (3746, 'brd0j4_ixali_limbcutter', 31331, -1020.0, 20.1, -2015.0, 0.0),
 (3747, 'brd0j4_ixali_limbcutter', 31331, -1020.0, 19.7, -2030.0, 0.0),
 (3748, 'brd0j6_ixali_cloudwalker', 31332, -1225.0, 21.7, -2245.0, 0.0),
-(3749, 'brd0j6_ixali_cloudwalker', 31332, -1210.0, 22.1, -2245.0, 0.0);
+(3749, 'brd0j6_ixali_cloudwalker', 31332, -1210.0, 22.1, -2245.0, 0.0),
+(3750, 'drg0j1_dreadwolf', 31333, 1665.0, 25.4, -885.0, 0.0),
+(3751, 'drg0j1_dreadwolf', 31333, 1680.0, 21.1, -885.0, 0.0),
+(3752, 'drg0j2_bomb_baron', 31334, 1325.0, -54.9, -812.0, 0.0),
+(3753, 'drg0j3_spitfire', 31335, 1885.0, 127.1, 700.0, 0.0),
+(3754, 'drg0j5_stollenwurm', 31336, -1775.0, 273.9, -95.0, 0.0),
+(3755, 'drg0j6_drake', 31337, 1502.0, 230.8, 484.0, 0.0),
+(3756, 'drg0j6_drake', 31337, 1502.0, 234.1, 496.0, 0.0);
