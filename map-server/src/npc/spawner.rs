@@ -161,7 +161,7 @@ async fn spawn_one(
     is_battle: bool,
 ) -> Option<u32> {
     // 1. Build the actor-specific struct.
-    let (actor_id, character, kind_tag, grid_kind) = if is_battle {
+    let (actor_id, mut character, kind_tag, grid_kind) = if is_battle {
         let bnpc = BattleNpc::new(
             actor_number,
             class,
@@ -216,6 +216,7 @@ async fn spawn_one(
         let id = npc.actor_id();
         (id, npc.character, ActorKindTag::Npc, ActorKind::Npc)
     };
+    character.base.spawn_quest_ids = seed.quest_ids.clone();
 
     // 2. Push a spatial projection into the zone. Private-area seeds
     //    land in their area's own core (pmeteor's per-Area actor pool —
@@ -408,6 +409,30 @@ mod tests {
         let actor_id = spawn_from_location(&ctx, 100, 1, &s).await;
         assert!(actor_id.is_some());
         assert_eq!(registry.len().await, 1);
+    }
+
+    #[tokio::test]
+    async fn a_seeds_quests_ride_onto_its_actor() {
+        let world = WorldManager::new();
+        let registry = ActorRegistry::new();
+        world.register_zone(mk_zone(100)).await;
+        let mut classes = HashMap::new();
+        classes.insert(42, class(42));
+        let ctx = SpawnContext {
+            world: &world,
+            registry: &registry,
+            actor_classes: &classes,
+            battle_class_ids: &HashSet::new(),
+            npc_appearances: &std::collections::HashMap::new(),
+        };
+        let mut s = seed(42, "echo_npc", 0.0, 0.0);
+        s.quest_ids = vec![110_010, 110_081];
+        let actor_id = spawn_from_location(&ctx, 100, 1, &s).await.unwrap();
+        let handle = registry.get(actor_id).await.unwrap();
+        assert_eq!(
+            handle.character.read().await.base.spawn_quest_ids,
+            vec![110_010, 110_081]
+        );
     }
 
     #[tokio::test]

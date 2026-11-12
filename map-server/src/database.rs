@@ -744,7 +744,10 @@ impl Database {
                              sl.privateAreaName, sl.privateAreaLevel,
                              sl.positionX, sl.positionY, sl.positionZ, sl.rotation,
                              sl.actorState, sl.animationId,
-                             mo.layoutId, mo.instanceId
+                             mo.layoutId, mo.instanceId,
+                             (SELECT GROUP_CONCAT(sq.questId)
+                                FROM server_spawn_location_quests sq
+                               WHERE sq.spawnId = sl.id)
                       FROM server_spawn_locations sl
                       LEFT JOIN server_eventnpc_mapobj mo ON mo.id = sl.id",
                 )?;
@@ -764,6 +767,14 @@ impl Database {
                             animation_id: r.get::<_, u32>(10).unwrap_or_default(),
                             mapobj_layout_id: r.get::<_, u32>(11).unwrap_or_default(),
                             mapobj_instance_id: r.get::<_, u32>(12).unwrap_or_default(),
+                            quest_ids: r
+                                .get::<_, Option<String>>(13)
+                                .ok()
+                                .flatten()
+                                .map(|s| {
+                                    s.split(',').filter_map(|q| q.trim().parse().ok()).collect()
+                                })
+                                .unwrap_or_default(),
                         })
                     })?
                     .collect::<common::sql::Result<_>>()?;

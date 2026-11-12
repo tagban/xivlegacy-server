@@ -18846,6 +18846,17 @@ async fn collusion_moves_a_weaponskill_or_spells_enmity_too() {
                 c.chara.mp = 5000;
                 c.chara.max_mp = 5000;
             }
+            // Only the try that uses Collusion up counts: an earlier one
+            // that missed (or was resisted) leaves the attacker's enmity.
+            registry
+                .get(2)
+                .await
+                .unwrap()
+                .character
+                .write()
+                .await
+                .hate
+                .clear_hate(None);
             dispatch_battle_event(
                 &BattleEvent::ResolveAction {
                     attacker_actor_id: 1,
@@ -19718,10 +19729,10 @@ async fn party_copy_owner_leaving_hands_over_the_roster() {
     crate::content_instance::release(active.instance_id);
 }
 
-/// Any zone change out of a party copy's zone leaves the copy; one inside
-/// that zone, or out of a quest duty's copy, doesn't.
+/// Any zone change out of a copy's zone leaves the copy, a party's or a
+/// quest duty's; one inside that zone doesn't.
 #[test]
-fn zone_changes_out_of_a_party_copy_leave_it() {
+fn zone_changes_out_of_a_copy_leave_it() {
     let inst = crate::content_instance::allocate(159).expect("slot");
     let mut active = crate::data::ActiveContentScript {
         parent_zone_id: 159,
@@ -19736,15 +19747,96 @@ fn zone_changes_out_of_a_party_copy_leave_it() {
         instance_id: inst.id,
         party_member: false,
     };
-    use crate::runtime::quest_apply::leaves_party_copy;
-    assert!(!leaves_party_copy(&active, 154), "a quest duty's copy");
+    use crate::runtime::quest_apply::leaves_copy;
+    assert!(leaves_copy(&active, 154), "a quest duty's copy");
+    assert!(!leaves_copy(&active, 159), "a warp inside the duty's zone");
     crate::content_instance::mark_party(inst.id);
-    assert!(leaves_party_copy(&active, 154));
-    assert!(
-        !leaves_party_copy(&active, 159),
-        "a warp inside the dungeon"
-    );
+    assert!(leaves_copy(&active, 154), "a party copy");
+    assert!(!leaves_copy(&active, 159), "a warp inside the dungeon");
     active.instance_id = 0;
-    assert!(!leaves_party_copy(&active, 154), "untracked content");
+    assert!(leaves_copy(&active, 154), "untracked content");
     crate::content_instance::release(inst.id);
+}
+
+/// `player:GetContentAreaName()` returns the duty the player is in, and nil
+/// outside one.
+#[test]
+fn lua_player_get_content_area_name() {
+    use crate::lua::command::CommandQueue;
+    use crate::lua::userdata::{LuaPlayer, PlayerSnapshot};
+    use mlua::Lua;
+
+    let lua = Lua::new();
+    for (area, want) in [("Mnk0j601", Some("Mnk0j601")), ("", None)] {
+        let player = LuaPlayer {
+            snapshot: PlayerSnapshot {
+                actor_id: 9,
+                content_area_name: area.to_string(),
+                ..Default::default()
+            },
+            queue: CommandQueue::new(),
+        };
+        lua.globals().set("player", player).unwrap();
+        let got: Option<String> = lua
+            .load("return player:GetContentAreaName()")
+            .eval()
+            .unwrap();
+        assert_eq!(got.as_deref(), want);
+    }
+}
+
+/// Two job quests at their fight steps at once (Pld0j1 at SEQ_010, Mnk0j6 at
+/// SEQ_000) share the job quest directors: the duty's win goes to the quest
+/// whose duty the player is in, never just the first held one.
+#[test]
+fn job_fight_director_credits_the_duty_quest() {
+    use mlua::Lua;
+
+    let root = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../scripts/lua"));
+    let src = std::fs::read_to_string(root.join("jobquest.lua")).unwrap();
+    let lua = Lua::new();
+    lua.load(
+        r#"
+        require = function() end
+        questBattle = { runDirector = function(player, actor, questId, onWin) credited = questId end }
+        function makePlayer(area)
+            local held = { [111281] = 10, [111226] = 0 }
+            return {
+                GetContentAreaName = function(self) return area end,
+                HasQuest = function(self, id) return held[id] ~= nil end,
+                GetQuest = function(self, id)
+                    return { GetSequence = function() return held[id] end }
+                end,
+                EndEvent = function(self) ended = true end,
+            }
+        end
+        "#,
+    )
+    .exec()
+    .unwrap();
+    lua.load(&src).exec().unwrap();
+    lua.load(
+        r#"
+        local noop = function() end
+        jobQuest.registerFight(111281, 10, noop)
+        jobQuest.registerFight(111226, 0, noop)
+        function route(area)
+            credited, ended = nil, false
+            jobQuest.runFightDirector(makePlayer(area), {})
+            return credited, ended
+        end
+        "#,
+    )
+    .exec()
+    .unwrap();
+    let route = |area: Option<&str>| -> (Option<u32>, bool) {
+        let f: mlua::Function = lua.globals().get("route").unwrap();
+        f.call(area).unwrap()
+    };
+    assert_eq!(route(Some("Mnk0j601")), (Some(111226), false));
+    assert_eq!(route(Some("Pld0j101")), (Some(111281), false));
+    // A job quest duty whose quest isn't at its fight step credits nothing.
+    assert_eq!(route(Some("War0j601")), (None, true));
+    // Not a job quest duty: nothing either.
+    assert_eq!(route(Some("Etc3l101")), (None, true));
 }
