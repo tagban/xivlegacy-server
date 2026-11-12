@@ -117,6 +117,7 @@ pub async fn fire_on_kill_bnpc(
             current_level: c.chara.level,
             current_job: c.chara.current_job as u8,
             gc_current: c.chara.gc_current,
+            faction_credits: c.chara.faction_credits,
             gc_rank_limsa: c.chara.gc_rank_limsa,
             gc_rank_gridania: c.chara.gc_rank_gridania,
             gc_rank_uldah: c.chara.gc_rank_uldah,

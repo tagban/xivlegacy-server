@@ -18846,6 +18846,17 @@ async fn collusion_moves_a_weaponskill_or_spells_enmity_too() {
                 c.chara.mp = 5000;
                 c.chara.max_mp = 5000;
             }
+            // Only the try that uses Collusion up counts: an earlier one
+            // that missed (or was resisted) leaves the attacker's enmity.
+            registry
+                .get(2)
+                .await
+                .unwrap()
+                .character
+                .write()
+                .await
+                .hate
+                .clear_hate(None);
             dispatch_battle_event(
                 &BattleEvent::ResolveAction {
                     attacker_actor_id: 1,

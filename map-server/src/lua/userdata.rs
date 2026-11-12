@@ -574,6 +574,8 @@ pub struct PlayerSnapshot {
     /// Grand Company allegiance — 0 = not enlisted, 1 = Maelstrom,
     /// 2 = Twin Adder, 3 = Immortal Flames.
     pub gc_current: u8,
+    /// Faction credits: Broken Blade, Azeyma's Shields, Horn and Hand.
+    pub faction_credits: [u16; 3],
     pub gc_rank_limsa: u8,
     pub gc_rank_gridania: u8,
     pub gc_rank_uldah: u8,
@@ -750,6 +752,7 @@ impl From<&crate::actor::Player> for PlayerSnapshot {
             rental_expire_time: p.character.chara.rental_expire_time,
             rental_min_left: p.character.chara.rental_min_left,
             gc_current: p.character.chara.gc_current,
+            faction_credits: p.character.chara.faction_credits,
             gc_rank_limsa: p.character.chara.gc_rank_limsa,
             gc_rank_gridania: p.character.chara.gc_rank_gridania,
             gc_rank_uldah: p.character.chara.gc_rank_uldah,
@@ -1521,6 +1524,36 @@ impl UserData for LuaPlayer {
                         player_id: this.snapshot.actor_id,
                         guildleve_id: gl_id,
                         difficulty: difficulty.unwrap_or(1),
+                    },
+                );
+                Ok(())
+            },
+        );
+        // Faction credits (crate::leve::faction): the three totals, taking
+        // a faction leve (spends its cost), and granting or removing some.
+        methods.add_method("GetFactionCredits", |_, this, _: ()| {
+            let [a, b, c] = this.snapshot.faction_credits;
+            Ok((a, b, c))
+        });
+        methods.add_method("AcceptFactionLeve", |_, this, gl_id: u32| {
+            push(
+                &this.queue,
+                LuaCommand::AcceptFactionLeve {
+                    player_id: this.snapshot.actor_id,
+                    guildleve_id: gl_id,
+                },
+            );
+            Ok(())
+        });
+        methods.add_method(
+            "AddFactionCredits",
+            |_, this, (faction, amount): (u8, i32)| {
+                push(
+                    &this.queue,
+                    LuaCommand::AddFactionCredits {
+                        player_id: this.snapshot.actor_id,
+                        faction,
+                        amount,
                     },
                 );
                 Ok(())
