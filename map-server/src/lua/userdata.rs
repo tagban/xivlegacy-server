@@ -468,7 +468,17 @@ impl UserData for LuaNpc {
             Ok(Value::Nil)
         });
         methods.add_method("GetZoneID", |_, this, _: ()| Ok(this.base.zone_id));
-        methods.add_method("SetQuestGraphic", |_, this, graphic: u8| {
+        // Meteor's form is `npc:SetQuestGraphic(player, graphic)` (the
+        // Hildibrand scripts, pfarahr/vkorolon); a bare `(graphic)` is
+        // accepted too. With the player first, the u8 conversion of the
+        // userdata failed and killed the talk mid-event (Etc5u1's offer
+        // at Otopa Pottopa never reached its EndEvent).
+        methods.add_method("SetQuestGraphic", |_, this, args: mlua::Variadic<Value>| {
+            let graphic = match args.last() {
+                Some(Value::Integer(n)) => *n as u8,
+                Some(Value::Number(n)) => *n as u8,
+                _ => 0,
+            };
             push(
                 &this.base.queue,
                 LuaCommand::GraphicChange {
