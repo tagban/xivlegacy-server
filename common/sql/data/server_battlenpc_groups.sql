@@ -1,4 +1,4 @@
--- server_battlenpc_groups: game data, 818 rows. Reloaded whole when this file changes.
+-- server_battlenpc_groups: game data, 824 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_groups`;
 INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLevel`, `maxLevel`, `respawnTime`, `hp`, `mp`, `dropListId`, `allegiance`, `spawnType`, `animationId`, `actorState`, `privateAreaName`, `privateAreaLevel`, `zoneId`) VALUES
@@ -820,4 +820,10 @@ INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLe
 (31095, 31095, 'shadow_seeker', 15, 15, 90, 300, 0, 0, 0, 0, 0, 0, '', 0, 235),
 (31096, 31096, 'shearing_sheridan', 20, 20, 1800, 2870, 0, 0, 0, 0, 0, 0, '', 0, 235),
 (31097, 31097, 'spawning_orobon', 16, 19, 90, 360, 0, 0, 0, 0, 0, 0, '', 0, 235),
-(31098, 31098, 'spelaean_slug', 16, 19, 90, 360, 0, 0, 0, 0, 0, 0, '', 0, 235);
+(31098, 31098, 'spelaean_slug', 16, 19, 90, 360, 0, 0, 0, 0, 0, 0, '', 0, 235),
+(31150, 30046, 'batraal', 56, 56, 0, 23300, 0, 0, 0, 1, 0, 0, '', 0, 231),
+(31151, 30047, 'all_seeing_eye', 54, 54, 0, 20800, 0, 0, 0, 1, 0, 0, '', 0, 231),
+(31152, 30048, 'soulgazer', 54, 54, 0, 20800, 0, 0, 0, 1, 0, 0, '', 0, 231),
+(31153, 30059, 'deepvoid_slave', 55, 55, 0, 4234, 0, 0, 0, 1, 0, 0, '', 0, 231),
+(31154, 30070, 'chain_bearer', 55, 55, 0, 4234, 0, 0, 0, 1, 0, 0, '', 0, 231),
+(31155, 30071, 'purgatory_mage', 55, 55, 0, 4234, 0, 0, 0, 1, 0, 0, '', 0, 231);
