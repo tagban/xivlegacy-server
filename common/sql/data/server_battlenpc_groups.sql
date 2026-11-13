@@ -1,4 +1,4 @@
--- server_battlenpc_groups: game data, 837 rows. Reloaded whole when this file changes.
+-- server_battlenpc_groups: game data, 860 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_groups`;
 INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLevel`, `maxLevel`, `respawnTime`, `hp`, `mp`, `dropListId`, `allegiance`, `spawnType`, `animationId`, `actorState`, `privateAreaName`, `privateAreaLevel`, `zoneId`) VALUES
@@ -839,4 +839,27 @@ INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLe
 (31165, 30052, 'chimera', 60, 60, 0, 29200, 0, 0, 0, 1, 0, 0, '', 0, 246),
 (31166, 30063, 'myrmidon_guard', 55, 55, 0, 4234, 0, 0, 0, 1, 0, 0, '', 0, 246),
 (31167, 30064, 'myrmidon_marshal', 56, 56, 0, 4478, 0, 0, 0, 1, 0, 0, '', 0, 246),
-(31168, 30065, 'myrmidon_scavenger', 52, 52, 0, 3578, 0, 0, 0, 1, 0, 0, '', 0, 246);
+(31168, 30065, 'myrmidon_scavenger', 52, 52, 0, 3578, 0, 0, 0, 1, 0, 0, '', 0, 246),
+(31171, 31171, 'black_eft', 40, 40, 90, 1825, 0, 0, 0, 0, 0, 0, '', 0, 158),
+(31172, 31172, 'devilet', 41, 44, 90, 2069, 0, 0, 0, 0, 0, 0, '', 0, 158),
+(31173, 31173, 'floating_eye', 40, 42, 90, 1947, 0, 0, 0, 0, 0, 0, '', 0, 158),
+(31174, 31174, 'friar_s_lantern', 35, 39, 90, 1347, 0, 0, 0, 0, 0, 0, '', 0, 158),
+(31175, 31175, 'goblin_freesword', 40, 40, 90, 1825, 0, 0, 0, 0, 0, 0, '', 0, 158),
+(31177, 31177, 'lemur', 45, 49, 90, 2752, 0, 0, 0, 0, 0, 0, '', 0, 158),
+(31178, 31178, 'plain_pudding', 44, 44, 90, 2314, 0, 0, 0, 0, 0, 0, '', 0, 158),
+(31179, 31179, 'pus_gnat', 40, 43, 90, 1947, 0, 0, 0, 0, 0, 0, '', 0, 158),
+(31180, 31180, 'rotting_corpse', 45, 49, 90, 2752, 0, 0, 0, 0, 0, 0, '', 0, 158),
+(31181, 31181, 'scarred_kalong', 45, 49, 90, 2752, 0, 0, 0, 0, 0, 0, '', 0, 158),
+(31182, 31182, 'shroud_hare', 40, 42, 90, 1947, 0, 0, 0, 0, 0, 0, '', 0, 158),
+(31183, 31183, 'skeleton_soldier', 40, 44, 90, 2069, 0, 0, 0, 0, 0, 0, '', 0, 158),
+(31184, 31184, 'spiny_dormouse', 45, 49, 90, 2752, 0, 0, 0, 0, 0, 0, '', 0, 158),
+(31192, 31192, 'wild_hog', 40, 40, 90, 1825, 0, 0, 0, 0, 0, 0, '', 0, 158),
+(31170, 31170, 'alchemist_s_tinder', 50, 50, 90, 3225, 0, 0, 0, 0, 0, 0, '', 0, 137),
+(31176, 31176, 'kobold_prelate', 50, 53, 90, 3225, 0, 0, 0, 0, 0, 0, '', 0, 137),
+(31185, 31185, 'third_order_patriarch_zu_ga', 59, 59, 1800, 25800, 0, 0, 0, 0, 0, 0, '', 0, 137),
+(31186, 31186, 'u_ghamaro_ashman', 55, 55, 90, 3225, 0, 0, 0, 0, 0, 0, '', 0, 137),
+(31187, 31187, 'u_ghamaro_gateman', 56, 57, 90, 3225, 0, 0, 0, 0, 0, 0, '', 0, 137),
+(31188, 31188, 'u_ghamaro_gurneyman', 52, 57, 90, 3225, 0, 0, 0, 0, 0, 0, '', 0, 137),
+(31189, 31189, 'u_ghamaro_junkman', 53, 56, 90, 3225, 0, 0, 0, 0, 0, 0, '', 0, 137),
+(31190, 31190, 'u_ghamaro_overman', 55, 55, 90, 3225, 0, 0, 0, 0, 0, 0, '', 0, 137),
+(31191, 31191, 'u_ghamaro_underman', 50, 50, 90, 3225, 0, 0, 0, 0, 0, 0, '', 0, 137);
