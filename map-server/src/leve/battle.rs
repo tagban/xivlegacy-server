@@ -388,6 +388,9 @@ struct Leve {
     holding: bool,
     hold_end_ms: u64,
     hold_offset: u16,
+    /// The faction sponsoring this regional leve, credited on completion
+    /// ([`crate::leve::faction::sponsor_of`]).
+    sponsor: Option<u8>,
 }
 
 static ACTIVE: Mutex<Vec<Leve>> = Mutex::new(Vec::new());
@@ -831,6 +834,7 @@ pub async fn start(
         holding: false,
         hold_end_ms: 0,
         hold_offset: 0,
+        sponsor: crate::leve::faction::sponsor_of(&gd),
     };
     if let Some(hold) = gd.survive.clone().filter(|_| gd.plate_id == PLATE_SURVIVE) {
         leve.hold_class = db
@@ -2134,6 +2138,18 @@ async fn complete(
     for &p in &paid {
         crate::runtime::quest_apply::apply_add_gil(p, leve.reward_gil, registry, Some(world), db)
             .await;
+    }
+    if let Some(faction) = leve.sponsor {
+        for &p in &paid {
+            crate::leve::faction::add_credits(
+                p,
+                faction,
+                crate::leve::faction::CREDITS_PER_LEVE,
+                registry,
+                db,
+            )
+            .await;
+        }
     }
     tracing::info!(
         player = player_id,

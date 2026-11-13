@@ -38,6 +38,39 @@ use crate::world_manager::WorldManager;
 /// "up to 1,000 credits").
 pub const CAP: u16 = 1_000;
 
+/// Credits a completed regional leve gives its sponsoring faction (the
+/// user's call, 2026-11-13). The client's text says a faction whose
+/// standing in the area is low gives more; standings aren't kept, so it is
+/// always this.
+pub const CREDITS_PER_LEVE: i32 = 10;
+
+/// Which faction sponsors the regional leves of each city's region
+/// (`GuildleveGamedata::location`): (city, faction, why). No source names
+/// a regional leve's sponsor, so (the user's call, 2026-11-13) every
+/// regional leve of a region goes to one faction. Change it here.
+const SPONSOR_BY_CITY: &[(u8, u8, &str)] = &[
+    // Limsa Lominsa, La Noscea: the Broken Blade's vigilantes against the
+    // Sahagin, Kobolds and pirates (its first operations run from Skull
+    // Valley and Bloodshore).
+    (1, 1, "La Noscea: Brotherhood of the Broken Blade"),
+    // Gridania, the Black Shroud: the Horn and Hand's merchants.
+    (2, 3, "the Black Shroud: the Horn and Hand"),
+    // Ul'dah, Thanalan: Azeyma's Shields, named for Ul'dah's patron.
+    (3, 2, "Thanalan: Azeyma's Shields"),
+];
+
+/// The faction (1 Broken Blade, 2 Azeyma's Shields, 3 Horn and Hand) that
+/// sponsors regional leve `gd`, or `None` for any other leve.
+pub fn sponsor_of(gd: &GuildleveGamedata) -> Option<u8> {
+    if !crate::leve::battle::is_regional(gd.id) {
+        return None;
+    }
+    SPONSOR_BY_CITY
+        .iter()
+        .find(|(city, _, _)| *city == gd.location)
+        .map(|&(_, faction, _)| faction)
+}
+
 /// Cards in one faction menu page.
 const CARDS: usize = 8;
 
@@ -155,6 +188,23 @@ pub async fn accept(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn each_region_sponsors_its_regional_leves() {
+        let mut gd = leve(10_801, 40001, 20);
+        for (city, faction) in [(1, 1), (2, 3), (3, 2)] {
+            gd.location = city;
+            assert_eq!(sponsor_of(&gd), Some(faction));
+        }
+        gd.location = 9;
+        assert_eq!(sponsor_of(&gd), None);
+        // faction and GC leves earn nothing
+        for id in [1_001, 20_901] {
+            let mut gd = leve(id, 40019, 20);
+            gd.location = 1;
+            assert_eq!(sponsor_of(&gd), None);
+        }
+    }
 
     #[test]
     fn credits_stay_within_zero_and_the_cap() {
