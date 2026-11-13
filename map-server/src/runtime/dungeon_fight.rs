@@ -168,6 +168,24 @@ pub const BOSS_ROOMS: &[BossRoom] = &[
         radius: 15.0,
         outside: (-109.0, 153.2, -255.0, -3.04),
     },
+    BossRoom {
+        zone_id: 245,
+        name: "Coincounter",
+        bnpc_id: 2300,
+        gates: &["rocdun4_barrier_coincnterschest"],
+        centre: (-1081.5, 189.0, 1282.5),
+        radius: 20.0,
+        outside: (-1085.5, 195.8, 1244.5, 0.1),
+    },
+    BossRoom {
+        zone_id: 245,
+        name: "Miser's Mistress",
+        bnpc_id: 2301,
+        gates: &[],
+        centre: (-969.5, 173.2, 1046.5),
+        radius: 36.0,
+        outside: (-987.5, 179.8, 1096.5, 2.8),
+    },
 ];
 
 /// Where a dungeon copy starts (`DUNGEONS[..].entry` in

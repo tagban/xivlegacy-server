@@ -1,4 +1,4 @@
--- server_battlenpc_groups: game data, 824 rows. Reloaded whole when this file changes.
+-- server_battlenpc_groups: game data, 832 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_groups`;
 INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLevel`, `maxLevel`, `respawnTime`, `hp`, `mp`, `dropListId`, `allegiance`, `spawnType`, `animationId`, `actorState`, `privateAreaName`, `privateAreaLevel`, `zoneId`) VALUES
@@ -826,4 +826,12 @@ INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLe
 (31152, 30048, 'soulgazer', 54, 54, 0, 20800, 0, 0, 0, 1, 0, 0, '', 0, 231),
 (31153, 30059, 'deepvoid_slave', 55, 55, 0, 4234, 0, 0, 0, 1, 0, 0, '', 0, 231),
 (31154, 30070, 'chain_bearer', 55, 55, 0, 4234, 0, 0, 0, 1, 0, 0, '', 0, 231),
-(31155, 30071, 'purgatory_mage', 55, 55, 0, 4234, 0, 0, 0, 1, 0, 0, '', 0, 231);
+(31155, 30071, 'purgatory_mage', 55, 55, 0, 4234, 0, 0, 0, 1, 0, 0, '', 0, 231),
+(31156, 30049, 'coincounter', 56, 56, 0, 23300, 0, 0, 0, 1, 0, 0, '', 0, 245),
+(31157, 30050, 'misers_mistress', 58, 58, 0, 26100, 0, 0, 0, 1, 0, 0, '', 0, 245),
+(31158, 30060, 'giltrap', 54, 54, 0, 4003, 0, 0, 0, 1, 0, 0, '', 0, 245),
+(31159, 30061, 'aloes_rosetrap', 54, 54, 0, 4003, 0, 0, 0, 1, 0, 0, '', 0, 245),
+(31160, 30066, 'hearty_victual', 54, 54, 0, 4003, 0, 0, 0, 1, 0, 0, '', 0, 245),
+(31161, 30067, 'tender_victual', 54, 54, 0, 4003, 0, 0, 0, 1, 0, 0, '', 0, 245),
+(31162, 30068, 'scale_slug', 54, 54, 0, 4003, 0, 0, 0, 1, 0, 0, '', 0, 245),
+(31163, 30069, 'abacus_slug', 54, 54, 0, 4003, 0, 0, 0, 1, 0, 0, '', 0, 245);
