@@ -410,6 +410,17 @@ impl GameTicker {
                     active.instance_id,
                 )
                 .await;
+                // The Aurum Vale's gold gas and goldbile pools.
+                crate::runtime::aurum_hazards::tick(
+                    now_ms,
+                    &self.registry,
+                    &self.world,
+                    &self.db,
+                    lua,
+                    active.parent_zone_id,
+                    active.instance_id,
+                )
+                .await;
                 let script_path = lua.resolver().content(&active.content_script);
                 if !script_path.exists() {
                     continue;
@@ -1074,7 +1085,11 @@ fn compute_passive_regen(chara: &Character) -> crate::status::PassiveRegen {
     } else {
         ACTIVE_MODE_HP_REGEN_PERCENT
     };
-    let hp = if (chara.chara.hp as i32) < max_hp {
+    // A poison or other damage-over-time stops natural HP regen, or the
+    // percent regen would wipe out its ticks out of combat (the Aurum
+    // Vale's Gold Lung and goldbile).
+    let poisoned = chara.chara.mods.get(crate::actor::Modifier::RegenDown) > 0.0;
+    let hp = if (chara.chara.hp as i32) < max_hp && !poisoned {
         (max_hp * pct / 100).max(1)
     } else {
         0
@@ -1468,6 +1483,12 @@ mod tests {
         c.chara.hp = 500;
         let p = compute_passive_regen(&c);
         assert_eq!((p.hp, p.mp, p.tp), (20, 0, -90));
+
+        // Poisoned (any damage-over-time): no HP regen, TP still decays.
+        c.chara.mods.set(crate::actor::Modifier::RegenDown, 5.0);
+        let p = compute_passive_regen(&c);
+        assert_eq!((p.hp, p.mp, p.tp), (0, 0, -90));
+        c.chara.mods.set(crate::actor::Modifier::RegenDown, 0.0);
 
         // Engaged: nothing at all.
         c.ai_container.internal_engage(2, 0, 2500);

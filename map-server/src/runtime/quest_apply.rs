@@ -2285,6 +2285,7 @@ pub(crate) async fn apply_content_finished(
     crate::content_instance::release(active.instance_id);
     crate::dungeon_gates::release_instance(active.instance_id);
     crate::runtime::dungeon_fight::release_instance(active.instance_id);
+    crate::runtime::aurum_hazards::release_instance(active.instance_id);
     if active.instance_id != 0 {
         for mut member in world.all_sessions().await {
             if member.id != session_id
