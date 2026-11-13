@@ -50,8 +50,12 @@ fn is_offerable(script_name: &str, has_prerequisite: bool) -> bool {
 
 /// Quests that follow any one of several others, which the single
 /// `prerequisite` column can't say: Fade to White follows whichever
-/// nation's level 13 quest the player finished.
-const ANY_OF_PREREQUISITES: &[(u32, &[u32])] = &[(110013, &[110004, 110008, 110012])];
+/// nation's level 13 quest the player finished, and The Usual Suspect
+/// (Hildibrand's first case, Etc5u1) follows whichever nation's Etc5?0.
+const ANY_OF_PREREQUISITES: &[(u32, &[u32])] = &[
+    (110013, &[110004, 110008, 110012]),
+    (110849, &[110828, 110838, 110848]),
+];
 
 /// The quests any one of which unlocks this one (empty: none needed).
 fn prerequisites(quest_id: u32, prerequisite: u32) -> Vec<u32> {
@@ -218,6 +222,10 @@ impl PacketProcessor {
                 .collect()
         };
 
+        // One offer per NPC: when several quests share a giver, the
+        // lowest id (the earlier quest) is offered first, every time.
+        let mut eligible = eligible;
+        eligible.sort_unstable();
         let mut offers: HashMap<u32, (u32, QuestEnpc)> = HashMap::new();
         for quest_id in eligible {
             for enpc in self.quest_givers(handle, quest_id).await {
@@ -424,6 +432,11 @@ mod tests {
         assert_eq!(prerequisites(110013, 0), vec![110004, 110008, 110012]);
         assert_eq!(prerequisites(110011, 110010), vec![110010]);
         assert!(prerequisites(110001, 0).is_empty());
+    }
+
+    #[test]
+    fn the_usual_suspect_follows_any_nations_first_hildibrand_quest() {
+        assert_eq!(prerequisites(110849, 0), vec![110828, 110838, 110848]);
     }
 
     fn standing(gc: u8, limsa: u8, gridania: u8, uldah: u8) -> crate::actor::CharaState {

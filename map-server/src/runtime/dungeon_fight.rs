@@ -141,6 +141,69 @@ pub const BOSS_ROOMS: &[BossRoom] = &[
         radius: 34.5,
         outside: (1308.4, -63.9, 561.6, -1.2),
     },
+    BossRoom {
+        zone_id: 231,
+        name: "Batraal",
+        bnpc_id: 2000,
+        gates: &[],
+        centre: (69.0, 148.7, -141.0),
+        radius: 30.0,
+        outside: (43.0, 151.5, -119.0, 2.27),
+    },
+    BossRoom {
+        zone_id: 231,
+        name: "All-seeing Eye",
+        bnpc_id: 2001,
+        gates: &[],
+        centre: (-219.0, 169.7, -11.0),
+        radius: 15.0,
+        outside: (-215.0, 173.1, 15.0, -2.99),
+    },
+    BossRoom {
+        zone_id: 231,
+        name: "Soulgazer",
+        bnpc_id: 2002,
+        gates: &[],
+        centre: (-111.0, 153.6, -275.0),
+        radius: 15.0,
+        outside: (-109.0, 153.2, -255.0, -3.04),
+    },
+    BossRoom {
+        zone_id: 245,
+        name: "Coincounter",
+        bnpc_id: 2300,
+        gates: &["rocdun4_barrier_coincnterschest"],
+        centre: (-1081.5, 189.0, 1282.5),
+        radius: 20.0,
+        outside: (-1085.5, 195.8, 1244.5, 0.1),
+    },
+    BossRoom {
+        zone_id: 245,
+        name: "Miser's Mistress",
+        bnpc_id: 2301,
+        gates: &[],
+        centre: (-969.5, 173.2, 1046.5),
+        radius: 36.0,
+        outside: (-987.5, 179.8, 1096.5, 2.8),
+    },
+    BossRoom {
+        zone_id: 246,
+        name: "Myrmidon Princess",
+        bnpc_id: 2600,
+        gates: &[],
+        centre: (-1472.0, 247.5, -1470.5),
+        radius: 24.0,
+        outside: (-1390.0, 253.3, -1494.5, -1.29),
+    },
+    BossRoom {
+        zone_id: 246,
+        name: "Chimera",
+        bnpc_id: 2601,
+        gates: &[],
+        centre: (-1314.0, 249.8, -1828.5),
+        radius: 16.0,
+        outside: (-1296.0, 249.7, -1814.5, -2.23),
+    },
 ];
 
 /// Where a dungeon copy starts (`DUNGEONS[..].entry` in
@@ -152,7 +215,7 @@ pub const ENTRANCES: &[(u32, Spot)] = &[
     (159, (885.0, -22.7, 651.0, 1.57)),
     (231, (64.0, 181.25, 192.0, std::f32::consts::PI)),
     (245, (-686.9, 171.3, 1359.9, 0.0)),
-    (246, (-1402.0, 252.2, -1455.0, 0.0)),
+    (246, (-911.0, 250.8, -1532.5, -1.57)),
 ];
 
 pub fn entrance(zone_id: u32) -> Option<Spot> {

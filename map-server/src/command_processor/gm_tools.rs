@@ -148,7 +148,11 @@ impl CommandProcessor {
             .and_then(|h| u32::from_str_radix(h, 16).ok())
             .or_else(|| what.parse::<u32>().ok());
         let want = what.to_lowercase();
-        let mut best: Option<(f32, u32)> = None;
+        // A quest's private-area copy of an NPC often stands on the public
+        // one's exact spot; prefer the copy in the caller's own area, or a
+        // `goto` from the public zone lands in the private area instead.
+        let my_area = self.area_of(me).await.map(|a| a.0);
+        let mut best: Option<(bool, f32, u32)> = None;
         for h in self.registry.actors_in_zone(zone).await {
             if h.session_id != 0 || h.actor_id == me {
                 continue;
@@ -169,11 +173,12 @@ impl CommandProcessor {
                 continue;
             }
             let d = (c.base.position_x - mx).powi(2) + (c.base.position_z - mz).powi(2);
-            if best.is_none_or(|(bd, _)| d < bd) {
-                best = Some((d, h.actor_id));
+            let elsewhere = h.private_area.as_ref().map(|a| &a.0) != my_area.as_ref();
+            if best.is_none_or(|(be, bd, _)| (elsewhere, d) < (be, bd)) {
+                best = Some((elsewhere, d, h.actor_id));
             }
         }
-        best.map(|(_, id)| id)
+        best.map(|(_, _, id)| id)
     }
 
     /// "name (actor 0x…)" for replies; a monster's class (its name is

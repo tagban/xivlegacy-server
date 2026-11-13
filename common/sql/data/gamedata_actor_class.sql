@@ -1,4 +1,4 @@
--- gamedata_actor_class: game data, 8095 rows. Reloaded whole when this file changes.
+-- gamedata_actor_class: game data, 8099 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `gamedata_actor_class`;
 INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propertyFlags`, `eventConditions`) VALUES
@@ -2419,6 +2419,14 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
       "unknown2": 1,
       "conditionName": "noticeEvent"
     }
+  ],
+  "emoteEventConditions": [
+    {
+      "unknown1": 4,
+      "unknown2": 0,
+      "emoteId": 130,
+      "conditionName": "emoteDefault1"
+    }
   ]
 }'),
 (1000220, '/Chara/Npc/Populace/PopulaceStandard', 2470011, 19, '{
@@ -3470,6 +3478,14 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
       "unknown2": 1,
       "conditionName": "noticeEvent"
     }
+  ],
+  "emoteEventConditions": [
+    {
+      "unknown1": 4,
+      "unknown2": 0,
+      "emoteId": 130,
+      "conditionName": "emoteDefault1"
+    }
   ]
 }'),
 (1000341, '/Chara/Npc/Populace/PopulaceStandard', 1400014, 19, '{
@@ -3519,6 +3535,14 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
       "unknown2": 1,
       "conditionName": "noticeEvent"
     }
+  ],
+  "emoteEventConditions": [
+    {
+      "unknown1": 4,
+      "unknown2": 0,
+      "emoteId": 130,
+      "conditionName": "emoteDefault1"
+    }
   ]
 }'),
 (1000345, '/Chara/Npc/Populace/PopulaceStandard', 1500033, 19, '{
@@ -3534,6 +3558,14 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
       "unknown1": 0,
       "unknown2": 1,
       "conditionName": "noticeEvent"
+    }
+  ],
+  "emoteEventConditions": [
+    {
+      "unknown1": 4,
+      "unknown2": 0,
+      "emoteId": 130,
+      "conditionName": "emoteDefault1"
     }
   ]
 }'),
@@ -3566,6 +3598,14 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
       "unknown1": 0,
       "unknown2": 1,
       "conditionName": "noticeEvent"
+    }
+  ],
+  "emoteEventConditions": [
+    {
+      "unknown1": 4,
+      "unknown2": 0,
+      "emoteId": 130,
+      "conditionName": "emoteDefault1"
     }
   ]
 }'),
@@ -35638,6 +35678,50 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
       "unknown1": 0,
       "unknown2": 1,
       "conditionName": "noticeEvent"
+    }
+  ]
+}'),
+(1090820, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "true",
+      "radius": "4.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090821, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "true",
+      "radius": "4.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090822, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "true",
+      "radius": "4.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1090823, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "true",
+      "radius": "4.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
     }
   ]
 }');
