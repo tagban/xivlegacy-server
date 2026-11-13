@@ -1,4 +1,4 @@
--- server_battlenpc_groups: game data, 832 rows. Reloaded whole when this file changes.
+-- server_battlenpc_groups: game data, 851 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_groups`;
 INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLevel`, `maxLevel`, `respawnTime`, `hp`, `mp`, `dropListId`, `allegiance`, `spawnType`, `animationId`, `actorState`, `privateAreaName`, `privateAreaLevel`, `zoneId`) VALUES
@@ -821,6 +821,25 @@ INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLe
 (31096, 31096, 'shearing_sheridan', 20, 20, 1800, 2870, 0, 0, 0, 0, 0, 0, '', 0, 235),
 (31097, 31097, 'spawning_orobon', 16, 19, 90, 360, 0, 0, 0, 0, 0, 0, '', 0, 235),
 (31098, 31098, 'spelaean_slug', 16, 19, 90, 360, 0, 0, 0, 0, 0, 0, '', 0, 235),
+(31150, 30046, 'batraal', 56, 56, 0, 23300, 0, 0, 0, 1, 0, 0, '', 0, 231),
+(31151, 30047, 'all_seeing_eye', 54, 54, 0, 20800, 0, 0, 0, 1, 0, 0, '', 0, 231),
+(31152, 30048, 'soulgazer', 54, 54, 0, 20800, 0, 0, 0, 1, 0, 0, '', 0, 231),
+(31153, 30059, 'deepvoid_slave', 55, 55, 0, 4234, 0, 0, 0, 1, 0, 0, '', 0, 231),
+(31154, 30070, 'chain_bearer', 55, 55, 0, 4234, 0, 0, 0, 1, 0, 0, '', 0, 231),
+(31155, 30071, 'purgatory_mage', 55, 55, 0, 4234, 0, 0, 0, 1, 0, 0, '', 0, 231),
+(31156, 30049, 'coincounter', 56, 56, 0, 23300, 0, 0, 0, 1, 0, 0, '', 0, 245),
+(31157, 30050, 'misers_mistress', 58, 58, 0, 26100, 0, 0, 0, 1, 0, 0, '', 0, 245),
+(31158, 30060, 'giltrap', 54, 54, 0, 4003, 0, 0, 0, 1, 0, 0, '', 0, 245),
+(31159, 30061, 'aloes_rosetrap', 54, 54, 0, 4003, 0, 0, 0, 1, 0, 0, '', 0, 245),
+(31160, 30066, 'hearty_victual', 54, 54, 0, 4003, 0, 0, 0, 1, 0, 0, '', 0, 245),
+(31161, 30067, 'tender_victual', 54, 54, 0, 4003, 0, 0, 0, 1, 0, 0, '', 0, 245),
+(31162, 30068, 'scale_slug', 54, 54, 0, 4003, 0, 0, 0, 1, 0, 0, '', 0, 245),
+(31163, 30069, 'abacus_slug', 54, 54, 0, 4003, 0, 0, 0, 1, 0, 0, '', 0, 245),
+(31164, 30051, 'myrmidon_princess', 59, 59, 0, 27600, 0, 0, 0, 1, 0, 0, '', 0, 246),
+(31165, 30052, 'chimera', 60, 60, 0, 29200, 0, 0, 0, 1, 0, 0, '', 0, 246),
+(31166, 30063, 'myrmidon_guard', 55, 55, 0, 4234, 0, 0, 0, 1, 0, 0, '', 0, 246),
+(31167, 30064, 'myrmidon_marshal', 56, 56, 0, 4478, 0, 0, 0, 1, 0, 0, '', 0, 246),
+(31168, 30065, 'myrmidon_scavenger', 52, 52, 0, 3578, 0, 0, 0, 1, 0, 0, '', 0, 246),
 (31171, 31171, 'black_eft', 40, 40, 90, 1825, 0, 0, 0, 0, 0, 0, '', 0, 158),
 (31172, 31172, 'devilet', 41, 44, 90, 2069, 0, 0, 0, 0, 0, 0, '', 0, 158),
 (31173, 31173, 'floating_eye', 40, 42, 90, 1947, 0, 0, 0, 0, 0, 0, '', 0, 158),
