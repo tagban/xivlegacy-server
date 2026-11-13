@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1918 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1924 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -1927,4 +1927,10 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (30256, 1090086, 'etc5g1_push', 206, '', 0, -33.709, 7.81, -1272.337, -0.81, 0, 0, NULL),
 (30257, 1090087, 'etc5l1_cave_push', 128, '', 0, -220.948, 16.603, -92.863, -2.09, 0, 0, NULL),
 (30258, 1090088, 'etc5l1_cutscene_push', 128, '', 0, -220.948, 16.603, -92.863, -2.09, 0, 0, NULL),
-(30259, 1090090, 'etc5l3_coffer_push', 172, '', 0, -1732.891, 56.119, -307.285, -2.785, 0, 0, NULL);
+(30259, 1090090, 'etc5l3_coffer_push', 172, '', 0, -1732.891, 56.119, -307.285, -2.785, 0, 0, NULL),
+(30260, 5900015, 'rocdun1_door_04', 231, '', 0, 36.0, 181.25, 66.0, 0.0, 0, 0, NULL),
+(30261, 5900015, 'rocdun1_door_05', 231, '', 0, 68.0, 181.25, 2.0, 0.0, 0, 0, NULL),
+(30262, 5900015, 'rocdun1_door_06', 231, '', 0, 20.0, 181.25, -46.0, 0.0, 0, 0, NULL),
+(30263, 5900015, 'rocdun1_door_e1', 231, '', 0, -28.0, 179.7, 129.8, 0.0, 0, 0, NULL),
+(30264, 5900015, 'rocdun4_door_01', 245, '', 0, -730.5, 179.5, 1441.5, 0.0, 0, 0, NULL),
+(30265, 5900015, 'rocdun4_door_03', 245, '', 0, -810.5, 179.5, 1457.5, 0.0, 0, 0, NULL);
