@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1918 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1924 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -1922,4 +1922,10 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (29980, 1090820, 'tam_tara_deepcroft_entrance1', 150, '', 0, 300, 15.0, -262, 0.0, 0, 0, NULL),
 (29981, 1090821, 'tam_tara_deepcroft_exit1', 158, '', 0, 283.0, -3.01, -258.0, 0.0, 0, 0, NULL),
 (29982, 1090822, 'u_ghamaro_mines_entrance1', 135, '', 0, 97.5, 61.7, -2713, 0.0, 0, 0, NULL),
-(29983, 1090823, 'u_ghamaro_mines_exit1', 137, '', 0, 78.0, 48.6, -2801.0, 0.0, 0, 0, NULL);
+(29983, 1090823, 'u_ghamaro_mines_exit1', 137, '', 0, 78.0, 48.6, -2801.0, 0.0, 0, 0, NULL),
+(30260, 5900015, 'rocdun1_door_04', 231, '', 0, 36.0, 181.25, 66.0, 0.0, 0, 0, NULL),
+(30261, 5900015, 'rocdun1_door_05', 231, '', 0, 68.0, 181.25, 2.0, 0.0, 0, 0, NULL),
+(30262, 5900015, 'rocdun1_door_06', 231, '', 0, 20.0, 181.25, -46.0, 0.0, 0, 0, NULL),
+(30263, 5900015, 'rocdun1_door_e1', 231, '', 0, -28.0, 179.7, 129.8, 0.0, 0, 0, NULL),
+(30264, 5900015, 'rocdun4_door_01', 245, '', 0, -730.5, 179.5, 1441.5, 0.0, 0, 0, NULL),
+(30265, 5900015, 'rocdun4_door_03', 245, '', 0, -810.5, 179.5, 1457.5, 0.0, 0, 0, NULL);
