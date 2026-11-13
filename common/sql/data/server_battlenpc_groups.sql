@@ -1,4 +1,4 @@
--- server_battlenpc_groups: game data, 832 rows. Reloaded whole when this file changes.
+-- server_battlenpc_groups: game data, 837 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_groups`;
 INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLevel`, `maxLevel`, `respawnTime`, `hp`, `mp`, `dropListId`, `allegiance`, `spawnType`, `animationId`, `actorState`, `privateAreaName`, `privateAreaLevel`, `zoneId`) VALUES
@@ -834,4 +834,9 @@ INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLe
 (31160, 30066, 'hearty_victual', 54, 54, 0, 4003, 0, 0, 0, 1, 0, 0, '', 0, 245),
 (31161, 30067, 'tender_victual', 54, 54, 0, 4003, 0, 0, 0, 1, 0, 0, '', 0, 245),
 (31162, 30068, 'scale_slug', 54, 54, 0, 4003, 0, 0, 0, 1, 0, 0, '', 0, 245),
-(31163, 30069, 'abacus_slug', 54, 54, 0, 4003, 0, 0, 0, 1, 0, 0, '', 0, 245);
+(31163, 30069, 'abacus_slug', 54, 54, 0, 4003, 0, 0, 0, 1, 0, 0, '', 0, 245),
+(31164, 30051, 'myrmidon_princess', 59, 59, 0, 27600, 0, 0, 0, 1, 0, 0, '', 0, 246),
+(31165, 30052, 'chimera', 60, 60, 0, 29200, 0, 0, 0, 1, 0, 0, '', 0, 246),
+(31166, 30063, 'myrmidon_guard', 55, 55, 0, 4234, 0, 0, 0, 1, 0, 0, '', 0, 246),
+(31167, 30064, 'myrmidon_marshal', 56, 56, 0, 4478, 0, 0, 0, 1, 0, 0, '', 0, 246),
+(31168, 30065, 'myrmidon_scavenger', 52, 52, 0, 3578, 0, 0, 0, 1, 0, 0, '', 0, 246);
