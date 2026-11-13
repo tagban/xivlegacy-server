@@ -9135,7 +9135,7 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
     }
   ]
 }'),
-(1001190, '', 1200043, 0, NULL),
+(1001190, '/Chara/Npc/Populace/PopulaceStandard', 1200043, 19, '{"talkEventConditions":[{"unknown1":4,"unknown2":0,"conditionName":"talkDefault"}],"noticeEventConditions":[{"unknown1":0,"unknown2":1,"conditionName":"noticeEvent"}]}'),
 (1001191, '/Chara/Npc/Populace/PopulaceStandard', 1000213, 19, '{
   "talkEventConditions": [
     {
@@ -9936,7 +9936,7 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
 (1001343, '', 1400124, 0, NULL),
 (1001344, '', 1000093, 0, NULL),
 (1001345, '/Chara/Npc/Populace/PopulaceStandard', 1000094, 19, '{"talkEventConditions":[{"unknown1":4,"unknown2":0,"conditionName":"talkDefault"}],"noticeEventConditions":[{"unknown1":0,"unknown2":1,"conditionName":"noticeEvent"}],"emoteEventConditions":[{"unknown1":4,"unknown2":0,"emoteId":107,"conditionName":"emoteDefault1"}]}'),
-(1001346, '', 1500041, 0, NULL),
+(1001346, '/Chara/Npc/Populace/PopulaceStandard', 1500041, 19, '{"talkEventConditions":[{"unknown1":4,"unknown2":0,"conditionName":"talkDefault"}],"noticeEventConditions":[{"unknown1":0,"unknown2":1,"conditionName":"noticeEvent"}]}'),
 (1001347, '', 1600292, 0, NULL),
 (1001348, '', 1000176, 0, NULL),
 (1001349, '', 1000177, 0, NULL),
@@ -11708,7 +11708,7 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
 (1001607, '', 1100174, 0, NULL),
 (1001608, '/Chara/Npc/Populace/PopulaceStandard', 1300151, 19, '{"talkEventConditions":[{"unknown1":4,"unknown2":0,"conditionName":"talkDefault"}],"noticeEventConditions":[{"unknown1":0,"unknown2":1,"conditionName":"noticeEvent"}],"emoteEventConditions":[{"unknown1":4,"unknown2":0,"emoteId":107,"conditionName":"emoteDefault1"}]}'),
 (1001609, '', 1600005, 0, NULL),
-(1001610, '', 1200038, 0, NULL),
+(1001610, '/Chara/Npc/Populace/PopulaceStandard', 1200038, 19, '{"talkEventConditions":[{"unknown1":4,"unknown2":0,"conditionName":"talkDefault"}],"noticeEventConditions":[{"unknown1":0,"unknown2":1,"conditionName":"noticeEvent"}]}'),
 (1001611, '', 1600080, 0, NULL),
 (1001612, '', 1100371, 0, NULL),
 (1001613, '', 1900102, 0, NULL),

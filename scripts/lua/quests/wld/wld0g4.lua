@@ -25,8 +25,9 @@ ENPC_MARCETTE 		= 1001583;
 BNPC_MATURE_FUNGUAR	= 2105916;
 
 -- Quest Markers
-MRKR_MARCETTE		= 11120302;
-MRKR_FUNGUAR_AREA	= 11120301;
+-- The client's marker sheet has one marker for this quest, 11120301, on
+-- Marcette's spot; none for the funguars' East Shroud haunt.
+MRKR_MARCETTE		= 11120301;
 
 -- Counters
 COUNTER_QUESTITEM	= 0;
@@ -104,9 +105,7 @@ end
 function getJournalMapMarkerList(player, quest)
     local sequence = quest:getSequence();
     
-    if (sequence == SEQ_000) then
-		return MRKR_FUNGUAR_AREA;
-    elseif (sequence == SEQ_001) then
+    if (sequence == SEQ_001) then
         return MRKR_MARCETTE;
     end
 end
