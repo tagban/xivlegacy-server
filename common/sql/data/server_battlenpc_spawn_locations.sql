@@ -1,4 +1,4 @@
--- server_battlenpc_spawn_locations: game data, 4834 rows. Reloaded whole when this file changes.
+-- server_battlenpc_spawn_locations: game data, 4839 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_spawn_locations`;
 INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `groupId`, `positionX`, `positionY`, `positionZ`, `rotation`) VALUES
@@ -4844,4 +4844,9 @@ INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `
 (2713, '', 30017, -1004.0, 258.95, -1608.5, -0.98),
 (2714, '', 30016, -1256.0, 258.7, -1740.5, -1.06),
 (2715, '', 30016, -1262.0, 259.48, -1732.5, 2.17),
-(2716, '', 30016, -1260.0, 258.32, -1742.5, -0.69);
+(2716, '', 30016, -1260.0, 258.32, -1742.5, -0.69),
+(3478, 'etc2i2_lunatic_lamb', 30502, 2518.0, 174.2, 1250.0, 3.14),
+(3479, 'etc2i2_lunatic_lamb', 30503, 2532.0, 173.25, 1250.0, 3.14),
+(3480, 'etc2i2_lunatic_lamb', 30504, 2512.0, 179.52, 1236.0, 3.14),
+(3481, 'etc2i2_lunatic_lamb', 30505, 2538.0, 178.54, 1236.0, 3.14),
+(3482, 'etc2i2_lunatic_shepherd', 30506, 2525.0, 184.05, 1230.0, 3.14);

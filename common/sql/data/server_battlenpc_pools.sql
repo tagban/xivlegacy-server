@@ -1,4 +1,4 @@
--- server_battlenpc_pools: game data, 552 rows. Reloaded whole when this file changes.
+-- server_battlenpc_pools: game data, 557 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_pools`;
 INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId`, `currentJob`, `combatSkill`, `combatDelay`, `combatDmgMult`, `aggroType`, `immunity`, `linkType`, `spellListId`, `skillListId`) VALUES
@@ -554,4 +554,9 @@ INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId
 (31095, 2109912, 'shadow_seeker', 53, 0, 1, 4200, 1.0, 0, 0, 0, 0, 53),
 (31096, 2107619, 'shearing_sheridan', 22, 0, 1, 4200, 1.0, 1, 0, 0, 0, 35),
 (31097, 2104511, 'spawning_orobon', 17, 0, 1, 4200, 1.0, 1, 0, 0, 0, 17),
-(31098, 2104215, 'spelaean_slug', 21, 0, 1, 4200, 1.0, 1, 0, 0, 0, 21);
+(31098, 2104215, 'spelaean_slug', 21, 0, 1, 4200, 1.0, 1, 0, 0, 0, 21),
+(30502, 2280196, 'etc2i2_lunatic_lamb', 29, 0, 1, 4500, 1.0, 0, 0, 0, 0, 0),
+(30503, 2280197, 'etc2i2_lunatic_lamb', 29, 0, 1, 4500, 1.0, 0, 0, 0, 0, 0),
+(30504, 2280198, 'etc2i2_lunatic_lamb', 29, 0, 1, 4500, 1.0, 0, 0, 0, 0, 0),
+(30505, 2280301, 'etc2i2_lunatic_lamb', 29, 0, 1, 4500, 1.0, 0, 0, 0, 0, 0),
+(30506, 2280302, 'etc2i2_lunatic_shepherd', 29, 0, 1, 4200, 1.1, 0, 0, 0, 0, 0);
