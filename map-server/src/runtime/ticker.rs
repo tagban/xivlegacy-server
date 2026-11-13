@@ -2619,6 +2619,17 @@ mod tests {
     #[tokio::test]
     async fn monster_swing_out_of_real_reach_does_not_land() {
         let (ticker, _zone, _rx) = setup_engaged_npc_vs_player(2.0, |_| {}).await;
+        // Every swing connects (hit rate clamps at 100%), so the test
+        // doesn't depend on the miss roll. Without this, every swing in the
+        // 10 s "back beside it" phase missed now and then.
+        {
+            let monster = ticker.registry.get(2).await.unwrap();
+            monster
+                .character
+                .write()
+                .await
+                .set_mod(crate::actor::Modifier::RawHitRate, 100.0);
+        }
         let player = ticker.registry.get(1).await.unwrap();
         let hp_before = {
             let mut c = player.character.write().await;

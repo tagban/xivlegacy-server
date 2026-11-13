@@ -40,7 +40,7 @@ DUNGEONS = {
 	cutters = {
 		zone = 246, name = "CuttersCry", content = "SimpleContentDungeonCuttersCry",
 		director = "InstanceRaid/InstanceRaidCuttersCry",
-		entry = {-1402.0, 252.2, -1455.0, 0.0},	-- the first chamber
+		entry = {-911.0, 250.8, -1532.5, -1.57},	-- the east mouth (layout marker in1)
 		exit = {173, -710.0, 280.4, -2208.0, 0.0},	-- Cutter's Pass, Northern Thanalan
 	},
 	-- Not a dungeon: Ifrit's battle for the Grand Companies' It Kills with
