@@ -188,6 +188,20 @@ pub enum Modifier {
     /// outside Meteor's known ParamName range (≤ ~131), so no collision
     /// with a yet-to-be-decoded paramBonus type is possible.
     WeaponDamagePower = 200,
+
+    /// The element this actor's damage takes, as an
+    /// [`crate::battle::effects::ActionProperty`] value (0 = its moves'
+    /// own). Server-only, like `WeaponDamagePower`: Man2g0's Spirit of the
+    /// Wood changes aspect during its duty.
+    Aspect = 201,
+    /// Wards: a pool that absorbs damage of one element until it is spent
+    /// ("destroyed"), the way Stoneskin absorbs any damage. Server-only.
+    FireWard = 202,
+    IceWard = 203,
+    WindWard = 204,
+    EarthWard = 205,
+    LightningWard = 206,
+    WaterWard = 207,
 }
 
 impl Modifier {
@@ -307,6 +321,13 @@ impl Modifier {
             130 => Self::KnockbackImmune,
             131 => Self::Stealth,
             200 => Self::WeaponDamagePower,
+            201 => Self::Aspect,
+            202 => Self::FireWard,
+            203 => Self::IceWard,
+            204 => Self::WindWard,
+            205 => Self::EarthWard,
+            206 => Self::LightningWard,
+            207 => Self::WaterWard,
             _ => return None,
         })
     }

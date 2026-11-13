@@ -347,6 +347,43 @@ pub fn handle_stoneskin(defender_mods: &mut ModifierMap, action: &mut CommandRes
     defender_mods.subtract(Modifier::Stoneskin, mitigation);
 }
 
+/// An aspected attacker (`Modifier::Aspect`, Man2g0's Spirit of the Wood)
+/// deals damage of its current element, whatever the move's own property.
+pub fn apply_aspect(attacker: &CombatView<'_>, action: &mut CommandResult) {
+    let aspect = attacker.get_mod(Modifier::Aspect);
+    if aspect > 0.0 && ward_for(ActionProperty::from_u16(aspect as u16)).is_some() {
+        action.action_property = ActionProperty::from_u16(aspect as u16);
+    }
+}
+
+/// The ward modifier that blocks an element, if it is one.
+pub fn ward_for(property: ActionProperty) -> Option<Modifier> {
+    Some(match property {
+        ActionProperty::Fire => Modifier::FireWard,
+        ActionProperty::Ice => Modifier::IceWard,
+        ActionProperty::Wind => Modifier::WindWard,
+        ActionProperty::Earth => Modifier::EarthWard,
+        ActionProperty::Lightning => Modifier::LightningWard,
+        ActionProperty::Water => Modifier::WaterWard,
+        _ => return None,
+    })
+}
+
+/// A ward absorbs damage of its element from `action.amount` and loses
+/// what it absorbed; at 0 it is destroyed. Other elements pass through.
+pub fn handle_ward(defender_mods: &mut ModifierMap, action: &mut CommandResult) {
+    let Some(ward) = ward_for(action.action_property) else {
+        return;
+    };
+    let pool = defender_mods.get(ward);
+    if pool <= 0.0 {
+        return;
+    }
+    let mitigation = (action.amount as f64).min(pool);
+    action.amount = clamp_damage(action.amount as f64 - mitigation);
+    defender_mods.subtract(ward, mitigation);
+}
+
 // ---------------------------------------------------------------------------
 // Rate functions — return 0..=100.
 // ---------------------------------------------------------------------------
@@ -653,8 +690,10 @@ pub fn finish_action_physical(
     results: &mut CommandResultContainer,
     rng: &mut dyn Rng,
 ) -> Option<DamageRequest> {
+    apply_aspect(attacker, action);
     if !try_miss(attacker, defender, skill.as_deref(), action, rng) {
         handle_stoneskin(defender_mods, action);
+        handle_ward(defender_mods, action);
 
         if !try_crit(attacker, defender, skill.as_deref(), action, rng)
             && !try_block(defender, action, rng)
@@ -715,7 +754,9 @@ pub fn finish_action_spell(
     // C# calls HandleStoneskin twice — once pre-resist, once post. We
     // preserve the double-apply because the second hit will be a no-op
     // if the first consumed the pool.
+    apply_aspect(attacker, action);
     handle_stoneskin(defender_mods, action);
+    handle_ward(defender_mods, action);
 
     if !try_resist(action, rng) && !try_crit(attacker, defender, skill.as_deref(), action, rng) {
         action.hit_type = HitType::Hit;
@@ -1628,6 +1669,41 @@ mod tests {
             apply_magic_potency(&thm_view, ActionType::Magic, 100, no_status()),
             108
         );
+    }
+
+    #[test]
+    fn a_ward_blocks_its_element_until_destroyed() {
+        let none = zero_mods();
+        // The Spirit of the Wood's blunt moves take its Wind aspect.
+        let aspect = with(&[(Modifier::Aspect, ActionProperty::Wind as u16 as f64)]);
+        let spirit = stub_view(28, 2930, &aspect, 1);
+        let mut hit = CommandResult::for_target(2, 0, 0);
+        hit.action_property = ActionProperty::Blunt;
+        apply_aspect(&spirit, &mut hit);
+        assert_eq!(hit.action_property, ActionProperty::Wind);
+        // Without an aspect the move keeps its own property.
+        let mut plain = CommandResult::for_target(2, 0, 0);
+        plain.action_property = ActionProperty::Blunt;
+        apply_aspect(&stub_view(28, 2930, &none, 1), &mut plain);
+        assert_eq!(plain.action_property, ActionProperty::Blunt);
+
+        let mut ally = with(&[(Modifier::WindWard, 150.0)]);
+        let strike = |prop: ActionProperty, mods: &mut ModifierMap| {
+            let mut a = CommandResult::for_target(2, 0, 0);
+            a.amount = 100;
+            a.action_property = prop;
+            handle_ward(mods, &mut a);
+            a.amount
+        };
+        // Another element passes straight through.
+        assert_eq!(strike(ActionProperty::Earth, &mut ally), 100);
+        assert_eq!(ally.get(Modifier::WindWard), 150.0);
+        // The ward's element is absorbed until the pool is spent...
+        assert_eq!(strike(ActionProperty::Wind, &mut ally), 0);
+        assert_eq!(strike(ActionProperty::Wind, &mut ally), 50);
+        assert_eq!(ally.get(Modifier::WindWard), 0.0);
+        // ...and then it's gone.
+        assert_eq!(strike(ActionProperty::Wind, &mut ally), 100);
     }
 
     #[test]
