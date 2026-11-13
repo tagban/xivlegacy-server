@@ -134,7 +134,10 @@ function giveWantedItem(player)
 
     local invCheck = player:getItemPackage(INVENTORY_NORMAL):addItem(ITEM_HIDLIBRAND_DOSSIER, 1, 1);
             
-    if (invCheck == INV_ERROR_SUCCESS) then
+    -- The server's addItem queues the item and returns nothing (Meteor
+    -- returned an INV_ERROR code), so nil counts as success here, or the
+    -- quest never completed after handing over the dossier.
+    if (invCheck == nil or invCheck == INV_ERROR_SUCCESS) then
         player:SendGameMessage(player, GetWorldMaster(), 25246, MESSAGE_TYPE_SYSTEM_ERROR, ITEM_HIDLIBRAND_DOSSIER, 1);
         return true;
     end
