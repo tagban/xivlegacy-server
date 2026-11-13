@@ -299,10 +299,12 @@ pub async fn apply_runtime_lua_command(
         LC::OpenDungeonChest {
             player_id,
             chest_actor_id,
+            loot,
         } => {
             crate::runtime::dungeon_chest::open(
                 player_id,
                 chest_actor_id,
+                &loot,
                 registry,
                 db,
                 world,

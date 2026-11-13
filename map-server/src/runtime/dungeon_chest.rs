@@ -20,11 +20,12 @@
 //! chest (`GuildleveBonusTreasureBox`, class 1200161), which has the
 //! chest model and a talk event. Its `onEventStarted`
 //! (`scripts/lua/base/chara/npc/object/GuildleveBonusTreasureBox.lua`)
-//! calls `player:OpenDungeonChest(npc)`.
+//! calls `player:OpenDungeonChest(npc, DungeonChestLoot(...))` with the
+//! chest's list from `scripts/lua/dungeon_chests.lua`.
 //!
-//! The loot tables are mostly empty: the client's chest script reads
-//! drop sheets that only ever lived on the retail server, and no
-//! archived source lists what the 1.0 dungeon chests held.
+//! The client's chest script reads drop sheets that only ever lived on the
+//! retail server, and no archived source lists what the 1.0 dungeon chests
+//! held, so the lists there are picked by rule (see that file).
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -54,23 +55,27 @@ pub struct ChestItem {
     pub quest_id: Option<u32>,
 }
 
-/// Enchiridion, for "A Relic Reborn" (Etc106): the one item the 1.23b
-/// client's chest script names (`processOpenDzemaelEpicQuestType`,
-/// quest 110868, item 10011244).
-pub const ENCHIRIDION: ChestItem = ChestItem {
-    item_id: 10_011_244,
-    quantity: 1,
-    quest_id: Some(110_868),
-};
-
-/// What the chest after a boss holds, by the boss's
-/// `BossRoom::bnpc_id`. Bosses not listed have an empty chest for now.
-pub fn loot_for(boss_bnpc_id: u32) -> &'static [ChestItem] {
-    match boss_bnpc_id {
-        // Batraal, the Dzemael Darkhold's last boss.
-        2000 => &[ENCHIRIDION],
-        _ => &[],
-    }
+/// A chest's loot list from `dungeon_chests.lua`: entries
+/// `{ item_id, count = n, quest = id }`. Entries without a positive item id
+/// are skipped.
+pub fn loot_from_lua(table: &mlua::Table) -> Vec<ChestItem> {
+    table
+        .sequence_values::<mlua::Table>()
+        .filter_map(Result::ok)
+        .filter_map(|e| {
+            let item_id: u32 = e.get(1).ok()?;
+            if item_id == 0 {
+                return None;
+            }
+            let quantity = e.get::<Option<i32>>("count").ok().flatten().unwrap_or(1);
+            let quest_id = e.get::<Option<u32>>("quest").ok().flatten();
+            Some(ChestItem {
+                item_id,
+                quantity: quantity.max(1),
+                quest_id,
+            })
+        })
+        .collect()
 }
 
 /// The chest's unique id in a copy (one per boss).
@@ -242,11 +247,13 @@ pub fn share_loot(
     out
 }
 
-/// `player:OpenDungeonChest(npc)`: open the chest, hand out its loot to
-/// the copy's players, and take the chest away.
+/// `player:OpenDungeonChest(npc, loot)`: open the chest, hand out `loot`
+/// (its `dungeon_chests.lua` list) to the copy's players, and take the
+/// chest away.
 pub async fn open(
     player_id: u32,
     chest_actor_id: u32,
+    loot: &[ChestItem],
     registry: &ActorRegistry,
     db: &Database,
     world: &WorldManager,
@@ -269,7 +276,6 @@ pub async fn open(
         Some(h) => h.character.read().await.base.display_name().to_string(),
         None => String::new(),
     };
-    let loot = loot_for(chest.boss_bnpc_id);
     // Quest items: who is on the quest and doesn't hold the item yet.
     let mut eligible: HashMap<u32, Vec<u32>> = HashMap::new();
     for item in loot {
@@ -368,6 +374,15 @@ pub async fn open(
 mod tests {
     use super::*;
 
+    /// Enchiridion, for "A Relic Reborn" (Etc106): the one item the 1.23b
+    /// client's chest script names (`processOpenDzemaelEpicQuestType`,
+    /// quest 110868, item 10011244). Batraal's chest holds it.
+    const ENCHIRIDION: ChestItem = ChestItem {
+        item_id: 10_011_244,
+        quantity: 1,
+        quest_id: Some(110_868),
+    };
+
     const GIL_BAG: ChestItem = ChestItem {
         item_id: 1,
         quantity: 1,
@@ -391,10 +406,83 @@ mod tests {
         assert!(share_loot(&[GIL_BAG], &[], |_| vec![], |_| 0).is_empty());
     }
 
+    fn chest_table() -> mlua::Lua {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../scripts/lua");
+        let lua = mlua::Lua::new();
+        lua.load(std::fs::read_to_string(root.join("dungeon_chests.lua")).unwrap())
+            .exec()
+            .unwrap();
+        lua
+    }
+
+    fn loot(lua: &mlua::Lua, bnpc: u32) -> Vec<ChestItem> {
+        let f: mlua::Function = lua.globals().get("DungeonChestLoot").unwrap();
+        let t: mlua::Table = f.call(format!("dungeon_chest_{bnpc}")).unwrap();
+        loot_from_lua(&t)
+    }
+
     #[test]
-    fn batraal_holds_the_enchiridion_and_others_are_empty() {
-        assert_eq!(loot_for(2000), &[ENCHIRIDION]);
-        assert!(loot_for(2300).is_empty());
+    fn batraal_holds_the_enchiridion() {
+        let lua = chest_table();
+        assert!(loot(&lua, 2000).contains(&ENCHIRIDION));
+    }
+
+    #[test]
+    fn every_boss_chest_holds_two_pieces_of_gear() {
+        let lua = chest_table();
+        let items = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../common/sql/data/gamedata_items.sql"),
+        )
+        .unwrap();
+        for room in crate::runtime::dungeon_fight::BOSS_ROOMS {
+            for i in loot(&lua, room.bnpc_id) {
+                assert!(
+                    items.contains(&format!("\n({}, ", i.item_id)),
+                    "{}: item {} is not in gamedata_items",
+                    room.name,
+                    i.item_id
+                );
+            }
+            let gear = loot(&lua, room.bnpc_id)
+                .into_iter()
+                .filter(|i| i.quest_id.is_none())
+                .count();
+            assert!(gear >= 2, "{} has {gear} pieces", room.name);
+        }
+        assert!(loot(&lua, 1).is_empty());
+        let f: mlua::Function = lua.globals().get("DungeonChestLoot").unwrap();
+        let t: mlua::Table = f.call("not_a_chest").unwrap();
+        assert!(loot_from_lua(&t).is_empty());
+    }
+
+    #[test]
+    fn loot_entries_read_count_and_quest() {
+        let lua = mlua::Lua::new();
+        let t: mlua::Table = lua
+            .load("return { { 5 }, { 6, count = 3 }, { 7, quest = 9 }, { 0 }, {} }")
+            .eval()
+            .unwrap();
+        assert_eq!(
+            loot_from_lua(&t),
+            vec![
+                ChestItem {
+                    item_id: 5,
+                    quantity: 1,
+                    quest_id: None
+                },
+                ChestItem {
+                    item_id: 6,
+                    quantity: 3,
+                    quest_id: None
+                },
+                ChestItem {
+                    item_id: 7,
+                    quantity: 1,
+                    quest_id: Some(9)
+                },
+            ]
+        );
     }
 
     #[test]

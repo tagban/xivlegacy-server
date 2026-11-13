@@ -2457,18 +2457,26 @@ impl UserData for LuaPlayer {
             Ok(())
         });
 
-        // `player:OpenDungeonChest(npc)`: open the dungeon boss chest `npc`
-        // (`crate::runtime::dungeon_chest`).
-        methods.add_method("OpenDungeonChest", |_, this, chest: mlua::Value| {
-            push(
-                &this.queue,
-                LuaCommand::OpenDungeonChest {
-                    player_id: this.snapshot.actor_id,
-                    chest_actor_id: lua_target_to_actor_id(&chest),
-                },
-            );
-            Ok(())
-        });
+        // `player:OpenDungeonChest(npc, loot)`: open the dungeon boss chest
+        // `npc` and hand out `loot`, a list of `{ item_id, count = n,
+        // quest = id }` (`dungeon_chests.lua`, `crate::runtime::dungeon_chest`).
+        methods.add_method(
+            "OpenDungeonChest",
+            |_, this, (chest, loot): (mlua::Value, Option<mlua::Table>)| {
+                let loot = loot
+                    .map(|t| crate::runtime::dungeon_chest::loot_from_lua(&t))
+                    .unwrap_or_default();
+                push(
+                    &this.queue,
+                    LuaCommand::OpenDungeonChest {
+                        player_id: this.snapshot.actor_id,
+                        chest_actor_id: lua_target_to_actor_id(&chest),
+                        loot,
+                    },
+                );
+                Ok(())
+            },
+        );
 
         // --- Chat -----------------------------------------------------------
         methods.add_method(
