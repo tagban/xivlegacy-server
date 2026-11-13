@@ -13358,7 +13358,7 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
 (1001900, '', 1100087, 0, NULL),
 (1001901, '', 4000650, 0, NULL),
 (1001903, '/Chara/Npc/Populace/PopulaceStandard', 1000052, 19, NULL),
-(1001904, '', 1200191, 0, NULL),
+(1001904, '/Chara/Npc/Populace/PopulaceStandard', 1200191, 19, '{"talkEventConditions":[{"unknown1":4,"unknown2":0,"conditionName":"talkDefault"}],"noticeEventConditions":[{"unknown1":0,"unknown2":1,"conditionName":"noticeEvent"}]}'),
 (1001906, '', 4000648, 0, NULL),
 (1001911, '', 1400200, 0, NULL),
 (1001913, '', 1400202, 0, NULL),
@@ -13499,7 +13499,7 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
   ]
 }'),
 (1001954, '', 3310701, 0, NULL),
-(1001955, '', 1200223, 0, NULL),
+(1001955, '/Chara/Npc/Populace/PopulaceStandard', 1200223, 19, '{"talkEventConditions":[{"unknown1":4,"unknown2":0,"conditionName":"talkDefault"}],"noticeEventConditions":[{"unknown1":0,"unknown2":1,"conditionName":"noticeEvent"}]}'),
 (1001956, '', 1100221, 0, NULL),
 (1001957, '', 2480009, 0, NULL),
 (1001960, '', 3202612, 0, NULL),
