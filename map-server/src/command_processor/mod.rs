@@ -50,6 +50,95 @@ pub struct CommandProcessor {
     pub final_days: bool,
 }
 
+/// Every command with how to type it (`!help`, `!gmhelp`). The first word
+/// is the name `settings/commands.toml` gives a level to.
+const COMMAND_SYNTAX: &[&str] = &[
+    "help",
+    "gmhelp [word]",
+    "who",
+    "version",
+    "bug <what happened>",
+    "pos [name]",
+    "endevent [name]",
+    "goto [name | npc name | class id]",
+    "side <front|rear|left|right> [yalms]",
+    "bring [name | npc name | class id]",
+    "bringall",
+    "send <name> to <name>",
+    "return [name]",
+    "up [yalms] [name]",
+    "down [yalms] [name]",
+    "posfix <name>",
+    "jail <name> [cell] [reason]",
+    "pardon <name>",
+    "togglegm [name]",
+    "logoff <name>",
+    "announce <message>",
+    "getid",
+    "setpos",
+    "gmgear [name]",
+    "additem (or giveitem) <item id> [qty] [hq|+1|+2|+3] [name]",
+    "delitem <item id> [qty] [name]",
+    "addkeyitem <id> [name]",
+    "delkeyitem <id> [name]",
+    "hasitem <item id> [name]",
+    "finditem <part of an item name>",
+    "haskeyitem <id> [name]",
+    "setgil <amount> [name]",
+    "takegil <amount> [name]",
+    "addquest <quest id> [name]",
+    "completequest <quest id> [name]",
+    "delquest <quest id> [name]",
+    "addtitle <title id> [name]",
+    "addeffect <status id> [seconds] [magnitude] [name | 0x<actor id>]",
+    "addallaetherytes [name]",
+    "setmusic <music id> [name]",
+    "setweather <weather id>",
+    "worldend",
+    "event [name] [on|off|auto]",
+    "zone <zone id or name> [name]",
+    "camp [camp name] [name]",
+    "warp <x> <y> <z> [name] | warp <zone> <x> <y> <z> [name]",
+    "home [name]",
+    "revive [name]",
+    "speed <multiplier> [name]",
+    "dismount [name]",
+    "wake [name]",
+    "givegil <qty> [name]",
+    "giveexp <qty> <class_id> [name]",
+    "setclass <class> [name]",
+    "setlevel <class or job> <level 1-50> [name]",
+    "maxall [level 1-50] [name]",
+    "setjob <pld|war|mnk|drg|brd|whm|blm|none> [name]",
+    "gearset <class or job> [level 1-50] [name]",
+    "sethome <aetheryte_id> [name]",
+    "joingc <gc> [name]",
+    "setgcrank <gc> <rank> [name]",
+    "addgcseals <gc> <amount> [name]",
+    "accruerest <minutes> [name]",
+    "issuechocobo <appearance> <chocobo_name> [name]",
+    "rentchocobo <minutes> [name]",
+    "hireretainer <retainer_id> [name]",
+    "dismissretainer <retainer_id> [name]",
+    "listretainers [name]",
+    "setsleeping [name]",
+    "dream <id> [name]",
+    "die [name]",
+    "spawn <actor class id> [level] [count]",
+    "despawn",
+    "sethp <hp>",
+    "dungeon <name> | dungeon leave",
+    "settp <tp 0-3000> [name]",
+    "usemove <command id> (target, else nearest monster)",
+    "leve <guildleve id> [stars 1-5] | leve abandon",
+    "factioncredit <faction 1-3> <amount>",
+    "setgm <level 0-4> <name>",
+    "reload",
+    "talkto <actor_class_id> [name]",
+    "pushtrigger <actor_class_id> [name]",
+    "setseq <quest_id> <sequence> [name]",
+];
+
 /// How far `!usemove` looks for a monster when nothing is targeted.
 const USEMOVE_RANGE: f32 = 30.0;
 
@@ -150,6 +239,8 @@ impl CommandProcessor {
 
         let response = match cmd.as_str() {
             "help" => Self::help(level, self.final_days),
+            "gmhelp" => self.handle_gmhelp(&args, level).await,
+            "finditem" => self.handle_finditem(&args).await,
             "version" => format!("map-server {}", env!("CARGO_PKG_VERSION")),
             "who" => format!("{} zone(s) loaded", self.world.zone_count().await),
             "reload" => {
@@ -235,83 +326,8 @@ impl CommandProcessor {
     /// The commands `level` may use (all of them on the console), leaving
     /// out the finaldays module's while it's off.
     fn help(level: Option<u8>, final_days: bool) -> String {
-        const ALL: &[&str] = &[
-            "help",
-            "who",
-            "version",
-            "bug <what happened>",
-            "pos [name]",
-            "endevent [name]",
-            "goto [name | npc name | class id]",
-            "side <front|rear|left|right> [yalms]",
-            "bring [name | npc name | class id]",
-            "bringall",
-            "send <name> to <name>",
-            "return [name]",
-            "up [yalms] [name]",
-            "down [yalms] [name]",
-            "posfix <name>",
-            "jail <name> [cell] [reason]",
-            "pardon <name>",
-            "togglegm [name]",
-            "logoff <name>",
-            "announce <message>",
-            "getid",
-            "setpos",
-            "gmgear [name]",
-            "additem <item id> [qty] [name]",
-            "delitem <item id> [qty] [name]",
-            "addkeyitem <id> [name]",
-            "delkeyitem <id> [name]",
-            "hasitem <item id> [name]",
-            "haskeyitem <id> [name]",
-            "setgil <amount> [name]",
-            "takegil <amount> [name]",
-            "addquest <quest id> [name]",
-            "completequest <quest id> [name]",
-            "delquest <quest id> [name]",
-            "addtitle <title id> [name]",
-            "addeffect <status id> [seconds] [magnitude] [name | 0x<actor id>]",
-            "addallaetherytes [name]",
-            "setmusic <music id> [name]",
-            "setweather <weather id>",
-            "worldend",
-            "event [name] [on|off|auto]",
-            "zone <zone id or name> [name]",
-            "camp [camp name] [name]",
-            "warp <x> <y> <z> [name] | warp <zone> <x> <y> <z> [name]",
-            "home [name]",
-            "revive [name]",
-            "speed <multiplier> [name]",
-            "dismount [name]",
-            "wake [name]",
-            "givegil <qty> [name]",
-            "giveexp <qty> <class_id> [name]",
-            "sethome <aetheryte_id> [name]",
-            "joingc <gc> [name]",
-            "setgcrank <gc> <rank> [name]",
-            "addgcseals <gc> <amount> [name]",
-            "accruerest <minutes> [name]",
-            "issuechocobo <appearance> <chocobo_name> [name]",
-            "rentchocobo <minutes> [name]",
-            "hireretainer <retainer_id> [name]",
-            "dismissretainer <retainer_id> [name]",
-            "listretainers [name]",
-            "setsleeping [name]",
-            "dream <id> [name]",
-            "die [name]",
-            "settp <tp 0-3000> [name]",
-            "usemove <command id> (target, else nearest monster)",
-            "leve <guildleve id> [stars 1-5] | leve abandon",
-            "factioncredit <faction 1-3> <amount>",
-            "setgm <level 0-4> <name>",
-            "reload",
-            "talkto <actor_class_id> [name]",
-            "pushtrigger <actor_class_id> [name]",
-            "setseq <quest_id> <sequence> [name]",
-        ];
         let perms = crate::command_permissions::get();
-        let mine: Vec<&str> = ALL
+        let mine: Vec<&str> = COMMAND_SYNTAX
             .iter()
             .filter(|c| {
                 let name = c.split_whitespace().next().unwrap_or("");
@@ -569,9 +585,111 @@ impl CommandProcessor {
         let Some(chara_id) = self.lookup_character_id(&name).await else {
             return format!("unknown character: {name}");
         };
+        // Online: through the AddGil applier, which updates the client's
+        // gil too (the database alone left the old amount on screen).
+        if self.registry.get(chara_id).await.is_some() {
+            crate::runtime::quest_apply::apply_add_gil(
+                chara_id,
+                qty,
+                &self.registry,
+                Some(&self.world),
+                &self.db,
+            )
+            .await;
+            return match self.db.get_gil(chara_id).await {
+                Ok(total) => format!("gave {qty} gil to {name} (total now {total})"),
+                Err(e) => format!("givegil failed: {e}"),
+            };
+        }
         match self.db.add_gil(chara_id, qty).await {
             Ok(total) => format!("gave {qty} gil to {name} (total now {total})"),
             Err(e) => format!("givegil failed: {e}"),
+        }
+    }
+
+    /// `gmhelp [word]`: every command the invoker may use with how to type
+    /// it, one per line in their chat log, grouped by the GM level each
+    /// needs. A word shows only the commands it's part of. (One chat line
+    /// holds 512 bytes, too few for `help`'s list with all the syntax.)
+    async fn handle_gmhelp(&self, args: &Args<'_>, level: Option<u8>) -> String {
+        let perms = crate::command_permissions::get();
+        let word = args.tokens.first().map(|w| w.to_ascii_lowercase());
+        let mut mine: Vec<(u8, &str)> = COMMAND_SYNTAX
+            .iter()
+            .filter_map(|c| {
+                let name = c.split_whitespace().next().unwrap_or("");
+                let needed = perms.required(name);
+                let shown = (self.final_days || !world_end::COMMANDS.contains(&name))
+                    && (name != "bug" || crate::modules::is_enabled(common::bug_reports::MODULE))
+                    && level.is_none_or(|l| l >= needed)
+                    && word
+                        .as_ref()
+                        .is_none_or(|w| c.to_ascii_lowercase().contains(w.as_str()));
+                shown.then_some((needed, *c))
+            })
+            .collect();
+        mine.sort_by_key(|(needed, _)| *needed);
+        if mine.is_empty() {
+            return match word {
+                Some(w) => format!("no command of yours has \"{w}\" in it"),
+                None => "no commands".into(),
+            };
+        }
+        let mut lines = Vec::new();
+        let mut group = None;
+        for (needed, syntax) in &mine {
+            if group != Some(*needed) {
+                group = Some(*needed);
+                lines.push(format!(
+                    "-- {} ({needed}) --",
+                    crate::command_permissions::level_name(*needed)
+                ));
+            }
+            lines.push(format!("!{syntax}"));
+        }
+        let me = match args.invoker {
+            Some(name) => self.lookup_character_id(name).await,
+            None => None,
+        };
+        match me {
+            Some(actor_id) if self.registry.get(actor_id).await.is_some() => {
+                for line in lines {
+                    self.tell_player(actor_id, line).await;
+                }
+                format!(
+                    "{} commands. [name] is optional: without it a command is for you (or your target, where it says so). !gmhelp <word> narrows the list.",
+                    mine.len()
+                )
+            }
+            _ => lines.join("\n"),
+        }
+    }
+
+    /// `finditem <part of a name>`: item ids by name, lowest level first.
+    async fn handle_finditem(&self, args: &Args<'_>) -> String {
+        let text = args.tokens.join(" ");
+        if text.trim().len() < 3 {
+            return "usage: finditem <at least 3 letters of an item name>".into();
+        }
+        match self.db.find_items_by_name(&text, 10).await {
+            Ok(found) if found.is_empty() => format!("no item called *{text}*"),
+            Ok(found) => {
+                let list: Vec<String> = found
+                    .iter()
+                    .map(|(id, name, lv)| format!("{id} {name} (lv {lv})"))
+                    .collect();
+                let mut out = list.join(", ");
+                if out.len() > 480 {
+                    let mut cut = 480;
+                    while !out.is_char_boundary(cut) {
+                        cut -= 1;
+                    }
+                    out.truncate(cut);
+                    out.push_str(" ...");
+                }
+                out
+            }
+            Err(e) => format!("finditem failed: {e}"),
         }
     }
 

@@ -42,14 +42,16 @@ account may use is its GM level against `settings/commands.toml`:
 
 | Level | Name | Gets, by default |
 | --- | --- | --- |
-| 0 | player | `!help`, `!who`, `!version` |
+| 0 | player | `!help`, `!gmhelp`, `!who`, `!version` |
 | 1 | helper | the same (give helpers commands by lowering them to 1) |
 | 2 | GM | moving players: `!zone`, `!camp`, `!warp`, `!home`, `!revive`, `!speed` |
-| 3 | senior GM | changing characters: `!givegil`, `!giveexp`, grand companies, retainers |
+| 3 | senior GM | changing characters: `!givegil`, `!giveexp`, `!setclass`, `!setlevel`, `!setjob`, `!gearset`, grand companies, retainers |
 | 4 | administrator | `!setgm`, `!reload`, quest debugging; and any command not listed |
 
 Below `target_others` (GM by default) a command only works on whoever typed
-it. `!help` shows each player the commands they have.
+it. `!help` shows each player the commands they have; `!gmhelp [word]` the
+same with how to type each one, a line apiece (`!gmhelp gil`: just the gil
+ones).
 
 **Making the first administrator:** the map server's console isn't limited.
 With `host.sh` (or `run-all.sh`), write to its GM FIFO:
@@ -87,9 +89,15 @@ camp = 0
 | `!posfix <name>` | To their home city; works offline, for someone who can't log in where they are |
 | `!logoff <name>` / `!announce <message>` | Disconnect someone / a message to everyone online |
 | `!getid` | What you have targeted: actor id, class, name, position |
-| `!additem` `!delitem` `!hasitem <item id> [qty] [name]` | Items (catalog ids) |
+| `!additem` `!delitem` `!hasitem <item id> [qty] [name]` | Items (catalog ids). `!additem <id> [qty] [hq\|+1\|+2\|+3] [name]` gives a high quality one |
+| `!finditem <part of a name>` | Item ids by name (`!finditem gladius`), lowest level first |
+| `!setclass <class> [name]` | Switch class (`gla`, `pgl`, `mrd`, `arc`, `lnc`, `thm`, `cnj`, `crp`, `bsm`, `arm`, `gsm`, `ltw`, `wvr`, `alc`, `cul`, `min`, `btn`, `fsh`, or the full name). In 1.0 the weapon is the class: this equips the class's own weapon, or one from the bag, or gives one for its level |
+| `!setlevel <class or job> <level> [name]` | A class to level 1-50 (EXP bar empty); the client, stats and the actions it unlocks follow at once. Works on characters who are offline |
+| `!maxall [level] [name]` | Every class to 50 (or `level`) |
+| `!setjob <job> [name]` / `!setjob none` | Take up a job (`pld`, `war`, `mnk`, `drg`, `brd`, `whm`, `blm`): the class goes to 30 if it's lower, the soul crystal and the job's first quest are given, then the switch to the class and the job / back to the class |
+| `!gearset <class or job> [level] [name]` | Give and equip a set for the class at that level (its own level by default) from the item tables: the best main hand (and shield or off-hand tool) of the class, armor and accessories everyone can wear with its stats. Ends on the job when a job is named and the soul crystal is held |
 | `!addkeyitem` `!delkeyitem` `!haskeyitem <id> [name]` | Key items |
-| `!setgil` `!takegil <amount> [name]` | Gil |
+| `!setgil` `!takegil <amount> [name]` / `!givegil <qty> [name]` | Gil: set it, take some / add some |
 | `!addquest` `!completequest` `!delquest <quest id> [name]` | Quests |
 | `!addtitle <id>` `!addeffect <status id> [seconds]` `!addallaetherytes` | Titles, status effects, every aetheryte |
 | `!setmusic <id> [name]` / `!setweather <id>` | Music for someone / weather for your zone |
@@ -98,6 +106,9 @@ camp = 0
 | `!kill` / `!kill all` | Defeat your target or the nearest monster / every monster within 20 yalms, as if you'd won the fight (EXP, quest and leve kills count) |
 | `!event [name] [on\|off\|auto]` | Seasonal events (see below): list them, or switch one on or off whatever the date (`auto` goes back to its dates). Kept over restarts |
 | `!worldend` | (finaldays module, off by default) 1.0's Final Days: Nael van Darnus, his Imperials, Atomos and other level 70-80 monsters around you and in each city (the Bombard King only falls to /firedance). Again to end it |
+
+With no name, `!setclass`, `!setlevel`, `!maxall`, `!setjob` and `!gearset`
+work on the player you have targeted, else on you.
 
 The FFXI server's names work too: `!where`, `!ver`, `!raise`, `!kill <name>`,
 `!release`, `!promote`, `!homepoint`, `!giveitem`, `!givekeyitem`,

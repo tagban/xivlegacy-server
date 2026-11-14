@@ -876,11 +876,17 @@ impl CommandProcessor {
         let usage = if key_item {
             "usage: addkeyitem <key item id> [name]"
         } else {
-            "usage: additem <item id> [quantity] [name]"
+            "usage: additem <item id> [quantity] [hq|+1|+2|+3] [name]"
         };
-        let Some((item, qty, from)) = Self::id_qty_name(args) else {
+        let Some((item, qty, mut from)) = Self::id_qty_name(args) else {
             return usage.into();
         };
+        // high quality: +1 to +3 (quality 2-4; 1 is normal)
+        let mut quality = 1;
+        if !key_item && let Some(q) = args.tokens.get(from).and_then(|t| item_quality(t)) {
+            quality = q;
+            from += 1;
+        }
         let Some(name) = args.rest_joined(from) else {
             return if args.was_refused() {
                 String::new()
@@ -899,10 +905,14 @@ impl CommandProcessor {
             item_package: package,
             item_id: item,
             quantity: qty,
-            quality: 1,
+            quality,
         }])
         .await;
-        format!("gave {name} {qty} × item {item}")
+        let hq = match quality {
+            2..=4 => format!(" (+{})", quality - 1),
+            _ => String::new(),
+        };
+        format!("gave {name} {qty} × item {item}{hq}")
     }
 
     /// `gmgear [name]`: the Judge's set, 1.0's GM outfit (wearable by every
@@ -1221,5 +1231,17 @@ impl CommandProcessor {
             }
         }
         format!("weather {weather} for {n} player(s) in zone {zone}")
+    }
+}
+
+/// A quality word typed after an item: `nq` is normal (1); `hq` / `+1`,
+/// `+2`, `+3` are the high qualities (2-4).
+pub(super) fn item_quality(word: &str) -> Option<u8> {
+    match word.to_ascii_lowercase().as_str() {
+        "nq" => Some(1),
+        "hq" | "hq1" | "+1" => Some(2),
+        "hq2" | "+2" => Some(3),
+        "hq3" | "+3" => Some(4),
+        _ => None,
     }
 }
