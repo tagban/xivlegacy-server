@@ -506,12 +506,14 @@ pub async fn apply_runtime_lua_command(
             item_package,
             item_id,
             quantity,
+            quality,
         } => {
-            apply_add_item(
+            apply_add_item_quality(
                 actor_id,
                 item_package,
                 item_id,
                 quantity,
+                quality,
                 registry,
                 Some(world),
                 db,
@@ -4837,6 +4839,33 @@ pub async fn apply_add_item(
     world: Option<&WorldManager>,
     db: &Database,
 ) {
+    apply_add_item_quality(
+        actor_id,
+        item_package,
+        item_id,
+        quantity,
+        1,
+        registry,
+        world,
+        db,
+    )
+    .await;
+}
+
+/// [`apply_add_item`] with an item quality: 1 normal, 2-4 high quality
+/// +1 to +3. Quality only applies to the NORMAL bag; the other bags
+/// ignore it.
+#[allow(clippy::too_many_arguments)]
+pub async fn apply_add_item_quality(
+    actor_id: u32,
+    item_package: u16,
+    item_id: u32,
+    quantity: i32,
+    quality: u8,
+    registry: &ActorRegistry,
+    world: Option<&WorldManager>,
+    db: &Database,
+) {
     if quantity <= 0 || item_id == 0 {
         return;
     }
@@ -4907,7 +4936,10 @@ pub async fn apply_add_item(
         );
         return;
     }
-    match db.add_harvest_item(actor_id, item_id, quantity, 1).await {
+    match db
+        .add_harvest_item(actor_id, item_id, quantity, quality.clamp(1, 4))
+        .await
+    {
         Ok(total) => {
             tracing::info!(
                 actor = actor_id,
@@ -6342,6 +6374,17 @@ pub(crate) async fn broadcast_quest_enpc_update(
 /// the text owner) to the player's client, target-stamped for the
 /// world relay. Mirrors `Player.SendGameMessage(sourceActor,
 /// textIdOwner, textId, log)`.
+/// Actor references among `SendGameMessage` params travel in the `i64`
+/// param list as `ACTOR_PARAM_TAG - actor_id` (far below any real
+/// integer param) and go on the wire as a LuaParam actor, so text such as
+/// "<player> botches the synthesis!" can name its subject.
+pub(crate) const ACTOR_PARAM_TAG: i64 = -(1 << 40);
+
+/// Encode an actor id for a `SendGameMessage` param list.
+pub(crate) fn actor_param(actor_id: u32) -> i64 {
+    ACTOR_PARAM_TAG - actor_id as i64
+}
+
 pub(crate) async fn apply_send_game_message(
     actor_id: u32,
     text_owner_id: u32,
@@ -6380,7 +6423,9 @@ pub(crate) async fn apply_send_game_message(
         let lua_params: Vec<common::luaparam::LuaParam> = params
             .iter()
             .map(|&v| {
-                if (0..=u32::MAX as i64).contains(&v) && v > i32::MAX as i64 {
+                if v <= ACTOR_PARAM_TAG {
+                    common::luaparam::LuaParam::Actor((ACTOR_PARAM_TAG - v) as u32)
+                } else if (0..=u32::MAX as i64).contains(&v) && v > i32::MAX as i64 {
                     common::luaparam::LuaParam::UInt32(v as u32)
                 } else {
                     common::luaparam::LuaParam::Int32(v as i32)

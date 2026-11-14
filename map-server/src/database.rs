@@ -1297,7 +1297,8 @@ impl Database {
                     r"SELECT id, craftedItem, craftedQuantity, job,
                              crystal0ID, crystal0Quantity, crystal1ID, crystal1Quantity,
                              material0, material1, material2, material3,
-                             material4, material5, material6, material7
+                             material4, material5, material6, material7,
+                             level, facilities
                       FROM gamedata_recipes
                       ORDER BY craftedItem ASC",
                 )?;
@@ -1327,6 +1328,18 @@ impl Database {
                             .and_then(crate::crafting::Recipe::job_code_to_class)
                             .map(|c| vec![c.to_string()])
                             .unwrap_or_default();
+                        let level: u8 = r
+                            .get::<_, Option<u32>>(16)
+                            .ok()
+                            .flatten()
+                            .unwrap_or(1)
+                            .min(255) as u8;
+                        let facility: u32 = r.get::<_, Option<u32>>(17).ok().flatten().unwrap_or(0);
+                        let class_id = job
+                            .chars()
+                            .next()
+                            .and_then(crate::crafting::Recipe::job_code_to_class_id)
+                            .unwrap_or(0);
                         Ok(crate::crafting::Recipe::new(
                             id,
                             crafted_item,
@@ -1338,7 +1351,8 @@ impl Database {
                             c1_qty,
                             allowed,
                             1,
-                        ))
+                        )
+                        .with_craft_info(class_id, level, facility))
                     })?
                     .collect::<common::sql::Result<_>>()?;
                 Ok(rows)
@@ -4971,6 +4985,29 @@ impl Database {
     /// Everything the character carries, as (catalog id, total quantity)
     /// summed over its packages: what a quest script's `HasItem` and
     /// `GetItemQuantity` answer from.
+    /// `(package, slot, itemId)` for every occupied inventory slot.
+    pub async fn item_slots(&self, character_id: u32) -> Result<Vec<(u16, u16, u32)>> {
+        self.conn
+            .call_db(move |c| {
+                let mut stmt = c.prepare(
+                    r"SELECT ci.itemPackage, ci.slot, i.itemId FROM characters_inventory ci
+                      JOIN server_items i ON i.id = ci.serverItemId
+                      WHERE ci.characterId = :c",
+                )?;
+                let rows = stmt
+                    .query_map(named_params! { ":c": character_id }, |r| {
+                        Ok((
+                            r.get::<_, u16>(0)?,
+                            r.get::<_, u16>(1)?,
+                            r.get::<_, u32>(2)?,
+                        ))
+                    })?
+                    .collect::<common::sql::Result<_>>()?;
+                Ok(rows)
+            })
+            .await
+    }
+
     pub async fn item_totals(&self, character_id: u32) -> Result<Vec<(u32, i32)>> {
         self.conn
             .call_db(move |c| {

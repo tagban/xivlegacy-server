@@ -367,6 +367,8 @@ pub enum LuaCommand {
         item_package: u16,
         item_id: u32,
         quantity: i32,
+        /// Item quality: 1 normal, 2-4 high quality +1 to +3.
+        quality: u8,
     },
     /// `retainer:GetItemPackage(code):AddItem(id, qty)` — adds a stack
     /// to a retainer's personal inventory (not the bazaar). Routes

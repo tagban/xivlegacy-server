@@ -33,6 +33,8 @@ pub mod passive_guildleve;
 pub mod passive_guildleve_data;
 pub mod recipe;
 pub mod resolver;
+#[cfg(test)]
+mod synthesis_tests;
 
 #[allow(unused_imports)]
 pub use passive_guildleve::{

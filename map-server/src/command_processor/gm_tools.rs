@@ -899,6 +899,7 @@ impl CommandProcessor {
             item_package: package,
             item_id: item,
             quantity: qty,
+            quality: 1,
         }])
         .await;
         format!("gave {name} {qty} × item {item}")
@@ -926,6 +927,7 @@ impl CommandProcessor {
                 item_package: PKG_NORMAL,
                 item_id: item,
                 quantity: 1,
+                quality: 1,
             })
             .collect();
         self.run_lua(cmds).await;

@@ -630,6 +630,11 @@ pub struct PlayerSnapshot {
     pub traits: Vec<u16>,
     /// (item_id, quantity) tuples in inventory.
     pub inventory: Vec<(u32, i32)>,
+    /// (package, slot, item_id) per occupied bag slot. Filled from the DB
+    /// only where a script needs it (quest hooks, CraftCommand) so
+    /// `package:GetItemAtSlot(slot)` can resolve the item references the
+    /// craft start widget returns.
+    pub inventory_slots: Vec<(u16, u16, u32)>,
     /// Set by `player:SetLoginDirector(director)` during `onBeginLogin`
     /// — zero means no director attached. `player:GetDirector()` reads
     /// this to hand the `zone.lua:onZoneIn` hook a real director handle
@@ -797,6 +802,7 @@ impl From<&crate::actor::Player> for PlayerSnapshot {
             unlocked_aetherytes,
             traits,
             inventory,
+            inventory_slots: Vec::new(),
             login_director_actor_id: p.character.chara.login_director_actor_id,
             content_area_name: p.character.chara.content_area_name.clone(),
             // The From<&Player> impl can't reach the session store
@@ -2534,6 +2540,17 @@ impl UserData for LuaPlayer {
                             text_owner = id;
                         }
                     }
+                    // An actor after the text id is a message param (the
+                    // subject of "<player> creates/botches ...").
+                    Value::UserData(ud) if log_type.is_some() => {
+                        let id = ud
+                            .borrow_scoped::<LuaPlayer, _>(|p| p.snapshot.actor_id)
+                            .or_else(|_| ud.borrow_scoped::<LuaActor, _>(|a| a.actor_id))
+                            .or_else(|_| ud.borrow_scoped::<LuaNpc, _>(|n| n.base.actor_id));
+                        if let Ok(id) = id {
+                            params.push(crate::runtime::quest_apply::actor_param(id));
+                        }
+                    }
                     Value::Integer(i) => {
                         let i = *i;
                         if text_id.is_none() && i > 0xFFFF {
@@ -2686,6 +2703,13 @@ impl UserData for LuaPlayer {
                     package_code: pkg_code,
                     queue: this.queue.clone(),
                     inventory_snapshot: this.snapshot.inventory.clone(),
+                    slot_snapshot: this
+                        .snapshot
+                        .inventory_slots
+                        .iter()
+                        .filter(|(pkg, _, _)| *pkg == pkg_code)
+                        .map(|(_, slot, id)| (*slot, *id))
+                        .collect(),
                     is_retainer: false,
                 };
                 lua.create_userdata(pkg)
@@ -5234,6 +5258,7 @@ impl UserData for LuaRetainer {
                 // bazaar-side scripts safe until the live pipeline
                 // lands.
                 inventory_snapshot: Vec::new(),
+                slot_snapshot: Vec::new(),
                 is_retainer: true,
             })
         });
@@ -5320,6 +5345,9 @@ pub struct LuaItemPackage {
     /// `HasItem == false` (matches the conservative C# default of
     /// "missing item").
     pub inventory_snapshot: Vec<(u32, i32)>,
+    /// `(slot, item_id)` for this package's occupied slots, when the
+    /// owning snapshot carries slot data (see `PlayerSnapshot::inventory_slots`).
+    pub slot_snapshot: Vec<(u16, u32)>,
     /// `true` when the owning handle is a [`LuaRetainer`], `false`
     /// when it's a [`LuaPlayer`]. Routes `AddItem` through
     /// [`LuaCommand::AddItemToRetainer`] (Tier 4 #14 C) instead of
@@ -5331,9 +5359,9 @@ pub struct LuaItemPackage {
 
 impl UserData for LuaItemPackage {
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
-        // `pkg:AddItem(catalogId[, qty[, quality]])`. The optional
-        // third arg (quality) is accepted for signature compat but
-        // ignored — we don't model HQ on the wire yet. Lowercase
+        // `pkg:AddItem(catalogId[, qty[, quality]])`. Quality is 1 for
+        // normal and 2-4 for high quality +1 to +3 (synthesis results);
+        // anything else counts as normal. Lowercase
         // alias `addItem` exists for the etc/etc5* quest scripts
         // that predate the C# UpperCamel sweep (7 call sites).
         let add_item_handler =
@@ -5345,6 +5373,10 @@ impl UserData for LuaItemPackage {
                 };
                 let qty = match iter.next() {
                     Some(Value::Integer(q)) => q as i32,
+                    _ => 1,
+                };
+                let quality = match iter.next() {
+                    Some(Value::Integer(q)) if (1..=4).contains(&q) => q as u8,
                     _ => 1,
                 };
                 // Retainer-owned packages emit the dedicated retainer
@@ -5365,6 +5397,7 @@ impl UserData for LuaItemPackage {
                         item_package: this.package_code,
                         item_id: catalog as u32,
                         quantity: qty,
+                        quality,
                     }
                 };
                 push(&this.queue, cmd);
@@ -5387,6 +5420,7 @@ impl UserData for LuaItemPackage {
                             item_package: this.package_code,
                             item_id: catalog as u32,
                             quantity: 1,
+                            quality: 1,
                         },
                     );
                 }
@@ -5431,6 +5465,19 @@ impl UserData for LuaItemPackage {
         // `PopulaceCompanyShop` cost-vs-balance branch) treats the
         // missing-item case as a zero balance and the explicit `-1`
         // would force every caller to special-case it.
+        // `package:GetItemAtSlot(slot)` — `{itemId = id}` for an occupied
+        // slot, nil otherwise. CraftCommand resolves the craft start
+        // widget's placed-material references (itemPackage + slot) with it.
+        methods.add_method("GetItemAtSlot", |lua, this, slot: u16| {
+            match this.slot_snapshot.iter().find(|(s, _)| *s == slot) {
+                Some((_, item_id)) => {
+                    let t = lua.create_table()?;
+                    t.set("itemId", *item_id)?;
+                    Ok(Value::Table(t))
+                }
+                None => Ok(Value::Nil),
+            }
+        });
         methods.add_method("GetItemQuantity", |_, this, catalog_id: u32| {
             let total: i32 = this
                 .inventory_snapshot
@@ -6115,6 +6162,9 @@ impl UserData for LuaRecipe {
             Ok(this.inner.crystal_quantity_2)
         });
         fields.add_field_method_get("tier", |_, this| Ok(this.inner.tier));
+        fields.add_field_method_get("classId", |_, this| Ok(this.inner.class_id));
+        fields.add_field_method_get("level", |_, this| Ok(this.inner.level));
+        fields.add_field_method_get("facility", |_, this| Ok(this.inner.facility));
     }
 
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
