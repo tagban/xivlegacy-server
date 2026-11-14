@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1939 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1944 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -1934,6 +1934,11 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (30263, 5900015, 'rocdun1_door_e1', 231, '', 0, -28.0, 179.7, 129.8, 0.0, 0, 0, NULL),
 (30264, 5900015, 'rocdun4_door_01', 245, '', 0, -730.5, 179.5, 1441.5, 0.0, 0, 0, NULL),
 (30265, 5900015, 'rocdun4_door_03', 245, '', 0, -810.5, 179.5, 1457.5, 0.0, 0, 0, NULL),
+(30270, 1001904, 'etc201_coultenet', 147, '', 0, 4.0, 144.1, 1374.0, -0.8, 0, 0, NULL),
+(30271, 1001955, 'etc201_tristechambel', 147, '', 0, -5.0, 144.1, 1373.0, 0.8, 0, 0, NULL),
+(30272, 1001346, 'wld0g2_keketo', 154, '', 0, 1451.0, -11.13, 875.0, 2.4, 0, 0, NULL),
+(30273, 1001610, 'wld0g3_chamberliaux', 154, '', 0, 414.18, 4.0, 544.84, 0.0, 0, 0, NULL),
+(30274, 1001190, 'wld0g3_eugenaire', 206, '', 0, 25.8, 10.9, -1309.5, 0.0, 0, 0, NULL),
 (30206, 1091002, 'etc2i2_gwyr_aen', 145, '', 0, 2525.0, 173.42, 1256.0, 0.0, 0, 0, NULL),
 (30900, 1001824, 'spl_ninipu', 230, '', 0, -388.0, 42.5, 346.0, -2.4, 0, 0, NULL),
 (30901, 1001825, 'spl_hastridie', 206, '', 0, -121.0, 16.1, -1316.0, -1.6, 0, 0, NULL),

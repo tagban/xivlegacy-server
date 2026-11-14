@@ -17,14 +17,15 @@ REWARD_EXP			= 500;
 
 -- Sequence Numbers
 SEQ_000	= 0;  -- Kill Oilbugs.
-SEQ_001	= 1;  -- Talk to Eugenaire.
+SEQ_001	= 1;  -- Bring the oil to Chamberliaux at Buscarron's Fold.
 
 -- Actor Class Ids
 ENPC_EUGENAIRE 		= 1001190;
+ENPC_CHAMBERLIAUX	= 1001610;	-- the sentry at Buscarron's Fold; processEvent_010 is his
 BNPC_OILBUG			= 2103910;
 
 -- Quest Markers
-MRKR_EUGENAIRE		= 11120201;
+MRKR_CHAMBERLIAUX	= 11120201;	-- the client's marker sits at Buscarron's Fold
 MRKR_OILBUG_AREA	= 11120202;
 
 -- Counters
@@ -48,7 +49,8 @@ function onStateChange(player, quest, sequence)
         quest:SetENpc(ENPC_EUGENAIRE);
 		quest:SetENpc(BNPC_OILBUG);
 	elseif (sequence == SEQ_001) then
-		quest:SetENpc(ENPC_EUGENAIRE, QFLAG_REWARD);
+		quest:SetENpc(ENPC_EUGENAIRE);
+		quest:SetENpc(ENPC_CHAMBERLIAUX, QFLAG_REWARD);
 	end	
 end
 
@@ -72,6 +74,8 @@ function onTalk(player, quest, npc, eventName)
 	--Quest Complete
 	elseif (seq == SEQ_001) then
 		if (npcClassId == ENPC_EUGENAIRE) then
+			callClientFunction(player, "delegateEvent", player, quest, "processEvent_000");
+		elseif (npcClassId == ENPC_CHAMBERLIAUX) then
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent_010");
 			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
 			player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
@@ -105,6 +109,6 @@ function getJournalMapMarkerList(player, quest)
     if (sequence == SEQ_000) then
 		return MRKR_OILBUG_AREA;
     elseif (sequence == SEQ_001) then
-        return MRKR_EUGENAIRE;
+        return MRKR_CHAMBERLIAUX;
     end
 end

@@ -578,6 +578,7 @@ INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId
 (31189, 2106656, 'u_ghamaro_junkman', 29, 0, 1, 4200, 1.0, 1, 0, 0, 0, 27),
 (31190, 2106651, 'u_ghamaro_overman', 29, 0, 1, 4200, 1.0, 1, 0, 0, 0, 27),
 (31191, 2106645, 'u_ghamaro_underman', 29, 0, 1, 4200, 1.0, 1, 0, 0, 0, 27),
+(31400, 2105916, 'Mature Funguar', 14, 0, 1, 4200, 1.0, 0, 0, 0, 0, 14),
 (30502, 2280196, 'etc2i2_lunatic_lamb', 29, 0, 1, 4500, 1.0, 0, 0, 0, 0, 0),
 (30503, 2280197, 'etc2i2_lunatic_lamb', 29, 0, 1, 4500, 1.0, 0, 0, 0, 0, 0),
 (30504, 2280198, 'etc2i2_lunatic_lamb', 29, 0, 1, 4500, 1.0, 0, 0, 0, 0, 0),
