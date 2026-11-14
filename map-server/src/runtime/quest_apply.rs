@@ -899,6 +899,17 @@ pub async fn apply_runtime_lua_command(
             apply_hide_actor(player_id, actor_id, registry, world).await;
             true
         }
+        LC::RestGatherNode {
+            zone_id,
+            unique_id,
+            seconds,
+        } => {
+            match world.gather_node_actor_id(zone_id, &unique_id).await {
+                Some(actor_id) => world.rest_gather_node(actor_id, seconds).await,
+                None => tracing::debug!(zone_id, %unique_id, "RestGatherNode: no live gather node"),
+            }
+            true
+        }
         LC::HateContainerAddBaseHate {
             actor_id,
             target_actor_id,

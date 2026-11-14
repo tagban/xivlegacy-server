@@ -4121,7 +4121,7 @@ async fn load_gather_resolver_round_trips_seeded_rows() {
     assert_eq!(node2.num_items(), 5);
 }
 
-/// Spawn loader round-trips the two seeded rows and every row carries
+/// Spawn loader round-trips the seeded rows and every row carries
 /// a valid harvest-type + position triple.
 #[tokio::test]
 async fn load_gather_node_spawns_round_trips_seeded_rows() {
@@ -4132,11 +4132,13 @@ async fn load_gather_node_spawns_round_trips_seeded_rows() {
         .load_gather_node_spawns()
         .await
         .expect("load gather spawns");
-    assert_eq!(spawns.len(), 2);
+    assert!(spawns.len() >= 15);
     for s in &spawns {
         assert!(crate::gathering::is_valid_harvest_type(s.harvest_type));
-        assert!(s.harvest_node_id >= 1001);
+        assert!((2000..=2113).contains(&s.harvest_node_id));
         assert!(s.zone_id > 0);
+        // Gathering points use the client's MiningPoint classes.
+        assert!((1_200_052..=1_200_057).contains(&s.actor_class_id));
     }
 }
 
@@ -4444,8 +4446,8 @@ async fn gather_resolver_resolves_mozk_sourced_node() {
 /// `server_gather_node_spawns`, converts each row to a
 /// `SpawnLocation` attached to its target zone, and populates
 /// `gather_metadata` with the `(harvest_node_id, harvest_type)` pair
-/// keyed by `(zone_id, unique_id)`. The seed ships two tutorial
-/// mining outcrops in zone 180, so both paths should be exercised.
+/// keyed by `(zone_id, unique_id)`. The seed places three mining points
+/// around each Thanalan mining place (tools/gathering/gen_nodes.py).
 #[tokio::test]
 async fn gather_spawns_attach_to_zones_and_metadata() {
     let db = crate::database::Database::open(tempdb())
@@ -4457,42 +4459,40 @@ async fn gather_spawns_attach_to_zones_and_metadata() {
         .await
         .expect("world boot-load");
 
-    // Both seeded spawns should have been attached to zone 180.
-    let zone_180 = world.zone(180).await.expect("zone 180 present");
-    let seeds_in_180 = {
-        let z = zone_180.read().await;
+    // Camp Black Brush (Central Thanalan, zone 170) has three grade-1 points.
+    let zone_170 = world.zone(170).await.expect("zone 170 present");
+    let seeds_in_170 = {
+        let z = zone_170.read().await;
         z.spawn_locations
             .iter()
-            .filter(|s| s.unique_id.starts_with("mining_outcrop_central_thanalan_"))
+            .filter(|s| s.unique_id.starts_with("mine_black_brush_"))
             .count()
     };
     assert_eq!(
-        seeds_in_180, 2,
-        "both tutorial gather spawns seeded into zone 180"
+        seeds_in_170, 3,
+        "three Black Brush mining points in zone 170"
     );
 
-    // Metadata map should carry a `(harvest_node_id, harvest_type)`
-    // pair for each spawn.
-    assert_eq!(world.gather_metadata_count().await, 2);
+    // Every spawn row carries metadata: 15 Thanalan mining points.
+    assert!(world.gather_metadata_count().await >= 15);
     let m1 = world
-        .gather_metadata(180, "mining_outcrop_central_thanalan_1")
+        .gather_metadata(170, "mine_black_brush_1")
         .await
-        .expect("metadata for spawn 1");
-    assert_eq!(m1.harvest_node_id, 1001);
+        .expect("metadata for a Black Brush point");
+    assert_eq!(m1.harvest_node_id, 2010); // Mine @ Black Brush
     assert_eq!(m1.harvest_type, crate::gathering::HARVEST_TYPE_MINE);
 
-    let m2 = world
-        .gather_metadata(180, "mining_outcrop_central_thanalan_2")
+    let m5 = world
+        .gather_metadata(172, "mine_nophica_s_wells_1")
         .await
-        .expect("metadata for spawn 2");
-    assert_eq!(m2.harvest_node_id, 1002);
-    assert_eq!(m2.harvest_type, crate::gathering::HARVEST_TYPE_MINE);
+        .expect("metadata for a Nophica's Wells point");
+    assert_eq!(m5.harvest_node_id, 2014); // Mine @ Nophica's Wells
 
     // Unknown keys return None.
-    assert!(world.gather_metadata(180, "does_not_exist").await.is_none());
+    assert!(world.gather_metadata(170, "does_not_exist").await.is_none());
     assert!(
         world
-            .gather_metadata(999, "mining_outcrop_central_thanalan_1")
+            .gather_metadata(999, "mine_black_brush_1")
             .await
             .is_none()
     );

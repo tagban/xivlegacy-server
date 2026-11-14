@@ -18218,12 +18218,14 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
       "radius": "4.0",
       "outwards": "false",
       "silent": "true",
+      "isEnabled": "true",
       "conditionName": "pushCommandIn"
     },
     {
       "radius": "4.0",
       "outwards": "true",
       "silent": "true",
+      "isEnabled": "true",
       "conditionName": "pushCommandOut"
     }
   ]
@@ -18253,12 +18255,14 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
       "radius": "4.0",
       "outwards": "false",
       "silent": "true",
+      "isEnabled": "true",
       "conditionName": "pushCommandIn"
     },
     {
       "radius": "4.0",
       "outwards": "true",
       "silent": "true",
+      "isEnabled": "true",
       "conditionName": "pushCommandOut"
     }
   ]
@@ -18288,12 +18292,14 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
       "radius": "4.0",
       "outwards": "false",
       "silent": "true",
+      "isEnabled": "true",
       "conditionName": "pushCommandIn"
     },
     {
       "radius": "4.0",
       "outwards": "true",
       "silent": "true",
+      "isEnabled": "true",
       "conditionName": "pushCommandOut"
     }
   ]
@@ -18323,12 +18329,14 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
       "radius": "4.0",
       "outwards": "false",
       "silent": "true",
+      "isEnabled": "true",
       "conditionName": "pushCommandIn"
     },
     {
       "radius": "4.0",
       "outwards": "true",
       "silent": "true",
+      "isEnabled": "true",
       "conditionName": "pushCommandOut"
     }
   ]
@@ -18358,12 +18366,14 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
       "radius": "4.0",
       "outwards": "false",
       "silent": "true",
+      "isEnabled": "true",
       "conditionName": "pushCommandIn"
     },
     {
       "radius": "4.0",
       "outwards": "true",
       "silent": "true",
+      "isEnabled": "true",
       "conditionName": "pushCommandOut"
     }
   ]
@@ -18393,12 +18403,14 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
       "radius": "4.0",
       "outwards": "false",
       "silent": "true",
+      "isEnabled": "true",
       "conditionName": "pushCommandIn"
     },
     {
       "radius": "4.0",
       "outwards": "true",
       "silent": "true",
+      "isEnabled": "true",
       "conditionName": "pushCommandOut"
     }
   ]
