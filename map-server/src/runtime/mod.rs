@@ -27,10 +27,13 @@
 #![allow(unused_imports)]
 
 pub mod actor_registry;
+pub mod aurum_hazards;
+pub mod aurum_pools;
 pub mod bnpc_spawn;
 pub mod broadcast;
 pub mod clock;
 pub mod dispatcher;
+pub mod dungeon_chest;
 pub mod dungeon_fight;
 pub mod gc_apply;
 pub mod quest_apply;
