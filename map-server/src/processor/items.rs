@@ -38,6 +38,27 @@ const BUFF_BASE: u32 = 1_015_001;
 const RESTORE_BASE: u32 = 1_016_001;
 const MAX_TP: i32 = 3000;
 
+/// What each remove-status item (`CmnRemoveStatusItem`) cures, by catalog
+/// id. Blood Drops is the English name of the 1.0 Antidote (its French name
+/// is "Antidote"; "This alchemically crafted restorative instantly cures
+/// poison"). Gold Lung and Goldbile are the Aurum Vale's poisons.
+const REMOVE_STATUS_ITEMS: &[(u32, &[u32])] = &[(
+    3_020_406,
+    &[
+        223_011, // Poison
+        crate::runtime::aurum_hazards::STATUS_GOLD_LUNG,
+        crate::runtime::aurum_hazards::STATUS_GOLDBILE,
+    ],
+)];
+
+/// The statuses a remove-status item cures, if it is one.
+pub fn cures_of(catalog_id: u32) -> Option<&'static [u32]> {
+    REMOVE_STATUS_ITEMS
+        .iter()
+        .find(|(id, _)| *id == catalog_id)
+        .map(|(_, cures)| *cures)
+}
+
 /// When each (player, recast group) is ready again.
 static RECASTS: Mutex<Option<HashMap<(u32, i32), Instant>>> = Mutex::new(None);
 
@@ -97,6 +118,11 @@ impl PacketProcessor {
             Ok(Some(item)) if item.usable => item,
             _ => return self.cannot_use(player_id, catalog_id).await,
         };
+        if let Some(cures) = cures_of(catalog_id) {
+            return self
+                .use_remove_status_item(player_id, package, catalog_id, &item, cures)
+                .await;
+        }
         let restores = item.category.ends_with("/PotionItem");
         let buffs =
             item.category.ends_with("/FoodItem") || item.category.ends_with("/EnchantMedicineItem");
@@ -123,6 +149,63 @@ impl PacketProcessor {
             self.eat(player_id, &item.effects, item.duration_s).await;
         }
         tracing::info!(player = player_id, catalog_id, category = %item.category, "item used");
+    }
+
+    /// Antidote and the like: take off the statuses the item cures. It can't
+    /// be used (and isn't spent) when you have none of them.
+    pub(crate) async fn use_remove_status_item(
+        &self,
+        player_id: u32,
+        package: u16,
+        catalog_id: u32,
+        item: &crate::database::UsableItem,
+        cures: &[u32],
+    ) {
+        let Some(handle) = self.registry.get(player_id).await else {
+            return;
+        };
+        let has_any = {
+            let c = handle.character.read().await;
+            cures.iter().any(|id| c.status_effects.has(*id))
+        };
+        if !has_any || !take_recast(player_id, item.recast_group, item.recast_s) {
+            return self.cannot_use(player_id, catalog_id).await;
+        }
+        crate::runtime::quest_apply::apply_remove_item(
+            player_id,
+            package,
+            catalog_id,
+            1,
+            &self.registry,
+            Some(&self.world),
+            &self.db,
+        )
+        .await;
+        let mut outbox = crate::status::StatusOutbox::new();
+        {
+            let mut c = handle.character.write().await;
+            for &id in cures {
+                c.status_effects.remove_status_effect(
+                    id,
+                    crate::status::DEFAULT_LOSS_TEXT_ID,
+                    true,
+                    &mut outbox,
+                );
+            }
+        }
+        if let Some(lua) = self.lua.as_ref() {
+            for event in outbox.drain() {
+                crate::runtime::dispatcher::dispatch_status_event(
+                    &event,
+                    &self.registry,
+                    &self.world,
+                    &self.db,
+                    lua.catalogs(),
+                )
+                .await;
+            }
+        }
+        tracing::info!(player = player_id, catalog_id, "remove-status item used");
     }
 
     /// Restore `percent` of max HP / MP / TP, up to each effect's cap.
