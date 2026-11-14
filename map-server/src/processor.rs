@@ -61,7 +61,7 @@ use crate::world_manager::WorldManager;
 mod dungeon;
 mod equip;
 pub(crate) mod gm_spawn;
-mod items;
+pub(crate) mod items;
 mod quest_offers;
 
 /// `OP_RX_PARTY_CHAT`'s first u32 for linkshell chat (`/l`).
