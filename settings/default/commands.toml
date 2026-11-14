@@ -54,6 +54,8 @@ jail = 2
 pardon = 2
 setmusic = 2
 setweather = 2
+# seasonal events (settings/events.toml): show, or switch on/off/auto
+event = 2
 
 # senior GMs: changing what characters have, and what reaches everyone
 bringall = 3
