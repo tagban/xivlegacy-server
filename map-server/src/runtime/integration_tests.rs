@@ -4468,7 +4468,10 @@ async fn gather_spawns_attach_to_zones_and_metadata() {
             .filter(|s| s.unique_id.starts_with("mine_black_brush_"))
             .count()
     };
-    assert_eq!(seeds_in_170, 3, "three Black Brush mining points in zone 170");
+    assert_eq!(
+        seeds_in_170, 3,
+        "three Black Brush mining points in zone 170"
+    );
 
     // Every spawn row carries metadata: 15 Thanalan mining points.
     assert!(world.gather_metadata_count().await >= 15);

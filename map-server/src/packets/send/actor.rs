@@ -912,18 +912,8 @@ pub fn build_player_property_init(
         21001, 21001, 21002, 12004, 21005, 21006, 21007, 12009, 12010, 12005, 12007, 12011, 22012,
         22013, 29497, 22015,
     ];
-    const GATHER_COMMANDS: [u32; 3] = [22002, 22003, 22004];
     for (i, id) in STARTER_COMMANDS.iter().enumerate() {
         b.add_int(&format!("charaWork.command[{}]", i), 0xA0F0_0000 | *id);
-    }
-    // Gathering commands (Mine, Log, Fish). 1.0 players stood on a glowing
-    // point and chose the command from the system menu, which lists these
-    // slots; without them a Miner has no way to start mining.
-    for (i, id) in GATHER_COMMANDS.iter().enumerate() {
-        b.add_int(
-            &format!("charaWork.command[{}]", STARTER_COMMANDS.len() + i),
-            0xA0F0_0000 | *id,
-        );
     }
     // Equipped hotbar — pmeteor `Player.GetInitPackets` (Player.cs:484-487)
     // pairs every populated `command[i >= 32]` with that slot's
@@ -1447,13 +1437,15 @@ mod npc_property_init_tests {
     /// one. (Garlemald-Server #46, round 2.)
     #[test]
     fn init_dump_carries_the_passed_hate_type() {
-        let spawn = build_npc_property_init(0x4700_0001, 0x13, 100, 100, 50, 50, 0, 1, 1, (0, 0, 0));
+        let spawn =
+            build_npc_property_init(0x4700_0001, 0x13, 100, 100, 50, 50, 0, 1, 1, (0, 0, 0));
         assert_eq!(
             find_byte_property(&spawn, "npcWork.hateType"),
             Some(1),
             "spawn-table /_init carries the passive-white 1 (all actors, hostiles too)"
         );
-        let engaged = build_npc_property_init(0x4700_0002, 0x13, 100, 100, 50, 50, 0, 2, 3, (0, 0, 0));
+        let engaged =
+            build_npc_property_init(0x4700_0002, 0x13, 100, 100, 50, 50, 0, 2, 3, (0, 0, 0));
         assert_eq!(
             find_byte_property(&engaged, "npcWork.hateType"),
             Some(2),
