@@ -102,7 +102,7 @@ function onTalk(player, quest, npc)
 		elseif (classId == DACA_JINJAHL) then
 			if (not data:GetFlag(FLAG_TALKED_DACA_JINJAHL)) then
 				callClientFunction(player, "delegateEvent", player, quest, "processEvent010");
-				data:SetFlag(FLAG_TALKED_KEKETO);
+				data:SetFlag(FLAG_TALKED_DACA_JINJAHL);
                 incCounter = true;
 			else
 				callClientFunction(player, "delegateEvent", player, quest, "processEvent010_1");

@@ -1246,7 +1246,7 @@ impl PacketProcessor {
                     player_id,
                     actor_id,
                     &trigger,
-                    5,
+                    crate::packets::send::events::script_kick_event_type(actor_id),
                     &lua_params,
                 );
                 sub.set_target_id(session_id);
@@ -1986,12 +1986,14 @@ impl PacketProcessor {
                 item_package,
                 item_id,
                 quantity,
+                quality,
             } => {
-                crate::runtime::quest_apply::apply_add_item(
+                crate::runtime::quest_apply::apply_add_item_quality(
                     actor_id,
                     item_package,
                     item_id,
                     quantity,
+                    quality,
                     &self.registry,
                     Some(&self.world),
                     &self.db,
@@ -3841,7 +3843,7 @@ impl PacketProcessor {
                         kick.trigger_actor_id,
                         kick.owner_actor_id,
                         &kick.event_name,
-                        5,
+                        crate::packets::send::events::script_kick_event_type(kick.owner_actor_id),
                         &kick.args,
                     ),
                 ];
@@ -7326,6 +7328,12 @@ impl PacketProcessor {
                 tracing::warn!(player = snapshot.actor_id, err = %e, "quest hook: item totals failed")
             }
         }
+        match self.db.item_slots(snapshot.actor_id).await {
+            Ok(slots) => snapshot.inventory_slots = slots,
+            Err(e) => {
+                tracing::warn!(player = snapshot.actor_id, err = %e, "quest hook: item slots failed")
+            }
+        }
         snapshot
     }
 
@@ -8959,6 +8967,14 @@ impl PacketProcessor {
             let c = handle.character.read().await;
             build_player_snapshot_from_character(&c)
         };
+        // Synthesis checks crystals and materials with `HasItem`, which
+        // answers from the snapshot's item totals; only CraftCommand pays
+        // for the DB read.
+        let snapshot = if command_name == "CraftCommand" {
+            self.with_item_totals(snapshot).await
+        } else {
+            snapshot
+        };
         let lua_clone = lua.clone();
         let script_path_clone = script_path.clone();
         let result = tokio::task::spawn_blocking(move || {
@@ -10377,7 +10393,7 @@ impl PacketProcessor {
                     kick.trigger_actor_id,
                     kick.owner_actor_id,
                     &kick.event_name,
-                    5,
+                    crate::packets::send::events::script_kick_event_type(kick.owner_actor_id),
                     &kick.args,
                 );
                 sub.set_target_id(session_id);
@@ -10765,6 +10781,11 @@ impl PacketProcessor {
             {
                 Some(crate::bug_report::file(&self.db, &handle, session_id, note).await)
             } else if let Some(r) = self.dungeon_command(&handle, &line, level).await {
+                Some(match r {
+                    Ok(m) => (ChatKind::System, m),
+                    Err(m) => (ChatKind::SystemError, m),
+                })
+            } else if let Some(r) = self.gm_talkto_offer(&handle, &line, level).await {
                 Some(match r {
                     Ok(m) => (ChatKind::System, m),
                     Err(m) => (ChatKind::SystemError, m),
@@ -11420,6 +11441,7 @@ pub(crate) fn build_player_snapshot_for_login(
         unlocked_aetherytes: c.chara.unlocked_aetherytes.iter().copied().collect(),
         traits: Vec::new(),
         inventory: Vec::new(),
+        inventory_slots: Vec::new(),
         login_director_actor_id: c.chara.login_director_actor_id,
         content_area_name: c.chara.content_area_name.clone(),
         // Login snapshot never has a retainer spawned — the tutorial

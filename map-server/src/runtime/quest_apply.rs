@@ -296,6 +296,23 @@ pub async fn apply_runtime_lua_command(
             apply_send_message(actor_id, message_type, &sender, &text, registry, world).await;
             true
         }
+        LC::OpenDungeonChest {
+            player_id,
+            chest_actor_id,
+            loot,
+        } => {
+            crate::runtime::dungeon_chest::open(
+                player_id,
+                chest_actor_id,
+                &loot,
+                registry,
+                db,
+                world,
+                lua,
+            )
+            .await;
+            true
+        }
         // `player:UnlockAetheryteNode(id)` — first-touch aetheryte
         // attunement from AetheryteParent.lua / AetheryteChild.lua
         // `onEventStarted` (Garlemald-Server #46, round 5). The
@@ -506,12 +523,14 @@ pub async fn apply_runtime_lua_command(
             item_package,
             item_id,
             quantity,
+            quality,
         } => {
-            apply_add_item(
+            apply_add_item_quality(
                 actor_id,
                 item_package,
                 item_id,
                 quantity,
+                quality,
                 registry,
                 Some(world),
                 db,
@@ -2185,7 +2204,7 @@ async fn apply_kick_event(
         player_id,
         actor_id,
         trigger,
-        5,
+        crate::packets::send::events::script_kick_event_type(actor_id),
         &lua_params,
     );
     sub.set_target_id(session_id);
@@ -2296,6 +2315,8 @@ pub(crate) async fn apply_content_finished(
     crate::content_instance::release(active.instance_id);
     crate::dungeon_gates::release_instance(active.instance_id);
     crate::runtime::dungeon_fight::release_instance(active.instance_id);
+    crate::runtime::aurum_hazards::release_instance(active.instance_id);
+    crate::runtime::dungeon_chest::release_instance(active.instance_id);
     if active.instance_id != 0 {
         for mut member in world.all_sessions().await {
             if member.id != session_id
@@ -2308,6 +2329,7 @@ pub(crate) async fn apply_content_finished(
                 member.pending_content_kick_event = None;
                 if let Some(h) = registry.by_session(member.id).await {
                     h.character.write().await.chara.content_area_name.clear();
+                    close_raid_ui_on_client(h.actor_id, &active, registry, world).await;
                 }
                 world.upsert_session(member).await;
             }
@@ -2368,6 +2390,7 @@ pub(crate) async fn apply_content_finished(
     //    closed on every way out, the clock having run out or not.
     if player_id != 0 {
         close_content_timer(player_id, registry, world).await;
+        close_raid_ui_on_client(player_id, &active, registry, world).await;
     }
 
     // 7. Scheduler purge.
@@ -2515,6 +2538,58 @@ pub(crate) async fn content_group_roster(
     roster
 }
 
+/// Whether leaving this copy must close the client's raid UI first: a
+/// dungeon copy (`dungeon.lua`, content `SimpleContentDungeon*`) run by an
+/// instance-raid director (Aurum Vale, Cutter's Cry). In such a copy the
+/// client switches its desktop to the raid layout, and only the director's
+/// own exits put it back (`clearEvent`, `failedEvent`, `exitCutScene` in
+/// the client's InstanceRaidBaseClass: `orderDesktopWidgetMode(126)`). The
+/// Grand Company raids run `exitCutScene` from their director scripts;
+/// the dungeons have no ending yet, so nothing did, and the client kept
+/// the raid layout after the warp out: no NPC would talk to the player,
+/// in any zone, until a relog.
+pub(crate) fn closes_raid_ui_on_leave(active: &crate::data::ActiveContentScript) -> bool {
+    active.director_name.starts_with("InstanceRaid/")
+        && active.content_script.starts_with("SimpleContentDungeon")
+}
+
+/// Runs the copy director's `clearEvent` on one player's client inside a
+/// notice event of its own (kick, function, end; the same order the Grand
+/// Company raid directors use for `exitCutScene`), for a copy where
+/// [`closes_raid_ui_on_leave`] holds. Sent before the warp out.
+async fn close_raid_ui_on_client(
+    player_id: u32,
+    active: &crate::data::ActiveContentScript,
+    registry: &ActorRegistry,
+    world: &WorldManager,
+) {
+    if !closes_raid_ui_on_leave(active) {
+        return;
+    }
+    let Some(handle) = registry.get(player_id).await else {
+        return;
+    };
+    let Some(client) = world.client(handle.session_id).await else {
+        return;
+    };
+    use crate::packets::send::events;
+    let director = active.director_actor_id;
+    for mut sub in [
+        events::build_kick_event(player_id, director, "noticeEvent", 5, &[]),
+        events::build_run_event_function(player_id, director, "noticeEvent", 5, "clearEvent", &[]),
+        events::build_end_event(player_id, director, "noticeEvent", 5),
+    ] {
+        sub.set_target_id(handle.session_id);
+        client.send_bytes(sub.to_bytes()).await;
+    }
+    tracing::info!(
+        player = format!("0x{player_id:08X}"),
+        director = format!("0x{director:08X}"),
+        director_name = %active.director_name,
+        "raid UI closed on the client before leaving the copy (director clearEvent)",
+    );
+}
+
 /// A player's own side of leaving a copy that goes on without them: the
 /// duty timer closed, the content's `MinimumHpLock` off, and their
 /// director coroutine (parked on `battleComplete`) dropped, so a later
@@ -2584,6 +2659,7 @@ pub(crate) async fn apply_leave_content(
         snap.active_content_script = None;
         snap.pending_content_kick_event = None;
         world.upsert_session(snap).await;
+        close_raid_ui_on_client(player_id, &active, registry, world).await;
         leave_copy_player_cleanup(player_id, registry, world, lua).await;
         return;
     }
@@ -2619,6 +2695,7 @@ pub(crate) async fn apply_leave_content(
                 to = heir_id,
                 "content copy handed to a party member still inside",
             );
+            close_raid_ui_on_client(player_id, &active, registry, world).await;
             leave_copy_player_cleanup(player_id, registry, world, lua).await;
         }
         None => {
@@ -4848,6 +4925,33 @@ pub async fn apply_add_item(
     world: Option<&WorldManager>,
     db: &Database,
 ) {
+    apply_add_item_quality(
+        actor_id,
+        item_package,
+        item_id,
+        quantity,
+        1,
+        registry,
+        world,
+        db,
+    )
+    .await;
+}
+
+/// [`apply_add_item`] with an item quality: 1 normal, 2-4 high quality
+/// +1 to +3. Quality only applies to the NORMAL bag; the other bags
+/// ignore it.
+#[allow(clippy::too_many_arguments)]
+pub async fn apply_add_item_quality(
+    actor_id: u32,
+    item_package: u16,
+    item_id: u32,
+    quantity: i32,
+    quality: u8,
+    registry: &ActorRegistry,
+    world: Option<&WorldManager>,
+    db: &Database,
+) {
     if quantity <= 0 || item_id == 0 {
         return;
     }
@@ -4918,7 +5022,10 @@ pub async fn apply_add_item(
         );
         return;
     }
-    match db.add_harvest_item(actor_id, item_id, quantity, 1).await {
+    match db
+        .add_harvest_item(actor_id, item_id, quantity, quality.clamp(1, 4))
+        .await
+    {
         Ok(total) => {
             tracing::info!(
                 actor = actor_id,
@@ -6353,6 +6460,17 @@ pub(crate) async fn broadcast_quest_enpc_update(
 /// the text owner) to the player's client, target-stamped for the
 /// world relay. Mirrors `Player.SendGameMessage(sourceActor,
 /// textIdOwner, textId, log)`.
+/// Actor references among `SendGameMessage` params travel in the `i64`
+/// param list as `ACTOR_PARAM_TAG - actor_id` (far below any real
+/// integer param) and go on the wire as a LuaParam actor, so text such as
+/// "<player> botches the synthesis!" can name its subject.
+pub(crate) const ACTOR_PARAM_TAG: i64 = -(1 << 40);
+
+/// Encode an actor id for a `SendGameMessage` param list.
+pub(crate) fn actor_param(actor_id: u32) -> i64 {
+    ACTOR_PARAM_TAG - actor_id as i64
+}
+
 pub(crate) async fn apply_send_game_message(
     actor_id: u32,
     text_owner_id: u32,
@@ -6391,7 +6509,9 @@ pub(crate) async fn apply_send_game_message(
         let lua_params: Vec<common::luaparam::LuaParam> = params
             .iter()
             .map(|&v| {
-                if (0..=u32::MAX as i64).contains(&v) && v > i32::MAX as i64 {
+                if v <= ACTOR_PARAM_TAG {
+                    common::luaparam::LuaParam::Actor((ACTOR_PARAM_TAG - v) as u32)
+                } else if (0..=u32::MAX as i64).contains(&v) && v > i32::MAX as i64 {
                     common::luaparam::LuaParam::UInt32(v as u32)
                 } else {
                     common::luaparam::LuaParam::Int32(v as i32)
