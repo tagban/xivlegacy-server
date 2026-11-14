@@ -1339,13 +1339,14 @@ impl Database {
             .conn
             .call_db(|c| {
                 let mut stmt = c.prepare(
-                    r"SELECT id, craftedItem, craftedQuantity, job,
-                             crystal0ID, crystal0Quantity, crystal1ID, crystal1Quantity,
-                             material0, material1, material2, material3,
-                             material4, material5, material6, material7,
-                             level, facilities
-                      FROM gamedata_recipes
-                      ORDER BY craftedItem ASC",
+                    r"SELECT r.id, r.craftedItem, r.craftedQuantity, r.job,
+                             r.crystal0ID, r.crystal0Quantity, r.crystal1ID, r.crystal1Quantity,
+                             r.material0, r.material1, r.material2, r.material3,
+                             r.material4, r.material5, r.material6, r.material7,
+                             r.level, r.facilities, i.level
+                      FROM gamedata_recipes r
+                      LEFT JOIN gamedata_items i ON i.catalogID = r.craftedItem
+                      ORDER BY r.craftedItem ASC",
                 )?;
                 let rows: Vec<crate::crafting::Recipe> = stmt
                     .query_map([], |r| {
@@ -1373,12 +1374,16 @@ impl Database {
                             .and_then(crate::crafting::Recipe::job_code_to_class)
                             .map(|c| vec![c.to_string()])
                             .unwrap_or_default();
-                        let level: u8 = r
+                        // `level` is the recipe's tier (1-6); see `Recipe::level_from_tier`.
+                        let tier: u8 = r
                             .get::<_, Option<u32>>(16)
                             .ok()
                             .flatten()
                             .unwrap_or(1)
                             .min(255) as u8;
+                        let item_level: u32 =
+                            r.get::<_, Option<u32>>(18).ok().flatten().unwrap_or(1);
+                        let level = crate::crafting::Recipe::level_from_tier(tier, item_level);
                         let facility: u32 = r.get::<_, Option<u32>>(17).ok().flatten().unwrap_or(0);
                         let class_id = job
                             .chars()
@@ -1395,7 +1400,7 @@ impl Database {
                             c1_id,
                             c1_qty,
                             allowed,
-                            1,
+                            tier,
                         )
                         .with_craft_info(class_id, level, facility))
                     })?
