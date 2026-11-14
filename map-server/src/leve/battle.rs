@@ -172,9 +172,11 @@ pub fn is_supported(gd: &GuildleveGamedata) -> bool {
             && (0..3).all(|i| !is_page(gd, i) || gd.mobs[i] == 0 || !gd.mob_missing[i]);
     }
     let counted = |i: usize| gd.aim_num[i] > 0 && target_of(gd, i) != 0;
+    // a horde Survive leve has no targets: the hold is the task
+    let hold_only = gd.plate_id == PLATE_SURVIVE && gd.survive.is_some();
     gd.class_type == 1
         && plate_supported(gd)
-        && (0..4).any(|i| counted(i) || carried_by_local_beasts(gd, i))
+        && (hold_only || (0..4).any(|i| counted(i) || carried_by_local_beasts(gd, i)))
         && (0..4).all(|i| !counted(i) || !target_missing(gd, i))
 }
 
@@ -862,11 +864,13 @@ pub async fn start(
             leve.aim[i] = 0;
         }
     }
-    if leve
-        .aim
-        .iter()
-        .zip(leve.classes)
-        .all(|(a, c)| *a == 0 || c == 0)
+    // (a horde Survive leve has no targets: its hold is the task)
+    if leve.hold.is_none()
+        && leve
+            .aim
+            .iter()
+            .zip(leve.classes)
+            .all(|(a, c)| *a == 0 || c == 0)
     {
         say(
             registry,
@@ -2408,10 +2412,12 @@ mod tests {
             up: 3,
         });
         assert!(is_supported(&sweet_revenge));
-        // a hold with no final targets on the sheet still can't run
-        let mut horde = leve(10908, 1280004, 40, PLATE_SURVIVE, [0; 4], [0; 4]);
-        horde.survive = sweet_revenge.survive.clone();
+        // a horde leve (no final targets) runs once its hold is known:
+        // the hold alone wins it
+        let mut horde = leve(10906, 1280004, 40, PLATE_SURVIVE, [0; 4], [0; 4]);
         assert!(!is_supported(&horde));
+        horde.survive = sweet_revenge.survive.clone();
+        assert!(is_supported(&horde));
     }
 
     #[test]
