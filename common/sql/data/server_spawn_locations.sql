@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1938 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1950 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -1942,4 +1942,16 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (30905, 1090990, 'spl0i4_depression_a', 152, '', 0, -616.0, 4.2, -2390.0, 0.0, 0, 0, NULL),
 (30906, 1090991, 'spl0i4_depression_b', 152, '', 0, -604.0, 4.3, -2384.0, 0.0, 0, 0, NULL),
 (30907, 1090992, 'spl0i4_depression_c', 152, '', 0, -592.0, 4.7, -2386.0, 0.0, 0, 0, NULL),
-(30908, 1090993, 'spl0i4_hamlet_gate', 152, '', 0, -580.0, 6.1, -2382.0, 0.0, 0, 0, NULL);
+(30908, 1090993, 'spl0i4_hamlet_gate', 152, '', 0, -580.0, 6.1, -2382.0, 0.0, 0, 0, NULL),
+(30910, 1001789, 'asw_ursielle', 230, '', 0, -424.0, 40.2, 190.0, -1.4, 0, 0, NULL),
+(30911, 1001790, 'asw_mudede', 206, '', 0, 52.0, 4.0, -1200.0, 1.7, 0, 0, NULL),
+(30912, 1001791, 'asw_yvane', 175, '', 0, -70.0, 195.5, 78.0, 2.9, 0, 0, NULL),
+(30913, 1001792, 'asw_imp_spouse', 230, '', 0, -512.0, 42.0, 38.0, 0.0, 0, 0, NULL),
+(30914, 1001793, 'asw_imp_sellsword', 230, '', 0, -778.0, 10.0, 380.0, 0.0, 0, 0, NULL),
+(30915, 1001794, 'asw_imp_shopkeep', 230, '', 0, -488.0, 44.0, 412.0, 0.0, 0, 0, NULL),
+(30916, 1001795, 'asw_imp_sawbones', 206, '', 0, -318.0, 8.0, -1660.0, 0.0, 0, 0, NULL),
+(30917, 1001796, 'asw_imp_smallholder', 206, '', 0, -200.0, 20.0, -1460.0, 0.0, 0, 0, NULL),
+(30918, 1001797, 'asw_imp_scholar', 206, '', 0, 80.0, 20.0, -1448.0, 0.0, 0, 0, NULL),
+(30919, 1001798, 'asw_imp_strumpet', 175, '', 0, -178.0, 191.0, 104.0, 0.0, 0, 0, NULL),
+(30920, 1001799, 'asw_imp_senior', 175, '', 0, -88.0, 196.0, 60.0, 0.0, 0, 0, NULL),
+(30921, 1001800, 'asw_imp_songster', 175, '', 0, -60.0, 196.0, 44.0, 0.0, 0, 0, NULL);

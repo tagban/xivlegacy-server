@@ -77,6 +77,16 @@ pub fn install_globals(
         globals.set("IsSeasonalEventActive", f)?;
         let f = lua.create_function(|_, quest: u32| Ok(crate::seasonal::quest_open(quest)))?;
         globals.set("IsSeasonalQuestOpen", f)?;
+        // VanishSeasonalActor(actorId, seconds): hide an event NPC from
+        // every player for a while (an imp after its riddle); false when
+        // the actor belongs to no event.
+        let f = lua.create_function(|_, (actor_id, seconds): (u32, u64)| {
+            Ok(crate::seasonal::vanish(actor_id, seconds))
+        })?;
+        globals.set("VanishSeasonalActor", f)?;
+        // GetEorzeaHour(): the Eorzean hour of day, 0-23.
+        let f = lua.create_function(|_, _: ()| Ok(crate::seasonal::eorzea_hour()))?;
+        globals.set("GetEorzeaHour", f)?;
     }
 
     // GetStaticActor(name) / GetStaticActorById(id) — return the actor id

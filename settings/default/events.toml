@@ -29,3 +29,20 @@ name = "gone-with-the-snow"
 start = "12-31"
 end = "01-16"
 quests = [110802]
+
+# All Saints' Wake (1.0 ran it Oct 18 - Nov 1, 2011): the Adventurers'
+# Guild runners (Ursielle, Mudede, Yvane) and the disguised trickster imps.
+# The imps (actor classes below) show only at night, Eorzean time, from
+# night_start up to night_end (19:00-05:00, as in 1.0).
+[allsaints]
+mode = "auto"
+night_classes = [1001792, 1001793, 1001794, 1001795, 1001796, 1001797, 1001798, 1001799, 1001800]
+night_start = 19
+night_end = 5
+
+# Spl0i2 "Impish Impositions".
+[[allsaints.windows]]
+name = "impish-impositions"
+start = "10-18"
+end = "11-01"
+quests = [110800]

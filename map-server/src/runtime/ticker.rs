@@ -206,9 +206,11 @@ impl GameTicker {
             let now_ms = crate::runtime::clock::server_now_ms();
             self.tick_once(now_ms).await;
             frames += 1;
-            // Seasonal events start and stop by date: once a minute, take
-            // a stopped event's NPCs off the clients that have them.
-            if frames.is_multiple_of(600) {
+            // Seasonal events start and stop by date, night NPCs come and
+            // go with the Eorzean hour, and a script can make one vanish:
+            // every 10 s, take hidden event NPCs off the clients that have
+            // them.
+            if frames.is_multiple_of(100) {
                 let removed = self.world.remove_inactive_seasonal_actors().await;
                 if removed > 0 {
                     tracing::info!(removed, "seasonal event NPCs removed");
