@@ -10061,6 +10061,37 @@ impl PacketProcessor {
                 return;
             }
         }
+        // A PopulaceStandard NPC with its own `onEventStarted` override
+        // (a seasonal event's exchange rep, …) runs that script for the talk
+        // the same way; every active quest's tail EndEvent closed its menu
+        // right after the opening line. Stub quests that don't register
+        // their ENPCs still reach the townsfolk without an override.
+        if hook_name == "onTalk"
+            && npc_spec.class_path.ends_with("/PopulaceStandard")
+            && !npc_spec.unique_id.is_empty()
+            && let Some(lua) = self.lua.as_ref()
+        {
+            let zone_name = match self.world.zone(npc_spec.zone_id).await {
+                Some(z) => z.read().await.core.zone_name.clone(),
+                None => String::new(),
+            };
+            let unique_path =
+                lua.resolver()
+                    .npc(&zone_name, &npc_spec.class_name, &npc_spec.unique_id);
+            if lua.script_defines(&unique_path, "onEventStarted") {
+                let registered = {
+                    let c = handle.character.read().await;
+                    c.quest_journal
+                        .slots
+                        .iter()
+                        .flatten()
+                        .any(|q| q.state.current.contains_key(&npc_spec.actor_class_id))
+                };
+                if !registered {
+                    return;
+                }
+            }
+        }
 
         // An NPC a current quest registered (`quest:SetENpc`) talks for
         // that quest alone, as in Meteor. With Man200 open at SEQ_000, its

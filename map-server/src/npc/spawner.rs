@@ -218,7 +218,7 @@ async fn spawn_one(
     };
     character.base.spawn_quest_ids = seed.quest_ids.clone();
     if let Some(event) = &seed.event {
-        crate::seasonal::tag_actor(actor_id, event);
+        crate::seasonal::tag_actor(actor_id, event, seed.class_id);
     }
 
     // 2. Push a spatial projection into the zone. Private-area seeds

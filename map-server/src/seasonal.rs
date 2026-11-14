@@ -16,9 +16,14 @@
 //! date), `on` (every window open) or `off`. The settings give the mode;
 //! `!event <name> <on|off|auto>` overrides it and stores the override in
 //! `server_events`, so it survives a restart.
+//!
+//! Some of an event's NPCs show only at night, Eorzean time (All Saints'
+//! Wake's trickster imps: `night_classes`), and a script can make one
+//! vanish for a while (`VanishSeasonalActor`, an imp after its riddle).
 
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{OnceLock, RwLock};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use chrono::Datelike;
 use serde::Deserialize;
@@ -100,11 +105,75 @@ impl Window {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Default)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Event {
     pub mode: Mode,
     pub windows: Vec<Window>,
+    /// Actor classes of this event that show only at night.
+    pub night_classes: Vec<u32>,
+    /// Night, in Eorzean hours: from `night_start` up to (not including)
+    /// `night_end`, over midnight when the end is the smaller.
+    pub night_start: u32,
+    pub night_end: u32,
+}
+
+impl Default for Event {
+    fn default() -> Self {
+        Self {
+            mode: Mode::Auto,
+            windows: Vec::new(),
+            night_classes: Vec::new(),
+            night_start: 19,
+            night_end: 5,
+        }
+    }
+}
+
+impl Event {
+    fn is_night(&self, hour: u32) -> bool {
+        if self.night_start <= self.night_end {
+            self.night_start <= hour && hour < self.night_end
+        } else {
+            hour >= self.night_start || hour < self.night_end
+        }
+    }
+}
+
+/// Real seconds in one Eorzean hour (1.0: an Eorzean day is 70 minutes).
+const SECONDS_PER_EORZEA_HOUR: u64 = 175;
+
+/// The Eorzean hour (0-23) at `unix_seconds`.
+pub fn eorzea_hour_at(unix_seconds: u64) -> u32 {
+    ((unix_seconds / SECONDS_PER_EORZEA_HOUR) % 24) as u32
+}
+
+pub fn eorzea_hour() -> u32 {
+    eorzea_hour_at(
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0),
+    )
+}
+
+/// What decides whether a tagged actor shows: the date, the Eorzean hour
+/// and the moment (for vanished actors).
+#[derive(Debug, Clone, Copy)]
+pub struct Clock {
+    pub day: MonthDay,
+    pub hour: u32,
+    pub now: Instant,
+}
+
+impl Clock {
+    pub fn now() -> Self {
+        Self {
+            day: MonthDay::today(),
+            hour: eorzea_hour(),
+            now: Instant::now(),
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -112,8 +181,11 @@ struct State {
     events: BTreeMap<String, Event>,
     /// `!event` overrides (from `server_events`).
     overrides: BTreeMap<String, Mode>,
-    /// Spawned NPCs that belong to an event (actor id -> event name).
-    actors: HashMap<u32, String>,
+    /// Spawned NPCs that belong to an event (actor id -> event name and
+    /// actor class).
+    actors: HashMap<u32, (String, u32)>,
+    /// Actors a script made vanish, until when.
+    vanished: HashMap<u32, Instant>,
 }
 
 static STATE: OnceLock<RwLock<State>> = OnceLock::new();
@@ -190,10 +262,23 @@ impl State {
             .is_some_and(|e| e.windows.iter().any(|w| self.window_open(name, w, day)))
     }
 
-    fn hidden(&self, actor_id: u32, day: MonthDay) -> bool {
-        self.actors
+    fn hidden(&self, actor_id: u32, clock: Clock) -> bool {
+        let Some((name, class_id)) = self.actors.get(&actor_id) else {
+            return false;
+        };
+        if !self.active(name, clock.day) {
+            return true;
+        }
+        if self
+            .events
+            .get(name)
+            .is_some_and(|e| e.night_classes.contains(class_id) && !e.is_night(clock.hour))
+        {
+            return true;
+        }
+        self.vanished
             .get(&actor_id)
-            .is_some_and(|e| !self.active(e, day))
+            .is_some_and(|until| clock.now < *until)
     }
 
     fn quest_open(&self, quest_id: u32, day: MonthDay) -> bool {
@@ -231,21 +316,39 @@ pub fn quest_open_on(quest_id: u32, day: MonthDay) -> bool {
     state().read().map_or(true, |s| s.quest_open(quest_id, day))
 }
 
-/// Remember that spawned actor `actor_id` belongs to `event`.
-pub fn tag_actor(actor_id: u32, event: &str) {
+/// Remember that spawned actor `actor_id` (of `class_id`) belongs to
+/// `event`.
+pub fn tag_actor(actor_id: u32, event: &str, class_id: u32) {
     if let Ok(mut s) = state().write() {
-        s.actors.insert(actor_id, event.to_ascii_lowercase());
+        s.actors
+            .insert(actor_id, (event.to_ascii_lowercase(), class_id));
     }
 }
 
-/// Whether `actor_id` is an event NPC whose event isn't running, so
-/// players must not be sent it.
-pub fn actor_hidden(actor_id: u32) -> bool {
-    actor_hidden_on(actor_id, MonthDay::today())
+/// Hide event actor `actor_id` for `seconds` (an imp gone after its
+/// riddle). Untagged actors are left alone.
+pub fn vanish(actor_id: u32, seconds: u64) -> bool {
+    let Ok(mut s) = state().write() else {
+        return false;
+    };
+    if !s.actors.contains_key(&actor_id) {
+        return false;
+    }
+    let now = Instant::now();
+    s.vanished.retain(|_, until| *until > now);
+    s.vanished
+        .insert(actor_id, now + Duration::from_secs(seconds));
+    true
 }
 
-pub fn actor_hidden_on(actor_id: u32, day: MonthDay) -> bool {
-    state().read().is_ok_and(|s| s.hidden(actor_id, day))
+/// Whether `actor_id` is an event NPC players must not be sent now: its
+/// event isn't running, it is a night NPC by day, or it vanished.
+pub fn actor_hidden(actor_id: u32) -> bool {
+    actor_hidden_at(actor_id, Clock::now())
+}
+
+pub fn actor_hidden_at(actor_id: u32, clock: Clock) -> bool {
+    state().read().is_ok_and(|s| s.hidden(actor_id, clock))
 }
 
 /// One line per event for `!event`.
@@ -301,6 +404,7 @@ mod tests {
     fn starlight() -> Event {
         Event {
             mode: Mode::Auto,
+            night_classes: vec![900],
             windows: vec![
                 Window {
                     name: "a".into(),
@@ -315,6 +419,7 @@ mod tests {
                     quests: vec![110802],
                 },
             ],
+            ..Default::default()
         }
     }
 
@@ -369,16 +474,67 @@ mod tests {
         assert!(!s.active("hatchingtide", MonthDay(12, 20)));
     }
 
+    fn at(day: MonthDay, hour: u32) -> Clock {
+        Clock {
+            day,
+            hour,
+            now: Instant::now(),
+        }
+    }
+
     #[test]
     fn tagged_actors_follow_their_event() {
         let mut s = with(Some(Mode::Off));
-        s.actors.insert(7, "starlight".into());
-        assert!(s.hidden(7, MonthDay(12, 20)));
+        s.actors.insert(7, ("starlight".into(), 100));
+        assert!(s.hidden(7, at(MonthDay(12, 20), 12)));
         s.overrides.insert("starlight".into(), Mode::Auto);
-        assert!(!s.hidden(7, MonthDay(12, 20)));
-        assert!(s.hidden(7, MonthDay(7, 1)));
+        assert!(!s.hidden(7, at(MonthDay(12, 20), 12)));
+        assert!(s.hidden(7, at(MonthDay(7, 1), 12)));
         // untagged actors always show
-        assert!(!s.hidden(8, MonthDay(7, 1)));
+        assert!(!s.hidden(8, at(MonthDay(7, 1), 12)));
+    }
+
+    #[test]
+    fn night_classes_show_only_at_night() {
+        let mut s = with(None);
+        s.actors.insert(7, ("starlight".into(), 900));
+        s.actors.insert(8, ("starlight".into(), 100));
+        let day = MonthDay(12, 20);
+        for (hour, night) in [
+            (18, false),
+            (19, true),
+            (23, true),
+            (0, true),
+            (4, true),
+            (5, false),
+            (12, false),
+        ] {
+            assert_eq!(!s.hidden(7, at(day, hour)), night, "hour {hour}");
+            assert!(!s.hidden(8, at(day, hour)), "day NPC at hour {hour}");
+        }
+    }
+
+    #[test]
+    fn vanished_actors_come_back() {
+        let mut s = with(None);
+        s.actors.insert(7, ("starlight".into(), 100));
+        let c = at(MonthDay(12, 20), 12);
+        s.vanished.insert(7, c.now + Duration::from_secs(60));
+        assert!(s.hidden(7, c));
+        let later = Clock {
+            now: c.now + Duration::from_secs(61),
+            ..c
+        };
+        assert!(!s.hidden(7, later));
+    }
+
+    #[test]
+    fn eorzea_hours_turn_every_175_seconds() {
+        assert_eq!(eorzea_hour_at(0), 0);
+        assert_eq!(eorzea_hour_at(174), 0);
+        assert_eq!(eorzea_hour_at(175), 1);
+        assert_eq!(eorzea_hour_at(175 * 24), 0);
+        assert_eq!(eorzea_hour_at(175 * 24 + 175 * 19), 19);
     }
 
     #[test]
@@ -397,5 +553,9 @@ mod tests {
         assert_eq!(e.windows.len(), 2);
         assert!(e.windows.iter().any(|w| w.quests == [110801]));
         assert!(e.windows.iter().any(|w| w.quests == [110802]));
+        let a = &events["allsaints"];
+        assert!(a.windows.iter().any(|w| w.quests == [110800]));
+        assert_eq!(a.night_classes.len(), 9);
+        assert!(a.is_night(19) && a.is_night(4) && !a.is_night(5) && !a.is_night(18));
     }
 }
