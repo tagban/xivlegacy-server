@@ -747,9 +747,11 @@ impl Database {
                              mo.layoutId, mo.instanceId,
                              (SELECT GROUP_CONCAT(sq.questId)
                                 FROM server_spawn_location_quests sq
-                               WHERE sq.spawnId = sl.id)
+                               WHERE sq.spawnId = sl.id),
+                             se.eventName
                       FROM server_spawn_locations sl
-                      LEFT JOIN server_eventnpc_mapobj mo ON mo.id = sl.id",
+                      LEFT JOIN server_eventnpc_mapobj mo ON mo.id = sl.id
+                      LEFT JOIN server_spawn_location_events se ON se.spawnId = sl.id",
                 )?;
                 let rows: Vec<crate::zone::SpawnLocation> = stmt
                     .query_map([], |r| {
@@ -775,6 +777,11 @@ impl Database {
                                     s.split(',').filter_map(|q| q.trim().parse().ok()).collect()
                                 })
                                 .unwrap_or_default(),
+                            event: r
+                                .get::<_, Option<String>>(14)
+                                .ok()
+                                .flatten()
+                                .filter(|e| !e.is_empty()),
                         })
                     })?
                     .collect::<common::sql::Result<_>>()?;
@@ -782,6 +789,44 @@ impl Database {
             })
             .await?;
         Ok(rows)
+    }
+
+    /// `!event` overrides (`server_events`), as `(name, mode)`.
+    pub async fn load_event_overrides(&self) -> Result<Vec<(String, String)>> {
+        let rows = self
+            .conn
+            .call_db(|c| {
+                let mut stmt = c.prepare("SELECT name, mode FROM server_events")?;
+                let rows = stmt
+                    .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
+                    .collect::<common::sql::Result<_>>()?;
+                Ok(rows)
+            })
+            .await?;
+        Ok(rows)
+    }
+
+    /// Store a `!event` override; "auto" removes it.
+    pub async fn save_event_override(&self, name: &str, mode: &str) -> Result<()> {
+        let (name, mode) = (name.to_string(), mode.to_string());
+        self.conn
+            .call_db(move |c| {
+                if mode == "auto" {
+                    c.execute(
+                        "DELETE FROM server_events WHERE name = :n",
+                        named_params! { ":n": name },
+                    )?;
+                } else {
+                    c.execute(
+                        r"INSERT INTO server_events (name, mode) VALUES (:n, :m)
+                          ON DUPLICATE KEY UPDATE mode = VALUES(mode)",
+                        named_params! { ":n": name, ":m": mode },
+                    )?;
+                }
+                Ok(())
+            })
+            .await?;
+        Ok(())
     }
 
     /// Every battle NPC that spawns with its zone (`spawnType = 0`, not in a

@@ -217,6 +217,9 @@ async fn spawn_one(
         (id, npc.character, ActorKindTag::Npc, ActorKind::Npc)
     };
     character.base.spawn_quest_ids = seed.quest_ids.clone();
+    if let Some(event) = &seed.event {
+        crate::seasonal::tag_actor(actor_id, event);
+    }
 
     // 2. Push a spatial projection into the zone. Private-area seeds
     //    land in their area's own core (pmeteor's per-Area actor pool —

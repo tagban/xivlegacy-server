@@ -70,6 +70,15 @@ pub fn install_globals(
         globals.set("GetWorldMaster", f)?;
     }
 
+    // IsSeasonalEventActive(name) / IsSeasonalQuestOpen(questId): the
+    // seasonal-event switch (settings/events.toml, `!event`).
+    {
+        let f = lua.create_function(|_, name: String| Ok(crate::seasonal::is_active(&name)))?;
+        globals.set("IsSeasonalEventActive", f)?;
+        let f = lua.create_function(|_, quest: u32| Ok(crate::seasonal::quest_open(quest)))?;
+        globals.set("IsSeasonalQuestOpen", f)?;
+    }
+
     // GetStaticActor(name) / GetStaticActorById(id) — return the actor id
     // registered under that name, or nil if unknown. A miss is warn-logged:
     // scripts pass the result straight into client delegates, and a nil

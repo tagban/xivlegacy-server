@@ -36,6 +36,7 @@ use crate::lua::LuaEngine;
 use crate::runtime::actor_registry::ActorRegistry;
 use crate::world_manager::WorldManager;
 
+mod events;
 mod gm_tools;
 pub(crate) mod world_end;
 
@@ -222,6 +223,7 @@ impl CommandProcessor {
             "setseq" => self.handle_setseq(&args).await,
             "speed" => self.handle_speed(&args).await,
             "worldend" => self.handle_worldend(&args).await,
+            "event" => self.handle_event(&args).await,
             other => format!("unknown command: {other} (args={:?})", args.rest()),
         };
         if args.was_refused() {
@@ -274,6 +276,7 @@ impl CommandProcessor {
             "setmusic <music id> [name]",
             "setweather <weather id>",
             "worldend",
+            "event [name] [on|off|auto]",
             "zone <zone id or name> [name]",
             "camp [camp name] [name]",
             "warp <x> <y> <z> [name] | warp <zone> <x> <y> <z> [name]",
