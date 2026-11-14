@@ -114,6 +114,30 @@ impl Recipe {
         self
     }
 
+    /// Recipe level from the row's `level` column (a tier, 1-6) and the
+    /// result item's level. The 1.x recipe data has no per-recipe level,
+    /// only the tier, and the tiers overlap (tier 4 results run from item
+    /// level 20 to 45). The result item's level is the closest per-recipe
+    /// figure, so it is used, kept inside a range around the tier. Items
+    /// with no level of their own (level 1: yarns, ingots, most
+    /// intermediate materials) take the bottom of their tier's range.
+    /// Server choice; 1.0 never published recipe levels in its data.
+    pub fn level_from_tier(tier: u8, item_level: u32) -> u8 {
+        let (lo, hi) = match tier {
+            0 | 1 => (1, 15),
+            2 => (10, 25),
+            3 => (15, 35),
+            4 => (20, 45),
+            5 => (30, 50),
+            _ => (45, 50),
+        };
+        if item_level <= 1 {
+            lo
+        } else {
+            item_level.clamp(lo as u32, hi as u32) as u8
+        }
+    }
+
     /// Crafting class id for a `job` letter: `A`=29 Carpenter, `B`=30
     /// Blacksmith, `C`=31 Armorer, `D`=32 Goldsmith, `E`=33
     /// Leatherworker, `F`=34 Weaver, `G`=35 Alchemist, `H`=36 Culinarian.
@@ -156,6 +180,17 @@ impl Recipe {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn level_from_tier_uses_the_item_level_inside_the_tier() {
+        assert_eq!(Recipe::level_from_tier(1, 1), 1);
+        assert_eq!(Recipe::level_from_tier(1, 7), 7);
+        assert_eq!(Recipe::level_from_tier(1, 32), 15);
+        assert_eq!(Recipe::level_from_tier(2, 1), 10);
+        assert_eq!(Recipe::level_from_tier(4, 32), 32);
+        assert_eq!(Recipe::level_from_tier(6, 53), 50);
+        assert_eq!(Recipe::level_from_tier(6, 0), 45);
+    }
 
     #[test]
     fn job_code_maps_to_class_id() {
