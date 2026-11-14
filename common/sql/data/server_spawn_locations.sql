@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1915 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1930 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -790,7 +790,7 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (794, 1280080, 'longroot_aetherytegate', 154, '', 0, 1126.0, 1.0, 1440.0, 0.0, 0, 0, NULL),
 (795, 1280081, 'snakemolt_aetherytegate', 154, '', 0, 189.0, 1.0, 1337.0, 0.0, 0, 0, NULL),
 (796, 1280082, 'muntuycellars_aetherytegate', 157, '', 0, -689.0, -15.0, -2065.0, 0.0, 0, 0, NULL),
-(797, 1280083, 'tamtaradeeprcroft_aetherytegate', 0, '', 0, 313.0, -35.0, -171.0, 0.0, 0, 0, NULL),
+(797, 1280083, 'tamtaradeeprcroft_aetherytegate', 158, '', 0, 313.0, -36.2, -171.0, 0.0, 0, 0, NULL),
 (798, 1280088, '', 0, '', 0, -1054.0, 21.0, -1761.0, 0.0, 0, 0, NULL),
 (799, 1280089, '', 0, '', 0, -1568.0, -11.0, -552.0, 0.0, 0, 0, NULL),
 (800, 1280092, 'camp_dragonhead_aetheryte', 143, '', 0, 216.0, 303.0, -258.0, 0.0, 0, 0, NULL),
@@ -1919,4 +1919,19 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (29962, 1090812, 'shposhae_entrance1', 128, '', 0, 283.00, 23.60, 302.00, 0.0, 0, 0, NULL),
 (29963, 1090813, 'shposhae_exit1', 235, '', 0, 291.00, 13.23, 269.00, 0.0, 0, 0, NULL),
 (30205, 1091001, 'etc2l3_misty_past', 235, '', 0, -97.00, -89.06, -111.00, 0.0, 0, 0, NULL),
+(29980, 1090820, 'tam_tara_deepcroft_entrance1', 150, '', 0, 300, 15.0, -262, 0.0, 0, 0, NULL),
+(29981, 1090821, 'tam_tara_deepcroft_exit1', 158, '', 0, 283.0, -3.01, -258.0, 0.0, 0, 0, NULL),
+(29982, 1090822, 'u_ghamaro_mines_entrance1', 135, '', 0, 97.5, 61.7, -2713, 0.0, 0, 0, NULL),
+(29983, 1090823, 'u_ghamaro_mines_exit1', 137, '', 0, 78.0, 48.6, -2801.0, 0.0, 0, 0, NULL),
+(30255, 1090085, 'etc5u1_coliseum_push', 209, '', 0, -206.712, 195.148, 151.064, 1.821, 0, 0, NULL),
+(30256, 1090086, 'etc5g1_push', 206, '', 0, -33.709, 7.81, -1272.337, -0.81, 0, 0, NULL),
+(30257, 1090087, 'etc5l1_cave_push', 128, '', 0, -220.948, 16.603, -92.863, -2.09, 0, 0, NULL),
+(30258, 1090088, 'etc5l1_cutscene_push', 128, '', 0, -220.948, 16.603, -92.863, -2.09, 0, 0, NULL),
+(30259, 1090090, 'etc5l3_coffer_push', 172, '', 0, -1732.891, 56.119, -307.285, -2.785, 0, 0, NULL),
+(30260, 5900015, 'rocdun1_door_04', 231, '', 0, 36.0, 181.25, 66.0, 0.0, 0, 0, NULL),
+(30261, 5900015, 'rocdun1_door_05', 231, '', 0, 68.0, 181.25, 2.0, 0.0, 0, 0, NULL),
+(30262, 5900015, 'rocdun1_door_06', 231, '', 0, 20.0, 181.25, -46.0, 0.0, 0, 0, NULL),
+(30263, 5900015, 'rocdun1_door_e1', 231, '', 0, -28.0, 179.7, 129.8, 0.0, 0, 0, NULL),
+(30264, 5900015, 'rocdun4_door_01', 245, '', 0, -730.5, 179.5, 1441.5, 0.0, 0, 0, NULL),
+(30265, 5900015, 'rocdun4_door_03', 245, '', 0, -810.5, 179.5, 1457.5, 0.0, 0, 0, NULL),
 (30206, 1091002, 'etc2i2_gwyr_aen', 145, '', 0, 2525.0, 173.42, 1256.0, 0.0, 0, 0, NULL);

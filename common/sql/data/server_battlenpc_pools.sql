@@ -1,4 +1,4 @@
--- server_battlenpc_pools: game data, 557 rows. Reloaded whole when this file changes.
+-- server_battlenpc_pools: game data, 580 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_pools`;
 INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId`, `currentJob`, `combatSkill`, `combatDelay`, `combatDmgMult`, `aggroType`, `immunity`, `linkType`, `spellListId`, `skillListId`) VALUES
@@ -555,6 +555,29 @@ INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId
 (31096, 2107619, 'shearing_sheridan', 22, 0, 1, 4200, 1.0, 1, 0, 0, 0, 35),
 (31097, 2104511, 'spawning_orobon', 17, 0, 1, 4200, 1.0, 1, 0, 0, 0, 17),
 (31098, 2104215, 'spelaean_slug', 21, 0, 1, 4200, 1.0, 1, 0, 0, 0, 21),
+(31171, 2101305, 'black_eft', 19, 0, 1, 4200, 1.0, 1, 0, 0, 0, 19),
+(31172, 2102605, 'devilet', 52, 0, 1, 4200, 1.0, 1, 0, 0, 0, 52),
+(31173, 2101701, 'floating_eye', 51, 0, 1, 4200, 1.0, 0, 0, 0, 0, 51),
+(31174, 2109904, 'friar_s_lantern', 53, 0, 1, 4200, 1.0, 1, 0, 0, 0, 53),
+(31175, 2110303, 'goblin_freesword', 26, 0, 1, 4200, 1.0, 0, 0, 0, 0, 26),
+(31177, 2100505, 'lemur', 4, 0, 1, 4200, 1.0, 0, 0, 0, 0, 4),
+(31178, 2103401, 'plain_pudding', 63, 0, 1, 4200, 1.0, 1, 0, 0, 0, 63),
+(31179, 2100602, 'pus_gnat', 37, 0, 1, 4200, 1.0, 1, 0, 0, 0, 37),
+(31180, 2101801, 'rotting_corpse', 29, 0, 1, 4000, 1.0, 0, 0, 0, 0, 124),
+(31181, 2104108, 'scarred_kalong', 43, 0, 1, 4200, 1.0, 1, 0, 0, 0, 43),
+(31182, 2104208, 'shroud_hare', 21, 0, 1, 4200, 1.0, 0, 0, 0, 0, 21),
+(31183, 2101904, 'skeleton_soldier', 47, 0, 1, 4200, 1.0, 1, 0, 0, 0, 125),
+(31184, 2104019, 'spiny_dormouse', 12, 0, 1, 4200, 1.0, 0, 0, 0, 0, 12),
+(31192, 2101501, 'wild_hog', 9, 0, 1, 4200, 1.0, 1, 0, 0, 0, 9),
+(31170, 2109908, 'alchemist_s_tinder', 53, 0, 1, 4200, 1.0, 1, 0, 0, 0, 53),
+(31176, 2106604, 'kobold_prelate', 29, 0, 1, 4200, 1.0, 1, 0, 0, 0, 27),
+(31185, 2106665, 'third_order_patriarch_zu_ga', 29, 0, 1, 4200, 1.0, 1, 0, 0, 0, 27),
+(31186, 2106650, 'u_ghamaro_ashman', 29, 0, 1, 4200, 1.0, 1, 0, 0, 0, 27),
+(31187, 2106655, 'u_ghamaro_gateman', 29, 0, 1, 4200, 1.0, 1, 0, 0, 0, 27),
+(31188, 2106643, 'u_ghamaro_gurneyman', 29, 0, 1, 4200, 1.0, 1, 0, 0, 0, 27),
+(31189, 2106656, 'u_ghamaro_junkman', 29, 0, 1, 4200, 1.0, 1, 0, 0, 0, 27),
+(31190, 2106651, 'u_ghamaro_overman', 29, 0, 1, 4200, 1.0, 1, 0, 0, 0, 27),
+(31191, 2106645, 'u_ghamaro_underman', 29, 0, 1, 4200, 1.0, 1, 0, 0, 0, 27),
 (30502, 2280196, 'etc2i2_lunatic_lamb', 29, 0, 1, 4500, 1.0, 0, 0, 0, 0, 0),
 (30503, 2280197, 'etc2i2_lunatic_lamb', 29, 0, 1, 4500, 1.0, 0, 0, 0, 0, 0),
 (30504, 2280198, 'etc2i2_lunatic_lamb', 29, 0, 1, 4500, 1.0, 0, 0, 0, 0, 0),

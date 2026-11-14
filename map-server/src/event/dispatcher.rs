@@ -589,7 +589,7 @@ async fn dispatch_npc_event_started(
         return;
     };
 
-    let snapshot = {
+    let mut snapshot = {
         let c = player_handle.character.read().await;
         crate::lua::userdata::PlayerSnapshot {
             actor_id: c.base.actor_id,
@@ -646,6 +646,16 @@ async fn dispatch_npc_event_started(
             ..Default::default()
         }
     };
+    // What the player carries, for NPC scripts that gate on it: the inn bed
+    // starts a Hildibrand quest when the player sleeps with the Wanted
+    // poster (ObjectBed.lua). Without it `HasItem` answered from an empty
+    // inventory.
+    match db.item_totals(snapshot.actor_id).await {
+        Ok(items) => snapshot.inventory = items,
+        Err(e) => {
+            tracing::warn!(player = snapshot.actor_id, err = %e, "NPC event: item totals failed")
+        }
+    }
 
     let lua_clone = Arc::clone(lua);
     let event_name_owned = event_name.to_string();

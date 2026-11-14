@@ -1771,6 +1771,50 @@ mod tests {
         );
     }
 
+    /// `npc:SetQuestGraphic` takes Meteor's `(player, graphic)` (the
+    /// Hildibrand givers clear their marker with it) as well as a bare
+    /// `(graphic)`; the player-first form used to error and end the talk.
+    #[test]
+    fn set_quest_graphic_takes_the_player_first() {
+        let tmp = tmpdir();
+        let script = tmp.join("graphic.lua");
+        std::fs::write(
+            &script,
+            "function onEventStarted(player, npc, trigger)\n\
+             npc:SetQuestGraphic(player, 0)\n\
+             npc:SetQuestGraphic(2)\n\
+             end",
+        )
+        .unwrap();
+        let engine = LuaEngine::new(&tmp);
+        let npc_spec = LuaNpcSpec {
+            actor_id: 0x4578_0015,
+            name: "otopa_pottopa".to_string(),
+            class_name: "PopulaceStandard".to_string(),
+            class_path: "/Chara/Npc/Populace/PopulaceStandard".to_string(),
+            unique_id: "otopa_pottopa".to_string(),
+            zone_id: 175,
+            zone_name: String::new(),
+            state: 0,
+            pos: (0.0, 0.0, 0.0),
+            rotation: 0.0,
+            actor_class_id: 1_000_864,
+            quest_graphic: 0,
+        };
+        let result = engine.call_npc_on_event_started(
+            &script,
+            userdata::PlayerSnapshot {
+                actor_id: 1,
+                ..Default::default()
+            },
+            npc_spec,
+            "talkDefault".to_string(),
+            1,
+            Vec::new(),
+        );
+        assert!(result.error.is_none(), "{:?}", result.error);
+    }
+
     /// The Hamlet breeder greets with the client's `defTalk(player)`, then
     /// ends the event.
     #[test]
