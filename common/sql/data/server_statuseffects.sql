@@ -1,4 +1,4 @@
--- server_statuseffects: game data, 103 rows. Reloaded whole when this file changes.
+-- server_statuseffects: game data, 105 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_statuseffects`;
 INSERT INTO `server_statuseffects` (`id`, `name`, `flags`, `overwrite`, `tickMs`, `hidden`, `silentOnGain`, `silentOnLoss`, `statusGainTextId`, `statusLossTextId`) VALUES
@@ -95,6 +95,8 @@ INSERT INTO `server_statuseffects` (`id`, `name`, `flags`, `overwrite`, `tickMs`
 (223254, 'ballad_of_magi', 9, 2, 0, 0, 0, 0, 30328, 30331),
 (223255, 'paeon_of_war', 9, 2, 0, 0, 0, 0, 30328, 30331),
 (223256, 'minuet_of_rigor', 9, 2, 0, 0, 0, 0, 30328, 30331),
+(223258, 'gold_lung', 18, 1, 0, 0, 0, 0, 30335, 30338),
+(223259, 'goldbile', 22, 1, 0, 0, 0, 0, 30335, 30338),
 (223262, 'flare2', 21, 2, 0, 0, 0, 0, 30335, 30338),
 (223264, 'divine_regen', 9, 2, 0, 0, 0, 0, 30328, 30331),
 (228001, 'sleep', 264273941, 2, 0, 0, 0, 0, 30335, 30338),

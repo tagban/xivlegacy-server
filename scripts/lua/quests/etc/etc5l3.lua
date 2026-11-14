@@ -77,9 +77,8 @@ function onStateChange(player, quest, sequence)
         quest:SetENpc(KOPURU_FUPURU, QFLAG_TALK);
         quest:SetENpc(VKOROLON, QFLAG_TALK);
         quest:SetENpc(MYTESYN, QFLAG_TALK);
-        quest:SetENpc(BED_ULDAH, 5);
-        quest:SetENpc(BED_GRIDANIA, 5);
-        quest:SetENpc(BED_LIMSA, 5);
+        -- The inn beds are not claimed here: their own script (ObjectBed.lua)
+        -- runs the sleep/log-out menu and starts this quest from it.
     -- Quest started
     elseif (sequence == SEQ_000) then
         quest:SetENpc(COFFER_AND_COFFIN_PUSH, QFLAG_PUSH, false, true, false, true);
@@ -208,8 +207,12 @@ function onPush(player, quest, npc)
         end
 
         GetWorldManager():WarpToPrivateArea(player, "PrivateAreaMasterPast", 5, -1732.891, 56.119, -307.285, -2.785);
-        actor = player.CurrentArea:FindActorInZoneByUniqueID("etc5l3_nashu"); 
-        actor:ChangeState(ACTORSTATE_SITTING_ONFLOOR); -- Band-aid to get her sitting.
+        -- The warp above is applied after this script yields, so CurrentArea can
+        -- still be the public zone and the lookup can come back nil.
+        local actor = player.CurrentArea:FindActorInZoneByUniqueID("etc5l3_nashu");
+        if (actor ~= nil) then
+            actor:ChangeState(ACTORSTATE_SITTING_ONFLOOR); -- Band-aid to get her sitting.
+        end
     end
     player:EndEvent();
 end

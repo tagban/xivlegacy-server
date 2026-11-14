@@ -209,6 +209,14 @@ pub enum LuaCommand {
         instance_id: u32,
         slot: u32,
     },
+    /// `player:OpenDungeonChest(npc, loot)` from a dungeon treasure chest's
+    /// `onEventStarted`: open the boss chest the player is talking to and
+    /// hand out its loot (`crate::runtime::dungeon_chest`).
+    OpenDungeonChest {
+        player_id: u32,
+        chest_actor_id: u32,
+        loot: Vec<crate::runtime::dungeon_chest::ChestItem>,
+    },
     /// `director:AddMember(actor)` — port of C#
     /// `Director::AddMember`. Appends `member_actor_id` to the
     /// director's transient roster (keyed by director_actor_id on
@@ -375,6 +383,8 @@ pub enum LuaCommand {
         item_package: u16,
         item_id: u32,
         quantity: i32,
+        /// Item quality: 1 normal, 2-4 high quality +1 to +3.
+        quality: u8,
     },
     /// `retainer:GetItemPackage(code):AddItem(id, qty)` — adds a stack
     /// to a retainer's personal inventory (not the bazaar). Routes

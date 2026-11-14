@@ -44,6 +44,9 @@ pub struct SpawnLocation {
     /// in a private area several Echoes share, only a player holding one
     /// of them is sent the actor. Empty = everyone.
     pub quest_ids: Vec<u32>,
+    /// Seasonal event this spawn belongs to (`server_spawn_location_events`):
+    /// sent to players only while the event runs. None = always.
+    pub event: Option<String>,
 }
 
 impl SpawnLocation {
@@ -76,6 +79,7 @@ impl SpawnLocation {
             mapobj_layout_id: 0,
             mapobj_instance_id: 0,
             quest_ids: Vec::new(),
+            event: None,
         }
     }
 
