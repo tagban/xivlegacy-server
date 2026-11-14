@@ -468,7 +468,17 @@ impl UserData for LuaNpc {
             Ok(Value::Nil)
         });
         methods.add_method("GetZoneID", |_, this, _: ()| Ok(this.base.zone_id));
-        methods.add_method("SetQuestGraphic", |_, this, graphic: u8| {
+        // Meteor's form is `npc:SetQuestGraphic(player, graphic)` (the
+        // Hildibrand scripts, pfarahr/vkorolon); a bare `(graphic)` is
+        // accepted too. With the player first, the u8 conversion of the
+        // userdata failed and killed the talk mid-event (Etc5u1's offer
+        // at Otopa Pottopa never reached its EndEvent).
+        methods.add_method("SetQuestGraphic", |_, this, args: mlua::Variadic<Value>| {
+            let graphic = match args.last() {
+                Some(Value::Integer(n)) => *n as u8,
+                Some(Value::Number(n)) => *n as u8,
+                _ => 0,
+            };
             push(
                 &this.base.queue,
                 LuaCommand::GraphicChange {
@@ -2456,6 +2466,27 @@ impl UserData for LuaPlayer {
             );
             Ok(())
         });
+
+        // `player:OpenDungeonChest(npc, loot)`: open the dungeon boss chest
+        // `npc` and hand out `loot`, a list of `{ item_id, count = n,
+        // quest = id }` (`dungeon_chests.lua`, `crate::runtime::dungeon_chest`).
+        methods.add_method(
+            "OpenDungeonChest",
+            |_, this, (chest, loot): (mlua::Value, Option<mlua::Table>)| {
+                let loot = loot
+                    .map(|t| crate::runtime::dungeon_chest::loot_from_lua(&t))
+                    .unwrap_or_default();
+                push(
+                    &this.queue,
+                    LuaCommand::OpenDungeonChest {
+                        player_id: this.snapshot.actor_id,
+                        chest_actor_id: lua_target_to_actor_id(&chest),
+                        loot,
+                    },
+                );
+                Ok(())
+            },
+        );
 
         // --- Chat -----------------------------------------------------------
         methods.add_method(

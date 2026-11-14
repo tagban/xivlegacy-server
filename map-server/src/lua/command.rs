@@ -201,6 +201,14 @@ pub enum LuaCommand {
         instance_id: u32,
         slot: u32,
     },
+    /// `player:OpenDungeonChest(npc, loot)` from a dungeon treasure chest's
+    /// `onEventStarted`: open the boss chest the player is talking to and
+    /// hand out its loot (`crate::runtime::dungeon_chest`).
+    OpenDungeonChest {
+        player_id: u32,
+        chest_actor_id: u32,
+        loot: Vec<crate::runtime::dungeon_chest::ChestItem>,
+    },
     /// `director:AddMember(actor)` — port of C#
     /// `Director::AddMember`. Appends `member_actor_id` to the
     /// director's transient roster (keyed by director_actor_id on

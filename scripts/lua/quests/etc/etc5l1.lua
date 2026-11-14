@@ -61,7 +61,9 @@ function onStateChange(player, quest, sequence)
         end
         quest:SetENpc(OTOPA_POTTOPA, otopaFlag);
         quest:SetENpc(MYTESYN, QFLAG_TALK); -- Assuming this functions the same as it did in Etc5g1
-        quest:SetENpc(MIZZENMAST_BED, 5);
+        -- The inn bed is not claimed here: its own script (ObjectBed.lua)
+        -- runs the sleep/log-out menu and starts this quest from it.
+        -- Claimed by the offer, the talk went to this onTalk and no menu showed.
         
     elseif (sequence == SEQ_000) then
         quest:SetENpc(MYTESYN);

@@ -502,6 +502,7 @@ pub async fn tick_boss_fights(
     now_ms: u64,
     registry: &crate::runtime::actor_registry::ActorRegistry,
     world: &WorldManager,
+    db: &crate::database::Database,
     zone_id: u32,
     instance_id: u32,
 ) {
@@ -514,9 +515,14 @@ pub async fn tick_boss_fights(
     let player_ids = players_in_copy(world, zone_id, instance_id).await;
     for room in BOSS_ROOMS.iter().filter(|r| r.zone_id == zone_id) {
         let boss_id = room.boss_actor_id(slot);
-        let boss = match registry.get(boss_id).await {
+        let boss_handle = registry.get(boss_id).await;
+        // The boss actor is there and dead (not merely gone): its chest
+        // appears when the fight turns to Won.
+        let mut boss_lies_dead = false;
+        let boss = match boss_handle {
             Some(h) => {
                 let c = h.character.read().await;
+                boss_lies_dead = c.base.current_main_state == crate::actor::MAIN_STATE_DEAD;
                 BossView {
                     down: c.base.current_main_state == crate::actor::MAIN_STATE_DEAD,
                     fighting: c.ai_container.is_engaged() || c.chara.hp < c.chara.max_hp,
@@ -541,7 +547,7 @@ pub async fn tick_boss_fights(
             });
         }
         let key = (instance_id, room.bnpc_id);
-        let (next, step) = {
+        let (next, step, newly_won) = {
             let mut map = fights().lock().unwrap_or_else(|e| e.into_inner());
             let before = map.get(&key).cloned();
             let (next, step) = advance(before.clone(), boss, &players, now_ms);
@@ -563,8 +569,13 @@ pub async fn tick_boss_fights(
                     map.remove(&key);
                 }
             }
-            (next, step)
+            let newly_won = before != Some(Phase::Won) && next == Some(Phase::Won);
+            (next, step, newly_won)
         };
+        if newly_won && boss_lies_dead {
+            crate::runtime::dungeon_chest::spawn(registry, world, db, room, instance_id, slot)
+                .await;
+        }
         record_sides(
             instance_id,
             room.bnpc_id,

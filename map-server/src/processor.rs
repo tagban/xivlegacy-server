@@ -10732,6 +10732,11 @@ impl PacketProcessor {
                     Ok(m) => (ChatKind::System, m),
                     Err(m) => (ChatKind::SystemError, m),
                 })
+            } else if let Some(r) = self.gm_talkto_offer(&handle, &line, level).await {
+                Some(match r {
+                    Ok(m) => (ChatKind::System, m),
+                    Err(m) => (ChatKind::SystemError, m),
+                })
             } else if let Some(r) = self.gm_spawn_command(&handle, &line, level).await {
                 Some(match r {
                     Ok(m) => (ChatKind::System, m),
