@@ -145,6 +145,14 @@ pub enum LuaCommand {
         player_id: u32,
         actor_id: u32,
     },
+    /// `player:RestGatherNode(zoneId, uniqueId, seconds)` — a gathering
+    /// point the player picked clean leaves the world for everyone and
+    /// comes back after `seconds` (DummyCommand.lua).
+    RestGatherNode {
+        zone_id: u32,
+        unique_id: String,
+        seconds: u32,
+    },
     PlayAnimation {
         actor_id: u32,
         animation_id: u32,
