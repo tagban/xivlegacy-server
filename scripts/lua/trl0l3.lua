@@ -7,11 +7,17 @@ two Tataru overrides run it.
 * Tataru in the Quicksand (unique/wil0Town01/.../tataru.lua, our placement) takes the
   player into the Waking Sands (zone 181, PrivateAreaMasterPast 0, where Man200's NPCs
   stand), so no held quest is needed to get in.
-* Tataru there (man200_tataru.lua) plays the opening (processSnpcReselectEvent001),
-  Man200's class menu (processSnpcSelect, with its companion cutscene, which only plays
-  in the Waking Sands), the naming (processSnpcReName) and the close
-  (processSnpcReselectEvent002), then sends the player back to the Quicksand. Quit in
-  the menu keeps the companion and also goes back.
+* Tataru there (man200_tataru.lua) plays the opening (processSnpcReselectEvent001,
+  Trl0l3 lines 1-3), Man200's re-pick menu (processSnpcReselect: the class menu, the
+  companion cutscene, which only plays in the Waking Sands, then the paperwork line and
+  the confirm; unlike processSnpcSelect it skips Tataru's first-pick introduction and
+  the linkpearl lines), the naming (processSnpcReName, line 11) and the close
+  (processSnpcReselectEvent002, line 12), then back to the Quicksand. Quit in the menu
+  keeps the companion and also goes back.
+
+Line 13 ("Your new Path companion has been registered.") is left out: as a game
+message from the Trl0l3 static actor the client showed nothing, before or after the
+warp, and with the WorldMaster as text owner it crashed the client.
 
 The warp in uses spawn type 0 (fade in): with 15 the hall stayed dark in the client.
 
@@ -46,7 +52,7 @@ function trl0l3Reselect(player, npc)
 	end
 	local trl = GetStaticActor("Trl0l3");
 	callClientFunction(player, "delegateEvent", player, trl, "processSnpcReselectEvent001", player, npc);
-	local classId, personality = callClientFunction(player, "delegateEvent", player, GetStaticActor("Man200"), "processSnpcSelect", player, npc);
+	local classId, personality = callClientFunction(player, "delegateEvent", player, GetStaticActor("Man200"), "processSnpcReselect", player, npc);
 	if (classId == nil or personality == nil or classId == -1 or personality == -1) then
 		trl0l3Back(player);
 		return;
