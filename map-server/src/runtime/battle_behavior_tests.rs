@@ -2379,9 +2379,11 @@ async fn battle_behavior_ws_tp_surplus() {
     let env = env().await;
     let ws = by_name(&env, "heavy_swing").clone();
     let mut sc = real_scene_at(&env, &ws, Recipient::Enemy, 20, 4).await;
-    // From the rear (no parry or block) and with no crits, only the ±4%
-    // damage roll is left: parries and crits in some of the 21 presses
-    // moved the median enough to fail CI now and then.
+    // From the rear (no block), with no crits and no parries, only the ±4%
+    // damage roll is left: parries and crits in some of the presses
+    // moved the median enough to fail CI now and then. The rear alone
+    // didn't rule out parries: a slow CI run can let the monster turn to
+    // face the player between presses (ratio 1.145 and 1.058 seen).
     stand_at(&sc, "rear").await;
     {
         let h = sc.registry.get(PLAYER).await.unwrap();
@@ -2389,10 +2391,15 @@ async fn battle_behavior_ws_tp_surplus() {
         c.chara.mods.set(Modifier::RawHitRate, 100.0);
         c.chara.mods.set(Modifier::RawCritRate, -100.0);
     }
-    let low = median_at_tp(&mut sc, &ws, 1000).await;
-    let high = median_at_tp(&mut sc, &ws, 3000).await;
-    let r = f64::from(high) / f64::from(low.max(1));
-    println!("heavy_swing at 1000 TP {low}, at 3000 TP {high} ({r:.3}x)");
+    {
+        let h = sc.registry.get(ENEMY).await.unwrap();
+        let mut c = h.character.write().await;
+        c.chara.mods.set(Modifier::RawParryRate, -100.0);
+    }
+    let low = mean_at_tp(&mut sc, &ws, 1000).await;
+    let high = mean_at_tp(&mut sc, &ws, 3000).await;
+    let r = high / low;
+    println!("heavy_swing at 1000 TP {low:.1}, at 3000 TP {high:.1} ({r:.3}x)");
     let want = crate::runtime::dispatcher::ws_tp_bonus(2000);
     assert!(
         (r - want).abs() < 0.04,
@@ -2400,16 +2407,21 @@ async fn battle_behavior_ws_tp_surplus() {
     );
 }
 
-async fn median_at_tp(sc: &mut Scene, ws: &BattleCommand, tp: u16) -> i32 {
+/// Mean damage of 101 presses at `tp`. Heavy Swing hits for ~84 at level
+/// 20, so one point is ~1.2%: a median of 21 presses jumped by whole
+/// points and drifted past the test's tolerance (seen 1.058 and 1.145).
+/// The mean of 101 keeps the ±4% roll to about ±0.4%.
+async fn mean_at_tp(sc: &mut Scene, ws: &BattleCommand, tp: u16) -> f64 {
     let mut v = Vec::new();
-    for _ in 0..21 {
+    for _ in 0..101 {
         reset_enemy(sc).await;
         let o = press_at_tp(sc, ws, tp).await;
         if o.damage_main > 0 {
-            v.push(o.damage_main);
+            v.push(f64::from(o.damage_main));
         }
     }
-    median(&mut v)
+    assert!(!v.is_empty(), "no damage at {tp} TP");
+    v.iter().sum::<f64>() / v.len() as f64
 }
 
 async fn press_at_tp(
