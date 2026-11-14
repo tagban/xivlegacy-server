@@ -1,4 +1,4 @@
--- gamedata_actor_class: game data, 8099 rows. Reloaded whole when this file changes.
+-- gamedata_actor_class: game data, 8100 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `gamedata_actor_class`;
 INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propertyFlags`, `eventConditions`) VALUES
@@ -31764,9 +31764,9 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
 (2280193, '', 3280193, 0, NULL),
 (2280194, '', 3280194, 0, NULL),
 (2280195, '', 3280195, 0, NULL),
-(2280196, '', 3280196, 0, NULL),
-(2280197, '', 3280197, 0, NULL),
-(2280198, '', 3280198, 0, NULL),
+(2280196, '/Chara/Npc/Monster/Pirate/PirateStandard', 3280196, 0, NULL),
+(2280197, '/Chara/Npc/Monster/Pirate/PirateStandard', 3280197, 0, NULL),
+(2280198, '/Chara/Npc/Monster/Pirate/PirateStandard', 3280198, 0, NULL),
 (2280201, '/Chara/Npc/Monster/Pirate/PirateStandard', 3280201, 0, NULL),
 (2280202, '/Chara/Npc/Monster/Pirate/PirateStandard', 3280202, 0, NULL),
 (2280203, '/Chara/Npc/Monster/Pirate/PirateStandard', 3280203, 0, NULL),
@@ -31792,8 +31792,8 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
 (2280223, '/Chara/Npc/Monster/Pirate/PirateStandard', 3280223, 0, NULL),
 (2280224, '/Chara/Npc/Monster/Pirate/PirateStandard', 3280224, 0, NULL),
 (2280225, '/Chara/Npc/Monster/Pirate/PirateStandard', 3280225, 0, NULL),
-(2280301, '', 3280401, 0, NULL),
-(2280302, '', 3280402, 0, NULL),
+(2280301, '/Chara/Npc/Monster/Pirate/PirateStandard', 3280401, 0, NULL),
+(2280302, '/Chara/Npc/Monster/Pirate/PirateStandard', 3280402, 0, NULL),
 (2289001, '/Chara/Npc/Monster/Pirate/PirateStandard', 4000596, 0, NULL),
 (2289002, '/Chara/Npc/Monster/Pirate/PirateStandard', 4000596, 0, NULL),
 (2289003, '/Chara/Npc/Monster/Pirate/PirateStandard', 4000596, 0, NULL),
@@ -35934,6 +35934,22 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
       "outwards": "false",
       "silent": "false",
       "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1091002, '/Chara/Npc/Populace/PopulaceStandard', 4000257, 19, '{
+  "talkEventConditions": [
+    {
+      "unknown1": 4,
+      "unknown2": 0,
+      "conditionName": "talkDefault"
+    }
+  ],
+  "noticeEventConditions": [
+    {
+      "unknown1": 0,
+      "unknown2": 1,
+      "conditionName": "noticeEvent"
     }
   ]
 }');

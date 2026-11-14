@@ -1,4 +1,4 @@
--- server_battlenpc_groups: game data, 860 rows. Reloaded whole when this file changes.
+-- server_battlenpc_groups: game data, 865 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_groups`;
 INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLevel`, `maxLevel`, `respawnTime`, `hp`, `mp`, `dropListId`, `allegiance`, `spawnType`, `animationId`, `actorState`, `privateAreaName`, `privateAreaLevel`, `zoneId`) VALUES
@@ -862,4 +862,9 @@ INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLe
 (31188, 31188, 'u_ghamaro_gurneyman', 52, 57, 90, 3225, 0, 0, 0, 0, 0, 0, '', 0, 137),
 (31189, 31189, 'u_ghamaro_junkman', 53, 56, 90, 3225, 0, 0, 0, 0, 0, 0, '', 0, 137),
 (31190, 31190, 'u_ghamaro_overman', 55, 55, 90, 3225, 0, 0, 0, 0, 0, 0, '', 0, 137),
-(31191, 31191, 'u_ghamaro_underman', 50, 50, 90, 3225, 0, 0, 0, 0, 0, 0, '', 0, 137);
+(31191, 31191, 'u_ghamaro_underman', 50, 50, 90, 3225, 0, 0, 0, 0, 0, 0, '', 0, 137),
+(30502, 30502, 'etc2i2_lunatic_lamb', 45, 45, 0, 1300, 0, 0, 0, 16, 0, 0, '', 0, 145),
+(30503, 30503, 'etc2i2_lunatic_lamb', 45, 45, 0, 1300, 0, 0, 0, 16, 0, 0, '', 0, 145),
+(30504, 30504, 'etc2i2_lunatic_lamb', 45, 45, 0, 1300, 0, 0, 0, 16, 0, 0, '', 0, 145),
+(30505, 30505, 'etc2i2_lunatic_lamb', 45, 45, 0, 1300, 0, 0, 0, 16, 0, 0, '', 0, 145),
+(30506, 30506, 'etc2i2_lunatic_shepherd', 46, 46, 0, 2600, 0, 0, 0, 16, 0, 0, '', 0, 145);
