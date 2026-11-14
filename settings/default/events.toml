@@ -1,0 +1,31 @@
+# XIVLegacy Server: seasonal events, shipped defaults.
+# Don't edit this file: override in settings/events.toml.
+#
+# Each event has a mode and date windows ("MM-DD", both days included; an
+# end before the start runs over the new year, by the server's local date).
+#   mode = "auto"  follow the windows
+#   mode = "on"    every window open, whatever the date
+#   mode = "off"   nothing open
+# A GM can override the mode in game with `!event <name> <on|off|auto>`;
+# the override is stored in the database (server_events) and wins over
+# this file until it is set back to auto.
+#
+# A window's quests are offered only while it is open. The event's NPCs
+# (server_spawn_location_events) show while any of its windows is open.
+
+[starlight]
+mode = "auto"
+
+# Spl0i3 "Winter Is Not Coming": the city reps, Waldomar and Father Frost.
+[[starlight.windows]]
+name = "winter-is-not-coming"
+start = "12-16"
+end = "12-31"
+quests = [110801]
+
+# Spl0i4 "Gone with the Snow": the Heavensturn follow-up.
+[[starlight.windows]]
+name = "gone-with-the-snow"
+start = "12-31"
+end = "01-16"
+quests = [110802]

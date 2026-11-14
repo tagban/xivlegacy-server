@@ -96,6 +96,7 @@ camp = 0
 | `!spawn <class id> [level] [count] [path=…] [genus=…]` / `!despawn` | Monsters around you for testing (up to 8, never respawn; `path=` tries a class path, `genus=` a family) / remove them |
 | `!sethp <hp>` | Your current HP (up to your max), for testing potions and healing |
 | `!kill` / `!kill all` | Defeat your target or the nearest monster / every monster within 20 yalms, as if you'd won the fight (EXP, quest and leve kills count) |
+| `!event [name] [on\|off\|auto]` | Seasonal events (see below): list them, or switch one on or off whatever the date (`auto` goes back to its dates). Kept over restarts |
 | `!worldend` | (finaldays module, off by default) 1.0's Final Days: Nael van Darnus, his Imperials, Atomos and other level 70-80 monsters around you and in each city (the Bombard King only falls to /firedance). Again to end it |
 
 The FFXI server's names work too: `!where`, `!ver`, `!raise`, `!kill <name>`,
@@ -105,6 +106,24 @@ The FFXI server's names work too: `!where`, `!ver`, `!raise`, `!kill <name>`,
 **Chat:** leading spaces are ignored, so ` !help` is a command. Start a line
 with `!!` to say a command without running it: `!!zone gridania` shows
 "!zone gridania" to everyone, for telling players what to type.
+
+### Seasonal events
+
+`settings/events.toml` lists the seasonal events and when they run. The
+shipped one is the Starlight Celebration (`starlight`): its NPCs (three
+Black Rabbit Traders reps and Waldomar and Father Frost in Hyrstmill) show
+from December 16 to January 16; Winter Is Not Coming is offered December
+16-31 and Gone with the Snow December 31-January 16, by the server's local
+date. Each window's dates are `MM-DD`, both days included; an end before the
+start runs over the new year. To change them, copy the whole `[starlight]`
+block from `settings/default/events.toml` into your `settings/events.toml`
+(both windows) and edit the dates; `mode = "on"` runs it whatever the date,
+`"off"` never.
+
+`!event starlight on` or `off` overrides the file until `!event starlight
+auto`. NPCs appear or vanish around players within a minute; quest offers
+change at the player's next zone change. A quest already taken stays in the
+journal when the event ends, but can't be finished until its NPCs come back.
 
 ### Mordion Gaol
 

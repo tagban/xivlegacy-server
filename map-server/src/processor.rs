@@ -61,7 +61,7 @@ use crate::world_manager::WorldManager;
 mod dungeon;
 mod equip;
 pub(crate) mod gm_spawn;
-mod items;
+pub(crate) mod items;
 mod quest_offers;
 
 /// `OP_RX_PARTY_CHAT`'s first u32 for linkshell chat (`/l`).
@@ -1246,7 +1246,7 @@ impl PacketProcessor {
                     player_id,
                     actor_id,
                     &trigger,
-                    5,
+                    crate::packets::send::events::script_kick_event_type(actor_id),
                     &lua_params,
                 );
                 sub.set_target_id(session_id);
@@ -1986,12 +1986,14 @@ impl PacketProcessor {
                 item_package,
                 item_id,
                 quantity,
+                quality,
             } => {
-                crate::runtime::quest_apply::apply_add_item(
+                crate::runtime::quest_apply::apply_add_item_quality(
                     actor_id,
                     item_package,
                     item_id,
                     quantity,
+                    quality,
                     &self.registry,
                     Some(&self.world),
                     &self.db,
@@ -3841,7 +3843,7 @@ impl PacketProcessor {
                         kick.trigger_actor_id,
                         kick.owner_actor_id,
                         &kick.event_name,
-                        5,
+                        crate::packets::send::events::script_kick_event_type(kick.owner_actor_id),
                         &kick.args,
                     ),
                 ];
@@ -7326,6 +7328,12 @@ impl PacketProcessor {
                 tracing::warn!(player = snapshot.actor_id, err = %e, "quest hook: item totals failed")
             }
         }
+        match self.db.item_slots(snapshot.actor_id).await {
+            Ok(slots) => snapshot.inventory_slots = slots,
+            Err(e) => {
+                tracing::warn!(player = snapshot.actor_id, err = %e, "quest hook: item slots failed")
+            }
+        }
         snapshot
     }
 
@@ -8546,7 +8554,16 @@ impl PacketProcessor {
             // (Wave 3 gather partial.)
             let command_actor_identity = if Self::is_gather_command(owner_actor_id) {
                 let target = { handle.character.read().await.chara.current_target };
-                self.world.gather_node_identity(target).await
+                match self.world.gather_node_identity(target).await {
+                    Some(id) => Some(id),
+                    // The target can be someone standing on the point (a
+                    // guard, another player); the push circle the player
+                    // stands in still says which point offered the command.
+                    None => match self.gather_node_in_reach(&handle).await {
+                        Some(node) => self.world.gather_node_identity(node).await,
+                        None => None,
+                    },
+                }
             } else {
                 None
             };
@@ -8569,6 +8586,34 @@ impl PacketProcessor {
             "event start dispatched",
         );
         Ok(())
+    }
+
+    /// The nearest gathering point (not resting) whose push circle the
+    /// player stands in: within `GATHER_REACH` yalms on the ground plane.
+    async fn gather_node_in_reach(&self, handle: &ActorHandle) -> Option<u32> {
+        const GATHER_REACH: f32 = 5.0;
+        let (zone_id, px, pz) = {
+            let c = handle.character.read().await;
+            (c.base.zone_id, c.base.position_x, c.base.position_z)
+        };
+        let mut best: Option<(f32, u32)> = None;
+        for node in self.world.gather_node_actors_in_zone(zone_id).await {
+            if self.world.is_gather_node_resting(node) {
+                continue;
+            }
+            let Some(h) = self.registry.get(node).await else {
+                continue;
+            };
+            let (nx, nz) = {
+                let c = h.character.read().await;
+                (c.base.position_x, c.base.position_z)
+            };
+            let d = ((nx - px).powi(2) + (nz - pz).powi(2)).sqrt();
+            if d <= GATHER_REACH && best.is_none_or(|(bd, _)| d < bd) {
+                best = Some((d, node));
+            }
+        }
+        best.map(|(_, node)| node)
     }
 
     /// EventStart router for content directors — pmeteor `LuaEngine.cs::
@@ -8801,7 +8846,7 @@ impl PacketProcessor {
     /// against one of these (eventName `"commandRequest"`) when the
     /// player picks Mine / Log / Fish / Quarry / Harvest / Spearfish on a
     /// gathering node. The masked low half is the harvest command id
-    /// (`22002..=22007`, [`crate::gathering::HARVEST_TYPE_MINE`] …), and
+    /// (22002 Mine, 22003 Log, 22004 Fish, 22006-22008 retired; see `crate::gathering::spawn`), and
     /// the static-actor id is `id | 0xA0F00000` like every other command
     /// actor. All six route to the one `commands/DummyCommand.lua` script,
     /// which branches on the node's resolved `harvestType` internally.
@@ -8921,6 +8966,14 @@ impl PacketProcessor {
         let snapshot = {
             let c = handle.character.read().await;
             build_player_snapshot_from_character(&c)
+        };
+        // Synthesis checks crystals and materials with `HasItem`, which
+        // answers from the snapshot's item totals; only CraftCommand pays
+        // for the DB read.
+        let snapshot = if command_name == "CraftCommand" {
+            self.with_item_totals(snapshot).await
+        } else {
+            snapshot
         };
         let lua_clone = lua.clone();
         let script_path_clone = script_path.clone();
@@ -10340,7 +10393,7 @@ impl PacketProcessor {
                     kick.trigger_actor_id,
                     kick.owner_actor_id,
                     &kick.event_name,
-                    5,
+                    crate::packets::send::events::script_kick_event_type(kick.owner_actor_id),
                     &kick.args,
                 );
                 sub.set_target_id(session_id);
@@ -11388,6 +11441,7 @@ pub(crate) fn build_player_snapshot_for_login(
         unlocked_aetherytes: c.chara.unlocked_aetherytes.iter().copied().collect(),
         traits: Vec::new(),
         inventory: Vec::new(),
+        inventory_slots: Vec::new(),
         login_director_actor_id: c.chara.login_director_actor_id,
         content_area_name: c.chara.content_area_name.clone(),
         // Login snapshot never has a retainer spawned — the tutorial
@@ -11688,7 +11742,7 @@ mod login_burst_routing_tests {
 mod gather_command_routing_tests {
     use super::*;
 
-    /// The six harvest command static actors (`0xA0F00000 | 22002..=22007`)
+    /// The six harvest command static actors (`0xA0F00000 | 22002..=22004, 22006..=22008`)
     /// route to `commands/DummyCommand.lua`, and nothing else does. Without
     /// this arm a Mine/Log/Fish/Quarry/Harvest/Spearfish press falls
     /// through `command_script_name` and no minigame ever opens. (Wave 3.)
@@ -11722,7 +11776,8 @@ mod gather_command_routing_tests {
     fn non_gather_ids_are_not_harvest_commands() {
         // Adjacent-but-invalid harvest ids.
         assert!(!PacketProcessor::is_gather_command(0xA0F0_0000 | 22001));
-        assert!(!PacketProcessor::is_gather_command(0xA0F0_0000 | 22008));
+        assert!(!PacketProcessor::is_gather_command(0xA0F0_0000 | 22005)); // Herd
+        assert!(!PacketProcessor::is_gather_command(0xA0F0_0000 | 22009));
         // Other real command static actors keep their own scripts.
         assert_eq!(
             PacketProcessor::command_script_name(PacketProcessor::LOGOUT_COMMAND),

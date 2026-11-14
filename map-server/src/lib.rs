@@ -67,6 +67,7 @@ mod npc;
 mod packets;
 mod processor;
 mod runtime;
+mod seasonal;
 mod server;
 mod social;
 mod status;
@@ -133,6 +134,7 @@ pub async fn run() -> Result<()> {
     match common::modules::enabled().and_then(|m| {
         modules::init(&m);
         command_permissions::init()?;
+        seasonal::init()?;
         jail::init()
     }) {
         Ok(()) => {}
@@ -164,6 +166,7 @@ pub async fn run() -> Result<()> {
             return Err(e);
         }
     };
+    seasonal::set_overrides(db.load_event_overrides().await.unwrap_or_default());
     command_actors::init(
         db.command_static_actors().await.unwrap_or_default(),
         config.script_root(),

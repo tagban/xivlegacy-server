@@ -14,7 +14,8 @@
 //!
 //! Both are client statuses (`DotAurumStatus`, ids 223258/223259). The client
 //! keeps them through death, so neither has the lose-on-death flag; both go
-//! when you leave the copy (lose on zoning).
+//! when you leave the copy (lose on zoning). Both are poisons: an Antidote
+//! (Blood Drops, `processor::items`) or Esuna cures them.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -35,8 +36,10 @@ const TICK_MS: u64 = 3_000;
 const GAS_STACK_EVERY_MS: u64 = 9_000;
 /// Gold Lung stacks top out here.
 pub const GOLD_LUNG_MAX_STACKS: u8 = 10;
-/// Gold Lung wears off this long after your last breath of gas.
-const GOLD_LUNG_DURATION_S: u32 = 180;
+/// Gold Lung wears off this long after your last breath of gas (the user's
+/// rule: 2 minutes after leaving the gas). An Antidote (Blood Drops) or
+/// Esuna cures it sooner.
+const GOLD_LUNG_DURATION_S: u32 = 120;
 /// Goldbile lasts about a minute after you step out of the pool.
 const GOLDBILE_DURATION_S: u32 = 60;
 
@@ -293,6 +296,110 @@ mod tests {
         assert_eq!(gold_lung_tick(50, 10), 50.0);
         assert_eq!(gold_lung_tick(1, 1), 1.0);
         assert_eq!(goldbile_tick(50), 25.0);
+    }
+
+    /// Gold Lung on the battle-test player, then `cure` runs; it must be gone.
+    async fn gold_lung_scene() -> (
+        Arc<crate::database::Database>,
+        Arc<LuaEngine>,
+        crate::runtime::battle_audit_tests::Scene,
+        crate::gamedata::BattleCommand,
+    ) {
+        use crate::runtime::battle_audit_tests as bat;
+        let db = Arc::new(
+            crate::database::Database::open(bat::tempdb())
+                .await
+                .expect("seeded db"),
+        );
+        let lua = Arc::new(LuaEngine::new(bat::script_root()));
+        let (catalog, by_level) = db.load_global_battle_command_list().await.unwrap();
+        let defs = db.load_global_status_effect_list().await.unwrap();
+        lua.catalogs()
+            .install_battle_commands_with_level_index(catalog.clone(), by_level);
+        lua.catalogs().install_status_effects(defs);
+        let esuna = catalog[&27_357].clone();
+        let sc = bat::scene(&db, &lua, &esuna, bat::recipient(&esuna)).await;
+        let landed = crate::runtime::quest_apply::apply_try_status(
+            bat::PLAYER,
+            bat::PLAYER,
+            STATUS_GOLD_LUNG,
+            GOLD_LUNG_DURATION_S,
+            gold_lung_tick(50, 3),
+            0,
+            3,
+            &sc.registry,
+            &db,
+            &sc.processor.world,
+            Some(&lua),
+        )
+        .await;
+        assert!(landed);
+        (db, lua, sc, esuna)
+    }
+
+    async fn has_gold_lung(sc: &crate::runtime::battle_audit_tests::Scene) -> bool {
+        let h = sc
+            .registry
+            .get(crate::runtime::battle_audit_tests::PLAYER)
+            .await
+            .unwrap();
+        h.character
+            .read()
+            .await
+            .status_effects
+            .has(STATUS_GOLD_LUNG)
+    }
+
+    #[tokio::test]
+    async fn esuna_cures_gold_lung() {
+        use crate::runtime::battle_audit_tests as bat;
+        let (_db, _lua, mut sc, esuna) = gold_lung_scene().await;
+        assert!(has_gold_lung(&sc).await);
+        let o = bat::press_once(&mut sc, &esuna, bat::recipient(&esuna)).await;
+        assert!(o.errors.is_empty(), "esuna refused: {:?}", o.errors);
+        assert!(!has_gold_lung(&sc).await);
+    }
+
+    #[tokio::test]
+    async fn antidote_cures_gold_lung() {
+        let (_db, _lua, sc, _) = gold_lung_scene().await;
+        assert!(has_gold_lung(&sc).await);
+        let item = crate::database::UsableItem {
+            category: "Normal/CmnRemoveStatusItem".into(),
+            usable: true,
+            recast_group: 9_002,
+            ..Default::default()
+        };
+        sc.processor
+            .use_remove_status_item(
+                crate::runtime::battle_audit_tests::PLAYER,
+                0,
+                3_020_406,
+                &item,
+                crate::processor::items::cures_of(3_020_406).unwrap(),
+            )
+            .await;
+        assert!(!has_gold_lung(&sc).await);
+    }
+
+    #[test]
+    fn gold_lung_is_curable() {
+        // Antidote (Blood Drops) cures both hazards.
+        let cures = crate::processor::items::cures_of(3_020_406).unwrap();
+        assert!(cures.contains(&STATUS_GOLD_LUNG));
+        assert!(cures.contains(&STATUS_GOLDBILE));
+        // Esuna takes any status with the lose-on-Esuna flag (4).
+        let sql = include_str!("../../../common/sql/data/server_statuseffects.sql");
+        for id in [STATUS_GOLD_LUNG, STATUS_GOLDBILE] {
+            let row = sql
+                .lines()
+                .find(|l| l.starts_with(&format!("({id},")))
+                .unwrap();
+            let flags: u32 = row.split(',').nth(2).unwrap().trim().parse().unwrap();
+            assert_ne!(flags & 4, 0, "{row}");
+        }
+        // It wears off 2 minutes after the last breath.
+        assert_eq!(GOLD_LUNG_DURATION_S, 120);
     }
 
     #[test]

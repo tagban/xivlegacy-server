@@ -145,6 +145,14 @@ pub enum LuaCommand {
         player_id: u32,
         actor_id: u32,
     },
+    /// `player:RestGatherNode(zoneId, uniqueId, seconds)` — a gathering
+    /// point the player picked clean leaves the world for everyone and
+    /// comes back after `seconds` (DummyCommand.lua).
+    RestGatherNode {
+        zone_id: u32,
+        unique_id: String,
+        seconds: u32,
+    },
     PlayAnimation {
         actor_id: u32,
         animation_id: u32,
@@ -375,6 +383,8 @@ pub enum LuaCommand {
         item_package: u16,
         item_id: u32,
         quantity: i32,
+        /// Item quality: 1 normal, 2-4 high quality +1 to +3.
+        quality: u8,
     },
     /// `retainer:GetItemPackage(code):AddItem(id, qty)` — adds a stack
     /// to a retainer's personal inventory (not the bazaar). Routes

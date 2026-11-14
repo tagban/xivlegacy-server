@@ -63,6 +63,25 @@ pub fn build_end_event(
     SubPacket::new(OP_END_EVENT, source_player, data)
 }
 
+/// Event type for a `player:KickEvent(...)` from a script.
+///
+/// Meteor's `Player.KickEvent` always sends 5. That works for events on
+/// NPCs and directors, but a kick on a command actor (`0xA0F0xxxx`, for
+/// example `commandJudgeMode` on the Mine command) has to be sent as
+/// type 0, the type the client itself uses for command events (its
+/// EventStart for `commandRequest` carries 0). With 5 the client starts
+/// the event but never puts the desktop into judge mode, so every
+/// event-mode widget refuses to open: HarvestJudge's
+/// `openEventModeWidgetYield('Ask/MiningInputWidget')` returned at once
+/// and the mining window never appeared.
+pub fn script_kick_event_type(owner_actor_id: u32) -> u8 {
+    if owner_actor_id & 0xFFFF_0000 == 0xA0F0_0000 {
+        0
+    } else {
+        5
+    }
+}
+
 /// 0x012F KickEventPacket — tells the client to start a scripted event
 /// ("noticeEvent", "talkDefault", etc.) owned by a target actor. On the
 /// tutorial login path the server emits this against the OpeningDirector
@@ -162,4 +181,42 @@ pub fn build_run_event_function(
     let _ = luaparam::write_lua_params(&mut c, lua_params);
 
     SubPacket::new(OP_RUN_EVENT_FUNCTION, trigger_actor_id, data)
+}
+
+#[cfg(test)]
+mod kick_event_type_tests {
+    use super::*;
+
+    #[test]
+    fn command_actors_take_type_0() {
+        // Mine / Log / Fish harvest commands, PlaceDrivenCommand
+        assert_eq!(script_kick_event_type(0xA0F0_55F2), 0);
+        assert_eq!(script_kick_event_type(0xA0F0_55F3), 0);
+        assert_eq!(script_kick_event_type(0xA0F0_5EED), 0);
+    }
+
+    #[test]
+    fn npcs_directors_and_static_actors_keep_type_5() {
+        assert_eq!(script_kick_event_type(0x4550_0027), 5); // mining point
+        assert_eq!(script_kick_event_type(0x6600_0001), 5); // director
+        assert_eq!(script_kick_event_type(0xA0F4_E204), 5); // HarvestJudge
+        assert_eq!(script_kick_event_type(9), 5); // a player
+    }
+
+    #[test]
+    fn the_type_lands_at_byte_8() {
+        let sub = build_kick_event(
+            9,
+            0xA0F0_55F2,
+            "commandJudgeMode",
+            script_kick_event_type(0xA0F0_55F2),
+            &[],
+        );
+        let bytes = sub.to_bytes();
+        let body = &bytes[bytes.len() - 0x70..];
+        assert_eq!(&body[0..4], &9u32.to_le_bytes());
+        assert_eq!(&body[4..8], &0xA0F0_55F2u32.to_le_bytes());
+        assert_eq!(body[8], 0);
+        assert_eq!(body[9], 0x17);
+    }
 }
