@@ -63,6 +63,14 @@ pub struct Recipe {
     /// Meteor's `Recipe.tier` is always `1` today — reserved for the
     /// recipe-progression pass the branch notes as deferred work.
     pub tier: u8,
+    /// Crafting class that owns the recipe (29 CRP .. 36 CUL), from the
+    /// `job` letter; 0 when the letter is unknown.
+    pub class_id: u8,
+    /// Recipe level (`gamedata_recipes.level`), compared with the
+    /// crafter's class level for success, durability and EXP.
+    pub level: u8,
+    /// Recommended facility (`gamedata_recipes.facilities`), 0 for none.
+    pub facility: u32,
 }
 
 impl Recipe {
@@ -91,6 +99,28 @@ impl Recipe {
             crystal_quantity_2,
             allowed_crafters: Arc::new(allowed_crafters),
             tier,
+            class_id: 0,
+            level: 1,
+            facility: 0,
+        }
+    }
+
+    /// Set the crafting class, recipe level and facility read from the
+    /// `gamedata_recipes` row.
+    pub fn with_craft_info(mut self, class_id: u8, level: u8, facility: u32) -> Self {
+        self.class_id = class_id;
+        self.level = level.max(1);
+        self.facility = facility;
+        self
+    }
+
+    /// Crafting class id for a `job` letter: `A`=29 Carpenter, `B`=30
+    /// Blacksmith, `C`=31 Armorer, `D`=32 Goldsmith, `E`=33
+    /// Leatherworker, `F`=34 Weaver, `G`=35 Alchemist, `H`=36 Culinarian.
+    pub fn job_code_to_class_id(job: char) -> Option<u8> {
+        match job.to_ascii_uppercase() {
+            c @ 'A'..='H' => Some(29 + (c as u8 - b'A')),
+            _ => None,
         }
     }
 
@@ -126,6 +156,13 @@ impl Recipe {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn job_code_maps_to_class_id() {
+        assert_eq!(Recipe::job_code_to_class_id('A'), Some(29));
+        assert_eq!(Recipe::job_code_to_class_id('h'), Some(36));
+        assert_eq!(Recipe::job_code_to_class_id('I'), None);
+    }
 
     #[test]
     fn job_code_maps_to_lowercase_class() {

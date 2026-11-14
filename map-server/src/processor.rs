@@ -1986,12 +1986,14 @@ impl PacketProcessor {
                 item_package,
                 item_id,
                 quantity,
+                quality,
             } => {
-                crate::runtime::quest_apply::apply_add_item(
+                crate::runtime::quest_apply::apply_add_item_quality(
                     actor_id,
                     item_package,
                     item_id,
                     quantity,
+                    quality,
                     &self.registry,
                     Some(&self.world),
                     &self.db,
@@ -7326,6 +7328,12 @@ impl PacketProcessor {
                 tracing::warn!(player = snapshot.actor_id, err = %e, "quest hook: item totals failed")
             }
         }
+        match self.db.item_slots(snapshot.actor_id).await {
+            Ok(slots) => snapshot.inventory_slots = slots,
+            Err(e) => {
+                tracing::warn!(player = snapshot.actor_id, err = %e, "quest hook: item slots failed")
+            }
+        }
         snapshot
     }
 
@@ -8921,6 +8929,14 @@ impl PacketProcessor {
         let snapshot = {
             let c = handle.character.read().await;
             build_player_snapshot_from_character(&c)
+        };
+        // Synthesis checks crystals and materials with `HasItem`, which
+        // answers from the snapshot's item totals; only CraftCommand pays
+        // for the DB read.
+        let snapshot = if command_name == "CraftCommand" {
+            self.with_item_totals(snapshot).await
+        } else {
+            snapshot
         };
         let lua_clone = lua.clone();
         let script_path_clone = script_path.clone();
@@ -11388,6 +11404,7 @@ pub(crate) fn build_player_snapshot_for_login(
         unlocked_aetherytes: c.chara.unlocked_aetherytes.iter().copied().collect(),
         traits: Vec::new(),
         inventory: Vec::new(),
+        inventory_slots: Vec::new(),
         login_director_actor_id: c.chara.login_director_actor_id,
         content_area_name: c.chara.content_area_name.clone(),
         // Login snapshot never has a retainer spawned — the tutorial
