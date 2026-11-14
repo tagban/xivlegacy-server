@@ -1,6 +1,7 @@
 require ("global")
 require ("quest")
 require ("questbattle")
+require ("modifiers")
 
 --[[
 
@@ -104,6 +105,26 @@ MAN2G0_FIGHT = {
 	foesOnAllies = true,
 	winSignal = "allyFightWon",
 };
+
+-- The spirit's aspect and O-App-Pesi's wards (the user's rules, 2026-11-13;
+-- the 1.0 duty from Gamer Escape's walkthrough). Every 30 seconds the
+-- spirit takes a new element, and its moves and swings deal that element.
+-- O-App-Pesi stands in the duty: talk to him and pick the element to ward
+-- against (his menu: wind, earth, water), and the ward goes on you and the
+-- three allies. A ward blocks its element until it has absorbed WARD_POOL
+-- damage, then it is destroyed. In 1.0 you cast the ward on each NPC by
+-- hand; here it lands on everyone at once. The pool size is our choice
+-- (no 1.0 number found).
+O_APP_PESI_DUTY_SPOT	= {1684.0, 20.69, -882.0, 2.6};	-- behind the player's start, away from the spirit
+MAN2G0_ASPECTS			= { 7, 8, 10 };		-- ActionProperty wind, earth, water, in the menu's order
+MAN2G0_ASPECT_NAMES		= { "wind", "earth", "water" };
+MAN2G0_WARDS			= { modifiersGlobal.WindWard, modifiersGlobal.EarthWard, modifiersGlobal.WaterWard };
+ASPECT_CHANGE_SECONDS	= 30;
+WARD_POOL				= 300;
+-- Quest counters: the talk (quest Lua) records the pick, the duty's tick
+-- (content Lua, a separate Lua state) puts the ward on.
+COUNTER_WARD_ELEMENT	= 0;	-- 1-3, an index into MAN2G0_ASPECTS
+COUNTER_WARD_CASTS		= 1;	-- wards asked for in this try
 
 -- Msg packs for the Npc LS
 NPCLS_MSGS = {
@@ -233,7 +254,11 @@ function onTalk(player, quest, npc)
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent005_2");
 		end
 	elseif (sequence == SEQ_003 or sequence == SEQ_004) then
-		if (classId == O_APP_PESI) then
+		if (classId == O_APP_PESI and sequence == SEQ_004 and player:GetZoneID() == SPIRIT_FIGHT_SPOT[1]) then
+			-- In the duty: a ward.
+			attuneWard(player, quest);
+			return;
+		elseif (classId == O_APP_PESI) then
 			-- The first ask, then the shorter one on a retry.
 			local ask = (sequence == SEQ_003) and "processEvent007_2" or "processEvent007_2_2";
 			if (callClientFunction(player, "delegateEvent", player, quest, ask) == 1) then
@@ -502,6 +527,9 @@ end
 -- SimpleContentMan2g001, director QuestDirectorMan2g001).
 function startDuty(player, quest)
 	quest:StartSequence(SEQ_004);
+	local data = quest:GetData();
+	data:SetCounter(COUNTER_WARD_ELEMENT, 0);
+	data:SetCounter(COUNTER_WARD_CASTS, 0);
 	questBattle.start(player, "Man2g001", SPIRIT_FIGHT_SPOT, "Quest/QuestDirectorMan2g001");
 end
 
@@ -510,13 +538,37 @@ function finishMan2g0Fight(player, quest)
 	quest:StartSequence(SEQ_005);
 	player:EndEvent();
 	player:SetMod(modifiersGlobal.MinimumHpLock, 0);
+	clearWards(player);
 	player:GetZone():ContentFinished();
 	warpTo(player, ARC_GUILD);
+end
+
+-- O-App-Pesi in the duty: "Which element do you wish to ward against?"
+-- (processEventTrial001: 1 the first time, 2 after; it returns the pick),
+-- then he attunes it (processEventTrial002). The duty's tick puts it on.
+function attuneWard(player, quest)
+	local data = quest:GetData();
+	local casts = data:GetCounter(COUNTER_WARD_CASTS);
+	local pick = callClientFunction(player, "delegateEvent", player, quest, "processEventTrial001", casts == 0 and 1 or 2);
+	if (MAN2G0_ASPECTS[pick] ~= nil) then
+		callClientFunction(player, "delegateEvent", player, quest, "processEventTrial002");
+		data:SetCounter(COUNTER_WARD_ELEMENT, pick);
+		data:SetCounter(COUNTER_WARD_CASTS, casts + 1);
+	end
+	player:EndEvent();
+end
+
+-- No ward outlasts the duty.
+function clearWards(player)
+	for _, ward in ipairs(MAN2G0_WARDS) do
+		player:SetMod(ward, 0);
+	end
 end
 
 -- A KO (or time up): you come to outside Quiver's Hold, and Nonolato puts
 -- you back in the echo with O-App-Pesi to try again (the content calls this).
 function loseMan2g0Fight(player, area, why)
+	clearWards(player);
 	area:ContentFinished();
 	warpTo(player, ARC_ECHO);
 end
