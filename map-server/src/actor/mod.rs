@@ -195,6 +195,11 @@ pub struct CharaState {
     /// such as nameplate visibility, collision, and targetability.
     /// Zero for Players (Player.cs hardcodes its own bit set).
     pub property_flags: u32,
+    /// `npcWork.pushCommand` / `pushCommandSub` / `pushCommandPriority`
+    /// from `gamedata_actor_pushcommand` (Meteor `NpcWork`). The client
+    /// shows this command when the player walks into the actor's push
+    /// circle (Mine at a mining point, for one). `(0, 0, 0)` = none.
+    pub push_command: (u16, i32, u8),
     /// `playerWork.*` profile fields emitted in the `/_init` property dump
     /// mirrored from C# `Player.GetInitPackets()`. These exist on
     /// CharaState so the zone-in bundle can read them without a second DB
@@ -404,6 +409,7 @@ impl Default for CharaState {
             appearance_ids: [0u32; 28],
             actor_class_id: 0,
             property_flags: 0,
+            push_command: (0, 0, 0),
             tribe: 0,
             guardian: 0,
             birthday_day: 0,

@@ -1295,20 +1295,33 @@ impl Database {
             })
             .await?;
         let mut leves: HashMap<u32, GuildleveGamedata> = rows.into_iter().collect();
-        for (id, hold) in self.survive_holds().await? {
+        for (id, hold, finals) in self.survive_holds().await? {
             if let Some(gd) = leves.get_mut(&id) {
                 gd.survive = Some(hold);
+                // final targets for a leve whose sheet row names none
+                if gd.mobs.iter().all(|&m| m == 0) {
+                    for (i, (mob, num)) in finals.into_iter().enumerate() {
+                        gd.mobs[i] = mob;
+                        gd.aim_num[i] = num as i8;
+                    }
+                }
             }
         }
         Ok(leves)
     }
 
-    /// Survive leves' hold phases (`server_guildleve_survive`).
-    async fn survive_holds(&self) -> Result<Vec<(u32, crate::gamedata::SurviveHold)>> {
+    /// Survive leves' hold phases (`server_guildleve_survive`), and the
+    /// final targets (display-name id, count) for a leve whose sheet row
+    /// names none.
+    #[allow(clippy::type_complexity)]
+    async fn survive_holds(
+        &self,
+    ) -> Result<Vec<(u32, crate::gamedata::SurviveHold, Vec<(u32, u8)>)>> {
         self.conn
             .call_db(|c| {
                 let mut stmt = c.prepare(
-                    "SELECT guildleveId, holdSeconds, holdSecondsRecorded, holdMob, holdUp
+                    "SELECT guildleveId, holdSeconds, holdSecondsRecorded, holdMob, holdUp,
+                            finalMob1, finalNum1, finalMob2, finalNum2
                      FROM server_guildleve_survive",
                 )?;
                 let rows = stmt
@@ -1321,6 +1334,13 @@ impl Database {
                                 mob: r.get(3)?,
                                 up: r.get(4)?,
                             },
+                            [
+                                (r.get::<_, u32>(5)?, r.get::<_, u8>(6)?),
+                                (r.get(7)?, r.get(8)?),
+                            ]
+                            .into_iter()
+                            .filter(|&(mob, num)| mob != 0 && num != 0)
+                            .collect(),
                         ))
                     })?
                     .collect::<common::sql::Result<_>>()?;
@@ -1339,12 +1359,14 @@ impl Database {
             .conn
             .call_db(|c| {
                 let mut stmt = c.prepare(
-                    r"SELECT id, craftedItem, craftedQuantity, job,
-                             crystal0ID, crystal0Quantity, crystal1ID, crystal1Quantity,
-                             material0, material1, material2, material3,
-                             material4, material5, material6, material7
-                      FROM gamedata_recipes
-                      ORDER BY craftedItem ASC",
+                    r"SELECT r.id, r.craftedItem, r.craftedQuantity, r.job,
+                             r.crystal0ID, r.crystal0Quantity, r.crystal1ID, r.crystal1Quantity,
+                             r.material0, r.material1, r.material2, r.material3,
+                             r.material4, r.material5, r.material6, r.material7,
+                             r.level, r.facilities, i.level
+                      FROM gamedata_recipes r
+                      LEFT JOIN gamedata_items i ON i.catalogID = r.craftedItem
+                      ORDER BY r.craftedItem ASC",
                 )?;
                 let rows: Vec<crate::crafting::Recipe> = stmt
                     .query_map([], |r| {
@@ -1372,6 +1394,22 @@ impl Database {
                             .and_then(crate::crafting::Recipe::job_code_to_class)
                             .map(|c| vec![c.to_string()])
                             .unwrap_or_default();
+                        // `level` is the recipe's tier (1-6); see `Recipe::level_from_tier`.
+                        let tier: u8 = r
+                            .get::<_, Option<u32>>(16)
+                            .ok()
+                            .flatten()
+                            .unwrap_or(1)
+                            .min(255) as u8;
+                        let item_level: u32 =
+                            r.get::<_, Option<u32>>(18).ok().flatten().unwrap_or(1);
+                        let level = crate::crafting::Recipe::level_from_tier(tier, item_level);
+                        let facility: u32 = r.get::<_, Option<u32>>(17).ok().flatten().unwrap_or(0);
+                        let class_id = job
+                            .chars()
+                            .next()
+                            .and_then(crate::crafting::Recipe::job_code_to_class_id)
+                            .unwrap_or(0);
                         Ok(crate::crafting::Recipe::new(
                             id,
                             crafted_item,
@@ -1382,8 +1420,9 @@ impl Database {
                             c1_id,
                             c1_qty,
                             allowed,
-                            1,
-                        ))
+                            tier,
+                        )
+                        .with_craft_info(class_id, level, facility))
                     })?
                     .collect::<common::sql::Result<_>>()?;
                 Ok(rows)
@@ -5016,6 +5055,29 @@ impl Database {
     /// Everything the character carries, as (catalog id, total quantity)
     /// summed over its packages: what a quest script's `HasItem` and
     /// `GetItemQuantity` answer from.
+    /// `(package, slot, itemId)` for every occupied inventory slot.
+    pub async fn item_slots(&self, character_id: u32) -> Result<Vec<(u16, u16, u32)>> {
+        self.conn
+            .call_db(move |c| {
+                let mut stmt = c.prepare(
+                    r"SELECT ci.itemPackage, ci.slot, i.itemId FROM characters_inventory ci
+                      JOIN server_items i ON i.id = ci.serverItemId
+                      WHERE ci.characterId = :c",
+                )?;
+                let rows = stmt
+                    .query_map(named_params! { ":c": character_id }, |r| {
+                        Ok((
+                            r.get::<_, u16>(0)?,
+                            r.get::<_, u16>(1)?,
+                            r.get::<_, u32>(2)?,
+                        ))
+                    })?
+                    .collect::<common::sql::Result<_>>()?;
+                Ok(rows)
+            })
+            .await
+    }
+
     pub async fn item_totals(&self, character_id: u32) -> Result<Vec<(u32, i32)>> {
         self.conn
             .call_db(move |c| {

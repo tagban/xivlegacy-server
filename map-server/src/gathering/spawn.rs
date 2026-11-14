@@ -27,14 +27,15 @@ pub const HARVEST_TYPE_MINE: u32 = 22002;
 pub const HARVEST_TYPE_LOG: u32 = 22003;
 /// `!fish` — schools of fish, squid beds, coral. Retail action id 20003.
 pub const HARVEST_TYPE_FISH: u32 = 22004;
-/// `!quarry` — stone / dye / pigment deposits. Retail action id 20005.
-pub const HARVEST_TYPE_QUARRY: u32 = 22005;
-/// `!harvest` (botany) — grass, flowers, small animals. Retail action
-/// id 20006.
-pub const HARVEST_TYPE_HARVEST: u32 = 22006;
-/// `!spearfish` — shallow-water spear fishing for shellfish / small
-/// fish. Retail action id 20007.
-pub const HARVEST_TYPE_SPEARFISH: u32 = 22007;
+/// `!quarry` — stone / dye / pigment deposits. Command 22006 in the
+/// 1.23b command sheet (22005 is the unused "Herd"); retired in 1.23b.
+pub const HARVEST_TYPE_QUARRY: u32 = 22006;
+/// `!harvest` (botany) — grass, flowers, small animals. Command 22007;
+/// retired in 1.23b.
+pub const HARVEST_TYPE_HARVEST: u32 = 22007;
+/// `!spearfish` — shallow-water spear fishing. Command 22008; retired
+/// in 1.23b.
+pub const HARVEST_TYPE_SPEARFISH: u32 = 22008;
 
 /// Numeric ids garlemald stores internally for the six 1.x harvest
 /// actions. Matches Meteor's `DummyCommand.lua` convention; the
@@ -85,6 +86,7 @@ mod tests {
         assert!(is_valid_harvest_type(HARVEST_TYPE_SPEARFISH));
         assert!(!is_valid_harvest_type(0));
         assert!(!is_valid_harvest_type(22001));
-        assert!(!is_valid_harvest_type(22008));
+        assert!(!is_valid_harvest_type(22005)); // Herd
+        assert!(!is_valid_harvest_type(22009));
     }
 }

@@ -908,12 +908,32 @@ pub fn build_player_property_init(
     // of "the id->command lookup returned nil". pmeteor ships these exact
     // bytes to the same 1.23b client without crashing.
     // (Garlemald-Server #28.)
+    const SYNTHESIZE_COMMAND: u32 = 22001;
     const STARTER_COMMANDS: [u32; 16] = [
         21001, 21001, 21002, 12004, 21005, 21006, 21007, 12009, 12010, 12005, 12007, 12011, 22012,
         22013, 29497, 22015,
     ];
     for (i, id) in STARTER_COMMANDS.iter().enumerate() {
         b.add_int(&format!("charaWork.command[{}]", i), 0xA0F0_0000 | *id);
+    }
+    // Gathering commands (Mine, Log, Fish). A point's push circle offers
+    // "Interaction Menu -> Mine", but the client only runs the harvest
+    // command when it is one of the player's commands; without these slots
+    // it answers "That command cannot be performed right now". Slot 16 is
+    // Synthesize for crafting classes, so these start at 17.
+    const GATHER_COMMANDS: [u32; 3] = [22002, 22003, 22004];
+    const GATHER_COMMAND_SLOT: usize = 17;
+    for (i, id) in GATHER_COMMANDS.iter().enumerate() {
+        b.add_int(
+            &format!("charaWork.command[{}]", GATHER_COMMAND_SLOT + i),
+            0xA0F0_0000 | *id,
+        );
+    }
+    // Crafting classes (29 Carpenter .. 36 Culinarian) get Synthesize
+    // (22001) as a ready command; the client's main menu lists it from
+    // the ready commands and opens CraftCommand with it.
+    if (29..=36).contains(&main_skill) {
+        b.add_int("charaWork.command[16]", 0xA0F0_0000 | SYNTHESIZE_COMMAND);
     }
     // Equipped hotbar — pmeteor `Player.GetInitPackets` (Player.cs:484-487)
     // pairs every populated `command[i >= 32]` with that slot's
@@ -1167,6 +1187,7 @@ pub fn build_npc_property_init(
     tp: u16,
     hate_type: u8,
     level: u16,
+    push_command: (u16, i32, u8),
 ) -> Vec<SubPacket> {
     let mut b = ActorPropertyPacketBuilder::new(actor_id, "/_init");
     // potencial=1.0 — Meteor stamps this in the Npc ctor (line 86).
@@ -1202,6 +1223,17 @@ pub fn build_npc_property_init(
     // `npcWork/hate` subpacket and re-color live (judge re-runs per
     // WorkSync, no latch).
     b.add_byte("npcWork.hateType", hate_type);
+    // Meteor `Npc.GetInitPackets` (Npc.cs:250): the push command the
+    // client offers inside the actor's push circle (Mine at a mining
+    // point). Without it the circle registers but offers nothing.
+    let (cmd, sub, priority) = push_command;
+    if cmd != 0 {
+        b.add_short("npcWork.pushCommand", cmd);
+        if sub != 0 {
+            b.add_int("npcWork.pushCommandSub", sub as u32);
+        }
+        b.add_byte("npcWork.pushCommandPriority", priority);
+    }
     b.done()
 }
 
@@ -1425,13 +1457,15 @@ mod npc_property_init_tests {
     /// one. (Garlemald-Server #46, round 2.)
     #[test]
     fn init_dump_carries_the_passed_hate_type() {
-        let spawn = build_npc_property_init(0x4700_0001, 0x13, 100, 100, 50, 50, 0, 1, 1);
+        let spawn =
+            build_npc_property_init(0x4700_0001, 0x13, 100, 100, 50, 50, 0, 1, 1, (0, 0, 0));
         assert_eq!(
             find_byte_property(&spawn, "npcWork.hateType"),
             Some(1),
             "spawn-table /_init carries the passive-white 1 (all actors, hostiles too)"
         );
-        let engaged = build_npc_property_init(0x4700_0002, 0x13, 100, 100, 50, 50, 0, 2, 3);
+        let engaged =
+            build_npc_property_init(0x4700_0002, 0x13, 100, 100, 50, 50, 0, 2, 3, (0, 0, 0));
         assert_eq!(
             find_byte_property(&engaged, "npcWork.hateType"),
             Some(2),

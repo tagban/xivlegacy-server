@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1956 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1957 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -1949,6 +1949,7 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (30906, 1090991, 'spl0i4_depression_b', 152, '', 0, -604.0, 4.3, -2384.0, 0.0, 0, 0, NULL),
 (30907, 1090992, 'spl0i4_depression_c', 152, '', 0, -592.0, 4.7, -2386.0, 0.0, 0, 0, NULL),
 (30908, 1090993, 'spl0i4_hamlet_gate', 152, '', 0, -580.0, 6.1, -2382.0, 0.0, 0, 0, NULL),
+(30280, 1001046, 'tataru', 175, '', 0, -72.5, 195.0, 75.5, 3.14, 0, 0, NULL),
 (30910, 1001789, 'asw_ursielle', 230, '', 0, -424.0, 40.2, 190.0, -1.4, 0, 0, NULL),
 (30911, 1001790, 'asw_mudede', 206, '', 0, 52.0, 4.0, -1200.0, 1.7, 0, 0, NULL),
 (30912, 1001791, 'asw_yvane', 175, '', 0, -70.0, 195.5, 78.0, 2.9, 0, 0, NULL),
