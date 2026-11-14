@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1924 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1930 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -1938,4 +1938,5 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (30271, 1001955, 'etc201_tristechambel', 147, '', 0, -5.0, 144.1, 1373.0, 0.8, 0, 0, NULL),
 (30272, 1001346, 'wld0g2_keketo', 154, '', 0, 1451.0, -11.13, 875.0, 2.4, 0, 0, NULL),
 (30273, 1001610, 'wld0g3_chamberliaux', 154, '', 0, 414.18, 4.0, 544.84, 0.0, 0, 0, NULL),
-(30274, 1001190, 'wld0g3_eugenaire', 206, '', 0, 25.8, 10.9, -1309.5, 0.0, 0, 0, NULL);
+(30274, 1001190, 'wld0g3_eugenaire', 206, '', 0, 25.8, 10.9, -1309.5, 0.0, 0, 0, NULL),
+(30206, 1091002, 'etc2i2_gwyr_aen', 145, '', 0, 2525.0, 173.42, 1256.0, 0.0, 0, 0, NULL);
