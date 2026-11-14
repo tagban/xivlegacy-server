@@ -2174,7 +2174,7 @@ async fn apply_kick_event(
         player_id,
         actor_id,
         trigger,
-        5,
+        crate::packets::send::events::script_kick_event_type(actor_id),
         &lua_params,
     );
     sub.set_target_id(session_id);
