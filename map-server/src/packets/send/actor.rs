@@ -908,12 +908,19 @@ pub fn build_player_property_init(
     // of "the id->command lookup returned nil". pmeteor ships these exact
     // bytes to the same 1.23b client without crashing.
     // (Garlemald-Server #28.)
+    const SYNTHESIZE_COMMAND: u32 = 22001;
     const STARTER_COMMANDS: [u32; 16] = [
         21001, 21001, 21002, 12004, 21005, 21006, 21007, 12009, 12010, 12005, 12007, 12011, 22012,
         22013, 29497, 22015,
     ];
     for (i, id) in STARTER_COMMANDS.iter().enumerate() {
         b.add_int(&format!("charaWork.command[{}]", i), 0xA0F0_0000 | *id);
+    }
+    // Crafting classes (29 Carpenter .. 36 Culinarian) get Synthesize
+    // (22001) as a ready command; the client's main menu lists it from
+    // the ready commands and opens CraftCommand with it.
+    if (29..=36).contains(&main_skill) {
+        b.add_int("charaWork.command[16]", 0xA0F0_0000 | SYNTHESIZE_COMMAND);
     }
     // Equipped hotbar — pmeteor `Player.GetInitPackets` (Player.cs:484-487)
     // pairs every populated `command[i >= 32]` with that slot's

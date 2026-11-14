@@ -4353,6 +4353,7 @@ async fn runtime_drain_add_item_persists_to_characters_inventory() {
         item_package: crate::inventory::PKG_NORMAL,
         item_id: 10_001_006,
         quantity: 7,
+        quality: 1,
     }];
     apply_runtime_lua_commands(cmds, &registry, &db, &world, None).await;
 
@@ -11152,6 +11153,7 @@ async fn fieldcraft_leve_progress_ticks_on_add_item() {
             item_package: crate::inventory::PKG_NORMAL,
             item_id: 10_001_006,
             quantity: 3,
+            quality: 1,
         }],
         &registry,
         &db,
@@ -11179,6 +11181,7 @@ async fn fieldcraft_leve_progress_ticks_on_add_item() {
             item_package: crate::inventory::PKG_NORMAL,
             item_id: 10_001_006,
             quantity: 2,
+            quality: 1,
         }],
         &registry,
         &db,
@@ -11280,6 +11283,7 @@ async fn fieldcraft_leve_progress_gated_on_accepted_flag() {
             item_package: crate::inventory::PKG_NORMAL,
             item_id: 10_001_006,
             quantity: 3,
+            quality: 1,
         }],
         &registry,
         &db,
@@ -12711,6 +12715,7 @@ async fn full_leve_loop_accept_progress_hand_in() {
             item_package: crate::inventory::PKG_NORMAL,
             item_id: 10_001_006,
             quantity: 5,
+            quality: 1,
         }],
         &registry,
         &db,

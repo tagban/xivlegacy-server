@@ -146,12 +146,13 @@ Leve objectives/rewards are in passiveGL_craft.
 --]]
 
 require ("global")
+require ("synthesis")
 
-local skillAnim = {
-    [22553] = 0x10002000;
-    [22554] = 0x10001000;
-    [22555] = 0x10003000;
-    [29531] = 0x10009002;
+-- Synthesis action animations (standard, rapid, careful).
+local actionAnim = {
+    [SYNTH_ACTION_STANDARD] = 0x10002000;
+    [SYNTH_ACTION_RAPID] = 0x10001000;
+    [SYNTH_ACTION_CAREFUL] = 0x10003000;
 }
 
 local craftStartWidgetOpen = false;
@@ -160,7 +161,7 @@ function onEventStarted(player, commandactor, triggerName, arg1, arg2, arg3, arg
     local MENU_CANCEL, MENU_MAINHAND, MENU_OFFHAND, MENU_REQUEST = 0, 1, 2, 3;
     local MENU_RECENT, MENU_AWARDED, MENU_RECENT_DETAILED, MENU_AWARDED_DETAILED = 7, 8, 9, 10;
     
-    local debugMessage = true;
+    local debugMessage = false;
 
     local isRecipeRecentSent = false;
     local isRecipeAwardSent = false;
@@ -192,7 +193,7 @@ function onEventStarted(player, commandactor, triggerName, arg1, arg2, arg3, arg
 			-- Shows the initial window 
 			local startMats = {0, 0, 0, 0, 0, 0, 0, 0};
 			if (isRequestedItemsMode == true) then -- If requested items, preload the quest recipe materials
-				startMats = recipeResolver.RecipeToMatIdTable(currentCraftQuestGuildleve.getRecipe());
+				startMats = recipeResolver:RecipeToMatIdTable(currentCraftQuestGuildleve.getRecipe());
 			end
 			operationResult = {callClientFunction(player, "delegateCommand", craftJudge, "start", commandactor, facilityId, isRequestedItemsMode, unpack(startMats))};
 			craftStartWidgetOpen = true;
@@ -200,9 +201,9 @@ function onEventStarted(player, commandactor, triggerName, arg1, arg2, arg3, arg
 			local prepedMaterials;
 			-- Recent Recipes/Awarded Recipes
 			if (operationMode == MENU_RECENT) then
-				prepedMaterials = recipeResolver.RecipeToMatIdTable(recentRecipes[recipeMode]);
+				prepedMaterials = recipeResolver:RecipeToMatIdTable(recentRecipes[recipeMode]);
 			else 			
-				prepedMaterials = recipeResolver.RecipeToMatIdTable(awardedRecipes[recipeMode]);
+				prepedMaterials = recipeResolver:RecipeToMatIdTable(awardedRecipes[recipeMode]);
 			end
 			-- Causes the item info window to appear for recent/awarded recipes. Only happens if a recipe was chosen.
 			operationResult = {callClientFunction(player, "delegateCommand", craftJudge, "start", commandactor, -2, isRequestedItemsMode, unpack(prepedMaterials))};
@@ -237,48 +238,75 @@ function onEventStarted(player, commandactor, triggerName, arg1, arg2, arg3, arg
 					end
 				end
 				
-				-- Choosing a recipe from the given materials
-				local recipes = recipeResolver.GetRecipeFromMats(unpack(materials));				
-				local itemIds = recipeResolver.RecipesToItemIdTable(recipes);
-				
-				-- No recipes found
-				if (#itemIds == 0) then
+				-- Choosing a recipe from the given materials. Only the current crafting
+				-- class's recipes are offered (1.0: the tool in hand picks the class).
+				local classId = player:GetCurrentClassOrJob();
+				local allRecipes = recipeResolver:GetRecipeFromMats(unpack(materials));
+				local recipes, itemIds = {}, {};
+				local anyRecipe = false;
+				if (allRecipes ~= nil) then
+					for i = 1, #allRecipes do
+						anyRecipe = true;
+						if (allRecipes[i].classId == classId) then
+							recipes[#recipes + 1] = allRecipes[i];
+							itemIds[#itemIds + 1] = allRecipes[i].resultItemID;
+						end
+					end
+				end
+
+				if (not anyRecipe) then
 					player:SendGameMessage(GetWorldMaster(), 40201, 0x20); -- You cannot synthesize with those materials.
 					break;
+				elseif (#recipes == 0) then
+					player:SendGameMessage(GetWorldMaster(), 40220, 0x20); -- You do not have the class required to synthesize that item.
+					break;
 				end
-				
+
 				local chosenRecipeIndex = callClientFunction(player, "delegateCommand", craftJudge, "selectRcp", commandactor, unpack(itemIds));
-				
+
 				-- Hit back on recipe list
-				if (chosenRecipeIndex <= 0) then break end;
-					
-				chosenRecipe = recipes[chosenRecipeIndex-1];
-				
-				if (chosenRecipe ~= nil) then                          
+				if (chosenRecipeIndex == nil or chosenRecipeIndex <= 0) then break end;
+
+				local chosenRecipe = recipes[chosenRecipeIndex];
+
+				if (chosenRecipe ~= nil) then
 					-- Player confirms recipe
-					local recipeConfirmed = callClientFunction(player, "delegateCommand", craftJudge, "confirmRcp", commandactor, 
-						chosenRecipe.resultItemID, 
-						chosenRecipe.resultQuantity, 
-						chosenRecipe.crystalId1, 
-						chosenRecipe.crystalQuantity1, 
-						chosenRecipe.crystalId2, 
-						chosenRecipe.crystalQuantity2, 
-						0, 
-						0); 
+					local recipeConfirmed = callClientFunction(player, "delegateCommand", craftJudge, "confirmRcp", commandactor,
+						chosenRecipe.resultItemID,
+						chosenRecipe.resultQuantity,
+						chosenRecipe.crystalId1,
+						chosenRecipe.crystalQuantity1,
+						chosenRecipe.crystalId2,
+						chosenRecipe.crystalQuantity2,
+						0,
+						0);
 
 					if recipeConfirmed then
 						closeCraftStartWidget(player, craftJudge, commandactor);
 						isRecipeRecentSent = false;
 						isRecipeAwardSent = false;
-						
-						-- CRAFTING STARTED
-						currentlyCrafting = startCrafting(player, commandactor, craftJudge, operationMode, chosenRecipe, currentCraftQuestGuildleve, 80, 100, 50); 
-						
+
+						local leve = currentCraftQuestGuildleve;
+						if (leve ~= nil) then
+							-- Local levequest: the leve supplies and counts the materials.
+							while (true) do
+								startCrafting(player, commandactor, craftJudge, operationMode, chosenRecipe, leve);
+								if (leve:getRemainingMaterials() == 0) then break; end
+								local continueLeve = callClientFunction(player, "delegateCommand", craftJudge, "askContinueLocalleve", commandactor,
+									leve:getQuestId(), leve:getRecipe().resultItemID, leve:getCurrentCrafted(),
+									leve:getObjectiveQuantity(), leve:getRemainingMaterials());
+								if (continueLeve ~= 1) then break; end
+							end
+						elseif (canStartSynthesis(player, chosenRecipe)) then
+							consumeSynthesisMaterials(player, chosenRecipe);
+							startCrafting(player, commandactor, craftJudge, operationMode, chosenRecipe, nil);
+						end
+
 						--Once crafting is over, return to the original non-quest state.
 						isRequestedItemsMode = false;
-						currentCraftQuestGuildleve = nil;  
-						currentCraftQuest = nil;           
-						
+						currentCraftQuestGuildleve = nil;
+						currentCraftQuest = nil;
+
 						break;
 					end
 				end
@@ -311,7 +339,7 @@ function onEventStarted(player, commandactor, triggerName, arg1, arg2, arg3, arg
 				if not okRecent or recentRecipes == nil then
 					player:SendMessage(0x20, "", "Recipe history is not wired on this server yet - use Mainhand/Offhand synthesis.");
 				else
-					local itemIds = recipeResolver.RecipesToItemIdTable(recentRecipes);
+					local itemIds = recipeResolver:RecipesToItemIdTable(recentRecipes);
 					callClientFunction(player, "delegateCommand", craftJudge, "selectRcp", commandactor, unpack(itemIds)); -- Load up recipe list
 				end
                 isRecipeRecentSent = true;
@@ -322,7 +350,7 @@ function onEventStarted(player, commandactor, triggerName, arg1, arg2, arg3, arg
 				if not okAwarded or awardedRecipes == nil then
 					player:SendMessage(0x20, "", "Awarded recipes are not wired on this server yet - use Mainhand/Offhand synthesis.");
 				else
-					local itemIds = recipeResolver.RecipesToItemIdTable(awardedRecipes);
+					local itemIds = recipeResolver:RecipesToItemIdTable(awardedRecipes);
 					callClientFunction(player, "delegateCommand", craftJudge, "selectRcp", commandactor, unpack(itemIds)); -- Load up Award list
 				end
                 isRecipeAwardSent = true;
@@ -344,7 +372,10 @@ function onEventStarted(player, commandactor, triggerName, arg1, arg2, arg3, arg
 				closeCraftStartWidget(player, craftJudge, commandactor);
 				isRecipeRecentSent = false;
 				isRecipeAwardSent = false;
-				currentlyCrafting = startCrafting(player, commandactor, craftJudge, operationMode, chosenRecipe, isRequestedItemsMode, 80, 100, 50);
+				if (canStartSynthesis(player, chosenRecipe)) then
+					consumeSynthesisMaterials(player, chosenRecipe);
+					startCrafting(player, commandactor, craftJudge, MENU_MAINHAND, chosenRecipe, nil);
+				end
 			end
         else
             break;
@@ -451,108 +482,151 @@ function closeCraftStartWidget(player, craftJudge, commandactor)
 	craftStartWidgetOpen = false;
 end
 
--- No real logic in this function.  Just smoke and mirrors to 'see' the minigame in action at the minimum level.
-function startCrafting(player, commandactor, craftJudge, hand, recipe, quest, startDur, startQly, startHQ)
-    
+-- Can the player start this recipe? Checks the level gap and the crystals; materials are the
+-- ones the player placed in the start widget, so they are on hand.
+function canStartSynthesis(player, recipe)
+	local level = player:GetHighestLevel(); -- level of the current class
+	if (recipe.level ~= nil and recipe.level > level + SYNTH_MAX_LEVEL_GAP) then
+		player:SendGameMessage(GetWorldMaster(), 40205, 0x20); -- You decide to wait until you are more skilled...
+		return false;
+	end
+	local bag = player:GetItemPackage(INVENTORY_CURRENCY);
+	if ((recipe.crystalId1 ~= 0 and recipe.crystalQuantity1 > 0 and not bag:HasItem(recipe.crystalId1, recipe.crystalQuantity1))
+		or (recipe.crystalId2 ~= 0 and recipe.crystalQuantity2 > 0 and not bag:HasItem(recipe.crystalId2, recipe.crystalQuantity2))) then
+		player:SendGameMessage(GetWorldMaster(), 40216, 0x20); -- You do not have the crystal required to start the synthesis.
+		return false;
+	end
+	return true;
+end
+
+-- 1.0 used up every material and crystal when the synthesis began, success or failure.
+function consumeSynthesisMaterials(player, recipe)
+	local materials = recipe:GetMaterials();
+	local bag = player:GetItemPackage(INVENTORY_NORMAL);
+	for i = 1, #materials do
+		if materials[i] ~= 0 then
+			bag:RemoveItem(materials[i], 1);
+		end
+	end
+	local crystals = player:GetItemPackage(INVENTORY_CURRENCY);
+	if recipe.crystalId1 ~= 0 and recipe.crystalQuantity1 > 0 then
+		crystals:RemoveItem(recipe.crystalId1, recipe.crystalQuantity1);
+	end
+	if recipe.crystalId2 ~= 0 and recipe.crystalQuantity2 > 0 then
+		crystals:RemoveItem(recipe.crystalId2, recipe.crystalQuantity2);
+	end
+end
+
+-- Messages for one synthesis step: the action used and whether it worked, then the bar
+-- changes and a new glow.
+local function reportStep(player, command, result)
+	local worldMaster = GetWorldMaster();
+	if (command ~= nil) then
+		local outcome = 1;
+		if (result.action ~= SYNTH_ACTION_WAIT) then outcome = result.success and 2 or 3; end
+		player:SendGameMessage(worldMaster, 40108, 0x20, command, outcome); -- You use <command>. The attempt succeeds/fails! (1 = no outcome)
+	end
+	if (result.progress ~= nil and result.progress > 0) then
+		player:SendGameMessage(worldMaster, 40102, 0x20, result.progress); -- Progress increases by N%.
+	end
+	if (result.durability ~= nil and result.durability > 0) then
+		player:SendGameMessage(worldMaster, 40103, 0x20, result.durability); -- Durability decreases by N.
+	end
+	if (result.quality ~= nil and result.quality > 0) then
+		player:SendGameMessage(worldMaster, 40104, 0x20, result.quality); -- Quality increases by N.
+	end
+	if (result.glow ~= nil and result.glow ~= result.oldGlow) then
+		player:SendGameMessage(worldMaster, 40140 + result.glow, 0x20); -- The item is aglow with ...
+	end
+end
+
+-- Run one synthesis: the progress widget, the action loop, the finishing step, then the
+-- result item and crafter EXP. hand: 1 main hand, 2 off hand. Materials are already consumed.
+function startCrafting(player, commandactor, craftJudge, hand, recipe, quest)
     local worldMaster = GetWorldMaster();
-    local progress = 0;
-    local attempts = 5;
-    local craftedCount = 0;
-    local craftTotal = 2;
-    
-    player:ChangeState(30+hand);  -- Craft kneeling w/ appropriate tool out
+    local classId = recipe.classId;
+    if (classId == nil or classId == 0) then classId = player:GetCurrentClassOrJob(); end
+    local synth = Synthesis.new(recipe, player:GetHighestLevel(), math.random, false);
+    -- Synthesis action command ids for this class and hand (CraftJudge.getAvailableStandardCraftCommand).
+    local actionBase = 22550 + 6 * (classId - 29) + ((hand == 2) and 3 or 0);
+
+    player:ChangeState(30 + hand);  -- Craft kneeling w/ appropriate tool out
     player:ChangeMusic(73);
-    callClientFunction(player, "delegateCommand", craftJudge, "openCraftProgressWidget", commandactor, startDur, startQly, startHQ); 
+    callClientFunction(player, "delegateCommand", craftJudge, "openCraftProgressWidget", commandactor, synth.durability, synth.quality, synth:hqChance());
 
-    while (true) do     
-        local progDiff = math.random(30,50);
-        local duraDiff = math.random(1,3);
-        local qltyDiff = math.random(0,2);
+    while (not synth.finished and not synth.failed) do
+        local choice = callClientFunction(player, "delegateCommand", craftJudge, "craftCommandUI", commandactor, classId, hand, SYNTH_CMD_CANCEL);
+        local result;
+        if (choice == SYNTH_CMD_CANCEL or choice == SYNTH_CMD_QUIT or choice == nil) then
+            synth.failed = true;
+            synth.canceled = true;
+            break;
+        elseif (choice == SYNTH_CMD_TIME_UP) then
+            result = synth:timeUp();
+            reportStep(player, nil, result);
+        elseif (choice == SYNTH_CMD_WAIT) then
+            result = synth:step(SYNTH_ACTION_WAIT);
+            wait(1);
+            reportStep(player, choice, result);
+        elseif (choice >= actionBase and choice <= actionBase + 2) then
+            local action = choice - actionBase;
+            player:PlayAnimation(actionAnim[action]);
+            wait(2);
+            result = synth:step(action);
+            reportStep(player, choice, result);
+        else
+            -- Crafting skills aren't offered yet; treat anything else as a wait.
+            result = synth:step(SYNTH_ACTION_WAIT);
+            reportStep(player, nil, result);
+        end
+        callClientFunction(player, "delegateCommand", craftJudge, "updateInfo", commandactor, synth.progress, synth.durability, synth.quality, nil, nil, nil, synth:hqChance());
+    end
 
-        if (progress >= 100) then            
-            callClientFunction(player, "delegateCommand", craftJudge, "closeCraftProgressWidget", commandactor);
-            
-			-- Handle local levequest craft success
-            if quest then	
-				quest:craftSuccess();
-				
-				if (quest:getCurrentCrafted() >= quest:getObjectiveQuantity()) then
-					attentionMessage(player, 40121, quest:getQuestId(), quest:getCurrentCrafted(), quest:getObjectiveQuantity()); -- "All items for <QuestId> complete!"
-				else
-					attentionMessage(player, 40119, quest:getQuestId(), quest:getCurrentCrafted(), quest:getObjectiveQuantity()); -- "<QuestId> Successfull. (<crafted> of <attempts>)"
-				end
-			
-				-- Continue local levequest  (should this be in here??)
-				if (quest:getRemainingMaterials() ~= 0) then
-					continueLeve = callClientFunction(player, "delegateCommand", craftJudge, "askContinueLocalleve", commandactor,
-						quest:getQuestId(),
-						quest:getRecipe().resultItemID, 
-						quest:getCurrentCrafted(),
-						quest:getObjectiveQuantity(), 
-						quest:getRemainingMaterials()
-					);
-
-					if (continueLeve == 1) then
-						progress = 0;
-						callClientFunction(player, "delegateCommand", craftJudge, "openCraftProgressWidget", commandactor, startDur, startQly, startHQ);
-					else
-						break;
-					end
-				else
-					break;
-				end				
-			-- Normal synth craft success
-            else                
-				-- Consume the recipe's materials + crystals before granting the result; the minigame previously granted output for free.
-				local materials = recipe:GetMaterials();
-				for i = 1, #materials do
-					if materials[i] ~= 0 then
-						player:getItemPackage(INVENTORY_NORMAL):RemoveItem(materials[i], 1);
-					end
-				end
-				if recipe.crystalId1 ~= 0 and recipe.crystalQuantity1 > 0 then
-					player:getItemPackage(INVENTORY_CURRENCY):RemoveItem(recipe.crystalId1, recipe.crystalQuantity1);
-				end
-				if recipe.crystalId2 ~= 0 and recipe.crystalQuantity2 > 0 then
-					player:getItemPackage(INVENTORY_CURRENCY):RemoveItem(recipe.crystalId2, recipe.crystalQuantity2);
-				end
-				player:SendGameMessage(GetWorldMaster(), 40111, 0x20, player, recipe.resultItemID, 1, recipe.resultQuantity);  -- "You create <#3 quantity> <#1 item> <#2 quality>."				
-				player:getItemPackage(INVENTORY_NORMAL):addItem(recipe.resultItemID, recipe.resultQuantity, 1);
-				break;
-            end
-        end		
-        
-        choice = callClientFunction(player, "delegateCommand", craftJudge, "craftCommandUI", commandactor, 29, 2, 29530,29531,29532,29533,29534);
-        --player:SendMessage(0x20, "", "[DEBUG] Command id selected: "..choice);
-                
-        if (choice) then
-            
-            if skillAnim[choice] then
-                player:PlayAnimation(skillAnim[choice]);
-            end
-            
-            wait(3);
-
-            player:SendGameMessage(worldMaster, 40108, 0x20, choice,2);
-            
-            if (choice ~= 29531) then
-                progress = progress + progDiff;
-                
-                if (progress >= 100) then 
-                    progress = 100;
-                end
-                
-                startDur = startDur - duraDiff;
-                startQly = startQly + qltyDiff;
-           
-                player:SendGameMessage(worldMaster, 40102, 0x20, progDiff);
-                player:SendGameMessage(worldMaster, 40103, 0x20, duraDiff);
-                player:SendGameMessage(worldMaster, 40104, 0x20, qltyDiff);
-            end
-                                                                                                          --prg  dur  qly, ???, ???, ???,   HQ
-            callClientFunction(player, "delegateCommand", craftJudge, "updateInfo", commandactor, progress, startDur, startQly, nil, nil, nil, nil, nil);
-            
-            --testChoice = callClientFunction(player, "delegateCommand", craftJudge, "craftTuningUI", commandactor, 29501, 24233, 29501,29501, 24223, 29501,12008,12004);
+    -- Finishing touches: Finish or gamble on Double Down.
+    if (synth.finished) then
+        player:SendGameMessage(worldMaster, 40109, 0x20); -- Core synthesis complete. Proceeding to finishing touches.
+        local finish = callClientFunction(player, "delegateCommand", craftJudge, "craftTuningUI", commandactor, SYNTH_CMD_FINISH, SYNTH_CMD_DOUBLE_DOWN);
+        if (finish == SYNTH_CMD_DOUBLE_DOWN) then
+            local dd = synth:doubleDown();
+            reportStep(player, SYNTH_CMD_DOUBLE_DOWN, {success = dd.success, quality = dd.quality});
+            callClientFunction(player, "delegateCommand", craftJudge, "updateInfo", commandactor, synth.progress, synth.durability, synth.quality, nil, nil, nil, synth:hqChance());
         end
     end
+
+    callClientFunction(player, "delegateCommand", craftJudge, "closeCraftProgressWidget", commandactor);
+
+    local success = synth.finished and not synth.failed;
+    if (synth.canceled) then
+        player:SendGameMessage(worldMaster, 40139, 0x20); -- Synthesis is canceled.
+    elseif (not success) then
+        player:SendGameMessage(worldMaster, 40110, 0x20, player); -- <player> botches the synthesis!
+    end
+
+    if (success) then
+        if quest then
+            -- Local levequest craft: the leve counts the item.
+            quest:craftSuccess();
+            if (quest:getCurrentCrafted() >= quest:getObjectiveQuantity()) then
+                attentionMessage(player, 40121, quest:getQuestId(), quest:getCurrentCrafted(), quest:getObjectiveQuantity()); -- "All items for <QuestId> complete!"
+            else
+                attentionMessage(player, 40119, quest:getQuestId(), quest:getCurrentCrafted(), quest:getObjectiveQuantity()); -- "<QuestId> Successfull. (<crafted> of <attempts>)"
+            end
+        else
+            local quality = synth:rollQuality();
+            player:SendGameMessage(worldMaster, 40111, 0x20, player, recipe.resultItemID, quality, recipe.resultQuantity);  -- "You create <#3 quantity> <#1 item> <#2 quality>."
+            player:GetItemPackage(INVENTORY_NORMAL):AddItem(recipe.resultItemID, recipe.resultQuantity, quality);
+        end
+    end
+
+    if (not synth.canceled) then
+        local exp, bonus = synth:experience(success);
+        if (bonus > 0) then
+            player:SendGameMessage(worldMaster, 40138, 0x20, bonus); -- An increase in quality gains you N% more experience!
+        end
+        if (exp > 0) then player:AddExp(exp, classId, bonus); end
+    end
+
+    player:ResetMusic();
+    player:ChangeState(30);
+    return success;
 end
