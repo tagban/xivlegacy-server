@@ -406,6 +406,7 @@ impl GameTicker {
                     now_ms,
                     &self.registry,
                     &self.world,
+                    &self.db,
                     active.parent_zone_id,
                     active.instance_id,
                 )
