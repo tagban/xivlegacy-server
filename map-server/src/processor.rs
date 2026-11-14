@@ -1246,7 +1246,7 @@ impl PacketProcessor {
                     player_id,
                     actor_id,
                     &trigger,
-                    5,
+                    crate::packets::send::events::script_kick_event_type(actor_id),
                     &lua_params,
                 );
                 sub.set_target_id(session_id);
@@ -3843,7 +3843,7 @@ impl PacketProcessor {
                         kick.trigger_actor_id,
                         kick.owner_actor_id,
                         &kick.event_name,
-                        5,
+                        crate::packets::send::events::script_kick_event_type(kick.owner_actor_id),
                         &kick.args,
                     ),
                 ];
@@ -10356,7 +10356,7 @@ impl PacketProcessor {
                     kick.trigger_actor_id,
                     kick.owner_actor_id,
                     &kick.event_name,
-                    5,
+                    crate::packets::send::events::script_kick_event_type(kick.owner_actor_id),
                     &kick.args,
                 );
                 sub.set_target_id(session_id);
