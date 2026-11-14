@@ -19729,6 +19729,129 @@ async fn party_copy_owner_leaving_hands_over_the_roster() {
     crate::content_instance::release(active.instance_id);
 }
 
+/// Leaves a solo copy run by `director_name` with content `content_script`
+/// and returns every frame its player's client was sent.
+async fn leave_solo_copy(
+    player: u32,
+    zone: u32,
+    director_name: &str,
+    content_script: &str,
+) -> Vec<Vec<u8>> {
+    use crate::data::Session as MapSession;
+    let world = Arc::new(WorldManager::new());
+    let registry = Arc::new(ActorRegistry::new());
+    let (tx, mut rx) = mpsc::channel::<Vec<u8>>(512);
+    world
+        .register_client(player, ClientHandle::new(player, tx))
+        .await;
+    let mut c = Character::new(player);
+    c.base.zone_id = zone;
+    registry
+        .insert(ActorHandle::new(
+            player,
+            ActorKindTag::Player,
+            zone,
+            player,
+            c,
+        ))
+        .await;
+    world
+        .upsert_session(MapSession {
+            id: player,
+            current_zone_id: zone,
+            active_content_script: Some(crate::data::ActiveContentScript {
+                parent_zone_id: zone,
+                area_name: content_script.to_string(),
+                area_class_path: "/Area/PrivateArea/Content/PrivateAreaMasterSimpleContent"
+                    .to_string(),
+                director_name: director_name.to_string(),
+                director_actor_id: 0x67A8_0003,
+                content_area_actor_id: 0,
+                content_script: content_script.to_string(),
+                warp_complete: true,
+                spawned_actor_ids: Vec::new(),
+                instance_id: 0,
+                party_member: false,
+            }),
+            ..MapSession::default()
+        })
+        .await;
+    crate::runtime::quest_apply::apply_leave_content(player, &registry, &world, None).await;
+    assert!(
+        world
+            .session(player)
+            .await
+            .unwrap()
+            .active_content_script
+            .is_none(),
+        "the copy is left",
+    );
+    let mut frames = Vec::new();
+    while let Ok(f) = rx.try_recv() {
+        frames.push(f);
+    }
+    frames
+}
+
+fn sent_function(frames: &[Vec<u8>], name: &[u8]) -> bool {
+    frames
+        .iter()
+        .any(|f| f.windows(name.len()).any(|w| w == name))
+}
+
+/// Leaving an instance-raid dungeon copy (Aurum Vale, Cutter's Cry) runs
+/// the director's `clearEvent` on the client, which takes its desktop out
+/// of the raid layout; left in it, no NPC talked to the player anywhere
+/// until a relog. Occupancy dungeons don't switch layouts, and the Grand
+/// Company raids close it from their own director scripts.
+#[tokio::test]
+async fn leaving_an_instance_raid_dungeon_closes_the_raid_ui() {
+    let aurum = leave_solo_copy(
+        9531,
+        245,
+        "InstanceRaid/InstanceRaidAurumVale",
+        "SimpleContentDungeonAurumVale",
+    )
+    .await;
+    assert!(
+        sent_function(&aurum, b"clearEvent"),
+        "Aurum Vale: clearEvent sent"
+    );
+    let cutters = leave_solo_copy(
+        9532,
+        246,
+        "InstanceRaid/InstanceRaidCuttersCry",
+        "SimpleContentDungeonCuttersCry",
+    )
+    .await;
+    assert!(
+        sent_function(&cutters, b"clearEvent"),
+        "Cutter's Cry: clearEvent sent"
+    );
+    let totorak = leave_solo_copy(
+        9533,
+        159,
+        "Occupancy/RaidFst0Dungeon03",
+        "SimpleContentDungeonTotorak",
+    )
+    .await;
+    assert!(
+        !sent_function(&totorak, b"clearEvent"),
+        "Toto-Rak: no raid UI to close"
+    );
+    let ifrit = leave_solo_copy(
+        9534,
+        202,
+        "InstanceRaid/InstanceRaidLesserIfrit",
+        "SimpleContentBowlOfEmbers",
+    )
+    .await;
+    assert!(
+        !sent_function(&ifrit, b"clearEvent"),
+        "GC raid: its director closes it"
+    );
+}
+
 /// Any zone change out of a copy's zone leaves the copy, a party's or a
 /// quest duty's; one inside that zone doesn't.
 #[test]
