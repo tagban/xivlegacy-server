@@ -1,4 +1,4 @@
--- server_gather_node_spawns: game data, 15 rows. Reloaded whole when this file changes.
+-- server_gather_node_spawns: game data, 33 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_gather_node_spawns`;
 INSERT INTO `server_gather_node_spawns` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `harvestNodeId`, `harvestType`) VALUES
@@ -16,4 +16,22 @@ INSERT INTO `server_gather_node_spawns` (`id`, `actorClassId`, `uniqueId`, `zone
 (111, 1200052, 'mine_halatali_3', 171, '', 0, 1650.35, 259.84, -213.29, -1.94, 2013, 22002),
 (112, 1200052, 'mine_nophica_s_wells_1', 172, '', 0, -810.02, 88.68, 373.26, -1.54, 2014, 22002),
 (113, 1200052, 'mine_nophica_s_wells_2', 172, '', 0, -816.43, 92.49, 401.0, -2.06, 2014, 22002),
-(114, 1200052, 'mine_nophica_s_wells_3', 172, '', 0, -848.91, 91.38, 427.78, -2.84, 2014, 22002);
+(114, 1200052, 'mine_nophica_s_wells_3', 172, '', 0, -848.91, 91.38, 427.78, -2.84, 2014, 22002),
+(115, 1200054, 'log_bentbranch_1', 150, '', 0, 326.21, 4.74, -504.36, -2.37, 2023, 22003),
+(116, 1200054, 'log_bentbranch_2', 150, '', 0, 259.67, 15.35, -496.78, 2.6, 2023, 22003),
+(117, 1200054, 'log_bentbranch_3', 150, '', 0, 239.9, 15.64, -517.26, 2.08, 2023, 22003),
+(118, 1200054, 'log_nine_ivies_1', 151, '', 0, 1658.08, 20.4, -828.9, 2.22, 2024, 22003),
+(119, 1200054, 'log_nine_ivies_2', 151, '', 0, 1651.37, 31.23, -883.49, 1.17, 2024, 22003),
+(120, 1200054, 'log_nine_ivies_3', 151, '', 0, 1668.9, 30.96, -905.92, 0.65, 2024, 22003),
+(121, 1200054, 'log_emerald_moss_1', 152, '', 0, -1024.5, 31.55, -1712.37, -2.62, 2025, 22003),
+(122, 1200054, 'log_emerald_moss_2', 152, '', 0, -1090.89, 22.46, -1721.11, 2.36, 2025, 22003),
+(123, 1200054, 'log_emerald_moss_3', 152, '', 0, -1099.63, 28.06, -1787.5, 1.05, 2025, 22003),
+(124, 1200054, 'log_tranquil_paths_1', 153, '', 0, -1587.53, -4.06, -601.14, 0.4, 2026, 22003),
+(125, 1200054, 'log_tranquil_paths_2', 153, '', 0, -1515.41, -0.03, -572.0, -1.17, 2026, 22003),
+(126, 1200054, 'log_tranquil_paths_3', 153, '', 0, -1522.11, -0.69, -517.41, -2.22, 2026, 22003),
+(127, 1200054, 'log_humblehearth_1', 150, '', 0, -120.73, 15.43, -495.06, 2.64, 2027, 22003),
+(128, 1200054, 'log_humblehearth_2', 150, '', 0, -141.21, 15.41, -514.83, 2.11, 2027, 22003),
+(129, 1200054, 'log_humblehearth_3', 150, '', 0, -133.63, 6.51, -581.37, 0.8, 2027, 22003),
+(130, 1200054, 'log_treespeak_1', 152, '', 0, -938.09, 31.68, -2178.85, 1.73, 2028, 22003),
+(131, 1200054, 'log_treespeak_2', 152, '', 0, -928.26, 46.04, -2219.78, 0.94, 2028, 22003),
+(132, 1200054, 'log_treespeak_3', 152, '', 0, -841.03, 25.91, -2222.06, -0.89, 2028, 22003);
