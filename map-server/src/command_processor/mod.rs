@@ -590,9 +590,32 @@ impl CommandProcessor {
         let Some(chara_id) = self.lookup_character_id(&name).await else {
             return format!("unknown character: {name}");
         };
-        // Read current exp + delta, then persist. The per-class column
-        // is derived inside `Database::set_exp`; we don't expose the
-        // column mapping here.
+        // Online: go through the shared AddExp applier so the exp rolls
+        // over into levels (and the client sees the level up), the same
+        // path quest rewards and kills use. Writing the DB total alone
+        // left the live character at its old level.
+        if let Some(handle) = self.registry.by_session(chara_id).await {
+            crate::runtime::quest_apply::apply_add_exp(
+                handle.actor_id,
+                class_id,
+                qty,
+                &self.registry,
+                &self.db,
+                Some(&self.world),
+                Some(&self.lua),
+            )
+            .await;
+            let c = handle.character.read().await;
+            let slot = class_id as usize;
+            let level = c.battle_save.skill_level.get(slot).copied().unwrap_or(0);
+            let exp = c.battle_save.skill_point.get(slot).copied().unwrap_or(0);
+            return format!(
+                "gave {qty} exp to {name} (class {class_id}; level {level}, exp {exp})"
+            );
+        }
+        // Offline: read current exp + delta, then persist. The per-class
+        // column is derived inside `Database::set_exp`; we don't expose
+        // the column mapping here.
         let current = self
             .db
             .load_class_levels_and_exp(chara_id)
@@ -2130,6 +2153,39 @@ mod tests {
         // Console path (no invoker) keeps <name> mandatory.
         let args = Args::new(vec!["100"], None);
         assert_eq!(args.rest_joined(1), None);
+    }
+
+    #[tokio::test]
+    async fn giveexp_levels_up_an_online_character() {
+        use crate::runtime::actor_registry::{ActorHandle, ActorKindTag};
+        let (cmd, db) = fixture().await;
+        db.conn_for_test()
+            .call_db(|c| {
+                c.execute(
+                    r"INSERT INTO characters (id, userId, slot, serverId, name)
+                      VALUES (44, 0, 0, 0, 'Level Seeker')",
+                    [],
+                )?;
+                Ok(())
+            })
+            .await
+            .unwrap();
+        let mut character = crate::actor::Character::new(44);
+        character.battle_save.skill_level[29] = 7;
+        character.chara.class = 29;
+        let handle = ActorHandle::new(44, ActorKindTag::Player, 100, 44, character);
+        cmd.registry.insert(handle.clone()).await;
+
+        // Exactly enough for level 7 -> 15.
+        let need: i32 = crate::battle::save::LEVEL_THRESHOLDS[6..14].iter().sum();
+        let out = cmd
+            .run(&format!("giveexp {need} 29 Level Seeker"))
+            .await
+            .unwrap();
+        assert!(out.contains("level 15, exp 0"), "got {out}");
+        let c = handle.character.read().await;
+        assert_eq!(c.battle_save.skill_level[29], 15);
+        assert_eq!(c.chara.level, 15, "active class level follows");
     }
 
     #[tokio::test]
