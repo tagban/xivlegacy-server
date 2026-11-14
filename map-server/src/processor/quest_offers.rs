@@ -216,6 +216,7 @@ impl PacketProcessor {
                         && !journal.is_completed(m.id)
                         && level >= m.min_level
                         && (needs.is_empty() || needs.iter().any(|p| journal.is_completed(*p)))
+                        && crate::seasonal::quest_open(m.id)
                         && engine.resolver().quest(&name).exists()
                 })
                 .map(|m| m.id)

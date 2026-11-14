@@ -1769,6 +1769,43 @@ impl WorldManager {
         }
     }
 
+    /// Take seasonal-event NPCs whose event stopped off every client that
+    /// has them (`seasonal::actor_hidden`). Turning an event on needs
+    /// nothing here: proximity streaming picks its NPCs up.
+    pub async fn remove_inactive_seasonal_actors(&self) -> usize {
+        let gone: Vec<(u32, Vec<u32>)> = {
+            let mut sessions = self.sessions.write().await;
+            sessions
+                .iter_mut()
+                .filter_map(|(sid, s)| {
+                    let ids: Vec<u32> = s
+                        .actor_instance_list
+                        .iter()
+                        .copied()
+                        .filter(|id| crate::seasonal::actor_hidden(*id))
+                        .collect();
+                    for id in &ids {
+                        s.actor_instance_list.remove(id);
+                    }
+                    (!ids.is_empty()).then_some((*sid, ids))
+                })
+                .collect()
+        };
+        let mut n = 0;
+        for (sid, ids) in gone {
+            let Some(client) = self.client(sid).await else {
+                continue;
+            };
+            for id in ids {
+                let mut sub = crate::packets::send::actor::build_remove_actor(id);
+                sub.set_target_id(sid);
+                client.send_bytes(sub.to_bytes()).await;
+                n += 1;
+            }
+        }
+        n
+    }
+
     pub async fn session(&self, id: u32) -> Option<Session> {
         self.sessions.read().await.get(&id).cloned()
     }
@@ -3086,6 +3123,8 @@ impl WorldManager {
         // Actors a quest hid from this player stay hidden through the
         // reload (an Echo's same-zone fade-in warp).
         neighbours.retain(|(id, _, _)| !session.hidden_actors.contains(id));
+        // Seasonal-event NPCs only while their event runs.
+        neighbours.retain(|(id, _, _)| !crate::seasonal::actor_hidden(*id));
         tracing::info!(
             session = session_id,
             actor = format!("0x{actor_id:08X}"),
@@ -4423,6 +4462,8 @@ impl WorldManager {
                 }
             }
         }
+        // Seasonal-event NPCs only while their event runs.
+        stream_list.retain(|(id, _)| !crate::seasonal::actor_hidden(*id));
         if stream_list.is_empty() {
             return;
         }

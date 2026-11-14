@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1924 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1933 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -1928,4 +1928,13 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (30262, 5900015, 'rocdun1_door_06', 231, '', 0, 20.0, 181.25, -46.0, 0.0, 0, 0, NULL),
 (30263, 5900015, 'rocdun1_door_e1', 231, '', 0, -28.0, 179.7, 129.8, 0.0, 0, 0, NULL),
 (30264, 5900015, 'rocdun4_door_01', 245, '', 0, -730.5, 179.5, 1441.5, 0.0, 0, 0, NULL),
-(30265, 5900015, 'rocdun4_door_03', 245, '', 0, -810.5, 179.5, 1457.5, 0.0, 0, 0, NULL);
+(30265, 5900015, 'rocdun4_door_03', 245, '', 0, -810.5, 179.5, 1457.5, 0.0, 0, 0, NULL),
+(30900, 1001824, 'spl_ninipu', 230, '', 0, -388.0, 42.5, 346.0, -2.4, 0, 0, NULL),
+(30901, 1001825, 'spl_hastridie', 206, '', 0, -121.0, 16.1, -1316.0, -1.6, 0, 0, NULL),
+(30902, 1001826, 'spl_wysskoen', 175, '', 0, -222.0, 190.0, 35.0, 2.6, 0, 0, NULL),
+(30903, 1001827, 'spl_waldomar', 152, '', 0, -606.0, 3.9, -2398.0, 2.6, 0, 0, NULL),
+(30904, 1200265, 'spl_father_frost', 152, '', 0, -596.0, 4.3, -2394.0, 0.0, 0, 0, NULL),
+(30905, 1090990, 'spl0i4_depression_a', 152, '', 0, -616.0, 4.2, -2390.0, 0.0, 0, 0, NULL),
+(30906, 1090991, 'spl0i4_depression_b', 152, '', 0, -604.0, 4.3, -2384.0, 0.0, 0, 0, NULL),
+(30907, 1090992, 'spl0i4_depression_c', 152, '', 0, -592.0, 4.7, -2386.0, 0.0, 0, 0, NULL),
+(30908, 1090993, 'spl0i4_hamlet_gate', 152, '', 0, -580.0, 6.1, -2382.0, 0.0, 0, 0, NULL);

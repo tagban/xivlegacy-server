@@ -646,6 +646,17 @@ async fn dispatch_npc_event_started(
             ..Default::default()
         }
     };
+    // The Character alone carries no items: give the NPC script the
+    // player's item totals so `GetItemPackage(..):HasItem` and
+    // `GetItemQuantity` answer from what the player really holds (as the
+    // quest hooks' snapshots already do).
+    let mut snapshot = snapshot;
+    match db.item_totals(snapshot.actor_id).await {
+        Ok(items) => snapshot.inventory = items,
+        Err(e) => {
+            tracing::warn!(player = snapshot.actor_id, err = %e, "NPC event: item totals failed")
+        }
+    }
 
     let lua_clone = Arc::clone(lua);
     let event_name_owned = event_name.to_string();
