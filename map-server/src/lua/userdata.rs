@@ -2532,6 +2532,14 @@ impl UserData for LuaPlayer {
                             text_owner = id;
                         } else if let Ok(id) = ud.borrow_scoped::<LuaNpc, _>(|n| n.base.actor_id) {
                             text_owner = id;
+                        } else if let Ok(id) = ud.borrow_scoped::<LuaStaticActor, _>(|s| s.actor_id)
+                        {
+                            // GetStaticActor("HarvestJudge" / "CraftJudge"
+                            // / "Man0l1" ...). Falling through to the
+                            // WorldMaster default formatted the judge's
+                            // text id against the WorldMaster sheet and
+                            // crashed the client (mining's grade message).
+                            text_owner = id;
                         }
                     }
                     Value::Integer(i) => {
@@ -6518,5 +6526,64 @@ fn party_target(v: &mlua::Value) -> Option<String> {
         mlua::Value::Integer(i) => Some(i.to_string()),
         mlua::Value::Number(n) => Some((*n as i64).to_string()),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod send_game_message_tests {
+    use super::*;
+    use crate::lua::command::{CommandQueue, LuaCommand};
+
+    /// `player:SendGameMessage(GetStaticActor("HarvestJudge"), 26, 0x20, 1, 2)`
+    /// must name the static actor as the text owner. It used to fall back to
+    /// the WorldMaster, and the client crashed formatting WorldMaster text 26
+    /// with the mining grade (f_00caf760, opening the mining window).
+    #[test]
+    fn static_actor_is_the_text_owner() {
+        let lua = mlua::Lua::new();
+        let queue = CommandQueue::new();
+        let player = LuaPlayer {
+            snapshot: PlayerSnapshot {
+                actor_id: 9,
+                ..Default::default()
+            },
+            queue: queue.clone(),
+        };
+        lua.globals().set("player", player).unwrap();
+        lua.globals()
+            .set(
+                "judge",
+                LuaStaticActor {
+                    actor_id: 0xA0F4_E204,
+                },
+            )
+            .unwrap();
+        lua.load(
+            "player:SendGameMessage(judge, 26, 0x20, 1, 2)\n\
+             player:SendGameMessage(player, judge, 21, 0x20)\n\
+             player:SendGameMessage(nil, 40339, 0x20)",
+        )
+        .exec()
+        .unwrap();
+        let owners: Vec<(u32, u32, Vec<i64>)> = CommandQueue::drain(&queue)
+            .into_iter()
+            .filter_map(|c| match c {
+                LuaCommand::SendGameMessage {
+                    text_owner_id,
+                    text_id,
+                    params,
+                    ..
+                } => Some((text_owner_id, text_id, params)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            owners,
+            vec![
+                (0xA0F4_E204, 26, vec![1, 2]),
+                (0xA0F4_E204, 21, vec![]),
+                (crate::packets::send::WORLD_MASTER_ACTOR_ID, 40339, vec![]),
+            ]
+        );
     }
 }
