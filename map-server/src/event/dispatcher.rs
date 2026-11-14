@@ -643,6 +643,12 @@ async fn dispatch_npc_event_started(
                 .collect(),
             completed_quests: c.quest_journal.iter_completed().collect(),
             quest_npcs: c.quest_npc_classes(),
+            // The Path companion: Tataru's re-pick (Trl0l3) keeps its name
+            // when the naming is left empty.
+            snpc_nickname: c.chara.snpc_nickname.clone(),
+            snpc_skin: c.chara.snpc_skin,
+            snpc_personality: c.chara.snpc_personality,
+            snpc_coordinate: c.chara.snpc_coordinate,
             ..Default::default()
         }
     };
