@@ -1250,20 +1250,33 @@ impl Database {
             })
             .await?;
         let mut leves: HashMap<u32, GuildleveGamedata> = rows.into_iter().collect();
-        for (id, hold) in self.survive_holds().await? {
+        for (id, hold, finals) in self.survive_holds().await? {
             if let Some(gd) = leves.get_mut(&id) {
                 gd.survive = Some(hold);
+                // final targets for a leve whose sheet row names none
+                if gd.mobs.iter().all(|&m| m == 0) {
+                    for (i, (mob, num)) in finals.into_iter().enumerate() {
+                        gd.mobs[i] = mob;
+                        gd.aim_num[i] = num as i8;
+                    }
+                }
             }
         }
         Ok(leves)
     }
 
-    /// Survive leves' hold phases (`server_guildleve_survive`).
-    async fn survive_holds(&self) -> Result<Vec<(u32, crate::gamedata::SurviveHold)>> {
+    /// Survive leves' hold phases (`server_guildleve_survive`), and the
+    /// final targets (display-name id, count) for a leve whose sheet row
+    /// names none.
+    #[allow(clippy::type_complexity)]
+    async fn survive_holds(
+        &self,
+    ) -> Result<Vec<(u32, crate::gamedata::SurviveHold, Vec<(u32, u8)>)>> {
         self.conn
             .call_db(|c| {
                 let mut stmt = c.prepare(
-                    "SELECT guildleveId, holdSeconds, holdSecondsRecorded, holdMob, holdUp
+                    "SELECT guildleveId, holdSeconds, holdSecondsRecorded, holdMob, holdUp,
+                            finalMob1, finalNum1, finalMob2, finalNum2
                      FROM server_guildleve_survive",
                 )?;
                 let rows = stmt
@@ -1276,6 +1289,13 @@ impl Database {
                                 mob: r.get(3)?,
                                 up: r.get(4)?,
                             },
+                            [
+                                (r.get::<_, u32>(5)?, r.get::<_, u8>(6)?),
+                                (r.get(7)?, r.get(8)?),
+                            ]
+                            .into_iter()
+                            .filter(|&(mob, num)| mob != 0 && num != 0)
+                            .collect(),
                         ))
                     })?
                     .collect::<common::sql::Result<_>>()?;

@@ -1258,6 +1258,15 @@ async fn hold_tick(
     send_all(registry, world, &leve.participants(), tracker_state(&leve)).await;
     set_on(&leve, leve.owner, registry).await;
     store_hold(&leve, &new, &gone);
+    if leve.classes.iter().all(|&c| c == 0) {
+        // a horde leve: holding the area was the whole task
+        tracing::info!(
+            gl_id = leve.guildleve_id,
+            "battle leve hold over: no targets, won"
+        );
+        complete(leve.owner, registry, world, db, now_ms).await;
+        return;
+    }
     tracing::info!(
         gl_id = leve.guildleve_id,
         targets = ?leve
