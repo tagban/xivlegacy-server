@@ -9,9 +9,12 @@ and the actor that offered it.
 Gathering points offer push commands 20001-20007 (Mine, Log, Fish, ...).
 For those the server kicks "commandJudgeMode" on the matching harvest
 command (Mine = 22002, ...): the client runs that command on the targeted
-point and its EventStart reaches DummyCommand.lua. Kicking the point
-itself crashes the 1.23b client. Every other actor gets its own
-"pushCommand" event.
+point and its EventStart reaches DummyCommand.lua. The server sends a
+kick on a command actor with event type 0, which puts the client in
+judge mode so the gathering window can open. The commandRequest is
+ended right away; the judge event carries on by itself. Kicking the
+point itself crashes the 1.23b client (a fatal error in the client's
+event start). Every other actor gets its own "pushCommand" event.
 
 --]]
 require("global")
@@ -30,6 +33,7 @@ function onEventStarted(player, command, triggerName, pushCommand, unk1, unk2, u
 	local harvestCommand = GATHER_PUSH_COMMANDS[pushCommand];
 	if (harvestCommand ~= nil) then
 		player:KickEvent(0xA0F00000 + harvestCommand, "commandJudgeMode", "commandJudgeMode");
+		player:EndEvent();
 	else
 		player:KickEvent(ownerActorId, "pushCommand", "pushCommand");
 	end
