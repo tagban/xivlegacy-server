@@ -296,6 +296,23 @@ pub async fn apply_runtime_lua_command(
             apply_send_message(actor_id, message_type, &sender, &text, registry, world).await;
             true
         }
+        LC::OpenDungeonChest {
+            player_id,
+            chest_actor_id,
+            loot,
+        } => {
+            crate::runtime::dungeon_chest::open(
+                player_id,
+                chest_actor_id,
+                &loot,
+                registry,
+                db,
+                world,
+                lua,
+            )
+            .await;
+            true
+        }
         // `player:UnlockAetheryteNode(id)` — first-touch aetheryte
         // attunement from AetheryteParent.lua / AetheryteChild.lua
         // `onEventStarted` (Garlemald-Server #46, round 5). The
@@ -2285,6 +2302,7 @@ pub(crate) async fn apply_content_finished(
     crate::content_instance::release(active.instance_id);
     crate::dungeon_gates::release_instance(active.instance_id);
     crate::runtime::dungeon_fight::release_instance(active.instance_id);
+    crate::runtime::dungeon_chest::release_instance(active.instance_id);
     if active.instance_id != 0 {
         for mut member in world.all_sessions().await {
             if member.id != session_id
