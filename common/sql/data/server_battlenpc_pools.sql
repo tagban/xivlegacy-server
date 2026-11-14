@@ -1,4 +1,4 @@
--- server_battlenpc_pools: game data, 575 rows. Reloaded whole when this file changes.
+-- server_battlenpc_pools: game data, 580 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_pools`;
 INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId`, `currentJob`, `combatSkill`, `combatDelay`, `combatDmgMult`, `aggroType`, `immunity`, `linkType`, `spellListId`, `skillListId`) VALUES
@@ -577,4 +577,9 @@ INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId
 (31188, 2106643, 'u_ghamaro_gurneyman', 29, 0, 1, 4200, 1.0, 1, 0, 0, 0, 27),
 (31189, 2106656, 'u_ghamaro_junkman', 29, 0, 1, 4200, 1.0, 1, 0, 0, 0, 27),
 (31190, 2106651, 'u_ghamaro_overman', 29, 0, 1, 4200, 1.0, 1, 0, 0, 0, 27),
-(31191, 2106645, 'u_ghamaro_underman', 29, 0, 1, 4200, 1.0, 1, 0, 0, 0, 27);
+(31191, 2106645, 'u_ghamaro_underman', 29, 0, 1, 4200, 1.0, 1, 0, 0, 0, 27),
+(30502, 2280196, 'etc2i2_lunatic_lamb', 29, 0, 1, 4500, 1.0, 0, 0, 0, 0, 0),
+(30503, 2280197, 'etc2i2_lunatic_lamb', 29, 0, 1, 4500, 1.0, 0, 0, 0, 0, 0),
+(30504, 2280198, 'etc2i2_lunatic_lamb', 29, 0, 1, 4500, 1.0, 0, 0, 0, 0, 0),
+(30505, 2280301, 'etc2i2_lunatic_lamb', 29, 0, 1, 4500, 1.0, 0, 0, 0, 0, 0),
+(30506, 2280302, 'etc2i2_lunatic_shepherd', 29, 0, 1, 4200, 1.1, 0, 0, 0, 0, 0);
