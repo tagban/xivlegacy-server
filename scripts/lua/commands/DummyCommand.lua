@@ -235,6 +235,8 @@ function onEventStarted(player, commandActor, triggerName, arg1, arg2, arg3, arg
                 local nodeSweetspot = nodeDetails[3];
                 local nodeYield = nodeDetails[4];
                 local isFirstSwing = true;
+                -- Fishing: Wait until a fish bites (1-3 waits), then Jig.
+                local fishWaits, fishBite = 0, math.random(1, 3);
 
                 local sweetspotDifference;
                 local sweetspotDifferencePrevious;
@@ -254,7 +256,13 @@ function onEventStarted(player, commandActor, triggerName, arg1, arg2, arg3, arg
                     callClientFunction(player, "delegateCommand", harvestJudge, "textInputWidget", commandActor, harvestType, harvestJudge, nil, 0, 0, 0, 0);
 
                     -- "Strike" 0 = Empty, 100 = Filled.   Mooglebox sweespots are 1=10, 2=30, 3=70, 4=100 for Mining
-                    chosenCommand, powerCurrent = callClientFunction(player, "delegateCommand", harvestJudge, "askInputWidget", commandActor, harvestType, 2, showTutorial, false, false, nil, false); -- Strike
+                    -- The two flags pick the buttons (HarvestJudge askInputWidget): fishing offers
+                    -- Wait alone (true, false) until a bite, then Wait and Jig (true, true).
+                    local canWait, canJig = false, false;
+                    if harvestType == commandFish then
+                        canWait, canJig = true, fishWaits >= fishBite;
+                    end
+                    chosenCommand, powerCurrent = callClientFunction(player, "delegateCommand", harvestJudge, "askInputWidget", commandActor, harvestType, 2, showTutorial, canWait, canJig, nil, false); -- Strike
 
                     if debugMsg then player:SendMessage(0x20, "", tostring(chosenCommand).." Power: "..tostring(powerCurrent)); end
 
@@ -272,7 +280,22 @@ function onEventStarted(player, commandActor, triggerName, arg1, arg2, arg3, arg
                         break;
 
                     elseif ui.wait ~= nil and chosenCommand == ui.wait then  -- Fishing: let the line sit.
-                        player:SendGameMessage(harvestJudge, 42, MESSAGE_TYPE_SYSTEM);
+                        if fishWaits < fishBite then
+                            fishWaits = fishWaits + 1;
+                            if fishWaits >= fishBite then
+                                -- Something bites: Jig is offered next.
+                                callClientFunction(player, "delegateCommand", harvestJudge, "textInputWidget", commandActor, harvestType, harvestJudge, 45);
+                                player:SendGameMessage(harvestJudge, 45, MESSAGE_TYPE_SYSTEM);
+                            else
+                                callClientFunction(player, "delegateCommand", harvestJudge, "textInputWidget", commandActor, harvestType, harvestJudge, 42);
+                                player:SendGameMessage(harvestJudge, 42, MESSAGE_TYPE_SYSTEM);
+                            end
+                        elseif math.random(1, 2) == 1 then
+                            -- Waiting on a bite can lose the fish.
+                            fishWaits, fishBite = 0, math.random(1, 3);
+                            callClientFunction(player, "delegateCommand", harvestJudge, "textInputWidget", commandActor, harvestType, harvestJudge, 42);
+                            player:SendGameMessage(harvestJudge, 42, MESSAGE_TYPE_SYSTEM);
+                        end
 
                     elseif chosenCommand == ui.strike then  -- Strike / Chop / Jig.
 
@@ -398,7 +421,8 @@ NODE_REST_SECONDS = 300;
 HARVEST_UI = {
     [22002] = {begin = 22701, cancel = 22702, strike = 22703},          -- Mine
     [22003] = {begin = 22704, strike = 22705, cancel = 22706},          -- Log (Chop)
-    [22004] = {begin = 22707, strike = 22708, cancel = 22709, wait = 22711}, -- Fish (Jig)
+    -- Fishing's Aim button is Wait (22711: cast at the chosen depth); 22707 is unused by 1.23b.
+    [22004] = {begin = 22711, strike = 22708, cancel = 22709, wait = 22711}, -- Fish (Jig)
 };
 
 -- Class that gathers each command's points.
