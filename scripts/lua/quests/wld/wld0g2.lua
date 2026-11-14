@@ -28,11 +28,12 @@ CEADDA		= 1000330;
 THIMM		= 1001439;
 
 -- Quest Markers
-MRKR_FLAVIELLE			= 11120101;
-MRKR_KEKETO				= 11120102;
-MRKR_CEADDA				= 11120103;
-MRKR_THIMM				= 11120104;
-MRKR_SWAENHYLT			= 11120105;
+-- From the client's marker sheet: 11120101 sits at the Quarrymill (Keketo),
+-- 102 on Ceadda, 103 on Thimm, 104 on Swaenhylt. Flavielle has none.
+MRKR_KEKETO				= 11120101;
+MRKR_CEADDA				= 11120102;
+MRKR_THIMM				= 11120103;
+MRKR_SWAENHYLT			= 11120104;
 
 -- Quest Flags
 FLAG_TALKED_FLAVIELLE 	= 0;
@@ -156,7 +157,6 @@ function getJournalMapMarkerList(player, quest)
     local possibleMarkers = {};
     
     if (sequence == SEQ_000) then
-        if (not data:GetFlag(FLAG_TALKED_FLAVIELLE)) then table.insert(possibleMarkers, MRKR_FLAVIELLE); end
         if (not data:GetFlag(FLAG_TALKED_KEKETO)) then table.insert(possibleMarkers, MRKR_KEKETO); end
         if (not data:GetFlag(FLAG_TALKED_CEADDA)) then table.insert(possibleMarkers, MRKR_CEADDA); end
         if (not data:GetFlag(FLAG_TALKED_THIMM)) then table.insert(possibleMarkers, MRKR_THIMM); end
