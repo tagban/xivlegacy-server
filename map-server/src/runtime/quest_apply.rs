@@ -2297,6 +2297,7 @@ pub(crate) async fn apply_content_finished(
                 member.pending_content_kick_event = None;
                 if let Some(h) = registry.by_session(member.id).await {
                     h.character.write().await.chara.content_area_name.clear();
+                    close_raid_ui_on_client(h.actor_id, &active, registry, world).await;
                 }
                 world.upsert_session(member).await;
             }
@@ -2357,6 +2358,7 @@ pub(crate) async fn apply_content_finished(
     //    closed on every way out, the clock having run out or not.
     if player_id != 0 {
         close_content_timer(player_id, registry, world).await;
+        close_raid_ui_on_client(player_id, &active, registry, world).await;
     }
 
     // 7. Scheduler purge.
@@ -2504,6 +2506,58 @@ pub(crate) async fn content_group_roster(
     roster
 }
 
+/// Whether leaving this copy must close the client's raid UI first: a
+/// dungeon copy (`dungeon.lua`, content `SimpleContentDungeon*`) run by an
+/// instance-raid director (Aurum Vale, Cutter's Cry). In such a copy the
+/// client switches its desktop to the raid layout, and only the director's
+/// own exits put it back (`clearEvent`, `failedEvent`, `exitCutScene` in
+/// the client's InstanceRaidBaseClass: `orderDesktopWidgetMode(126)`). The
+/// Grand Company raids run `exitCutScene` from their director scripts;
+/// the dungeons have no ending yet, so nothing did, and the client kept
+/// the raid layout after the warp out: no NPC would talk to the player,
+/// in any zone, until a relog.
+pub(crate) fn closes_raid_ui_on_leave(active: &crate::data::ActiveContentScript) -> bool {
+    active.director_name.starts_with("InstanceRaid/")
+        && active.content_script.starts_with("SimpleContentDungeon")
+}
+
+/// Runs the copy director's `clearEvent` on one player's client inside a
+/// notice event of its own (kick, function, end; the same order the Grand
+/// Company raid directors use for `exitCutScene`), for a copy where
+/// [`closes_raid_ui_on_leave`] holds. Sent before the warp out.
+async fn close_raid_ui_on_client(
+    player_id: u32,
+    active: &crate::data::ActiveContentScript,
+    registry: &ActorRegistry,
+    world: &WorldManager,
+) {
+    if !closes_raid_ui_on_leave(active) {
+        return;
+    }
+    let Some(handle) = registry.get(player_id).await else {
+        return;
+    };
+    let Some(client) = world.client(handle.session_id).await else {
+        return;
+    };
+    use crate::packets::send::events;
+    let director = active.director_actor_id;
+    for mut sub in [
+        events::build_kick_event(player_id, director, "noticeEvent", 5, &[]),
+        events::build_run_event_function(player_id, director, "noticeEvent", 5, "clearEvent", &[]),
+        events::build_end_event(player_id, director, "noticeEvent", 5),
+    ] {
+        sub.set_target_id(handle.session_id);
+        client.send_bytes(sub.to_bytes()).await;
+    }
+    tracing::info!(
+        player = format!("0x{player_id:08X}"),
+        director = format!("0x{director:08X}"),
+        director_name = %active.director_name,
+        "raid UI closed on the client before leaving the copy (director clearEvent)",
+    );
+}
+
 /// A player's own side of leaving a copy that goes on without them: the
 /// duty timer closed, the content's `MinimumHpLock` off, and their
 /// director coroutine (parked on `battleComplete`) dropped, so a later
@@ -2573,6 +2627,7 @@ pub(crate) async fn apply_leave_content(
         snap.active_content_script = None;
         snap.pending_content_kick_event = None;
         world.upsert_session(snap).await;
+        close_raid_ui_on_client(player_id, &active, registry, world).await;
         leave_copy_player_cleanup(player_id, registry, world, lua).await;
         return;
     }
@@ -2608,6 +2663,7 @@ pub(crate) async fn apply_leave_content(
                 to = heir_id,
                 "content copy handed to a party member still inside",
             );
+            close_raid_ui_on_client(player_id, &active, registry, world).await;
             leave_copy_player_cleanup(player_id, registry, world, lua).await;
         }
         None => {
