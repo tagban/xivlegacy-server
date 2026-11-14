@@ -2329,6 +2329,10 @@ impl UserData for LuaPlayer {
                         .map(|h| h.actor_id)
                         .or_else(|| ud.borrow::<LuaActor>().ok().map(|a| a.actor_id))
                         .unwrap_or(this.snapshot.current_event_owner),
+                    // A bare actor id (PlaceDrivenCommand.lua passes the
+                    // actor the client named in its push-command request).
+                    Value::Integer(id) if *id > 0 => *id as u32,
+                    Value::Number(id) if *id > 0.0 => *id as u32,
                     _ => this.snapshot.current_event_owner,
                 };
                 // Convert the Lua varargs to `LuaCommandArg`s. Scripts
@@ -2592,6 +2596,20 @@ impl UserData for LuaPlayer {
             );
             Ok(())
         });
+        methods.add_method(
+            "RestGatherNode",
+            |_, this, (zone_id, unique_id, seconds): (u32, String, u32)| {
+                push(
+                    &this.queue,
+                    LuaCommand::RestGatherNode {
+                        zone_id,
+                        unique_id,
+                        seconds,
+                    },
+                );
+                Ok(())
+            },
+        );
         methods.add_method("HideActor", |_, this, actor_id: u32| {
             push(
                 &this.queue,

@@ -115,12 +115,16 @@ function onEventStarted(player, commandActor, triggerName, arg1, arg2, arg3, arg
 
     showTutorial = 0;
 
+    -- Command ids from the 1.23b command sheet: 22002 Mine, 22003 Log,
+    -- 22004 Fish. 22006 Quarry, 22007 Harvest and 22008 Spearfish are
+    -- retired in 1.23b (no description; HarvestJudge only has the Mining,
+    -- Felling and Fishing widgets) but stay accepted here.
     commandMine = 22002;
     commandLog = 22003;
     commandFish = 22004;
-    commandQuarry = 22005;
-    commandBotany = 22006;   -- "Harvest" discipline.
-    commandSpearfish = 22007;
+    commandQuarry = 22006;
+    commandBotany = 22007;   -- "Harvest" discipline.
+    commandSpearfish = 22008;
 
     harvestAnimByType[commandMine] = minerAnim;
     harvestAnimByType[commandLog] = minerAnim;
@@ -143,7 +147,7 @@ function onEventStarted(player, commandActor, triggerName, arg1, arg2, arg3, arg
     local nodeUniqueId = commandActor:GetUniqueId();
     local nodeZoneId = commandActor:GetZoneID();
 
-    harvestNodeId = 1001;     -- Tutorial grade-2 mining fallback.
+    harvestNodeId = nil;
     harvestType = commandMine;
 
     if nodeUniqueId ~= nil and nodeUniqueId ~= "" and nodeZoneId ~= nil and nodeZoneId ~= 0 then
@@ -152,6 +156,13 @@ function onEventStarted(player, commandActor, triggerName, arg1, arg2, arg3, arg
             harvestNodeId = meta.harvestNodeId;
             harvestType = meta.harvestType;
         end
+    end
+
+    -- No gathering point under the target: nothing to mine here.
+    if harvestNodeId == nil then
+        player:SendGameMessage(player, GetWorldMaster(), 40339, 0x20, 0); -- "There is nothing left to gather at this location."
+        player:EndEvent();
+        return;
     end
 
     local resolver = GetGatherResolver();
@@ -167,6 +178,7 @@ function onEventStarted(player, commandActor, triggerName, arg1, arg2, arg3, arg
         return;
     end
     harvestNode = resolver:BuildAimSlots(harvestNodeId);  -- [1-11] = {itemCatalogId, remainder, sweetspot, maxYield}
+    harvestGained = 0;   -- items obtained this visit (EXP is per item kind gathered)
     harvestGrade = nodeMeta.grade or 0;
     harvestAttempts = nodeMeta.attempts or 0;
     nodeRemainder = 0;
@@ -213,9 +225,9 @@ function onEventStarted(player, commandActor, triggerName, arg1, arg2, arg3, arg
 
             if menuResult == 22701 then     -- Begin.
 
-                local aimSlot = (sliderPhase/10)+1; -- Thanks LUA index = 1
+                local aimSlot = math.floor((sliderPhase or 0) / 10) + 1; -- Thanks LUA index = 1
 
-                local nodeDetails = harvestNode[aimSlot];
+                local nodeDetails = NearestAimSlot(harvestNode, aimSlot);
                 local nodeItem = nodeDetails[1];
                 local nodeRemainder = nodeDetails[2];
                 local nodeSweetspot = nodeDetails[3];
@@ -282,6 +294,8 @@ function onEventStarted(player, commandActor, triggerName, arg1, arg2, arg3, arg
 
 
                             HarvestReward(player, nodeItem, nodeYield);
+                            harvestGained = harvestGained + 1;
+                            GatherExp(player, harvestType, harvestGrade);
                             nodeRemainder = 0;
                         else
                             if isFirstSwing then
@@ -356,7 +370,10 @@ function onEventStarted(player, commandActor, triggerName, arg1, arg2, arg3, arg
 
     if harvestAttempts == 0 then
         player:SendGameMessage(player, worldMaster, 40310, 0x20); -- "The deposit has been exhausted."
-        --TO:DO Despawn node + whatever logic to respawn an exsiting expired node in the area.
+        -- The point leaves the world for everyone and comes back later.
+        if nodeUniqueId ~= nil and nodeUniqueId ~= "" then
+            player:RestGatherNode(nodeZoneId, nodeUniqueId, NODE_REST_SECONDS);
+        end
     end
 
 	callClientFunction(player, "delegateCommand", harvestJudge, "closeInputWidget", commandActor, harvestType);
@@ -367,6 +384,35 @@ function onEventStarted(player, commandActor, triggerName, arg1, arg2, arg3, arg
 
 end
 
+
+-- Seconds a picked-clean point stays away (our choice; no 1.0 number found).
+NODE_REST_SECONDS = 300;
+
+-- Class that gathers each command's points.
+GATHER_CLASS = {[22002] = 39, [22006] = 39, [22003] = 40, [22007] = 40, [22004] = 41, [22008] = 41};
+
+-- An aim spot with nothing in it gives what lies nearest to it.
+function NearestAimSlot(slots, aimSlot)
+    for d = 0, 10 do
+        for _, i in ipairs({aimSlot - d, aimSlot + d}) do
+            local s = slots[i];
+            if s ~= nil and s[1] ~= nil and s[1] ~= 0 then
+                return s;
+            end
+        end
+    end
+    return slots[aimSlot];
+end
+
+-- EXP for one item gathered: grows with the point's grade (our choice:
+-- 1.0 gathering EXP numbers weren't recorded).
+function GatherExp(player, harvestType, grade)
+    local classId = GATHER_CLASS[harvestType];
+    if classId == nil then
+        return;
+    end
+    player:AddExp(40 + 60 * math.max(grade, 1), classId, 0);
+end
 
 function SendTutorial(player, harvestJudge, id)
 

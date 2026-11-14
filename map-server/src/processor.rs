@@ -8801,7 +8801,7 @@ impl PacketProcessor {
     /// against one of these (eventName `"commandRequest"`) when the
     /// player picks Mine / Log / Fish / Quarry / Harvest / Spearfish on a
     /// gathering node. The masked low half is the harvest command id
-    /// (`22002..=22007`, [`crate::gathering::HARVEST_TYPE_MINE`] …), and
+    /// (22002 Mine, 22003 Log, 22004 Fish, 22006-22008 retired; see `crate::gathering::spawn`), and
     /// the static-actor id is `id | 0xA0F00000` like every other command
     /// actor. All six route to the one `commands/DummyCommand.lua` script,
     /// which branches on the node's resolved `harvestType` internally.
@@ -11683,7 +11683,7 @@ mod login_burst_routing_tests {
 mod gather_command_routing_tests {
     use super::*;
 
-    /// The six harvest command static actors (`0xA0F00000 | 22002..=22007`)
+    /// The six harvest command static actors (`0xA0F00000 | 22002..=22004, 22006..=22008`)
     /// route to `commands/DummyCommand.lua`, and nothing else does. Without
     /// this arm a Mine/Log/Fish/Quarry/Harvest/Spearfish press falls
     /// through `command_script_name` and no minigame ever opens. (Wave 3.)
@@ -11717,7 +11717,8 @@ mod gather_command_routing_tests {
     fn non_gather_ids_are_not_harvest_commands() {
         // Adjacent-but-invalid harvest ids.
         assert!(!PacketProcessor::is_gather_command(0xA0F0_0000 | 22001));
-        assert!(!PacketProcessor::is_gather_command(0xA0F0_0000 | 22008));
+        assert!(!PacketProcessor::is_gather_command(0xA0F0_0000 | 22005)); // Herd
+        assert!(!PacketProcessor::is_gather_command(0xA0F0_0000 | 22009));
         // Other real command static actors keep their own scripts.
         assert_eq!(
             PacketProcessor::command_script_name(PacketProcessor::LOGOUT_COMMAND),

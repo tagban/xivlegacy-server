@@ -161,6 +161,11 @@ impl Npc {
         // after construction via `Npc::set_generated_actor_name`.
         character.chara.actor_class_id = actor_class.actor_class_id;
         character.chara.property_flags = actor_class.property_flags;
+        character.chara.push_command = (
+            actor_class.push_command,
+            actor_class.push_command_sub.into(),
+            actor_class.push_command_priority,
+        );
 
         let npc_work = NpcWork::new_from_class(
             actor_class.push_command,
