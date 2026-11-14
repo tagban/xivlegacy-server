@@ -915,6 +915,19 @@ pub fn build_player_property_init(
     for (i, id) in STARTER_COMMANDS.iter().enumerate() {
         b.add_int(&format!("charaWork.command[{}]", i), 0xA0F0_0000 | *id);
     }
+    // Gathering commands (Mine, Log, Fish). A point's push circle offers
+    // "Interaction Menu -> Mine", but the client only runs the harvest
+    // command when it is one of the player's commands; without these slots
+    // it answers "That command cannot be performed right now". Slot 16 is
+    // Synthesize for crafting classes, so these start at 17.
+    const GATHER_COMMANDS: [u32; 3] = [22002, 22003, 22004];
+    const GATHER_COMMAND_SLOT: usize = 17;
+    for (i, id) in GATHER_COMMANDS.iter().enumerate() {
+        b.add_int(
+            &format!("charaWork.command[{}]", GATHER_COMMAND_SLOT + i),
+            0xA0F0_0000 | *id,
+        );
+    }
     // Equipped hotbar — pmeteor `Player.GetInitPackets` (Player.cs:484-487)
     // pairs every populated `command[i >= 32]` with that slot's
     // `maxCommandRecastTime` (u16 seconds) + `commandSlot_recastTime`

@@ -1440,6 +1440,17 @@ impl WorldManager {
         self.gather_node_actors.read().await.get(&actor_id).cloned()
     }
 
+    /// Live actor ids of the gathering points in `zone_id`.
+    pub async fn gather_node_actors_in_zone(&self, zone_id: u32) -> Vec<u32> {
+        self.gather_node_actors
+            .read()
+            .await
+            .iter()
+            .filter(|(_, (z, _))| *z == zone_id)
+            .map(|(id, _)| *id)
+            .collect()
+    }
+
     /// The live actor id of the gather node seeded as `(zone_id, unique_id)`.
     pub async fn gather_node_actor_id(&self, zone_id: u32, unique_id: &str) -> Option<u32> {
         self.gather_node_actors

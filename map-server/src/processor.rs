@@ -8546,7 +8546,16 @@ impl PacketProcessor {
             // (Wave 3 gather partial.)
             let command_actor_identity = if Self::is_gather_command(owner_actor_id) {
                 let target = { handle.character.read().await.chara.current_target };
-                self.world.gather_node_identity(target).await
+                match self.world.gather_node_identity(target).await {
+                    Some(id) => Some(id),
+                    // The target can be someone standing on the point (a
+                    // guard, another player); the push circle the player
+                    // stands in still says which point offered the command.
+                    None => match self.gather_node_in_reach(&handle).await {
+                        Some(node) => self.world.gather_node_identity(node).await,
+                        None => None,
+                    },
+                }
             } else {
                 None
             };
@@ -8569,6 +8578,34 @@ impl PacketProcessor {
             "event start dispatched",
         );
         Ok(())
+    }
+
+    /// The nearest gathering point (not resting) whose push circle the
+    /// player stands in: within `GATHER_REACH` yalms on the ground plane.
+    async fn gather_node_in_reach(&self, handle: &ActorHandle) -> Option<u32> {
+        const GATHER_REACH: f32 = 5.0;
+        let (zone_id, px, pz) = {
+            let c = handle.character.read().await;
+            (c.base.zone_id, c.base.position_x, c.base.position_z)
+        };
+        let mut best: Option<(f32, u32)> = None;
+        for node in self.world.gather_node_actors_in_zone(zone_id).await {
+            if self.world.is_gather_node_resting(node) {
+                continue;
+            }
+            let Some(h) = self.registry.get(node).await else {
+                continue;
+            };
+            let (nx, nz) = {
+                let c = h.character.read().await;
+                (c.base.position_x, c.base.position_z)
+            };
+            let d = ((nx - px).powi(2) + (nz - pz).powi(2)).sqrt();
+            if d <= GATHER_REACH && best.is_none_or(|(bd, _)| d < bd) {
+                best = Some((d, node));
+            }
+        }
+        best.map(|(_, node)| node)
     }
 
     /// EventStart router for content directors — pmeteor `LuaEngine.cs::

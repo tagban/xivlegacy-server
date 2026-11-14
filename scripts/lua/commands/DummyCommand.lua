@@ -223,7 +223,9 @@ function onEventStarted(player, commandActor, triggerName, arg1, arg2, arg3, arg
             menuResult, sliderPhase, unk3 = callClientFunction(player, "delegateCommand", harvestJudge, "askInputWidget", commandActor, harvestType, 1, showTutorial, false, false, nil, false);
             if debugMsg then player:SendMessage(0x20, "", "menuResult: "..tostring(menuResult).." sliderPhase: "..tostring(sliderPhase).." Unk: "..tostring(unk3)); end
 
-            if menuResult == 22701 then     -- Begin.
+            local ui = HARVEST_UI[harvestType] or HARVEST_UI[commandMine];
+
+            if menuResult == ui.begin then     -- Begin (Aim / pick a depth).
 
                 local aimSlot = math.floor((sliderPhase or 0) / 10) + 1; -- Thanks LUA index = 1
 
@@ -257,7 +259,7 @@ function onEventStarted(player, commandActor, triggerName, arg1, arg2, arg3, arg
                     if debugMsg then player:SendMessage(0x20, "", tostring(chosenCommand).." Power: "..tostring(powerCurrent)); end
 
 
-                    if chosenCommand == 22702 then      -- Cancel.
+                    if chosenCommand == ui.cancel then      -- Cancel.
                         harvestAttempts = harvestAttempts - 1;
 
                         if harvestAttempts > 0 then
@@ -269,7 +271,10 @@ function onEventStarted(player, commandActor, triggerName, arg1, arg2, arg3, arg
                         end
                         break;
 
-                    elseif chosenCommand == 22703 then  -- Strike.
+                    elseif ui.wait ~= nil and chosenCommand == ui.wait then  -- Fishing: let the line sit.
+                        player:SendGameMessage(harvestJudge, 42, MESSAGE_TYPE_SYSTEM);
+
+                    elseif chosenCommand == ui.strike then  -- Strike / Chop / Jig.
 
 
                         nodeRemainder = nodeRemainder - 20;
@@ -356,7 +361,7 @@ function onEventStarted(player, commandActor, triggerName, arg1, arg2, arg3, arg
 
                 end
 
-            elseif menuResult == 22702 then -- Cancel.
+            elseif menuResult == ui.cancel then -- Cancel.
                 break;
             elseif menuResult == 22710 then -- "Aim" Tutorial.
                 SendTutorial(player, harvestJudge, 1);
@@ -387,6 +392,14 @@ end
 
 -- Seconds a picked-clean point stays away (our choice; no 1.0 number found).
 NODE_REST_SECONDS = 300;
+
+-- Widget command ids per gathering command (1.23b command sheet): what the
+-- Aim/Strike window returns for Begin, the strike action, Cancel and (fishing) Wait.
+HARVEST_UI = {
+    [22002] = {begin = 22701, cancel = 22702, strike = 22703},          -- Mine
+    [22003] = {begin = 22704, strike = 22705, cancel = 22706},          -- Log (Chop)
+    [22004] = {begin = 22707, strike = 22708, cancel = 22709, wait = 22711}, -- Fish (Jig)
+};
 
 -- Class that gathers each command's points.
 GATHER_CLASS = {[22002] = 39, [22006] = 39, [22003] = 40, [22007] = 40, [22004] = 41, [22008] = 41};
