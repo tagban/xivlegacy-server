@@ -1069,6 +1069,7 @@ pub(crate) fn push_npc_spawn(
         tp,
         spawn_hate_type,
         character.chara.level.max(1) as u16,
+        character.chara.push_command,
     );
     subpackets.extend(npc_init);
 
@@ -1331,6 +1332,13 @@ pub struct WorldManager {
     /// this map.
     gather_node_actors: RwLock<HashMap<u32, (u32, String)>>,
 
+    /// Gathering points that were picked clean, by live actor id, with
+    /// the unix time they come back. A resting point is left out of the
+    /// zone-in bundle and the spawn stream, so clients drop it until the
+    /// time passes and streaming brings it back. A std lock: the spawn
+    /// filters read it while holding a session snapshot.
+    gather_nodes_resting: std::sync::RwLock<HashMap<u32, u64>>,
+
     /// Player state indexed by session id — zone membership, player
     /// position snapshot, etc. Updated by movement handlers.
     sessions: RwLock<HashMap<u32, Session>>,
@@ -1350,6 +1358,7 @@ impl WorldManager {
             seamless_boundaries: RwLock::new(HashMap::new()),
             gather_node_metadata: RwLock::new(HashMap::new()),
             gather_node_actors: RwLock::new(HashMap::new()),
+            gather_nodes_resting: std::sync::RwLock::new(HashMap::new()),
             sessions: RwLock::new(HashMap::new()),
             clients: RwLock::new(HashMap::new()),
         }
@@ -1429,6 +1438,49 @@ impl WorldManager {
     /// clicked/targeted" to the per-node harvest template.
     pub async fn gather_node_identity(&self, actor_id: u32) -> Option<(u32, String)> {
         self.gather_node_actors.read().await.get(&actor_id).cloned()
+    }
+
+    /// Live actor ids of the gathering points in `zone_id`.
+    pub async fn gather_node_actors_in_zone(&self, zone_id: u32) -> Vec<u32> {
+        self.gather_node_actors
+            .read()
+            .await
+            .iter()
+            .filter(|(_, (z, _))| *z == zone_id)
+            .map(|(id, _)| *id)
+            .collect()
+    }
+
+    /// The live actor id of the gather node seeded as `(zone_id, unique_id)`.
+    pub async fn gather_node_actor_id(&self, zone_id: u32, unique_id: &str) -> Option<u32> {
+        self.gather_node_actors
+            .read()
+            .await
+            .iter()
+            .find(|(_, (z, u))| *z == zone_id && u == unique_id)
+            .map(|(id, _)| *id)
+    }
+
+    /// Take a picked-clean gathering point out of the world for `secs`
+    /// seconds: every client that has it drops it now, and the spawn
+    /// paths skip it until the time is up.
+    pub async fn rest_gather_node(&self, actor_id: u32, secs: u32) {
+        let now = common::utils::unix_timestamp() as u64;
+        let until = now + secs as u64;
+        if let Ok(mut m) = self.gather_nodes_resting.write() {
+            m.retain(|_, t| *t > now);
+            m.insert(actor_id, until);
+        }
+        self.forget_actor_for_all_sessions(actor_id).await;
+    }
+
+    /// Whether a gathering point is resting (picked clean, not back yet).
+    pub fn is_gather_node_resting(&self, actor_id: u32) -> bool {
+        let now = common::utils::unix_timestamp() as u64;
+        self.gather_nodes_resting
+            .read()
+            .map(|m| m.get(&actor_id).is_some_and(|t| *t > now))
+            .unwrap_or(false)
     }
 
     // -----------------------------------------------------------------
@@ -1767,6 +1819,43 @@ impl WorldManager {
         if let Some(s) = self.sessions.write().await.get_mut(&session_id) {
             s.hidden_actors.insert(actor_id);
         }
+    }
+
+    /// Take seasonal-event NPCs whose event stopped off every client that
+    /// has them (`seasonal::actor_hidden`). Turning an event on needs
+    /// nothing here: proximity streaming picks its NPCs up.
+    pub async fn remove_inactive_seasonal_actors(&self) -> usize {
+        let gone: Vec<(u32, Vec<u32>)> = {
+            let mut sessions = self.sessions.write().await;
+            sessions
+                .iter_mut()
+                .filter_map(|(sid, s)| {
+                    let ids: Vec<u32> = s
+                        .actor_instance_list
+                        .iter()
+                        .copied()
+                        .filter(|id| crate::seasonal::actor_hidden(*id))
+                        .collect();
+                    for id in &ids {
+                        s.actor_instance_list.remove(id);
+                    }
+                    (!ids.is_empty()).then_some((*sid, ids))
+                })
+                .collect()
+        };
+        let mut n = 0;
+        for (sid, ids) in gone {
+            let Some(client) = self.client(sid).await else {
+                continue;
+            };
+            for id in ids {
+                let mut sub = crate::packets::send::actor::build_remove_actor(id);
+                sub.set_target_id(sid);
+                client.send_bytes(sub.to_bytes()).await;
+                n += 1;
+            }
+        }
+        n
     }
 
     pub async fn session(&self, id: u32) -> Option<Session> {
@@ -3086,6 +3175,10 @@ impl WorldManager {
         // Actors a quest hid from this player stay hidden through the
         // reload (an Echo's same-zone fade-in warp).
         neighbours.retain(|(id, _, _)| !session.hidden_actors.contains(id));
+        // Picked-clean gathering points stay out until they come back.
+        neighbours.retain(|(id, _, _)| !self.is_gather_node_resting(*id));
+        // Seasonal-event NPCs only while their event runs.
+        neighbours.retain(|(id, _, _)| !crate::seasonal::actor_hidden(*id));
         tracing::info!(
             session = session_id,
             actor = format!("0x{actor_id:08X}"),
@@ -3699,7 +3792,7 @@ impl WorldManager {
                 kick.trigger_actor_id,
                 kick.owner_actor_id,
                 &kick.event_name,
-                5,
+                tx::events::script_kick_event_type(kick.owner_actor_id),
                 &kick.args,
             );
             sub.set_target_id(session_id);
@@ -4298,6 +4391,7 @@ impl WorldManager {
                 .map(|a| a.actor_id)
                 .filter(|id| !session.actor_instance_list.contains(id))
                 .filter(|id| !session.hidden_actors.contains(id))
+                .filter(|id| !self.is_gather_node_resting(*id))
                 .collect();
             // Other players in range the client hasn't spawned yet. The
             // range query only pairs actors of one content copy, so inside
@@ -4423,6 +4517,8 @@ impl WorldManager {
                 }
             }
         }
+        // Seasonal-event NPCs only while their event runs.
+        stream_list.retain(|(id, _)| !crate::seasonal::actor_hidden(*id));
         if stream_list.is_empty() {
             return;
         }

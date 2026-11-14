@@ -23,12 +23,12 @@
 //! Two indexes are kept:
 //!   * `by_id: HashMap<u32, Recipe>` — direct lookup for
 //!     `GetRecipeByID` / `GetRecipeByItemID`.
-//!   * `by_mats: HashMap<[u32; 8], Vec<u32>>` — ordered material
-//!     fingerprint → list of recipe ids. The C# packs the 8×u32
-//!     material array into 32 bytes and MD5s it; we skip the hash and
-//!     key directly on the array, which collides at exactly the same
-//!     boundaries because `[u32; 8]` implements `Hash + Eq` as a
-//!     position-sensitive concatenation.
+//!   * `by_mats: HashMap<[u32; 8], Vec<u32>>` — material fingerprint →
+//!     list of recipe ids. The fingerprint is the materials sorted with
+//!     empty slots last ([`canonical_mats`]), so the slots a player
+//!     drops the materials into on the craft-start window don't matter:
+//!     2198 of the 5384 recipe rows list their materials out of id
+//!     order, and an exact-order match would miss them.
 //!
 //! Values stored in `by_mats` are *ids*, not recipe references — the
 //! client's craft-start widget only ever needs the small set of ids
@@ -38,6 +38,13 @@
 use std::collections::HashMap;
 
 use super::recipe::{RECIPE_MATERIAL_SLOTS, Recipe};
+
+/// Materials sorted by id with empty slots last: the order-free key
+/// recipes are indexed and looked up by.
+pub fn canonical_mats(mut mats: [u32; RECIPE_MATERIAL_SLOTS]) -> [u32; RECIPE_MATERIAL_SLOTS] {
+    mats.sort_unstable_by_key(|&m| (m == 0, m));
+    mats
+}
 
 #[derive(Debug, Default)]
 pub struct RecipeResolver {
@@ -63,7 +70,7 @@ impl RecipeResolver {
     }
 
     pub fn insert(&mut self, recipe: Recipe) {
-        let fp = recipe.mat_fingerprint();
+        let fp = canonical_mats(recipe.mat_fingerprint());
         let id = recipe.id;
         self.by_mats.entry(fp).or_default().push(id);
         self.by_id.insert(id, recipe);
@@ -88,12 +95,11 @@ impl RecipeResolver {
         self.by_id.values().find(|r| r.result_item_id == item_id)
     }
 
-    /// Recipes matching an ordered 8-slot material fingerprint. Padding
-    /// with `0` in trailing slots is required — the resolver does not
-    /// try to match permutations or prefixes.
+    /// Recipes made from these 8 material slots, in any order and with
+    /// empty (`0`) slots anywhere.
     pub fn by_mats(&self, fingerprint: [u32; RECIPE_MATERIAL_SLOTS]) -> Vec<&Recipe> {
         self.by_mats
-            .get(&fingerprint)
+            .get(&canonical_mats(fingerprint))
             .map(|ids| ids.iter().filter_map(|id| self.by_id.get(id)).collect())
             .unwrap_or_default()
     }
@@ -144,26 +150,21 @@ mod tests {
     }
 
     #[test]
-    fn by_mats_groups_by_order_sensitive_fingerprint() {
+    fn by_mats_ignores_slot_order_and_gaps() {
         let r = RecipeResolver::from_recipes([
             mk(1, 100, [10, 20, 0, 0, 0, 0, 0, 0]),
-            mk(2, 101, [10, 20, 0, 0, 0, 0, 0, 0]),
-            mk(3, 102, [20, 10, 0, 0, 0, 0, 0, 0]),
+            mk(2, 101, [20, 10, 0, 0, 0, 0, 0, 0]),
+            mk(3, 102, [10, 10, 20, 0, 0, 0, 0, 0]),
         ]);
-        let same: Vec<u32> = r
-            .by_mats([10, 20, 0, 0, 0, 0, 0, 0])
-            .iter()
-            .map(|rec| rec.id)
-            .collect();
-        assert_eq!(same.len(), 2);
-        assert!(same.contains(&1));
-        assert!(same.contains(&2));
-        let flipped: Vec<u32> = r
-            .by_mats([20, 10, 0, 0, 0, 0, 0, 0])
-            .iter()
-            .map(|rec| rec.id)
-            .collect();
-        assert_eq!(flipped, vec![3]);
+        let ids = |m: [u32; 8]| {
+            let mut v: Vec<u32> = r.by_mats(m).iter().map(|rec| rec.id).collect();
+            v.sort_unstable();
+            v
+        };
+        assert_eq!(ids([10, 20, 0, 0, 0, 0, 0, 0]), vec![1, 2]);
+        assert_eq!(ids([0, 20, 0, 10, 0, 0, 0, 0]), vec![1, 2]);
+        assert_eq!(ids([20, 10, 0, 0, 0, 0, 0, 10]), vec![3]);
+        assert!(ids([10, 0, 0, 0, 0, 0, 0, 0]).is_empty());
         assert!(r.by_mats([1, 2, 3, 0, 0, 0, 0, 0]).is_empty());
     }
 
