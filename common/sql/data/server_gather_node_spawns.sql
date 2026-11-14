@@ -1,4 +1,4 @@
--- server_gather_node_spawns: game data, 33 rows. Reloaded whole when this file changes.
+-- server_gather_node_spawns: game data, 57 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_gather_node_spawns`;
 INSERT INTO `server_gather_node_spawns` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `harvestNodeId`, `harvestType`) VALUES
@@ -34,4 +34,28 @@ INSERT INTO `server_gather_node_spawns` (`id`, `actorClassId`, `uniqueId`, `zone
 (129, 1200054, 'log_humblehearth_3', 150, '', 0, -133.63, 6.51, -581.37, 0.8, 2027, 22003),
 (130, 1200054, 'log_treespeak_1', 152, '', 0, -938.09, 31.68, -2178.85, 1.73, 2028, 22003),
 (131, 1200054, 'log_treespeak_2', 152, '', 0, -928.26, 46.04, -2219.78, 0.94, 2028, 22003),
-(132, 1200054, 'log_treespeak_3', 152, '', 0, -841.03, 25.91, -2222.06, -0.89, 2028, 22003);
+(132, 1200054, 'log_treespeak_3', 152, '', 0, -841.03, 25.91, -2222.06, -0.89, 2028, 22003),
+(133, 1200056, 'fish_bearded_rock_1', 128, '', 0, -213.67, 0.51, 19.27, -1.35, 2036, 22004),
+(134, 1200056, 'fish_skull_valley_1', 129, '', 0, -1080.0, 1.5, -706.1, -0.21, 2037, 22004),
+(135, 1200056, 'fish_bald_knoll_1', 129, '', 0, -1973.77, -0.25, -1234.35, -0.58, 2038, 22004),
+(136, 1200056, 'fish_bloodshore_1', 130, '', 0, 1303.3, 1.5, -890.4, 1.36, 2039, 22004),
+(137, 1200056, 'fish_iron_lake_1', 135, '', 0, -64.0, 62.85, -1949.9, 0.6, 2040, 22004),
+(138, 1200056, 'fish_iron_lake_2', 135, '', 0, -22.5, 63.75, -1942.6, 0.68, 2040, 22004),
+(139, 1200056, 'fish_cedarwood_1', 128, '', 0, 772.0, 2.03, 9.0, 1.52, 2041, 22004),
+(140, 1200056, 'fish_nine_ivies_1', 151, '', 0, 1605.1, 15.91, -745.1, -0.69, 2047, 22004),
+(141, 1200056, 'fish_emerald_moss_1', 152, '', 0, -1381.3, 28.1, -1953.3, -2.1, 2048, 22004),
+(142, 1200056, 'fish_emerald_moss_2', 152, '', 0, -1377.3, 28.1, -1993.3, -2.19, 2048, 22004),
+(143, 1200056, 'fish_emerald_moss_3', 152, '', 0, -1426.7, 28.1, -1954.7, -2.05, 2048, 22004),
+(144, 1200056, 'fish_tranquil_paths_1', 153, '', 0, -1551.4, -12.3, -626.24, 2.95, 2049, 22004),
+(145, 1200056, 'fish_humblehearth_1', 150, '', 0, -135.3, -3.74, -446.2, -0.4, 2050, 22004),
+(146, 1200056, 'fish_horizon_s_edge_1', 172, '', 0, -1092.7, 58.4, -65.7, 1.22, 2055, 22004),
+(147, 1200056, 'fish_horizon_s_edge_2', 172, '', 0, -1154.5, 58.4, 123.7, 0.53, 2055, 22004),
+(148, 1200056, 'fish_halatali_1', 171, '', 0, 1659.3, 258.5, -254.3, 1.91, 2057, 22004),
+(149, 1200056, 'fish_nophica_s_wells_1', 172, '', 0, -834.6, 90.4, 324.3, 2.6, 2058, 22004),
+(150, 1200056, 'fish_nophica_s_wells_2', 172, '', 0, -1019.3, 90.4, 321.6, -1.91, 2058, 22004),
+(151, 1200056, 'fish_the_fields_of_glory_1', 145, '', 0, 2117.3, 121.65, 405.3, 2.1, 2061, 22004),
+(152, 1200056, 'fish_the_fields_of_glory_2', 145, '', 0, 2053.3, 121.65, 277.3, 2.3, 2061, 22004),
+(153, 1200056, 'fish_the_fields_of_glory_3', 145, '', 0, 2117.3, 121.65, 341.3, 2.18, 2061, 22004),
+(154, 1200056, 'fish_riversmeet_1', 148, '', 0, -1952.0, 251.85, 0.0, -0.78, 2062, 22004),
+(155, 1200056, 'fish_riversmeet_2', 148, '', 0, -1888.0, 251.85, 192.0, -0.32, 2062, 22004),
+(156, 1200056, 'fish_riversmeet_3', 148, '', 0, -2080.0, 267.85, 64.0, -0.89, 2062, 22004);

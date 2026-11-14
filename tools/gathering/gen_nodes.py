@@ -42,6 +42,30 @@ PLACES = {
 }
 POINTS_PER_POOL = 3
 ATTEMPTS = 3
+# Fishing spots, hand-picked per camp: a dry standing point on the shore and the water it faces,
+# (x, y, z, water_x, water_z). Each was checked in the 1.23b client: standing there, the client
+# lights the Fish command (it knows the water). Candidates came from the client's own water
+# (La Noscea's sea plane at y=0, the `attr_*_w` river/pond surfaces in the layouts) and were
+# kept only when the Fish icon lit up.
+FISH_SPOTS = {
+    "Bearded Rock": [(-213.67, 0.51, 19.27, -457.3, 74.0)],
+    "Cedarwood": [(772.0, 2.03, 9.0, 961.5, 19.2)],
+    "Bald Knoll": [(-1973.77, -0.25, -1234.35, -2064.1, -1096.0)],
+    "Skull Valley": [(-1080.0, 1.5, -706.1, -1168.1, -291.4)],
+    "Bloodshore": [(1303.3, 1.5, -890.4, 1483.3, -852.1)],
+    "Iron Lake": [(-64.0, 62.85, -1949.9, 150.2, -1639.0), (-22.5, 63.75, -1942.6, 233.2, -1624.4)],
+    "Emerald Moss": [(-1381.3, 28.1, -1953.3, -1710.6, -2146.6), (-1377.3, 28.1, -1993.3, -1702.6, -2226.6), (-1426.7, 28.1, -1954.7, -1801.4, -2149.4)],
+    "Nine Ivies": [(1605.1, 15.91, -745.1, 1508.2, -628.2)],
+    "Tranquil Paths": [(-1551.4, -12.3, -626.24, -1536.8, -702.0)],
+    "Humblehearth": [(-135.3, -3.74, -446.2, -176.5, -349.2)],
+    "Halatali": [(1659.3, 258.5, -254.3, 1719.6, -275.6)],
+    "Horizon's Edge": [(-1092.7, 58.4, -65.7, -871.5, 14.2), (-1154.5, 58.4, 123.7, -995.1, 393.0)],
+    "Nophica's Wells": [(-834.6, 90.4, 324.3, -804.2, 273.4), (-1019.3, 90.4, 321.6, -1173.6, 268.0)],
+    "The Fields of Glory": [(2117.3, 121.65, 405.3, 2733.8, 43.1), (2053.3, 121.65, 277.3, 2605.8, -212.9), (2117.3, 121.65, 341.3, 2733.8, -84.9)],
+    "Riversmeet": [(-1952.0, 251.85, 0.0, -2143.6, 194.7), (-1888.0, 251.85, 192.0, -2015.6, 578.7), (-2080.0, 267.85, 64.0, -2399.6, 322.7)],
+}
+# No spot found yet (client never lit Fish at the candidates): Bentbranch, Black Brush, Drybone,
+# Broken Water, Dragonhead.
 
 
 def aetherytes():
@@ -107,12 +131,19 @@ def main():
             continue
         zone, ax, ay, az = aeth[aid]
         harvest, cls = COMMANDS[cmd]
-        pts = place(terrain, zone, ax, ay, az, POINTS_PER_POOL, tid)
-        if len(pts) < POINTS_PER_POOL:
+        if cmd == "Fish":
+            spots = FISH_SPOTS.get(name, [])
+            pts = [(x, y, z) for x, y, z, _, _ in spots]
+            faces = [(wx, wz) for _, _, _, wx, wz in spots]
+        else:
+            pts = place(terrain, zone, ax, ay, az, POINTS_PER_POOL, tid)
+            faces = [(ax, az)] * len(pts)
+        if len(pts) < (1 if cmd == "Fish" else POINTS_PER_POOL):
             print(f"warning: {cmd} @ {name}: only {len(pts)} spots", file=sys.stderr)
         slug = re.sub(r"[^a-z]+", "_", name.lower()).strip("_")
         for i, (x, y, z) in enumerate(pts):
-            rot = round(math.atan2(ax - x, az - z), 2)
+            fx, fz = faces[i]
+            rot = round(math.atan2(fx - x, fz - z), 2)
             spawns.append(f"({sid}, {cls}, '{cmd.lower()}_{slug}_{i + 1}', {zone}, '', 0, {x}, {y}, {z}, {rot}, {tid}, {harvest})")
             sid += 1
         print(f"{tid} {cmd} @ {name} ({region}, zone {zone}) grade {grade}: {len(pts)} points")
