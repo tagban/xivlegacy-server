@@ -589,7 +589,7 @@ async fn dispatch_npc_event_started(
         return;
     };
 
-    let snapshot = {
+    let mut snapshot = {
         let c = player_handle.character.read().await;
         crate::lua::userdata::PlayerSnapshot {
             actor_id: c.base.actor_id,
@@ -646,11 +646,10 @@ async fn dispatch_npc_event_started(
             ..Default::default()
         }
     };
-    // The Character alone carries no items: give the NPC script the
-    // player's item totals so `GetItemPackage(..):HasItem` and
-    // `GetItemQuantity` answer from what the player really holds (as the
-    // quest hooks' snapshots already do).
-    let mut snapshot = snapshot;
+    // What the player carries, for NPC scripts that gate on it: the inn bed
+    // starts a Hildibrand quest when the player sleeps with the Wanted
+    // poster (ObjectBed.lua). Without it `HasItem` answered from an empty
+    // inventory.
     match db.item_totals(snapshot.actor_id).await {
         Ok(items) => snapshot.inventory = items,
         Err(e) => {

@@ -60,7 +60,9 @@ function onStateChange(player, quest, sequence)
         if (hasQuestItem == false) then 
             quest:SetENpc(OTOPA_POTTOPA, QFLAG_TALK);
         end
-        quest:SetENpc(THE_ROOST_BED, 5);
+        -- The inn bed is not claimed here: its own script (ObjectBed.lua)
+        -- runs the sleep/log-out menu and starts this quest from it.
+        -- Claimed by the offer, the talk went to this onTalk and no menu showed.
         quest:SetENpc(VKOROLON, QFLAG_TALK); -- Always shows despite interaction
 
     elseif (sequence == SEQ_000) then

@@ -378,6 +378,77 @@ impl PacketProcessor {
             .get(&npc_class_id)
             .map(|(quest_id, _)| *quest_id)
     }
+
+    /// `!talkto <class> [name]` aimed at the typing player's own giver of a
+    /// quest on offer. The command (`CommandProcessor::handle_talkto`) only
+    /// fans `onTalk` out to the journal's quests, so an offer never ran and
+    /// the quest could not be accepted through it. Here the talk starts as
+    /// a click on the NPC would and goes through the same hook, offer
+    /// included. `None` leaves every other `talkto` to the command.
+    pub(super) async fn gm_talkto_offer(
+        &self,
+        handle: &ActorHandle,
+        line: &str,
+        level: u8,
+    ) -> Option<Result<String, String>> {
+        let mut words = line.split_whitespace();
+        if !words.next()?.eq_ignore_ascii_case("talkto")
+            || level < crate::command_permissions::get().required("talkto")
+        {
+            return None;
+        }
+        let class_id: u32 = words.next()?.parse().ok()?;
+        let named = words.collect::<Vec<_>>().join(" ");
+        let me = {
+            let c = handle.character.read().await;
+            c.base.display_name().to_string()
+        };
+        if !named.is_empty() && !named.eq_ignore_ascii_case(&me) {
+            return None;
+        }
+        let quest_id = self.offered_quest_at(handle, class_id).await?;
+        let (zone_id, requester_area) = match self.world.session(handle.session_id).await {
+            Some(s) if s.current_zone_id != 0 => (
+                s.current_zone_id,
+                s.current_private_area_name
+                    .clone()
+                    .map(|n| (n, s.current_private_area_level)),
+            ),
+            _ => (handle.zone_id, None),
+        };
+        let near = crate::runtime::quest_apply::player_xz(handle).await;
+        let npc = self
+            .find_npc_by_class_id(zone_id, class_id, requester_area.as_ref(), Some(near))
+            .await?;
+        let mut outbox = crate::event::outbox::EventOutbox::new();
+        {
+            let mut c = handle.character.write().await;
+            c.event_session.start_event(
+                handle.actor_id,
+                npc.actor_id,
+                "talkDefault".to_string(),
+                1,
+                Vec::new(),
+                &mut outbox,
+            );
+        }
+        for e in outbox.drain() {
+            crate::event::dispatcher::dispatch_event_event(
+                &e,
+                &self.registry,
+                &self.world,
+                &self.db,
+                self.lua.as_ref(),
+            )
+            .await;
+        }
+        self.fire_quest_hook_for_active_quests(handle, npc.actor_id, "onTalk", "talkDefault")
+            .await;
+        Some(Ok(format!(
+            "talkto ran the offer of quest {quest_id} at NPC {:#X} (class {class_id})",
+            npc.actor_id
+        )))
+    }
 }
 
 /// A quest handle for a quest that isn't in the journal: `SEQ_ACCEPT`, no
