@@ -3699,7 +3699,7 @@ impl WorldManager {
                 kick.trigger_actor_id,
                 kick.owner_actor_id,
                 &kick.event_name,
-                5,
+                tx::events::script_kick_event_type(kick.owner_actor_id),
                 &kick.args,
             );
             sub.set_target_id(session_id);
