@@ -4613,6 +4613,18 @@ async fn apply_recalc_stats(
     recalc_stats(registry, world, catalogs, db, actor_id, true).await;
 }
 
+/// The rebuild for a player in the world, outside the status/equip events
+/// (a GM changing a class's level): pools and level go out when they change.
+pub(crate) async fn recalc_stats_now(
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    catalogs: &std::sync::Arc<crate::lua::Catalogs>,
+    db: &crate::database::Database,
+    actor_id: u32,
+) {
+    recalc_stats(registry, world, catalogs, db, actor_id, true).await;
+}
+
 /// The same rebuild for a player still logging in: the client isn't in the
 /// world yet, so nothing is sent (the zone-in bundle carries the pools).
 /// Login used to seed max HP/MP from the saved row and skip gear, so the

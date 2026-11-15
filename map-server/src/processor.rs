@@ -61,6 +61,7 @@ use crate::world_manager::WorldManager;
 mod dungeon;
 mod equip;
 pub(crate) mod gm_spawn;
+pub(crate) mod gm_toolkit;
 pub(crate) mod items;
 mod quest_offers;
 
@@ -6107,6 +6108,8 @@ impl PacketProcessor {
         for slot0 in 0..crate::runtime::quest_apply::HOTBAR_SLOTS {
             self.send_hotbar_slot_update(player_id, slot0).await;
         }
+        let level = handle.character.read().await.chara.level;
+        self.send_class_line(handle.actor_id, class_id, level).await;
         // Job quests are offered by job: the offers change with it.
         self.refresh_quest_offers(&handle).await;
         tracing::info!(player = player_id, class_id, job, "ChangeJob applied");
@@ -6442,12 +6445,17 @@ impl PacketProcessor {
             c.chara.class = class_id as i16;
             c.chara.current_job = 0;
             c.chara.hotbar = new_hotbar;
-            c.battle_save
+            let level = c
+                .battle_save
                 .skill_level
                 .get(class_id as usize)
                 .copied()
                 .unwrap_or(1)
-                .max(1)
+                .max(1);
+            // The stat recalc after the switch reads the level from here:
+            // left alone, a level 1 class kept a level 50 class's HP.
+            c.chara.level = level;
+            level
         };
         if let Err(e) = self
             .db
@@ -6480,6 +6488,8 @@ impl PacketProcessor {
         )
         .await;
 
+        self.send_class_line(handle.actor_id, class_id, level).await;
+
         // Full-bar refresh — pmeteor `DoClassChange` tail
         // (Player.cs:1276+ `Database.LoadHotbar(this)` + the Set Hotbar
         // Commands property blocks / `UpdateHotbar`): push all 30 slots
@@ -6498,6 +6508,74 @@ impl PacketProcessor {
             class_id,
             "DoClassChange applied (chara.class + hotbar reload + first-time kit init + 0x01A4 broadcast + full-bar refresh; status-effect removal + stat recalc deferred)",
         );
+    }
+
+    /// The class (and its level and EXP bar) for the HUD's class line and
+    /// the nameplate, the way pmeteor's `DoClassChange` sends them
+    /// (`charaWork/stateForAll` + `charaWork/battleStateForSelf`). The EXP
+    /// bar update is what makes the HUD redraw the line, the job included:
+    /// without it the line kept the class (or job) the player logged in as.
+    async fn send_class_line(&self, actor_id: u32, class_id: u8, level: i16) {
+        let Some(handle) = self.registry.get(actor_id).await else {
+            return;
+        };
+        let mut b = crate::packets::send::actor::ActorPropertyPacketBuilder::new(
+            actor_id,
+            "charaWork/stateForAll",
+        );
+        b.add_byte("charaWork.parameterSave.state_mainSkill[0]", class_id);
+        b.add_short(
+            "charaWork.parameterSave.state_mainSkillLevel",
+            level.max(1) as u16,
+        );
+
+        for sub in b.done() {
+            let bytes = sub.to_bytes();
+            crate::runtime::dispatcher::send_to_self_if_player(
+                &self.registry,
+                &self.world,
+                actor_id,
+                bytes.clone(),
+            )
+            .await;
+            crate::runtime::dispatcher::broadcast_to_neighbours(
+                &self.world,
+                &self.registry,
+                actor_id,
+                bytes,
+            )
+            .await;
+        }
+
+        let exp = handle
+            .character
+            .read()
+            .await
+            .battle_save
+            .skill_point
+            .get(class_id as usize)
+            .copied()
+            .unwrap_or(0);
+        let mut b = crate::packets::send::actor::ActorPropertyPacketBuilder::new(
+            actor_id,
+            "charaWork/battleStateForSelf",
+        );
+        b.add_int(
+            &format!(
+                "charaWork.battleSave.skillPoint[{}]",
+                class_id.saturating_sub(1)
+            ),
+            exp.max(0) as u32,
+        );
+        for sub in b.done() {
+            crate::runtime::dispatcher::send_to_self_if_player(
+                &self.registry,
+                &self.world,
+                actor_id,
+                sub.to_bytes(),
+            )
+            .await;
+        }
     }
 
     /// `player:PrepareClassChange(classId)` apply — C# precursor
@@ -10817,6 +10895,11 @@ impl PacketProcessor {
                     Err(m) => (ChatKind::SystemError, m),
                 })
             } else if let Some(r) = self.gm_talkto_offer(&handle, &line, level).await {
+                Some(match r {
+                    Ok(m) => (ChatKind::System, m),
+                    Err(m) => (ChatKind::SystemError, m),
+                })
+            } else if let Some(r) = self.gm_toolkit_command(&handle, &line, level).await {
                 Some(match r {
                     Ok(m) => (ChatKind::System, m),
                     Err(m) => (ChatKind::SystemError, m),

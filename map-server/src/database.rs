@@ -3693,6 +3693,79 @@ impl Database {
             .await
     }
 
+    /// Items whose name has `text` in it (`!finditem`): (id, name, level),
+    /// lowest level first.
+    pub async fn find_items_by_name(
+        &self,
+        text: &str,
+        limit: u32,
+    ) -> Result<Vec<(u32, String, i64)>> {
+        let pattern = format!("%{}%", text.replace(['%', '_'], ""));
+        self.conn
+            .call_db(move |c| {
+                let mut stmt = c.prepare(
+                    r"SELECT catalogID, name, level FROM gamedata_items
+                      WHERE name LIKE :p AND name NOT LIKE '[%'
+                      ORDER BY level, catalogID LIMIT :n",
+                )?;
+                let rows = stmt
+                    .query_map(named_params! { ":p": pattern, ":n": limit }, |r| {
+                        Ok((
+                            r.get::<_, i64>(0)? as u32,
+                            r.get::<_, String>(1)?,
+                            r.get::<_, i64>(2).unwrap_or(0),
+                        ))
+                    })?
+                    .collect::<std::result::Result<Vec<_>, _>>()?;
+                Ok(rows)
+            })
+            .await
+    }
+
+    /// Every piece of gear in the item tables, for the GM `!gearset` pick:
+    /// what it is, where it goes, its level, and its stat bonuses.
+    pub async fn load_gear_rows(&self) -> Result<Vec<GearRow>> {
+        self.conn
+            .call_db(move |c| {
+                let mut stmt = c.prepare(
+                    r"SELECT i.catalogID, i.name, i.level, i.mainSkill, i.compatibility,
+                        i.isExclusive, e.equipPoint, e.equipTribe,
+                        e.paramBonusType1, e.paramBonusValue1, e.paramBonusType2, e.paramBonusValue2,
+                        e.paramBonusType3, e.paramBonusValue3, e.paramBonusType4, e.paramBonusValue4,
+                        e.paramBonusType5, e.paramBonusValue5, e.paramBonusType6, e.paramBonusValue6,
+                        e.paramBonusType7, e.paramBonusValue7, e.paramBonusType8, e.paramBonusValue8,
+                        e.paramBonusType9, e.paramBonusValue9, e.paramBonusType10, e.paramBonusValue10
+                      FROM gamedata_items i
+                      INNER JOIN gamedata_items_equipment e ON e.catalogID = i.catalogID",
+                )?;
+                let rows = stmt
+                    .query_map([], |r| {
+                        let mut bonuses = Vec::new();
+                        for k in 0..10 {
+                            let t: i64 = r.get(8 + 2 * k).unwrap_or(-1);
+                            let v: i64 = r.get(9 + 2 * k).unwrap_or(0);
+                            if t != -1 {
+                                bonuses.push((t, v));
+                            }
+                        }
+                        Ok(GearRow {
+                            catalog_id: r.get::<_, i64>(0)? as u32,
+                            name: r.get::<_, String>(1).unwrap_or_default(),
+                            level: r.get::<_, i64>(2).unwrap_or(0) as i16,
+                            main_skill: r.get::<_, i64>(3).unwrap_or(0) as u8,
+                            compatibility: r.get::<_, i64>(4).unwrap_or(0) as u32,
+                            exclusive: r.get::<_, i64>(5).unwrap_or(0) != 0,
+                            equip_point: r.get::<_, i64>(6).unwrap_or(0) as u16,
+                            tribe: r.get::<_, i64>(7).unwrap_or(0) as u16,
+                            bonuses,
+                        })
+                    })?
+                    .collect::<std::result::Result<Vec<_>, _>>()?;
+                Ok(rows)
+            })
+            .await
+    }
+
     /// The item in gear slot `equip_slot` for `class_id` (undergarments are
     /// stored under class 0): `(serverItemId, catalogId, quality)`.
     pub async fn equipped_item(
@@ -7310,4 +7383,23 @@ mod monster_skill_tests {
             "Heavy Shot"
         );
     }
+}
+
+/// One piece of gear from the item tables (`Database::load_gear_rows`).
+#[derive(Debug, Clone)]
+pub struct GearRow {
+    pub catalog_id: u32,
+    pub name: String,
+    /// The level needed to wear it.
+    pub level: i16,
+    /// The class a weapon or tool belongs to (0 for armor).
+    pub main_skill: u8,
+    pub compatibility: u32,
+    pub exclusive: bool,
+    /// Where it's worn (9 head, 11 body, 36-39 main hand, ...).
+    pub equip_point: u16,
+    /// Who can wear it: 29 everyone, others one race or gender.
+    pub tribe: u16,
+    /// `(paramBonusType, value)` pairs.
+    pub bonuses: Vec<(i64, i64)>,
 }
