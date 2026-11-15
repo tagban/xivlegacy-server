@@ -5535,10 +5535,19 @@ impl Database {
     /// place. Same transactional-upsert shape as `add_gil`. Returns
     /// the new total, or `0` for an invalid GC id.
     pub async fn add_seals(&self, chara_id: u32, gc: u8, delta: i32) -> Result<i32> {
-        const PKG_CURRENCY: u16 = 99;
         let Some(seal_id) = crate::actor::gc::seal_item_id(gc) else {
             return Ok(0);
         };
+        self.add_currency_item(chara_id, seal_id, delta).await
+    }
+
+    /// Grant `delta` of `item_id` (a seal, crystal, shard or cluster) to
+    /// `chara_id`'s currency bag (`itemPackage = PKG_CURRENCY_CRYSTALS (99)`).
+    /// One stack per item: the first call inserts it in the next free
+    /// currency slot, later calls change it in place (never below 0).
+    /// Returns the new total.
+    pub async fn add_currency_item(&self, chara_id: u32, item_id: u32, delta: i32) -> Result<i32> {
+        const PKG_CURRENCY: u16 = 99;
         let total = self
             .conn
             .call_db(move |c| {
@@ -5551,7 +5560,7 @@ impl Database {
                           WHERE ci.characterId = :cid
                             AND ci.itemPackage = :pkg
                             AND si.itemId = :iid",
-                        named_params! { ":cid": chara_id, ":pkg": PKG_CURRENCY, ":iid": seal_id },
+                        named_params! { ":cid": chara_id, ":pkg": PKG_CURRENCY, ":iid": item_id },
                         |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i32>(1)?)),
                     )
                     .optional()?;
@@ -5569,7 +5578,7 @@ impl Database {
                         tx.execute(
                             r"INSERT INTO server_items (itemId, quantity, quality)
                               VALUES (:iid, :q, 1)",
-                            named_params! { ":iid": seal_id, ":q": seed },
+                            named_params! { ":iid": item_id, ":q": seed },
                         )?;
                         let sid = tx.last_insert_rowid();
                         // Currency slot assignment — pick the next

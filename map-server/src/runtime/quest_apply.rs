@@ -4955,6 +4955,48 @@ pub async fn apply_add_item_quality(
     if quantity <= 0 || item_id == 0 {
         return;
     }
+    // Shards, crystals and clusters always go to the currency bag, from
+    // any caller: a GM `!giveitem`, a synthesis result (Alchemist makes
+    // them), a reward. Synthesis takes its crystals from that bag.
+    if crate::inventory::is_crystal(item_id)
+        && (item_package == crate::inventory::PKG_NORMAL
+            || item_package == crate::inventory::PKG_CURRENCY_CRYSTALS)
+    {
+        match db.add_currency_item(actor_id, item_id, quantity).await {
+            Ok(total) => {
+                tracing::info!(
+                    actor = actor_id,
+                    item = item_id,
+                    delta = quantity,
+                    total,
+                    package = crate::inventory::PKG_CURRENCY_CRYSTALS,
+                    "AddItem applied",
+                );
+                if let Some(world) = world {
+                    send_inventory_package_update(
+                        actor_id,
+                        crate::inventory::PKG_CURRENCY_CRYSTALS,
+                        crate::inventory::CAP_CURRENCY,
+                        Some(item_id),
+                        registry,
+                        world,
+                        db,
+                    )
+                    .await;
+                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    actor = actor_id,
+                    item = item_id,
+                    delta = quantity,
+                    err = %e,
+                    "AddItem: crystal DB persist failed",
+                );
+            }
+        }
+        return;
+    }
     // Route currency stacks through add_gil so the 1_000_001 gil row
     // stays the single-stack well-known layout. The gathering path
     // never lands here (Copper Ore is a NORMAL-bag item), but Lua

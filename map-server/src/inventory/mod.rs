@@ -63,6 +63,16 @@ pub const CAP_BAZAAR: u16 = 10;
 pub const CAP_EQUIPMENT: u16 = 35;
 pub const CAP_EQUIPMENT_OTHERPLAYER: u16 = 0x23;
 
+/// Fire Shard .. Water Cluster. 1.0 kept shards, crystals and clusters
+/// in the currency bag (package 99) next to gil, where synthesis looks
+/// for them, not in the normal bag.
+pub const CRYSTAL_ITEM_IDS: std::ops::RangeInclusive<u32> = 1_000_003..=1_000_020;
+
+/// Whether `item_id` is a shard, crystal or cluster.
+pub fn is_crystal(item_id: u32) -> bool {
+    CRYSTAL_ITEM_IDS.contains(&item_id)
+}
+
 /// Default capacity for `code`, matching the switch tables in C#.
 pub fn default_capacity(code: u16) -> u16 {
     match code {
@@ -920,6 +930,16 @@ mod tests {
         assert_eq!(bag.get_at_slot(0).unwrap().quantity, 50);
         assert_eq!(bag.get_at_slot(1).unwrap().quantity, 45);
         assert_eq!(bag.count(), 2);
+    }
+
+    #[test]
+    fn crystals_are_shards_through_clusters() {
+        assert!(!is_crystal(1_000_001), "gil");
+        assert!(!is_crystal(1_000_002));
+        assert!(is_crystal(1_000_003), "fire shard");
+        assert!(is_crystal(1_000_020), "water cluster");
+        assert!(!is_crystal(1_000_021));
+        assert!(!is_crystal(10_008_002), "a log");
     }
 
     #[test]
