@@ -1221,6 +1221,114 @@ async fn live_add_item_emits_normal_no_wipe_bracket() {
     }
 }
 
+/// Shards, crystals and clusters go to the currency bag (99), where
+/// synthesis looks for them, whether the caller names the NORMAL bag
+/// (`!giveitem`, an Alchemist's synthesis result) or the currency bag.
+/// Repeat grants merge into one stack, the NORMAL bag stays empty, and
+/// the client gets a no-wipe currency bracket. Gil keeps its own path.
+#[tokio::test]
+async fn crystals_land_in_the_currency_bag() {
+    use crate::actor::Character;
+    use crate::data::ClientHandle;
+    use crate::runtime::actor_registry::{ActorHandle, ActorKindTag};
+    use common::db::ConnCallExt;
+    use std::sync::Arc;
+    use tokio::sync::mpsc;
+
+    const WIND_SHARD: u32 = 1_000_005;
+    const FIRE_CLUSTER: u32 = 1_000_015;
+
+    let world = Arc::new(WorldManager::new());
+    let registry = Arc::new(ActorRegistry::new());
+    let db = crate::database::Database::open(tempdb()).await.unwrap();
+    db.conn_for_test()
+        .call_db(|c| {
+            c.execute(
+                r"INSERT INTO characters (id, userId, slot, serverId, name)
+                  VALUES (43, 0, 0, 0, 'Crystal Keeper')",
+                [],
+            )?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+    registry
+        .insert(ActorHandle::new(
+            43,
+            ActorKindTag::Player,
+            230,
+            43,
+            Character::new(43),
+        ))
+        .await;
+    let (tx, mut rx) = mpsc::channel::<Vec<u8>>(64);
+    world.register_client(43, ClientHandle::new(43, tx)).await;
+
+    for (package, item, qty) in [
+        (crate::inventory::PKG_NORMAL, WIND_SHARD, 3),
+        (crate::inventory::PKG_CURRENCY_CRYSTALS, WIND_SHARD, 4),
+        (crate::inventory::PKG_NORMAL, FIRE_CLUSTER, 1),
+    ] {
+        crate::runtime::quest_apply::apply_add_item(
+            43,
+            package,
+            item,
+            qty,
+            &registry,
+            Some(&world),
+            &db,
+        )
+        .await;
+    }
+
+    let normal = db
+        .get_item_package(43, crate::inventory::PKG_NORMAL as u32)
+        .await
+        .unwrap();
+    assert!(
+        normal.is_empty(),
+        "no crystal in the NORMAL bag; saw {normal:?}"
+    );
+    let currency = db
+        .get_item_package(43, crate::inventory::PKG_CURRENCY_CRYSTALS as u32)
+        .await
+        .unwrap();
+    let qty = |id: u32| {
+        currency
+            .iter()
+            .filter(|r| r.item_id == id)
+            .map(|r| r.quantity)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(qty(WIND_SHARD), vec![7], "two grants merge into one stack");
+    assert_eq!(qty(FIRE_CLUSTER), vec![1]);
+    assert!(
+        currency.iter().all(|r| r.item_id != 1_000_001),
+        "a crystal grant must not turn into gil"
+    );
+
+    // The client heard about it in the currency bag (no-wipe bracket, code 99).
+    let mut set_begins = Vec::new();
+    while let Ok(bytes) = rx.try_recv() {
+        let mut offset = 0;
+        while offset < bytes.len() {
+            let Ok(sub) = common::subpacket::SubPacket::parse(&bytes, &mut offset) else {
+                break;
+            };
+            if sub.game_message.opcode == crate::packets::opcodes::OP_INVENTORY_SET_BEGIN {
+                set_begins.push(u16::from_le_bytes([sub.data[6], sub.data[7]]));
+            }
+        }
+    }
+    assert!(!set_begins.is_empty(), "a currency bracket was sent");
+    assert!(
+        set_begins
+            .iter()
+            .all(|&code| code == crate::inventory::PKG_CURRENCY_CRYSTALS),
+        "only the currency bag is updated; saw {set_begins:?}"
+    );
+}
+
 /// Inventory live-producer increment 2 — a mid-session KEYITEMS
 /// `AddItem` persists via `add_key_item` AND pushes a no-wipe
 /// single-package bracket to the owning client: `0x016D(no-wipe) →
