@@ -6033,6 +6033,7 @@ impl PacketProcessor {
     /// time.
     async fn apply_change_job(&self, player_id: u32, mode: u8) {
         let Some(handle) = self.registry.get(player_id).await else {
+            tracing::info!(player = player_id, mode, "ChangeJob: player not online");
             return;
         };
         let (class_id, current_job) = {
@@ -6050,11 +6051,12 @@ impl PacketProcessor {
                     return;
                 };
                 if current_job == job {
+                    tracing::info!(player = player_id, job, "ChangeJob: already that job");
                     return;
                 }
                 let owned = self
                     .db
-                    .owns_item_in_package(player_id, crystal, crate::inventory::PKG_JOB_ITEMS)
+                    .owns_item_in_package(player_id, crystal, crate::inventory::PKG_KEYITEMS)
                     .await
                     .unwrap_or(false);
                 if !owned {
@@ -6065,6 +6067,12 @@ impl PacketProcessor {
             }
             _ => {
                 if current_job == 0 {
+                    tracing::info!(
+                        player = player_id,
+                        mode,
+                        class_id,
+                        "ChangeJob: no job to leave"
+                    );
                     return;
                 }
                 (current_job, class_id)
@@ -8838,6 +8846,13 @@ impl PacketProcessor {
         handle: &ActorHandle,
         commands: Vec<crate::lua::command::LuaCommand>,
     ) {
+        // `player:ChangeJob` (ChangeJobCommand, the gear window's soul
+        // crystal slot) needs the processor: the shared drain has no arm
+        // for it and would drop it. It runs after the rest, so the
+        // command's EndEvent reaches the client before the job change.
+        let (jobs, commands): (Vec<_>, Vec<_>) = commands
+            .into_iter()
+            .partition(|c| matches!(c, crate::lua::command::LuaCommand::ChangeJob { .. }));
         crate::runtime::quest_apply::apply_event_script_commands(
             handle,
             commands,
@@ -8847,6 +8862,11 @@ impl PacketProcessor {
             self.lua.as_ref(),
         )
         .await;
+        for cmd in jobs {
+            if let crate::lua::command::LuaCommand::ChangeJob { player_id, mode } = cmd {
+                self.apply_change_job(player_id, mode).await;
+            }
+        }
     }
 
     /// Apply the burst drained from a resumed `_WAIT_EVENT` coroutine.
@@ -11979,5 +11999,89 @@ mod tell_tests {
         assert_eq!(parse_tell(&body("Bossfasd Fight", "")), None);
         assert_eq!(parse_tell(&body("", "hi")), None);
         assert_eq!(parse_tell(&[0u8; 8]), None);
+    }
+}
+
+#[cfg(test)]
+mod change_job_tests {
+    use super::*;
+    use crate::lua::command::LuaCommand;
+    use common::db::ConnCallExt;
+
+    /// The gear window's soul crystal slot sends ChangeJobCommand (12017),
+    /// whose `player:ChangeJob(mode)` comes back through the event-script
+    /// drain. It must reach `apply_change_job`: mode 1 takes up the job
+    /// of the class when the soul crystal is among the key items, mode 2
+    /// goes back to the class.
+    #[tokio::test]
+    async fn change_job_from_a_command_script_switches_and_switches_back() {
+        const PLAYER: u32 = 9;
+        let db = Arc::new(
+            Database::open(common::test_db::fresh_blocking())
+                .await
+                .expect("db"),
+        );
+        db.conn_for_test()
+            .call_db(|c| {
+                c.execute(
+                    r"INSERT INTO characters (id, userId, slot, serverId, name)
+                      VALUES (9, 0, 0, 0, 'Job Taker')",
+                    [],
+                )?;
+                Ok(())
+            })
+            .await
+            .expect("seed character");
+        let registry = Arc::new(ActorRegistry::new());
+        let mut player = Character::new(PLAYER);
+        player.chara.class = 22; // thaumaturge
+        player.chara.level = 50;
+        registry
+            .insert(ActorHandle::new(PLAYER, ActorKindTag::Player, 0, 0, player))
+            .await;
+        let processor = PacketProcessor {
+            db: db.clone(),
+            world: Arc::new(WorldManager::new()),
+            registry: registry.clone(),
+            lua: None,
+            cmd: None,
+        };
+        let handle = registry.get(PLAYER).await.expect("player");
+        let job = || async {
+            registry
+                .get(PLAYER)
+                .await
+                .unwrap()
+                .character
+                .read()
+                .await
+                .chara
+                .current_job
+        };
+
+        // No soul crystal: nothing happens.
+        let take = || {
+            vec![LuaCommand::ChangeJob {
+                player_id: PLAYER,
+                mode: 1,
+            }]
+        };
+        processor.apply_event_script_commands(&handle, take()).await;
+        assert_eq!(job().await, 0, "no crystal, no job");
+
+        // With the Soul of the Black Mage as a key item, mode 1 makes a black mage.
+        db.add_unique_item(PLAYER, 2_000_207, crate::inventory::PKG_KEYITEMS)
+            .await
+            .expect("crystal");
+        processor.apply_event_script_commands(&handle, take()).await;
+        assert_eq!(job().await, 26, "the crystal's job is taken up");
+
+        // Mode 2 goes back to the thaumaturge.
+        let back = vec![LuaCommand::ChangeJob {
+            player_id: PLAYER,
+            mode: 2,
+        }];
+        processor.apply_event_script_commands(&handle, back).await;
+        assert_eq!(job().await, 0, "back to the class");
     }
 }

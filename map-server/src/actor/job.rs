@@ -8,8 +8,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 //! Jobs and their soul crystals (1.23b). Each job grows out of one class;
-//! the job quest "Job 1" gives the soul crystal, which goes in the job
-//! items package (101). The table is the client's own
+//! the job quest "Job 1" gives the soul crystal, a key item (package
+//! 100; the client's Lua calls it 101). The table is the client's own
 //! (CharaBaseClass.hasJobStone and the gear window's job check).
 
 /// (class, job, soul crystal)
