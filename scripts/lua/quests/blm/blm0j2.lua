@@ -26,7 +26,7 @@ Horizon.
 
 local SEQ_000 = 0;	-- Slay Daddy Longlegs west of Nophica's Wells.
 
-local ENPC_LALAI			= 1060034;
+local ENPC_LALAI			= 1060035;	-- Lalai (1060034 is Ququruka)
 local ENPC_KAZAGG_CHAH	= 1060036;
 local LONGLEGS_TRIGGER	= 1090930;
 

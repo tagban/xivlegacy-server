@@ -14349,7 +14349,22 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
     }
   ]
 }'),
-(1060035, '', 1500186, 0, NULL),
+(1060035, '/Chara/Npc/Populace/PopulaceStandard', 1500186, 19, '{
+  "talkEventConditions": [
+    {
+      "unknown1": 4,
+      "unknown2": 0,
+      "conditionName": "talkDefault"
+    }
+  ],
+  "noticeEventConditions": [
+    {
+      "unknown1": 0,
+      "unknown2": 1,
+      "conditionName": "noticeEvent"
+    }
+  ]
+}'),
 (1060036, '/Chara/Npc/Populace/PopulaceStandard', 2420027, 19, '{
   "talkEventConditions": [
     {

@@ -27,7 +27,7 @@ local SEQ_000	= 0;	-- Find Kazagg Chah in the cave west of Camp Horizon.
 local SEQ_005	= 5;	-- Slay Whitetalon south of Camp Bald Knoll.
 local SEQ_010	= 10;	-- Return to Kazagg Chah.
 
-local ENPC_LALAI		= 1060034;
+local ENPC_LALAI		= 1060035;	-- Lalai (1060034 is Ququruka)
 local ENPC_KAZAGG_CHAH	= 1060036;
 local ENPC_DOZOL_MELOC	= 1060037;
 local ENPC_DA_ZA		= 1060038;

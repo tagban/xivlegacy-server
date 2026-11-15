@@ -28,7 +28,7 @@ comes in Blm0j6.
 
 local SEQ_000 = 0;	-- Find the four pieces of the black mage's garb.
 
-local ENPC_LALAI		= 1060034;
+local ENPC_LALAI		= 1060035;	-- Lalai (1060034 is Ququruka)
 local ENPC_KAZAGG_CHAH	= 1060036;
 local ENPC_DOZOL_MELOC	= 1060037;
 local ENPC_DA_ZA		= 1060038;

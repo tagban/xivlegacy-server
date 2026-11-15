@@ -32,7 +32,7 @@ local SEQ_005	= 5;	-- Speak to Kazagg Chah.
 local SEQ_010	= 10;	-- Return to Lalai at the Sacrarium.
 local SEQ_015	= 15;	-- Stop Ququruka at Nald's Reflection.
 
-local ENPC_LALAI		= 1060034;
+local ENPC_LALAI		= 1060035;	-- Lalai (1060034 is Ququruka)
 local ENPC_KAZAGG_CHAH	= 1060036;
 local ENPC_DOZOL_MELOC	= 1060037;
 local ENPC_DA_ZA		= 1060038;
