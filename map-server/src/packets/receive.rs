@@ -568,7 +568,16 @@ impl EventUpdatePacket {
         let unknown2 = c.read_u32::<LittleEndian>()?;
         let event_type = c.read_u8()?;
         let pos = c.position() as usize;
-        let lua_params = luaparam::read_lua_params(&data[pos..]).unwrap_or_default();
+        // An undecodable tail used to vanish silently (the script then saw
+        // no result at all); log the bytes so a new param type shows up.
+        let lua_params = match luaparam::read_lua_params(&data[pos..]) {
+            Ok(p) => p,
+            Err(e) => {
+                let hex: String = data[pos..].iter().map(|b| format!("{b:02x}")).collect();
+                tracing::warn!(error = %e, params = %hex, "EventUpdate params not decoded");
+                Vec::new()
+            }
+        };
         Ok(Self {
             trigger_actor_id,
             server_codes,
