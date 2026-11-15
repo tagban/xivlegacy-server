@@ -9,7 +9,7 @@ Blm0j1-6, Pld0j1-6, Brd0j1-6, Drg0j1-6).
 Job 1 is offered on the job's class at level 30 with a second class at 15,
 Jobs 2-6 only to the job itself (processor/quest_offers.rs job_gate; the
 levels and the chain are in gamedata_quests). Job 1 ends with the soul
-crystal, which goes in the job items (package 101): the gear window's
+crystal, a key item (package 100, which the client's Lua calls 101): the gear window's
 soul crystal slot then offers the job (ChangeJobCommand).
 
 The client scripts show the soul crystal and each new job ability in

@@ -691,9 +691,8 @@ impl Player {
 
     fn install_default_packages(&mut self) {
         use crate::inventory::{
-            ItemPackage, PKG_BAZAAR, PKG_CURRENCY_CRYSTALS, PKG_EQUIPMENT, PKG_JOB_ITEMS,
-            PKG_KEYITEMS, PKG_LOOT, PKG_MELDREQUEST, PKG_NORMAL, PKG_TRADE, ReferencedItemPackage,
-            default_capacity,
+            ItemPackage, PKG_BAZAAR, PKG_CURRENCY_CRYSTALS, PKG_EQUIPMENT, PKG_KEYITEMS, PKG_LOOT,
+            PKG_MELDREQUEST, PKG_NORMAL, PKG_TRADE, ReferencedItemPackage, default_capacity,
         };
         let aid = self.character.base.actor_id;
         for code in [
@@ -703,7 +702,6 @@ impl Player {
             PKG_BAZAAR,
             PKG_CURRENCY_CRYSTALS,
             PKG_KEYITEMS,
-            PKG_JOB_ITEMS,
             PKG_TRADE,
         ] {
             self.item_packages

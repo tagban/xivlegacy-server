@@ -5035,10 +5035,8 @@ pub async fn apply_add_item_quality(
     // Key items live in their own KEYITEMS bag (package 100). They are
     // unique / non-stacking, so the grant is idempotent: `add_key_item`
     // inserts at most one row and reports whether it was newly added.
-    // Soul crystals (package 101) are unique the same way.
-    if item_package == crate::inventory::PKG_KEYITEMS
-        || item_package == crate::inventory::PKG_JOB_ITEMS
-    {
+    // Soul crystals are key items too.
+    if item_package == crate::inventory::PKG_KEYITEMS {
         let capacity = crate::inventory::default_capacity(item_package);
         match db.add_unique_item(actor_id, item_id, item_package).await {
             Ok(true) => {

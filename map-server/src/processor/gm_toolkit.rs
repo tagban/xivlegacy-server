@@ -36,7 +36,7 @@ use crate::actor::player::{
     SLOT_LEGS, SLOT_MAINHAND, SLOT_NECK, SLOT_OFFHAND, SLOT_WAIST, SLOT_WRISTS,
 };
 use crate::database::GearRow;
-use crate::inventory::{PKG_JOB_ITEMS, PKG_NORMAL};
+use crate::inventory::{PKG_KEYITEMS, PKG_NORMAL};
 use crate::runtime::actor_registry::ActorHandle;
 use crate::runtime::class_level::{
     CLASSES, apply_set_level, class_by_name, class_name, class_of_job, job_by_name,
@@ -578,13 +578,13 @@ impl PacketProcessor {
         }
         let owned = self
             .db
-            .owns_item_in_package(id, crystal, PKG_JOB_ITEMS)
+            .owns_item_in_package(id, crystal, PKG_KEYITEMS)
             .await
             .unwrap_or(false);
         if !owned {
             crate::runtime::quest_apply::apply_add_item_quality(
                 id,
-                PKG_JOB_ITEMS,
+                PKG_KEYITEMS,
                 crystal,
                 1,
                 1,
@@ -696,7 +696,7 @@ impl PacketProcessor {
             let owned = match crystal {
                 Some(c) => self
                     .db
-                    .owns_item_in_package(id, c, PKG_JOB_ITEMS)
+                    .owns_item_in_package(id, c, PKG_KEYITEMS)
                     .await
                     .unwrap_or(false),
                 None => false,

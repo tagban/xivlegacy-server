@@ -1918,7 +1918,9 @@ impl Database {
     }
 
     /// [`Database::add_key_item`] for any package of unique items: the
-    /// key items (100) and the job items (101, soul crystals).
+    /// key items (100, soul crystals among them). A new item takes the
+    /// lowest free slot: the client finds a key item only in slots
+    /// 0..count-1, so a hole left by a removed one is filled first.
     pub async fn add_unique_item(
         &self,
         chara_id: u32,
@@ -1956,12 +1958,21 @@ impl Database {
                     named_params! { ":iid": key_item_id },
                 )?;
                 let sid = tx.last_insert_rowid();
-                // Next empty KEYITEMS slot = current row count in package 100.
+                // The lowest free slot: 0 if free, else the first slot
+                // whose next one is empty.
                 let next_slot: i32 = tx
                     .query_row(
-                        r"SELECT COALESCE(MAX(slot), -1) + 1
-                          FROM characters_inventory
-                          WHERE characterId = :cid AND itemPackage = :pkg",
+                        r"SELECT CASE WHEN NOT EXISTS (
+                                   SELECT 1 FROM characters_inventory
+                                   WHERE characterId = :cid AND itemPackage = :pkg AND slot = 0)
+                                 THEN 0
+                                 ELSE (SELECT MIN(a.slot) + 1 FROM characters_inventory a
+                                       WHERE a.characterId = :cid AND a.itemPackage = :pkg
+                                         AND NOT EXISTS (
+                                           SELECT 1 FROM characters_inventory b
+                                           WHERE b.characterId = :cid AND b.itemPackage = :pkg
+                                             AND b.slot = a.slot + 1))
+                            END",
                         named_params! { ":cid": chara_id, ":pkg": package },
                         |r| r.get::<_, i32>(0),
                     )
@@ -7038,6 +7049,64 @@ mod key_item_tests {
         assert_eq!(rows.len(), 1, "still exactly one key-item row after re-add");
 
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// Soul crystals are key items (package 100), and a new key item takes
+    /// the lowest free slot: the client looks for a key item only in slots
+    /// 0..count-1, so one past a hole would never be seen.
+    #[tokio::test]
+    async fn soul_crystal_is_a_key_item_in_the_lowest_free_slot() {
+        let path = tempdb("crystal-slot");
+        let db = Database::open(&path).await.expect("open db");
+        db.conn_for_test()
+            .call_db(|c| {
+                c.execute(
+                    r"INSERT INTO characters (id, userId, slot, serverId, name)
+                      VALUES (42, 0, 0, 0, 'Key Keeper')",
+                    [],
+                )?;
+                Ok(())
+            })
+            .await
+            .expect("seed character");
+        let pkg = crate::inventory::PKG_KEYITEMS;
+        for id in [2_001_001, 2_001_002, 2_001_003] {
+            assert!(db.add_key_item(42, id).await.expect("add key item"));
+        }
+        let rows = db.get_item_package(42, pkg as u32).await.expect("read");
+        let middle = rows
+            .iter()
+            .find(|r| r.item_id == 2_001_002)
+            .expect("middle row");
+        assert_eq!(middle.slot, 1);
+        db.remove_item(42, middle.unique_id).await.expect("remove");
+
+        // The Soul of the Warrior fills the hole at slot 1.
+        assert!(
+            db.add_unique_item(42, 2_000_203, pkg)
+                .await
+                .expect("add crystal")
+        );
+        let rows = db.get_item_package(42, pkg as u32).await.expect("read");
+        let crystal = rows
+            .iter()
+            .find(|r| r.item_id == 2_000_203)
+            .expect("crystal row");
+        assert_eq!(crystal.slot, 1, "the crystal fills the free slot");
+        assert!(
+            db.owns_item_in_package(42, 2_000_203, pkg)
+                .await
+                .expect("owns"),
+            "ChangeJob finds the crystal among the key items",
+        );
+        // The next one goes after the last.
+        assert!(db.add_key_item(42, 2_001_004).await.expect("add key item"));
+        let rows = db.get_item_package(42, pkg as u32).await.expect("read");
+        let last = rows
+            .iter()
+            .find(|r| r.item_id == 2_001_004)
+            .expect("last row");
+        assert_eq!(last.slot, 3);
     }
 }
 
