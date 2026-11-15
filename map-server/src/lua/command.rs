@@ -156,7 +156,7 @@ pub enum LuaCommand {
     /// `player:RestGatherNodeForMe(zoneId, uniqueId, seconds)` — a
     /// gathering point the player used up leaves that player's world only
     /// and comes back for them after `seconds`; other players keep it
-    /// (mining points, DummyCommand.lua).
+    /// (mining, harvesting and fishing points, DummyCommand.lua).
     RestGatherNodeForPlayer {
         player_id: u32,
         zone_id: u32,

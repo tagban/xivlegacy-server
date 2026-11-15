@@ -1342,7 +1342,7 @@ pub struct WorldManager {
     /// Gathering points one player used up, keyed by `(point actor id,
     /// player actor id)`, with the unix time the point comes back for
     /// that player. Only that player loses the point; everyone else
-    /// still sees it and can gather there (mining points).
+    /// still sees it and can gather there.
     gather_nodes_resting_for: std::sync::RwLock<HashMap<(u32, u32), u64>>,
 
     /// Player state indexed by session id — zone membership, player
