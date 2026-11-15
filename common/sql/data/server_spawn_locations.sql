@@ -1862,7 +1862,7 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (30131, 1090926, 'whm0j5_turning_leaf_garb', 153, '', 0, -1345.0, -15.5, 330.0, 0.0, 0, 0, NULL),
 (30132, 1090927, 'whm0j5_tiger_helm_garb', 130, '', 0, 1620.0, 60.2, -455.0, 0.0, 0, 0, NULL),
 (30133, 1090928, 'whm0j6_keening_trigger', 150, '', 0, 200.0, 3.6, -505.0, 0.0, 0, 0, NULL),
-(30134, 1060034, 'blm_lalai_sacrarium', 209, '', 0, -298.0, 206.0, 232.0, 2.6, 0, 0, NULL),
+(30134, 1060035, 'blm_lalai_sacrarium', 209, '', 0, -298.0, 206.0, 232.0, 2.6, 0, 0, NULL),
 (30135, 1060036, 'blm_kazagg_chah_cave', 172, '', 0, -1460.0, 48.1, -150.0, 1.6, 0, 0, NULL),
 (30136, 1060037, 'blm_dozol_meloc_cave', 172, '', 0, -1455.0, 47.5, -145.0, 1.6, 0, 0, NULL),
 (30137, 1060038, 'blm_da_za_cave', 172, '', 0, -1465.0, 48.3, -145.0, 1.6, 0, 0, NULL),
