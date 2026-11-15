@@ -398,9 +398,10 @@ function onEventStarted(player, commandActor, triggerName, arg1, arg2, arg3, arg
 
     if harvestAttempts == 0 then
         player:SendGameMessage(player, worldMaster, 40310, 0x20); -- "The deposit has been exhausted."
-        -- The point leaves the world for everyone and comes back later.
+        -- The point leaves only this gatherer's world and comes back for
+        -- them later; everyone else still sees it and can gather there.
         if nodeUniqueId ~= nil and nodeUniqueId ~= "" then
-            player:RestGatherNode(nodeZoneId, nodeUniqueId, NODE_REST_SECONDS);
+            player:RestGatherNodeForMe(nodeZoneId, nodeUniqueId, NODE_REST_SECONDS);
         end
     end
 

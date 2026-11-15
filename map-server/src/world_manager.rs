@@ -1339,6 +1339,12 @@ pub struct WorldManager {
     /// filters read it while holding a session snapshot.
     gather_nodes_resting: std::sync::RwLock<HashMap<u32, u64>>,
 
+    /// Gathering points one player used up, keyed by `(point actor id,
+    /// player actor id)`, with the unix time the point comes back for
+    /// that player. Only that player loses the point; everyone else
+    /// still sees it and can gather there.
+    gather_nodes_resting_for: std::sync::RwLock<HashMap<(u32, u32), u64>>,
+
     /// Player state indexed by session id — zone membership, player
     /// position snapshot, etc. Updated by movement handlers.
     sessions: RwLock<HashMap<u32, Session>>,
@@ -1359,6 +1365,7 @@ impl WorldManager {
             gather_node_metadata: RwLock::new(HashMap::new()),
             gather_node_actors: RwLock::new(HashMap::new()),
             gather_nodes_resting: std::sync::RwLock::new(HashMap::new()),
+            gather_nodes_resting_for: std::sync::RwLock::new(HashMap::new()),
             sessions: RwLock::new(HashMap::new()),
             clients: RwLock::new(HashMap::new()),
         }
@@ -1480,6 +1487,61 @@ impl WorldManager {
         self.gather_nodes_resting
             .read()
             .map(|m| m.get(&actor_id).is_some_and(|t| *t > now))
+            .unwrap_or(false)
+    }
+
+    /// Take a gathering point out of one player's world for `secs`
+    /// seconds: that player's client drops it now and the spawn paths
+    /// skip it for that player until the time is up. Other players keep
+    /// it. Returns whether the session had the point spawned (and so was
+    /// sent a RemoveActor).
+    pub async fn rest_gather_node_for_player(
+        &self,
+        actor_id: u32,
+        player_id: u32,
+        session_id: u32,
+        secs: u32,
+    ) -> bool {
+        let now = common::utils::unix_timestamp() as u64;
+        self.rest_gather_node_for_player_at(actor_id, player_id, now + secs as u64, now);
+        let had = {
+            let mut sessions = self.sessions.write().await;
+            sessions
+                .get_mut(&session_id)
+                .is_some_and(|s| s.actor_instance_list.remove(&actor_id))
+        };
+        if had && let Some(client) = self.client(session_id).await {
+            let mut sub = crate::packets::send::actor::build_remove_actor(actor_id);
+            sub.set_target_id(session_id);
+            client.send_bytes(sub.to_bytes()).await;
+        }
+        had
+    }
+
+    fn rest_gather_node_for_player_at(&self, actor_id: u32, player_id: u32, until: u64, now: u64) {
+        if let Ok(mut m) = self.gather_nodes_resting_for.write() {
+            m.retain(|_, t| *t > now);
+            m.insert((actor_id, player_id), until);
+        }
+    }
+
+    /// Whether a gathering point is out of `player_id`'s world: picked
+    /// clean for everyone, or used up by this player and not back yet.
+    pub fn is_gather_node_resting_for(&self, actor_id: u32, player_id: u32) -> bool {
+        let now = common::utils::unix_timestamp() as u64;
+        self.is_gather_node_resting(actor_id)
+            || self.is_gather_node_resting_for_player_at(actor_id, player_id, now)
+    }
+
+    fn is_gather_node_resting_for_player_at(
+        &self,
+        actor_id: u32,
+        player_id: u32,
+        now: u64,
+    ) -> bool {
+        self.gather_nodes_resting_for
+            .read()
+            .map(|m| m.get(&(actor_id, player_id)).is_some_and(|t| *t > now))
             .unwrap_or(false)
     }
 
@@ -3175,8 +3237,9 @@ impl WorldManager {
         // Actors a quest hid from this player stay hidden through the
         // reload (an Echo's same-zone fade-in warp).
         neighbours.retain(|(id, _, _)| !session.hidden_actors.contains(id));
-        // Picked-clean gathering points stay out until they come back.
-        neighbours.retain(|(id, _, _)| !self.is_gather_node_resting(*id));
+        // Picked-clean gathering points stay out until they come back
+        // (for everyone, or for just this player after they used one up).
+        neighbours.retain(|(id, _, _)| !self.is_gather_node_resting_for(*id, actor_id));
         // Seasonal-event NPCs only while their event runs.
         neighbours.retain(|(id, _, _)| !crate::seasonal::actor_hidden(*id));
         tracing::info!(
@@ -4391,7 +4454,7 @@ impl WorldManager {
                 .map(|a| a.actor_id)
                 .filter(|id| !session.actor_instance_list.contains(id))
                 .filter(|id| !session.hidden_actors.contains(id))
-                .filter(|id| !self.is_gather_node_resting(*id))
+                .filter(|id| !self.is_gather_node_resting_for(*id, actor_id))
                 .collect();
             // Other players in range the client hasn't spawned yet. The
             // range query only pairs actors of one content copy, so inside
@@ -4736,6 +4799,48 @@ mod tests {
             wm.gather_node_identity(0xDEAD_BEEF).await.is_none(),
             "an unknown actor id resolves to None",
         );
+    }
+
+    /// A mining point one player used up leaves only that player's
+    /// world: their session drops it, the spawn filters skip it for them
+    /// alone, nobody else loses it, and it comes back when the time is up.
+    #[tokio::test]
+    async fn gather_node_rest_for_one_player_hides_it_from_that_player_only() {
+        let wm = WorldManager::new();
+        let (node, miner, other) = (0x4009_0001, 7, 8);
+        let mut s = Session::new(70);
+        s.actor_instance_list.insert(node);
+        wm.upsert_session(s).await;
+        let mut s2 = Session::new(80);
+        s2.actor_instance_list.insert(node);
+        wm.upsert_session(s2).await;
+
+        assert!(wm.rest_gather_node_for_player(node, miner, 70, 300).await);
+        assert!(wm.is_gather_node_resting_for(node, miner));
+        assert!(!wm.is_gather_node_resting_for(node, other));
+        assert!(!wm.is_gather_node_resting(node), "no one else loses it");
+        assert!(
+            !wm.session(70)
+                .await
+                .unwrap()
+                .actor_instance_list
+                .contains(&node)
+        );
+        assert!(
+            wm.session(80)
+                .await
+                .unwrap()
+                .actor_instance_list
+                .contains(&node)
+        );
+
+        // It comes back for the miner once the rest is over.
+        let now = common::utils::unix_timestamp() as u64;
+        assert!(wm.is_gather_node_resting_for_player_at(node, miner, now + 299));
+        assert!(!wm.is_gather_node_resting_for_player_at(node, miner, now + 301));
+        // A rest ending in the past is not a rest.
+        wm.rest_gather_node_for_player_at(node, miner, now - 1, now);
+        assert!(!wm.is_gather_node_resting_for(node, miner));
     }
 
     #[tokio::test]

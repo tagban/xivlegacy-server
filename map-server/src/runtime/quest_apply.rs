@@ -929,6 +929,32 @@ pub async fn apply_runtime_lua_command(
             }
             true
         }
+        LC::RestGatherNodeForPlayer {
+            player_id,
+            zone_id,
+            unique_id,
+            seconds,
+        } => {
+            let Some(node) = world.gather_node_actor_id(zone_id, &unique_id).await else {
+                tracing::debug!(zone_id, %unique_id, "RestGatherNodeForMe: no live gather node");
+                return true;
+            };
+            let session_id = match registry.get(player_id).await {
+                Some(h) => h.session_id,
+                None => 0,
+            };
+            let removed = world
+                .rest_gather_node_for_player(node, player_id, session_id, seconds)
+                .await;
+            tracing::info!(
+                player = player_id,
+                node = format!("0x{node:08X}"),
+                seconds,
+                removed,
+                "gather point rests for one player",
+            );
+            true
+        }
         LC::HateContainerAddBaseHate {
             actor_id,
             target_actor_id,

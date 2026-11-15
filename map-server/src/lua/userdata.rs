@@ -2666,6 +2666,21 @@ impl UserData for LuaPlayer {
                 Ok(())
             },
         );
+        methods.add_method(
+            "RestGatherNodeForMe",
+            |_, this, (zone_id, unique_id, seconds): (u32, String, u32)| {
+                push(
+                    &this.queue,
+                    LuaCommand::RestGatherNodeForPlayer {
+                        player_id: this.snapshot.actor_id,
+                        zone_id,
+                        unique_id,
+                        seconds,
+                    },
+                );
+                Ok(())
+            },
+        );
         methods.add_method("HideActor", |_, this, actor_id: u32| {
             push(
                 &this.queue,
