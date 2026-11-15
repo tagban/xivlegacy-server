@@ -153,6 +153,16 @@ pub enum LuaCommand {
         unique_id: String,
         seconds: u32,
     },
+    /// `player:RestGatherNodeForMe(zoneId, uniqueId, seconds)` — a
+    /// gathering point the player used up leaves that player's world only
+    /// and comes back for them after `seconds`; other players keep it
+    /// (mining points, DummyCommand.lua).
+    RestGatherNodeForPlayer {
+        player_id: u32,
+        zone_id: u32,
+        unique_id: String,
+        seconds: u32,
+    },
     PlayAnimation {
         actor_id: u32,
         animation_id: u32,

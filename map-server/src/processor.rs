@@ -8676,7 +8676,7 @@ impl PacketProcessor {
         };
         let mut best: Option<(f32, u32)> = None;
         for node in self.world.gather_node_actors_in_zone(zone_id).await {
-            if self.world.is_gather_node_resting(node) {
+            if self.world.is_gather_node_resting_for(node, handle.actor_id) {
                 continue;
             }
             let Some(h) = self.registry.get(node).await else {

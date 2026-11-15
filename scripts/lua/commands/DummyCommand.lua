@@ -398,9 +398,15 @@ function onEventStarted(player, commandActor, triggerName, arg1, arg2, arg3, arg
 
     if harvestAttempts == 0 then
         player:SendGameMessage(player, worldMaster, 40310, 0x20); -- "The deposit has been exhausted."
-        -- The point leaves the world for everyone and comes back later.
         if nodeUniqueId ~= nil and nodeUniqueId ~= "" then
-            player:RestGatherNode(nodeZoneId, nodeUniqueId, NODE_REST_SECONDS);
+            if harvestType == commandMine then
+                -- A mining point leaves only this miner's world; everyone
+                -- else still sees it and can mine it.
+                player:RestGatherNodeForMe(nodeZoneId, nodeUniqueId, NODE_REST_SECONDS);
+            else
+                -- The point leaves the world for everyone and comes back later.
+                player:RestGatherNode(nodeZoneId, nodeUniqueId, NODE_REST_SECONDS);
+            end
         end
     end
 
