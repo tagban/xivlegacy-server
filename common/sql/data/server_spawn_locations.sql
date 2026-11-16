@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1957 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1962 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -1961,4 +1961,9 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (30918, 1001797, 'asw_imp_scholar', 206, '', 0, 80.0, 20.0, -1448.0, 0.0, 0, 0, NULL),
 (30919, 1001798, 'asw_imp_strumpet', 175, '', 0, -178.0, 191.0, 104.0, 0.0, 0, 0, NULL),
 (30920, 1001799, 'asw_imp_senior', 175, '', 0, -88.0, 196.0, 60.0, 0.0, 0, 0, NULL),
-(30921, 1001800, 'asw_imp_songster', 175, '', 0, -60.0, 196.0, 44.0, 0.0, 0, 0, NULL);
+(30921, 1001800, 'asw_imp_songster', 175, '', 0, -60.0, 196.0, 44.0, 0.0, 0, 0, NULL),
+(31080, 1000949, 'colbernoux', 209, '', 0, -124.0, 200.2, 264.0, 1.0, 0, 0, NULL),
+(31081, 1000887, 'zssapa', 176, '', 0, 104.0, 174.5, -1120.0, -0.5, 0, 0, NULL),
+(31083, 1001498, 'sence', 209, '', 0, -139.0, 201.5, 262.0, 1.57, 0, 0, NULL),
+(31087, 1091180, 'gld300_flower_field_trigger', 154, '', 0, 1497.5, -0.09, 1321.5, 0.0, 0, 0, NULL),
+(31088, 1091181, 'gld306_erralig_chamber_trigger', 209, '', 0, -288.0, 206.1, 213.0, 0.0, 0, 0, NULL);
