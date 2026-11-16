@@ -1,4 +1,5 @@
--- server_gather_node_spawns: game data, 57 rows. Reloaded whole when this file changes.
+-- server_gather_node_spawns: game data, 58 rows. Reloaded whole when this file changes.
+-- 9140: quest-only point for Fsh200's pixie remora (our own row, not retail; see server_gather_node_quests).
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_gather_node_spawns`;
 INSERT INTO `server_gather_node_spawns` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `harvestNodeId`, `harvestType`) VALUES
@@ -58,4 +59,5 @@ INSERT INTO `server_gather_node_spawns` (`id`, `actorClassId`, `uniqueId`, `zone
 (153, 1200056, 'fish_the_fields_of_glory_3', 145, '', 0, 2117.3, 121.65, 341.3, 2.18, 2061, 22004),
 (154, 1200056, 'fish_riversmeet_1', 148, '', 0, -1952.0, 251.85, 0.0, -0.78, 2062, 22004),
 (155, 1200056, 'fish_riversmeet_2', 148, '', 0, -1888.0, 251.85, 192.0, -0.32, 2062, 22004),
-(156, 1200056, 'fish_riversmeet_3', 148, '', 0, -2080.0, 267.85, 64.0, -0.89, 2062, 22004);
+(156, 1200056, 'fish_riversmeet_3', 148, '', 0, -2080.0, 267.85, 64.0, -0.89, 2062, 22004),
+(9140, 1200056, 'quest_fsh200_remora', 128, '', 0, 762.0, 2.03, 2.0, 1.52, 9140, 22004);
