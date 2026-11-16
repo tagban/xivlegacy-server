@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1969 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1968 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -1972,5 +1972,4 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (31007, 1091105, 'wdk300_powle_box', 206, '', 0, 175.0, 27.5, -1571.0, 0.0, 0, 0, NULL),
 (31008, 1000411, 'wdk300_elyn_quivers_hold', 206, '', 0, 228.0, 12.0, -1278.0, 0.8, 0, 0, NULL),
 (31009, 1000596, 'marcelloix', 206, '', 0, 0.0, 8.75, -1259.5, 1.57, 0, 0, NULL),
-(31010, 1091106, 'wdk306_fetish_materials', 206, '', 0, -30.0, 7.95, -1250.0, 0.0, 0, 0, NULL),
 (31011, 1091107, 'wdk306_mirror_bank', 150, '', 0, 260.0, 5.46, -400.0, 0.0, 0, 0, NULL);

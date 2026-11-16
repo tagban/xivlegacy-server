@@ -25,13 +25,15 @@ local SUPPLE        = 1091102
 local BLOOMING      = 1091103
 local WORKSHOP_DOOR = 1091104
 local POWLE_BOX     = 1091105
-local FETISH_MATS   = 1091106
 local MIRROR        = 1091107
 
 local ATRIUM_ARROW    = 11000067
 local BLOOMING_BRANCH = 11000062
 local SUPPLE_BRANCH   = 11000063
 local STURDY_BRANCH   = 11000064
+local BLOOMING_BOW    = 11000058
+local SUPPLE_BOW      = 11000059
+local STURDY_BOW      = 11000060
 
 describe("The Mouths of Babes (Wdk200)", function()
     it("offer: A'naidjaa signs you on", function()
@@ -83,27 +85,28 @@ describe("The Mouths of Babes (Wdk200)", function()
             :expectNoRemoveItem()
     end)
 
-    it("SEQ_020: no branch yet, Wybir says where to look", function()
+    it("SEQ_020: no bow yet, Wybir says where to look", function()
         local w = walkthrough.start("Wdk200", 20)
+        w:give(SUPPLE_BRANCH, 1)
 
         w:talk(WYBIR):expectDelegate("processEvent020_2"):ack():expectNoRemoveItem()
     end)
 
-    it("SEQ_020: the wrong branches are sent back", function()
+    it("SEQ_020: the wrong bows are sent back", function()
         local w = walkthrough.start("Wdk200", 20)
-        w:give(STURDY_BRANCH, 1)
-        w:talk(WYBIR):expectDelegate("processEvent020_6"):ack():expectRemoveItem(STURDY_BRANCH, 1)
-        w:give(BLOOMING_BRANCH, 1)
-        w:talk(WYBIR):expectDelegate("processEvent020_7"):ack():expectRemoveItem(BLOOMING_BRANCH, 1)
+        w:give(STURDY_BOW, 1)
+        w:talk(WYBIR):expectDelegate("processEvent020_6"):ack():expectRemoveItem(STURDY_BOW, 1)
+        w:give(BLOOMING_BOW, 1)
+        w:talk(WYBIR):expectDelegate("processEvent020_7"):ack():expectRemoveItem(BLOOMING_BOW, 1)
         w:expectSequence(20)
     end)
 
-    it("SEQ_020: the supple branch mends the bow", function()
+    it("SEQ_020: the supple bow will do", function()
         local w = walkthrough.start("Wdk200", 20)
-        w:give(SUPPLE_BRANCH, 1)
+        w:give(SUPPLE_BOW, 1)
 
         w:talk(WYBIR):expectDelegate("processEvent025"):ack()
-            :expectRemoveItem(SUPPLE_BRANCH, 1)
+            :expectRemoveItem(SUPPLE_BOW, 1)
             :expectStartSequence(25)
     end)
 
@@ -285,17 +288,15 @@ describe("Spanning the Spectrum (Wdk306)", function()
     it("SEQ_010: no fetish yet", function()
         local w = walkthrough.start("Wdk306", 10)
 
-        w:stateChange(10)
-            :expectEnpc(NICOLIAUX, QFLAG_TALK)
-            :expectEnpc(FETISH_MATS, QFLAG_TALK)
+        w:stateChange(10):expectEnpc(NICOLIAUX, QFLAG_TALK)
         w:talk(NICOLIAUX):expectDelegate("processEventS000_1"):ack():expectNoRemoveItem()
         w:expectSequence(10)
     end)
 
-    it("SEQ_010: make a fetish and give it to Nicoliaux", function()
+    it("SEQ_010: the fetish goes to Nicoliaux", function()
         local w = walkthrough.start("Wdk306", 10)
 
-        w:talk(FETISH_MATS):expectAddItem(FETISH, 1)
+        w:give(FETISH, 1)
         w:talk(NICOLIAUX):expectDelegate("processEventS002_2"):ack()
             :expectDelegate("processEvent020"):ack()
             :expectRemoveItem(FETISH, 1)

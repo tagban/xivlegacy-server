@@ -23,8 +23,9 @@ children's real teacher, turns up late (wdk20030), and A'naidjaa pays
 The orchard meeting is a push circle (1091100). Wybir ships stripped in
 1.23b; the data gives her a class path and a spot at Quarrymill. The
 branches are ??? objects (1091101-1091103). In the client the branch is
-turned into a bow by a requested-items synthesis; the server has no such
-recipe, so the branch itself stands for the bow when you hand it over.
+turned into a bow by a requested-items synthesis and Wybir looks at the
+bow. The server has no such recipe yet; Wybir still checks for the bow
+and takes it.
 
 Journal: rows 65-69 of the quest journal sheet. Map markers: see MARKERS.
 
@@ -56,6 +57,10 @@ ITEM_ATRIUM_ARROW		= 11000067;
 ITEM_BLOOMING_BRANCH	= 11000062;
 ITEM_SUPPLE_BRANCH		= 11000063;
 ITEM_STURDY_BRANCH		= 11000064;
+-- Crafted from the branches (requested-items synthesis, normal bag).
+ITEM_BLOOMING_BOW		= 11000058;
+ITEM_SUPPLE_BOW			= 11000059;
+ITEM_STURDY_BOW			= 11000060;
 
 REWARD_GIL	= 20000;
 REWARD_EXP	= 2000;
@@ -64,12 +69,12 @@ REWARD_EXP	= 2000;
 ORCHARD_SPOT = { 206, -36.0, 8.0, -1256.0, 0.0 };
 WYBIR_SPOT = { 154, 1443.0, -13.32, 878.0, -0.7 };
 
--- The branches: the client's look and ask handlers, the key item, and
--- what Wybir says when it comes back as a bow (nil: the right one).
+-- The branches: the client's look and ask handlers, the key item, the
+-- bow made from it, and what Wybir says of that bow (nil: the right one).
 BRANCHES = {
-	[ENPC_STURDY_BRANCH] = { look = "processEvent020_3_2", ask = "processEvent020_3", item = ITEM_STURDY_BRANCH, verdict = "processEvent020_6" },
-	[ENPC_SUPPLE_BRANCH] = { look = "processEvent020_4_2", ask = "processEvent020_4", item = ITEM_SUPPLE_BRANCH },
-	[ENPC_BLOOMING_BRANCH] = { look = "processEvent020_5_2", ask = "processEvent020_5", item = ITEM_BLOOMING_BRANCH, verdict = "processEvent020_7" },
+	[ENPC_STURDY_BRANCH] = { look = "processEvent020_3_2", ask = "processEvent020_3", item = ITEM_STURDY_BRANCH, bow = ITEM_STURDY_BOW, verdict = "processEvent020_6" },
+	[ENPC_SUPPLE_BRANCH] = { look = "processEvent020_4_2", ask = "processEvent020_4", item = ITEM_SUPPLE_BRANCH, bow = ITEM_SUPPLE_BOW },
+	[ENPC_BLOOMING_BRANCH] = { look = "processEvent020_5_2", ask = "processEvent020_5", item = ITEM_BLOOMING_BRANCH, bow = ITEM_BLOOMING_BOW, verdict = "processEvent020_7" },
 };
 
 -- Guild chatter. The client names no speakers; the guild members are
@@ -158,6 +163,16 @@ local function heldBranch(player)
 	return nil, nil;
 end
 
+local function heldBow(player)
+	local bag = player:GetItemPackage(INVENTORY_NORMAL);
+	for _, branch in pairs(BRANCHES) do
+		if (bag:HasItem(branch.bow)) then
+			return branch;
+		end
+	end
+	return nil;
+end
+
 function onTalk(player, quest, npc, eventName)
 	local npcClassId = npc.GetActorClassId();
 	local seq = quest:GetSequence();
@@ -193,19 +208,19 @@ function onTalk(player, quest, npc, eventName)
 			keyItems:AddItem(branch.item, 1, 1);
 		end
 	elseif (seq == SEQ_020 and npcClassId == ENPC_WYBIR) then
-		local _, branch = heldBranch(player);
+		local branch = heldBow(player);
+		local bag = player:GetItemPackage(INVENTORY_NORMAL);
 		if (branch == nil) then
-			-- Where to look for timber.
+			-- No bow yet: where to look for timber.
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent020_2");
 		elseif (branch.verdict ~= nil) then
 			-- Too stiff, or too thin: try another branch.
 			callClientFunction(player, "delegateEvent", player, quest, branch.verdict);
-			keyItems:RemoveItem(branch.item, 1);
+			bag:RemoveItem(branch.bow, 1);
 		else
-			-- The supple branch: the bow is mended. It ends on an after-warp
-			-- fade.
+			-- The supple bow: just right. It ends on an after-warp fade.
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent025");
-			keyItems:RemoveItem(branch.item, 1);
+			bag:RemoveItem(branch.bow, 1);
 			quest:StartSequence(SEQ_025);
 			player:EndEvent();
 			warpTo(player, WYBIR_SPOT);

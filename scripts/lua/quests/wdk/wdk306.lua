@@ -13,7 +13,7 @@ Prereq: Level 36, Carpenter, Wdk300
 Marcelloix means to take the children on an outing into the forest and
 asks you to look after them while he gets leave. In the Acorn Orchard
 they are making fairweather fetishes against rain (wdk30610); make one
-from the materials lying about and give it to Nicoliaux, and Marcelloix
+and give it to Nicoliaux, and Marcelloix
 comes back with leave granted (wdk30620). Nonolato at the Quiver's Hold
 sends you to Wybir at Quarrymill to clear the way (processEvent023, 025).
 A'naidjaa hears the way is safe and Marcelloix asks you along
@@ -24,9 +24,10 @@ and everyone draws (wdk30650), Ryd asks you to draw for him
 experience.
 
 Marcelloix ships stripped in 1.23b; the data gives him a class path and a
-spot in the Oak Atrium. The fetish materials (1091106) and the bank of
-the Mirror (1091107) are ??? objects; the orchard is Wdk200's push circle
-(1091100). Wybir's fight while you craft arrows (says 142-146) was a
+spot in the Oak Atrium. The bank of the Mirror (1091107) is a ???
+object; the orchard is Wdk200's push circle (1091100). In the client the
+fetish is a requested-items synthesis; the server has no such recipe yet,
+but Nicoliaux still checks for the fetish and takes it. Wybir's fight while you craft arrows (says 142-146) was a
 duty; it is not run here, and her briefing moves straight on. The
 children have no actors at the orchard (bar Nicoliaux) or at the Mirror,
 so their own lines there are left out.
@@ -58,10 +59,9 @@ ENPC_NONOLATO		= 1000463;
 ENPC_WYBIR			= 1000556;
 ENPC_MARCELLOIX		= 1000596;
 ENPC_ORCHARD		= 1091100; -- push circle in the Acorn Orchard (Wdk200's)
-ENPC_FETISH_MATS	= 1091106; -- ??? in the Acorn Orchard
 ENPC_MIRROR			= 1091107; -- ??? on the bank of the Mirror
 
-ITEM_FAIRWEATHER_FETISH	= 11000065;
+ITEM_FAIRWEATHER_FETISH	= 11000065; -- crafted, normal bag
 
 REWARD_GIL	= 36000;
 REWARD_EXP	= 3600;
@@ -136,9 +136,6 @@ function onStateChange(player, quest, sequence)
 			quest:SetENpc(classId);
 		end
 	end
-	if (sequence == SEQ_010) then
-		quest:SetENpc(ENPC_FETISH_MATS, QFLAG_TALK);
-	end
 	if (MAIN[sequence] ~= nil) then
 		if (MAIN[sequence][2] == QFLAG_PUSH) then
 			quest:SetENpc(MAIN[sequence][1], QFLAG_PUSH, false, true);
@@ -162,7 +159,7 @@ end
 function onTalk(player, quest, npc, eventName)
 	local npcClassId = npc.GetActorClassId();
 	local seq = quest:GetSequence();
-	local keyItems = player:GetItemPackage(INVENTORY_KEYITEMS);
+	local bag = player:GetItemPackage(INVENTORY_NORMAL);
 
 	if (seq == SEQ_ACCEPT and npcClassId == ENPC_MARCELLOIX) then
 		-- The outing; watch the children (1 = accepted). Accepting ends on
@@ -176,18 +173,12 @@ function onTalk(player, quest, npc, eventName)
 		end
 		player:EndEvent();
 		return;
-	elseif (npcClassId == ENPC_FETISH_MATS and seq == SEQ_010) then
-		-- The twigs and scraps lying about: a fetish of your own. In the
-		-- client this is a requested-items synthesis.
-		if (not keyItems:HasItem(ITEM_FAIRWEATHER_FETISH)) then
-			keyItems:AddItem(ITEM_FAIRWEATHER_FETISH, 1, 1);
-		end
 	elseif (npcClassId == ENPC_NICOLIAUX and seq == SEQ_010) then
-		if (keyItems:HasItem(ITEM_FAIRWEATHER_FETISH)) then
+		if (bag:HasItem(ITEM_FAIRWEATHER_FETISH)) then
 			-- He takes yours; wdk30620: Marcelloix is back with leave. It ends
 			-- on an after-warp fade.
 			callClientFunction(player, "delegateEvent", player, quest, "processEventS002_2");
-			keyItems:RemoveItem(ITEM_FAIRWEATHER_FETISH, 1);
+			bag:RemoveItem(ITEM_FAIRWEATHER_FETISH, 1);
 			afterWarpScene(player, quest, "processEvent020", SEQ_020, ORCHARD_SPOT);
 			return;
 		end
