@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1957 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1969 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -1961,4 +1961,16 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (30918, 1001797, 'asw_imp_scholar', 206, '', 0, 80.0, 20.0, -1448.0, 0.0, 0, 0, NULL),
 (30919, 1001798, 'asw_imp_strumpet', 175, '', 0, -178.0, 191.0, 104.0, 0.0, 0, 0, NULL),
 (30920, 1001799, 'asw_imp_senior', 175, '', 0, -88.0, 196.0, 60.0, 0.0, 0, 0, NULL),
-(30921, 1001800, 'asw_imp_songster', 175, '', 0, -60.0, 196.0, 44.0, 0.0, 0, 0, NULL);
+(30921, 1001800, 'asw_imp_songster', 175, '', 0, -60.0, 196.0, 44.0, 0.0, 0, 0, NULL),
+(31000, 1091100, 'wdk200_acorn_orchard_trigger', 206, '', 0, -36.0, 8.0, -1256.0, 0.0, 0, 0, NULL),
+(31001, 1091101, 'wdk200_sturdy_branch', 154, '', 0, 1435.0, -13.0, 878.0, 0.0, 0, 0, NULL),
+(31002, 1091102, 'wdk200_supple_branch', 154, '', 0, 1440.0, -14.03, 885.0, 0.0, 0, 0, NULL),
+(31003, 1091103, 'wdk200_blooming_branch', 154, '', 0, 1448.0, -16.5, 890.0, 0.0, 0, 0, NULL),
+(31004, 1000556, 'wybir', 154, '', 0, 1445.0, -13.32, 880.0, 2.4, 0, 0, NULL),
+(31005, 1091104, 'wdk300_workshop_door', 206, '', 0, -11.0, 12.07, -1254.0, 0.0, 0, 0, NULL),
+(31006, 1000412, 'wdk300_ryd_wailing_barracks', 206, '', 0, 166.0, 27.5, -1572.0, 1.57, 0, 0, NULL),
+(31007, 1091105, 'wdk300_powle_box', 206, '', 0, 175.0, 27.5, -1571.0, 0.0, 0, 0, NULL),
+(31008, 1000411, 'wdk300_elyn_quivers_hold', 206, '', 0, 228.0, 12.0, -1278.0, 0.8, 0, 0, NULL),
+(31009, 1000596, 'marcelloix', 206, '', 0, 0.0, 8.75, -1259.5, 1.57, 0, 0, NULL),
+(31010, 1091106, 'wdk306_fetish_materials', 206, '', 0, -30.0, 7.95, -1250.0, 0.0, 0, 0, NULL),
+(31011, 1091107, 'wdk306_mirror_bank', 150, '', 0, 260.0, 5.46, -400.0, 0.0, 0, 0, NULL);
