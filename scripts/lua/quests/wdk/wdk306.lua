@@ -31,8 +31,7 @@ duty; it is not run here, and her briefing moves straight on. The
 children have no actors at the orchard (bar Nicoliaux) or at the Mirror,
 so their own lines there are left out.
 
-Journal: rows 127-136 of the quest journal sheet. The client has no map
-markers for this quest.
+Journal: rows 127-136 of the quest journal sheet. Map markers: see MARKERS.
 
 ]]
 
@@ -107,6 +106,17 @@ MAIN = {
 	[SEQ_045] = { ENPC_MIRROR, QFLAG_TALK },
 	[SEQ_050] = { ENPC_MIRROR, QFLAG_TALK },
 	[SEQ_055] = { ENPC_MIRROR, QFLAG_REWARD },
+};
+
+-- Map markers (client marker block 11030201): each points at the next
+-- cutscene, wdk306<n>0 = processEvent0<n>0; steps between scenes have none.
+MARKERS = {
+	[SEQ_000] = 11030201;
+	[SEQ_010] = 11030202;
+	[SEQ_030] = 11030203;
+	[SEQ_040] = 11030204;
+	[SEQ_045] = 11030205;
+	[SEQ_055] = 11030206;
 };
 
 function onStart(player, quest)
@@ -240,5 +250,5 @@ function onPush(player, quest, npc, eventName)
 end
 
 function getJournalMapMarkerList(player, quest)
-	return nil;
+	return MARKERS[quest:GetSequence()];
 end

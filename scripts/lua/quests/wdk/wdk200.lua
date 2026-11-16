@@ -26,8 +26,7 @@ branches are ??? objects (1091101-1091103). In the client the branch is
 turned into a bow by a requested-items synthesis; the server has no such
 recipe, so the branch itself stands for the bow when you hand it over.
 
-Journal: rows 65-69 of the quest journal sheet. The client has no map
-markers for this quest.
+Journal: rows 65-69 of the quest journal sheet. Map markers: see MARKERS.
 
 ]]
 
@@ -103,6 +102,15 @@ TALKS = {
 		[ENPC_HABREHAM] = "processEvent030_6",
 		[ENPC_NICOLIAUX] = "processEvent030_7",
 	},
+};
+
+-- Map markers (client marker block 11030001): each points at the next
+-- cutscene, wdk200<n>0 = processEvent0<n>0; steps between scenes have none.
+MARKERS = {
+	[SEQ_000] = 11030001;
+	[SEQ_010] = 11030002;
+	[SEQ_020] = 11030002;
+	[SEQ_025] = 11030003;
 };
 
 function onStart(player, quest)
@@ -240,5 +248,5 @@ function onPush(player, quest, npc, eventName)
 end
 
 function getJournalMapMarkerList(player, quest)
-	return nil;
+	return MARKERS[quest:GetSequence()];
 end

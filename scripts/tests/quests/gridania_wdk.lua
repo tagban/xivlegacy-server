@@ -126,6 +126,20 @@ describe("The Mouths of Babes (Wdk200)", function()
             :expectExp(2000)
             :expectCompleted(110300)
     end)
+
+    it("map markers point at the next cutscene", function()
+        for _, row in ipairs({
+            { 0, 11030001 },
+            { 10, 11030002 },
+            { 20, 11030002 },
+            { 25, 11030003 },
+            { 30, nil },
+        }) do
+            local w = walkthrough.start("Wdk200", row[1])
+            w:stateChange(row[1])
+            if row[2] then w:expectMarkers(row[2]) else w:expectMarkers() end
+        end
+    end)
 end)
 
 local BUILDING_BLOCK = 11000029
@@ -226,6 +240,28 @@ describe("Hide and Seek Shenanigans (Wdk300)", function()
             :expectExp(3000)
             :expectCompleted(110301)
     end)
+
+    it("map markers point at the next cutscene", function()
+        for _, row in ipairs({
+            { 0, 11030101 },
+            { 10, 11030102 },
+            { 20, nil },
+            { 21, nil },
+            { 22, nil },
+            { 23, nil },
+            { 24, nil },
+            { 26, 11030103 },
+            { 30, 11030104 },
+            { 40, 11030105 },
+            { 50, nil },
+            { 55, 11030106 },
+            { 60, nil },
+        }) do
+            local w = walkthrough.start("Wdk300", row[1])
+            w:stateChange(row[1])
+            if row[2] then w:expectMarkers(row[2]) else w:expectMarkers() end
+        end
+    end)
 end)
 
 local FETISH = 11000065
@@ -298,5 +334,23 @@ describe("Spanning the Spectrum (Wdk306)", function()
             :expectGil(36000)
             :expectExp(3600)
             :expectCompleted(110302)
+    end)
+
+    it("map markers point at the next cutscene", function()
+        for _, row in ipairs({
+            { 0, 11030201 },
+            { 10, 11030202 },
+            { 20, nil },
+            { 23, nil },
+            { 30, 11030203 },
+            { 40, 11030204 },
+            { 45, 11030205 },
+            { 50, nil },
+            { 55, 11030206 },
+        }) do
+            local w = walkthrough.start("Wdk306", row[1])
+            w:stateChange(row[1])
+            if row[2] then w:expectMarkers(row[2]) else w:expectMarkers() end
+        end
     end)
 end)

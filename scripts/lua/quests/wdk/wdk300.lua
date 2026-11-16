@@ -31,8 +31,7 @@ The workshop door is a ??? object (1091104) and Powle's box another
 the children's lines inside the workshop have no actor to hang on and are
 left out; the parleys are reduced to talking to each child again.
 
-Journal: rows 115-126 of the quest journal sheet. The client has no map
-markers for this quest.
+Journal: rows 115-126 of the quest journal sheet. Map markers: see MARKERS.
 
 ]]
 
@@ -156,6 +155,17 @@ MAIN = {
 
 -- Elyn's three answers, in order.
 ELYN_TALKS = { "processEventS003_1", "processEventS003_3", "processEventS003_6" };
+
+-- Map markers (client marker block 11030101): each points at the next
+-- cutscene, wdk300<n>0 = processEvent0<n>0; steps between scenes have none.
+MARKERS = {
+	[SEQ_000] = 11030101;
+	[SEQ_010] = 11030102;
+	[SEQ_026] = 11030103;
+	[SEQ_030] = 11030104;
+	[SEQ_040] = 11030105;
+	[SEQ_055] = 11030106;
+};
 
 function onStart(player, quest)
 	quest:StartSequence(SEQ_000);
@@ -282,5 +292,5 @@ function onPush(player, quest, npc, eventName)
 end
 
 function getJournalMapMarkerList(player, quest)
-	return nil;
+	return MARKERS[quest:GetSequence()];
 end
