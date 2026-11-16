@@ -70,11 +70,52 @@ pub struct GatherNodeSpawn {
     /// Which harvest command opens the minigame. See
     /// [`HARVEST_TYPE_MINE`] / [`HARVEST_TYPE_LOG`] / [`HARVEST_TYPE_FISH`].
     pub harvest_type: u32,
+    /// `server_gather_node_quests`: the `(quest_id, sequence)` steps this
+    /// point is for. Empty: an ordinary point everyone sees.
+    pub quest_gates: Vec<(u32, u32)>,
+}
+
+/// Whether a quest-only point is open to a player holding `held`
+/// `(quest_id, sequence)` steps: one of its gates names a quest the player
+/// holds, at that sequence.
+pub fn quest_gate_open(gates: &[(u32, u32)], held: &[(u32, u32)]) -> bool {
+    gates.iter().any(|g| held.contains(g))
+}
+
+/// The `(quest_id, sequence)` of every quest in a journal.
+pub fn held_quest_steps(journal: &crate::actor::quest::QuestJournal) -> Vec<(u32, u32)> {
+    journal
+        .slots
+        .iter()
+        .flatten()
+        .map(|q| (q.quest_id(), q.get_sequence()))
+        .collect()
+}
+
+/// Parse the loader's `GROUP_CONCAT` of `questId:sequence` pairs.
+pub fn parse_quest_gates(s: &str) -> Vec<(u32, u32)> {
+    s.split(',')
+        .filter_map(|pair| {
+            let (q, seq) = pair.trim().split_once(':')?;
+            Some((q.parse().ok()?, seq.parse().ok()?))
+        })
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn quest_gate_opens_only_on_a_listed_step() {
+        let gates = parse_quest_gates("110500:10,110500:15");
+        assert_eq!(gates, vec![(110500, 10), (110500, 15)]);
+        assert!(quest_gate_open(&gates, &[(110001, 0), (110500, 15)]));
+        assert!(!quest_gate_open(&gates, &[(110500, 20)]), "step over");
+        assert!(!quest_gate_open(&gates, &[]), "quest not held");
+        assert!(parse_quest_gates("").is_empty());
+        assert!(parse_quest_gates("junk,1:x").is_empty());
+    }
 
     #[test]
     fn harvest_type_validation_accepts_all_six_commands() {
