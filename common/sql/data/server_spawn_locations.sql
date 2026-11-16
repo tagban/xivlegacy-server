@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1965 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1997 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -1969,4 +1969,36 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (31064, 1091161, 'wvr306_gold_court_trigger', 209, '', 0, -136.0, 198.0, 160.0, 0.0, 0, 0, NULL),
 (31070, 1000932, 'slyhhia', 209, '', 0, -216.0, 229.5, 301.0, 0.0, 0, 0, NULL),
 (31071, 1000853, 'damielliot_sickroom', 209, '', 0, -222.0, 229.5, 310.0, 2.6, 0, 0, NULL),
-(31072, 1001039, 'alc_softspoken_schoolgirl', 209, '', 0, -224.5, 229.5, 308.0, 1.0, 0, 0, NULL);
+(31072, 1001039, 'alc_softspoken_schoolgirl', 209, '', 0, -224.5, 229.5, 308.0, 1.0, 0, 0, NULL),
+(31000, 1091100, 'wdk200_acorn_orchard_trigger', 206, '', 0, -36.0, 8.0, -1256.0, 0.0, 0, 0, NULL),
+(31001, 1091101, 'wdk200_sturdy_branch', 154, '', 0, 1435.0, -13.0, 878.0, 0.0, 0, 0, NULL),
+(31002, 1091102, 'wdk200_supple_branch', 154, '', 0, 1440.0, -14.03, 885.0, 0.0, 0, 0, NULL),
+(31003, 1091103, 'wdk200_blooming_branch', 154, '', 0, 1448.0, -16.5, 890.0, 0.0, 0, 0, NULL),
+(31004, 1000556, 'wybir', 154, '', 0, 1445.0, -13.32, 880.0, 2.4, 0, 0, NULL),
+(31005, 1091104, 'wdk300_workshop_door', 206, '', 0, -11.0, 12.07, -1254.0, 0.0, 0, 0, NULL),
+(31006, 1000412, 'wdk300_ryd_wailing_barracks', 206, '', 0, 166.0, 27.5, -1572.0, 1.57, 0, 0, NULL),
+(31007, 1091105, 'wdk300_powle_box', 206, '', 0, 175.0, 27.5, -1571.0, 0.0, 0, 0, NULL),
+(31008, 1000411, 'wdk300_elyn_quivers_hold', 206, '', 0, 228.0, 12.0, -1278.0, 0.8, 0, 0, NULL),
+(31009, 1000596, 'marcelloix', 206, '', 0, 0.0, 8.75, -1259.5, 1.57, 0, 0, NULL),
+(31011, 1091107, 'wdk306_mirror_bank', 150, '', 0, 260.0, 5.46, -400.0, 0.0, 0, 0, NULL),
+(31012, 1000368, 'lalatta_ebony_stalls', 206, '', 0, 186.0, 27.7, -1395.0, 1.3, 0, 0, NULL),
+(31013, 1000467, 'lalatta_atelier_fenyll', 206, '', 0, 96.0, 20.0, -1476.0, 0.8, 0, 0, NULL),
+(31014, 1091108, 'tan200_chocobo_stables_trigger', 206, '', 0, 66.0, 11.73, -1246.0, 0.0, 0, 0, NULL),
+(31015, 1000978, 'gylbart', 154, '', 0, 1455.0, -11.73, 870.0, 2.4, 0, 0, NULL),
+(31016, 1091109, 'tan300_owls_nest_road_trigger', 145, '', 0, 2530.0, 174.0, 1270.0, 0.0, 0, 0, NULL),
+(31017, 1091110, 'tan300_clearwater_trigger', 145, '', 0, 2170.0, 142.13, 630.0, 0.0, 0, 0, NULL),
+(31018, 1091111, 'tan306_lifemend_stump_trigger', 150, '', 0, -640.0, 4.0, -990.0, 0.0, 0, 0, NULL),
+(31019, 1091112, 'tan306_fenyll_gathering_trigger', 206, '', 0, 93.0, 20.0, -1472.0, 0.0, 0, 0, NULL),
+(31020, 1091120, 'hrv200_quarrymill_weeds_trigger', 154, '', 0, 1448.6, -11.99, 920.3, 0.0, 0, 0, NULL),
+(31021, 1091121, 'hrv306_rychyld_growery_trigger', 206, '', 0, -206.0, 18.1, -1483.0, 0.0, 0, 0, NULL),
+(31022, 1091122, 'hrv306_flower_beds_trigger', 153, '', 0, -1311.0, -0.25, -214.0, 0.0, 0, 0, NULL),
+(31023, 1091123, 'hrv306_moogle_beds_trigger', 150, '', 0, -572.0, 3.38, -770.0, 0.0, 0, 0, NULL),
+(31024, 1091124, 'cul_bismarck_alley_trigger', 230, '', 0, -490.0, 39.5, 33.0, 0.0, 0, 0, NULL),
+(31025, 1091125, 'cul300_merchant_trigger', 209, '', 0, 44.0, 195.5, 258.0, 0.0, 0, 0, NULL),
+(31026, 1091126, 'cul306_bethel_trigger', 230, '', 0, -591.0, 6.0, 64.0, 0.0, 0, 0, NULL),
+(31027, 1091127, 'cul306_prudentia_outside_trigger', 230, '', 0, -533.0, 28.0, 121.0, 0.0, 0, 0, NULL),
+(31040, 1000176, 'mimidoa', 230, '', 0, -483.67, 44.5, 404.51, 0.793, 0, 1015, NULL),
+(31041, 1091140, 'bsm300_zssapa_trigger', 176, '', 0, 104.0, 174.5, -1131.0, 0.0, 0, 0, NULL),
+(31042, 1091141, 'bsm300_cavein_trigger', 176, '', 0, 86.0, 168.0, -1275.0, 0.0, 0, 0, NULL),
+(31043, 1091142, 'bsm300_ferry_trigger', 230, '', 0, -838.0, 6.0, 238.0, 0.0, 0, 0, NULL),
+(31044, 1000155, 'sisipu', 230, '', 0, -617.56, 4.55, 344.91, 1.11, 0, 0, NULL);
