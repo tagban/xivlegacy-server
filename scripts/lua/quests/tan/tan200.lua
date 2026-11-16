@@ -25,8 +25,8 @@ at the guild Lalatta vouches for you and Hereward pays 20,000 gil and
 Lalatta and Gylbart ship stripped in 1.23b; the data gives them class
 paths and spots (Lalatta at the Ebony Stalls, Gylbart at Quarrymill). The
 walk to the stables is a push circle (1091108). In the client both
-repairs are requested-items syntheses that make the repaired armor; the
-server has no such recipes yet, but the hand-ins still check for it.
+repairs are requested-items syntheses that make the repaired armor; here
+they are quest recipes (questrecipes/tan.lua).
 
 Journal: rows 5-12 and 190 of the quest journal sheet. Map markers: see MARKERS.
 
@@ -56,9 +56,10 @@ ENPC_GYLBART		= 1000978; -- at Quarrymill
 ENPC_STABLES		= 1091108; -- push circle at the chocobo stables
 
 -- Items
-ITEM_DAMAGED_ARMOR	= 11000044; -- key items
+-- Normal bag: the quest recipes' materials and result.
+ITEM_DAMAGED_ARMOR	= 11000044;
 ITEM_ARMOR_REMNANTS	= 11000046;
-ITEM_REPAIRED_ARMOR	= 11000045; -- crafted, normal bag
+ITEM_REPAIRED_ARMOR	= 11000045;
 
 -- Quest Flags
 FLAG_WALKED	= 0;	-- wore the armor to the stables
@@ -154,7 +155,6 @@ function onTalk(player, quest, npc, eventName)
 	local seq = quest:GetSequence();
 	local data = quest:GetData();
 	local bag = player:GetItemPackage(INVENTORY_NORMAL);
-	local keyItems = player:GetItemPackage(INVENTORY_KEYITEMS);
 
 	if (seq == SEQ_ACCEPT and npcClassId == ENPC_HEREWARD) then
 		local accepted = callClientFunction(player, "delegateEvent", player, quest, "processEventHerewardStart");
@@ -173,18 +173,18 @@ function onTalk(player, quest, npc, eventName)
 	elseif (npcClassId == ENPC_LALATTA and seq == SEQ_010) then
 		-- tan20020: she gives you the Wailers' armor to mend.
 		callClientFunction(player, "delegateEvent", player, quest, "processEvent020");
-		keyItems:AddItem(ITEM_DAMAGED_ARMOR, 1, 1);
+		bag:AddItem(ITEM_DAMAGED_ARMOR, 1, 1);
 		quest:StartSequence(SEQ_020);
 	elseif (npcClassId == ENPC_LALATTA and seq == SEQ_020) then
 		if (bag:HasItem(ITEM_REPAIRED_ARMOR)) then
 			-- The repair handed over; tan20030: her own attempt in tatters.
 			-- It ends on an after-warp fade.
 			bag:RemoveItem(ITEM_REPAIRED_ARMOR, 1);
-			if (keyItems:HasItem(ITEM_DAMAGED_ARMOR)) then
-				keyItems:RemoveItem(ITEM_DAMAGED_ARMOR, 1);
+			if (bag:HasItem(ITEM_DAMAGED_ARMOR)) then
+				bag:RemoveItem(ITEM_DAMAGED_ARMOR, 1);
 			end
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent030");
-			keyItems:AddItem(ITEM_ARMOR_REMNANTS, 1, 1);
+			bag:AddItem(ITEM_ARMOR_REMNANTS, 1, 1);
 			quest:StartSequence(SEQ_030);
 			player:EndEvent();
 			GetWorldManager():DoZoneChange(player, LALATTA_SPOT[1], nil, 0, 15, LALATTA_SPOT[2], LALATTA_SPOT[3], LALATTA_SPOT[4], LALATTA_SPOT[5]);
@@ -199,8 +199,8 @@ function onTalk(player, quest, npc, eventName)
 	elseif (npcClassId == ENPC_HEREWARD and seq == SEQ_033) then
 		if (bag:HasItem(ITEM_REPAIRED_ARMOR)) then
 			-- The new armor: he sends you to the stables in it.
-			if (keyItems:HasItem(ITEM_ARMOR_REMNANTS)) then
-				keyItems:RemoveItem(ITEM_ARMOR_REMNANTS, 1);
+			if (bag:HasItem(ITEM_ARMOR_REMNANTS)) then
+				bag:RemoveItem(ITEM_ARMOR_REMNANTS, 1);
 			end
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent033_3");
 			quest:StartSequence(SEQ_035);

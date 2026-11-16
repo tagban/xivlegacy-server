@@ -24,8 +24,7 @@ The orchard meeting is a push circle (1091100). Wybir ships stripped in
 1.23b; the data gives her a class path and a spot at Quarrymill. The
 branches are ??? objects (1091101-1091103). In the client the branch is
 turned into a bow by a requested-items synthesis and Wybir looks at the
-bow. The server has no such recipe yet; Wybir still checks for the bow
-and takes it.
+bow; here that is a quest recipe (questrecipes/wdk.lua).
 
 Journal: rows 65-69 of the quest journal sheet. Map markers: see MARKERS.
 
@@ -54,6 +53,7 @@ ENPC_BLOOMING_BRANCH = 1091103;
 
 -- Key items
 ITEM_ATRIUM_ARROW		= 11000067;
+-- The branches go in the normal bag: they are the quest recipes' material.
 ITEM_BLOOMING_BRANCH	= 11000062;
 ITEM_SUPPLE_BRANCH		= 11000063;
 ITEM_STURDY_BRANCH		= 11000064;
@@ -154,7 +154,7 @@ local function warpTo(player, spot)
 end
 
 local function heldBranch(player)
-	local bag = player:GetItemPackage(INVENTORY_KEYITEMS);
+	local bag = player:GetItemPackage(INVENTORY_NORMAL);
 	for classId, branch in pairs(BRANCHES) do
 		if (bag:HasItem(branch.item)) then
 			return classId, branch;
@@ -200,12 +200,13 @@ function onTalk(player, quest, npc, eventName)
 		local branch = BRANCHES[npcClassId];
 		callClientFunction(player, "delegateEvent", player, quest, branch.look);
 		local take = callClientFunction(player, "delegateEvent", player, quest, branch.ask);
-		if (take == 1 and not keyItems:HasItem(branch.item)) then
+		local bag = player:GetItemPackage(INVENTORY_NORMAL);
+		if (take == 1 and not bag:HasItem(branch.item)) then
 			local _, held = heldBranch(player);
 			if (held ~= nil) then
-				keyItems:RemoveItem(held.item, 1);
+				bag:RemoveItem(held.item, 1);
 			end
-			keyItems:AddItem(branch.item, 1, 1);
+			bag:AddItem(branch.item, 1, 1);
 		end
 	elseif (seq == SEQ_020 and npcClassId == ENPC_WYBIR) then
 		local branch = heldBow(player);

@@ -27,8 +27,8 @@ push circle (1091112), as is the stump (1091111). Lalatta stands in the
 guild for the Echo (the data gives her second body 1000467 a class path
 and a spot). In the client the boots are mended by a requested-items
 synthesis and Maddeline first sets a practice synthesis of five pieces;
-the server has no such recipes yet, so the practice is skipped but
-Maddeline still checks for the mended boots.
+here the mending is a quest recipe (questrecipes/tan.lua) and the
+practice is skipped.
 
 Journal: rows 108-114, 191 and 196 of the quest journal sheet. Map markers: see MARKERS.
 
@@ -56,8 +56,8 @@ ENPC_GATHERING		= 1091112; -- push circle where the pupils gather
 ENPC_LIFEMEND_STUMP	= 1091111; -- push circle at Lifemend Stump
 
 -- Items
-ITEM_DAMAGED_BOOTS	= 11000048; -- key item
-ITEM_VINTAGE_BOOTS	= 11000049; -- crafted, normal bag
+ITEM_DAMAGED_BOOTS	= 11000048; -- normal bag: the quest recipe's material
+ITEM_VINTAGE_BOOTS	= 11000049;
 
 REWARD_GIL	= 36000;
 REWARD_EXP	= 3600;
@@ -162,7 +162,6 @@ function onTalk(player, quest, npc, eventName)
 	local npcClassId = npc.GetActorClassId();
 	local seq = quest:GetSequence();
 	local bag = player:GetItemPackage(INVENTORY_NORMAL);
-	local keyItems = player:GetItemPackage(INVENTORY_KEYITEMS);
 
 	if (seq == SEQ_ACCEPT and npcClassId == ENPC_HEREWARD) then
 		local accepted = callClientFunction(player, "delegateEvent", player, quest, "processEventHerewardStart");
@@ -175,8 +174,8 @@ function onTalk(player, quest, npc, eventName)
 		if (bag:HasItem(ITEM_VINTAGE_BOOTS)) then
 			-- The boots mended; they are to go to Hereward.
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent027_10");
-			if (keyItems:HasItem(ITEM_DAMAGED_BOOTS)) then
-				keyItems:RemoveItem(ITEM_DAMAGED_BOOTS, 1);
+			if (bag:HasItem(ITEM_DAMAGED_BOOTS)) then
+				bag:RemoveItem(ITEM_DAMAGED_BOOTS, 1);
 			end
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent028");
 			quest:StartSequence(SEQ_028);
@@ -239,7 +238,7 @@ function onPush(player, quest, npc, eventName)
 		-- of boots.
 		callClientFunction(player, "delegateEvent", player, quest, "processEvent023");
 		callClientFunction(player, "delegateEvent", player, quest, "processEvent025");
-		player:GetItemPackage(INVENTORY_KEYITEMS):AddItem(ITEM_DAMAGED_BOOTS, 1, 1);
+		player:GetItemPackage(INVENTORY_NORMAL):AddItem(ITEM_DAMAGED_BOOTS, 1, 1);
 		quest:StartSequence(SEQ_027);
 	end
 	player:EndEvent();

@@ -26,8 +26,8 @@ experience.
 Marcelloix ships stripped in 1.23b; the data gives him a class path and a
 spot in the Oak Atrium. The bank of the Mirror (1091107) is a ???
 object; the orchard is Wdk200's push circle (1091100). In the client the
-fetish is a requested-items synthesis; the server has no such recipe yet,
-but Nicoliaux still checks for the fetish and takes it. Wybir's fight while you craft arrows (says 142-146) was a
+fetish is a requested-items synthesis; here it is a quest recipe
+(questrecipes/wdk.lua), and Nicoliaux checks for the fetish and takes it. Wybir's fight while you craft arrows (says 142-146) was a
 duty; it is not run here, and her briefing moves straight on. The
 children have no actors at the orchard (bar Nicoliaux) or at the Mirror,
 so their own lines there are left out.

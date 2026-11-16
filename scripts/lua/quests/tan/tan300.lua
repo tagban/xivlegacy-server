@@ -22,9 +22,9 @@ settle up: 30,000 gil and 3,000 experience (tan30050).
 
 The road near Owl's Nest and the lakeshore are push circles (1091109,
 1091110): the bandits and Lalatta here are cutscene-only. In the client
-the bag is a requested-items synthesis; the server has no such recipe
-yet, but the lake still checks for the bag and the knights' scene takes
-it. The parley with the bandit leader is reduced to stepping back
+the bag is a requested-items synthesis; here it is a quest recipe
+(questrecipes/tan.lua). The lake checks for the bag and the knights'
+scene takes it. The parley with the bandit leader is reduced to stepping back
 into the circle.
 
 Journal: rows 102-107 of the quest journal sheet. Map markers: see MARKERS.
