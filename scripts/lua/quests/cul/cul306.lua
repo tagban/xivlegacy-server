@@ -25,8 +25,9 @@ whole tangle comes out (cul30665). Charlys explains and pays you
 quests.
 
 Prudentia has no actor outside the kitchen, so the bethel and the spot near
-the Bismarck are push circles. The meatball is a crafted good: the circle
-does nothing until it is in the bag.
+the Bismarck are push circles. The meatball is a crafted good (a quest
+recipe, like the foulbelly meatball it is made from; three cooks hand over
+the odd ingredients): the circle does nothing until it is in the bag.
 
 Journal: steps 58-65 of the Limsa Lominsa quest journal sheet.
 
@@ -57,6 +58,19 @@ ENPC_OUTSIDE	= 1091127; -- push circle where Prudentia waits near the Bismarck
 
 -- Items
 ITEM_MEATBALL	= 11000071; -- Devilbelly Meatball
+ITEM_DEVILSHROOM	= 11000072;
+ITEM_QUEER_MEAT		= 11000074; -- Queer-smelling Meat
+ITEM_SWEET_SPICE	= 11000075; -- Sweet-smelling Spice
+
+-- While you cook the antidote (SEQ_050) three cooks hand over the odd
+-- ingredients once each (journal: ask the guild's other culinarians); the
+-- foulbelly and devilbelly meatballs are quest recipes
+-- (questrecipes/cul.lua), with a button mushroom from the market.
+GIVES = {
+	[ENPC_GERULF] = { flag = 0, item = ITEM_QUEER_MEAT, qty = 1 },
+	[ENPC_FRAILOISE] = { flag = 1, item = ITEM_SWEET_SPICE, qty = 1 },
+	[ENPC_HLAHONO] = { flag = 2, item = ITEM_DEVILSHROOM, qty = 2 },
+};
 
 -- Quest Markers (each names its scene in the client's marker index)
 MRKR_ECHO			= 11044202;
@@ -197,6 +211,11 @@ function onTalk(player, quest, npc, eventName)
 		return;
 	elseif (TALKS[seq] ~= nil and TALKS[seq][npcClassId] ~= nil) then
 		delegate(player, quest, TALKS[seq][npcClassId]);
+		local give = GIVES[npcClassId];
+		if (seq == SEQ_050 and give ~= nil and not quest:GetData():GetFlag(give.flag)) then
+			player:GetItemPackage(INVENTORY_NORMAL):AddItem(give.item, give.qty, 1);
+			quest:GetData():SetFlag(give.flag);
+		end
 	end
 
 	quest:UpdateENPCs();

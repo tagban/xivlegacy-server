@@ -21,7 +21,8 @@ cooking and thanks you (cul20030): 20,000 gil and 2,000 experience, like
 the other level-20 guild quests (the client's reward table has no row for
 it).
 
-The dish is a crafted good: the chef checks the bag for it and has a
+The dish is a crafted good (a quest recipe in questrecipes/cul.lua, from the
+five ingredients on her recipe): the chef checks the bag for it and has a
 hurry-up line for when it isn't there yet. The journal names only
 Prudentia's piping hot pie crust, so Pulmia takes the same dish.
 
