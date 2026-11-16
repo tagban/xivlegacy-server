@@ -8683,8 +8683,14 @@ impl PacketProcessor {
             (c.base.zone_id, c.base.position_x, c.base.position_z)
         };
         let mut best: Option<(f32, u32)> = None;
+        let quest_hidden = self
+            .world
+            .quest_hidden_gather_nodes_for(&self.registry, handle.actor_id)
+            .await;
         for node in self.world.gather_node_actors_in_zone(zone_id).await {
-            if self.world.is_gather_node_resting_for(node, handle.actor_id) {
+            if self.world.is_gather_node_resting_for(node, handle.actor_id)
+                || quest_hidden.contains(&node)
+            {
                 continue;
             }
             let Some(h) = self.registry.get(node).await else {

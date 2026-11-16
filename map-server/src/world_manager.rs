@@ -33,7 +33,7 @@
 //! All `RwLock<HashMap>` so independent zones / sessions don't contend.
 #![allow(dead_code)]
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -520,6 +520,10 @@ pub(crate) const INSTANCE_STREAM_RADIUS: f32 = 100.0;
 /// What `send_instance_update` gathers under the zone lock: actors to spawn,
 /// actors gone out of range, the player's position and region, the zone
 /// name, and players who came into or left range.
+/// `(zone_id, unique_id)` of a quest-only gathering point -> the
+/// `(quest_id, sequence)` steps it is open on.
+type GatherQuestGates = HashMap<(u32, String), Vec<(u32, u32)>>;
+
 type StreamScan = (
     Vec<u32>,
     Vec<u32>,
@@ -1332,6 +1336,11 @@ pub struct WorldManager {
     /// this map.
     gather_node_actors: RwLock<HashMap<u32, (u32, String)>>,
 
+    /// Quest-only gathering points (`server_gather_node_quests`), keyed by
+    /// `(zone_id, unique_id)`: the `(quest_id, sequence)` steps a player must
+    /// be on to see and use the point. A point not listed is for everyone.
+    gather_node_quest_gates: RwLock<GatherQuestGates>,
+
     /// Gathering points that were picked clean, by live actor id, with
     /// the unix time they come back. A resting point is left out of the
     /// zone-in bundle and the spawn stream, so clients drop it until the
@@ -1364,6 +1373,7 @@ impl WorldManager {
             seamless_boundaries: RwLock::new(HashMap::new()),
             gather_node_metadata: RwLock::new(HashMap::new()),
             gather_node_actors: RwLock::new(HashMap::new()),
+            gather_node_quest_gates: RwLock::new(HashMap::new()),
             gather_nodes_resting: std::sync::RwLock::new(HashMap::new()),
             gather_nodes_resting_for: std::sync::RwLock::new(HashMap::new()),
             sessions: RwLock::new(HashMap::new()),
@@ -1445,6 +1455,44 @@ impl WorldManager {
     /// clicked/targeted" to the per-node harvest template.
     pub async fn gather_node_identity(&self, actor_id: u32) -> Option<(u32, String)> {
         self.gather_node_actors.read().await.get(&actor_id).cloned()
+    }
+
+    /// Live gathering points that are quest-only and closed to a player
+    /// holding these `(quest_id, sequence)` steps: they stay out of that
+    /// player's world, and the harvest commands skip them.
+    pub async fn quest_hidden_gather_nodes(&self, held: &[(u32, u32)]) -> HashSet<u32> {
+        let gates = self.gather_node_quest_gates.read().await;
+        if gates.is_empty() {
+            return HashSet::new();
+        }
+        self.gather_node_actors
+            .read()
+            .await
+            .iter()
+            .filter(|(_, key)| {
+                gates
+                    .get(*key)
+                    .is_some_and(|gate| !crate::gathering::quest_gate_open(gate, held))
+            })
+            .map(|(id, _)| *id)
+            .collect()
+    }
+
+    /// [`Self::quest_hidden_gather_nodes`] for a live player, read from
+    /// their quest journal.
+    pub async fn quest_hidden_gather_nodes_for(
+        &self,
+        registry: &ActorRegistry,
+        player_id: u32,
+    ) -> HashSet<u32> {
+        if self.gather_node_quest_gates.read().await.is_empty() {
+            return HashSet::new();
+        }
+        let held = match registry.get(player_id).await {
+            Some(h) => crate::gathering::held_quest_steps(&h.character.read().await.quest_journal),
+            None => Vec::new(),
+        };
+        self.quest_hidden_gather_nodes(&held).await
     }
 
     /// Live actor ids of the gathering points in `zone_id`.
@@ -1623,6 +1671,8 @@ impl WorldManager {
         {
             let mut meta = self.gather_node_metadata.write().await;
             meta.clear();
+            let mut quest_gates = self.gather_node_quest_gates.write().await;
+            quest_gates.clear();
             for row in gather_rows {
                 if !crate::gathering::is_valid_harvest_type(row.harvest_type) {
                     gather_invalid_type += 1;
@@ -1647,6 +1697,9 @@ impl WorldManager {
                 );
                 let mut z = zone_arc.write().await;
                 if z.add_spawn_location(seed).is_ok() {
+                    if !row.quest_gates.is_empty() {
+                        quest_gates.insert((row.zone_id, row.unique_id.clone()), row.quest_gates);
+                    }
                     meta.insert(
                         (row.zone_id, row.unique_id),
                         GatherNodeMetadata {
@@ -3240,6 +3293,9 @@ impl WorldManager {
         // Picked-clean gathering points stay out until they come back
         // (for everyone, or for just this player after they used one up).
         neighbours.retain(|(id, _, _)| !self.is_gather_node_resting_for(*id, actor_id));
+        // Quest-only gathering points only for a player on their step.
+        let quest_hidden = self.quest_hidden_gather_nodes_for(registry, actor_id).await;
+        neighbours.retain(|(id, _, _)| !quest_hidden.contains(id));
         // Seasonal-event NPCs only while their event runs.
         neighbours.retain(|(id, _, _)| !crate::seasonal::actor_hidden(*id));
         tracing::info!(
@@ -4416,7 +4472,18 @@ impl WorldManager {
         // NOT already have, holding the zone read-lock only for the scan.
         // The player's live grid position + region ride along for the
         // partner-zone point query below.
-        let (new_ids, far_ids, player_position, region_id, zone_name, new_players, gone_players): StreamScan = {
+        // Quest-only gathering points closed to this player: not streamed
+        // in, and dropped once their quest step is over.
+        let quest_hidden = self.quest_hidden_gather_nodes_for(registry, actor_id).await;
+        let (
+            new_ids,
+            mut far_ids,
+            player_position,
+            region_id,
+            zone_name,
+            new_players,
+            gone_players,
+        ): StreamScan = {
             let z = zone_arc.read().await;
             let center = z.core.find_actor(actor_id).map(|a| a.position);
             let ids = z
@@ -4455,6 +4522,7 @@ impl WorldManager {
                 .filter(|id| !session.actor_instance_list.contains(id))
                 .filter(|id| !session.hidden_actors.contains(id))
                 .filter(|id| !self.is_gather_node_resting_for(*id, actor_id))
+                .filter(|id| !quest_hidden.contains(id))
                 .collect();
             // Other players in range the client hasn't spawned yet. The
             // range query only pairs actors of one content copy, so inside
@@ -4528,6 +4596,11 @@ impl WorldManager {
         };
         self.sync_known_players(registry, &client, session_id, &new_players, &gone_players)
             .await;
+        for id in session.actor_instance_list.iter() {
+            if quest_hidden.contains(id) && !far_ids.contains(id) {
+                far_ids.push(*id);
+            }
+        }
 
         if !far_ids.is_empty() {
             for id in &far_ids {
@@ -4755,6 +4828,45 @@ mod tests {
             false,
             Some(&StubNavmeshLoader),
         )
+    }
+
+    /// A quest-only gathering point is hidden from a player who doesn't
+    /// hold its quest at one of its steps, and open to one who does;
+    /// ordinary points are never hidden.
+    #[tokio::test]
+    async fn quest_gathering_point_shows_only_on_its_quest_step() {
+        let wm = WorldManager::new();
+        for unique in ["fish_quest", "fish_any"] {
+            wm.gather_node_metadata.write().await.insert(
+                (135, unique.to_string()),
+                GatherNodeMetadata {
+                    harvest_node_id: 2001,
+                    harvest_type: crate::gathering::HARVEST_TYPE_FISH,
+                },
+            );
+        }
+        wm.gather_node_quest_gates
+            .write()
+            .await
+            .insert((135, "fish_quest".to_string()), vec![(110500, 10)]);
+        let (quest_point, open_point) = (0x4009_0011, 0x4009_0012);
+        wm.note_gather_node_actor(quest_point, 135, "fish_quest")
+            .await;
+        wm.note_gather_node_actor(open_point, 135, "fish_any").await;
+
+        let hidden = wm.quest_hidden_gather_nodes(&[]).await;
+        assert!(hidden.contains(&quest_point), "no quest: hidden");
+        assert!(
+            !hidden.contains(&open_point),
+            "ordinary point: never hidden"
+        );
+        let hidden = wm.quest_hidden_gather_nodes(&[(110500, 0)]).await;
+        assert!(
+            hidden.contains(&quest_point),
+            "quest held, wrong step: hidden"
+        );
+        let hidden = wm.quest_hidden_gather_nodes(&[(110500, 10)]).await;
+        assert!(hidden.is_empty(), "on the step: shown");
     }
 
     /// `note_gather_node_actor` only indexes actors whose `(zone_id,
