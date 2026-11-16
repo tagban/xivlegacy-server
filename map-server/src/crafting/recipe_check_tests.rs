@@ -383,3 +383,141 @@ fn scramble_keeps_the_materials() {
         assert_eq!(a, vec![5, 5, 7, 9]);
     }
 }
+
+// --- Quest recipes (scripts/lua/questrecipes.lua): our own rows for the
+// crafting guild quests' story items.
+
+/// A Lua state with `scripts/lua` on the require path and questrecipes.lua
+/// (and every guild's questrecipes/<guild>.lua) loaded.
+fn quest_recipes_lua() -> Lua {
+    let lua = synthesis_lua();
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../scripts/lua");
+    let package: mlua::Table = lua.globals().get("package").unwrap();
+    package
+        .set("path", format!("{0}/?.lua;{0}/?/init.lua", root.display()))
+        .unwrap();
+    lua.load(r#"require("questrecipes")"#)
+        .exec()
+        .expect("load questrecipes.lua");
+    lua.load(
+        r"
+        -- A player holding `quest` at `seq` (nil quest: holds none).
+        function fakePlayer(quest, seq)
+            return {
+                HasQuest = function(self, id) return id == quest end,
+                GetQuest = function(self, id)
+                    return { GetSequence = function() return seq end }
+                end,
+            }
+        end
+        ",
+    )
+    .exec()
+    .unwrap();
+    lua
+}
+
+/// The crafting class of a guild quest, by its quest id (110300 Wdk200 ...).
+fn guild_quest_class(quest: u32) -> Option<u32> {
+    match quest {
+        110300..=110302 => Some(29),
+        110320..=110322 => Some(30),
+        110360..=110362 => Some(32),
+        110380..=110382 => Some(33),
+        110400..=110402 => Some(34),
+        110420..=110422 => Some(35),
+        110440..=110442 => Some(36),
+        _ => None,
+    }
+}
+
+/// A quest recipe is offered only to a player holding its quest at one of
+/// its sequences, for its materials in any slot order, and is made like any
+/// other recipe (GetMaterials, crystals, level).
+#[test]
+fn quest_recipe_opens_only_on_its_quest_step() {
+    let lua = quest_recipes_lua();
+    let found: Vec<u32> = lua
+        .load(
+            r"
+            QuestRecipes.add({
+                quest = 999001, sequences = { 10, 15 },
+                resultItemID = 11000004, classId = 30, level = 18,
+                crystalId1 = 1000003, crystalQuantity1 = 2,
+                materials = { 10001006, 10001006, 10008001 },
+            })
+            local mats = { 0, 10008001, 0, 10001006, 10001006, 0, 0, 0 }
+            local function count(p, m) return #QuestRecipes.forMaterials(p, m or mats) end
+            local r = QuestRecipes.forMaterials(fakePlayer(999001, 15), mats)[1]
+            local g = r:GetMaterials()
+            return {
+                count(fakePlayer(999001, 10)),
+                count(fakePlayer(999001, 15)),
+                count(fakePlayer(999001, 0)),
+                count(fakePlayer(nil, 0)),
+                count(fakePlayer(999001, 10), { 10001006, 10008001 }),
+                count(fakePlayer(999001, 10), { 0, 0 }),
+                #g, g[1] + g[2] + g[3], g[4],
+                r.resultQuantity, r.crystalId2,
+            }
+            ",
+        )
+        .eval()
+        .unwrap();
+    assert_eq!(
+        &found[..6],
+        &[1, 1, 0, 0, 0, 0],
+        "on step 10/15 only, exact materials"
+    );
+    assert_eq!(found[6], 8, "GetMaterials pads to 8 slots");
+    assert_eq!(found[7], 10001006 * 2 + 10008001);
+    assert_eq!(found[8], 0);
+    assert_eq!(
+        (found[9], found[10]),
+        (1, 0),
+        "defaults: one item, no second crystal"
+    );
+}
+
+/// Every guild's quest recipe names real items and crystals, belongs to its
+/// quest's crafting class, sits at a level that class can reach, and can be
+/// synthesized at that level.
+#[test]
+fn every_quest_recipe_is_well_formed() {
+    let lua = quest_recipes_lua();
+    let items = items();
+    let list: mlua::Table = lua.load("return QuestRecipes.list").eval().unwrap();
+    let mut seen = std::collections::HashSet::new();
+    for r in list.sequence_values::<mlua::Table>() {
+        let r = r.unwrap();
+        let quest: u32 = r.get("quest").unwrap();
+        let result: u32 = r.get("resultItemID").unwrap();
+        let class: u32 = r.get("classId").unwrap();
+        let level: u32 = r.get("level").unwrap();
+        let what = format!("quest {quest} recipe for {result}");
+        assert_eq!(guild_quest_class(quest), Some(class), "{what}: class");
+        assert!((1..=50).contains(&level), "{what}: level {level}");
+        assert!(items.contains_key(&result), "{what}: result item");
+        let seqs: Vec<u32> = r.get("sequences").unwrap();
+        assert!(!seqs.is_empty(), "{what}: no sequences");
+        let mats: Vec<u32> = r.get("materials").unwrap();
+        assert!(!mats.is_empty() && mats.len() <= 8, "{what}: materials");
+        for m in mats.iter().filter(|&&m| m != 0) {
+            assert!(items.contains_key(m), "{what}: material {m}");
+        }
+        for c in ["crystalId1", "crystalId2"] {
+            let id: u32 = r.get(c).unwrap();
+            assert!(id == 0 || items.contains_key(&id), "{what}: {c} {id}");
+        }
+        let key: String = r.get("key").unwrap();
+        assert!(
+            seen.insert((quest, key)),
+            "{what}: two recipes share materials"
+        );
+        let why: String = lua
+            .load(format!("return checkRecipe({level}, 0, {quest}, 20)"))
+            .eval()
+            .unwrap();
+        assert!(why.is_empty(), "{what}: {why}");
+    }
+}
