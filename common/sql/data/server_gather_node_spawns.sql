@@ -1,4 +1,5 @@
--- server_gather_node_spawns: game data, 57 rows. Reloaded whole when this file changes.
+-- server_gather_node_spawns: game data, 60 rows. Reloaded whole when this file changes.
+-- 9180-9182: quest-only mining points for Min200 (our own rows, not retail; see server_gather_node_quests).
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_gather_node_spawns`;
 INSERT INTO `server_gather_node_spawns` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `harvestNodeId`, `harvestType`) VALUES
@@ -58,4 +59,7 @@ INSERT INTO `server_gather_node_spawns` (`id`, `actorClassId`, `uniqueId`, `zone
 (153, 1200056, 'fish_the_fields_of_glory_3', 145, '', 0, 2117.3, 121.65, 341.3, 2.18, 2061, 22004),
 (154, 1200056, 'fish_riversmeet_1', 148, '', 0, -1952.0, 251.85, 0.0, -0.78, 2062, 22004),
 (155, 1200056, 'fish_riversmeet_2', 148, '', 0, -1888.0, 251.85, 192.0, -0.32, 2062, 22004),
-(156, 1200056, 'fish_riversmeet_3', 148, '', 0, -2080.0, 267.85, 64.0, -0.89, 2062, 22004);
+(156, 1200056, 'fish_riversmeet_3', 148, '', 0, -2080.0, 267.85, 64.0, -0.89, 2062, 22004),
+(9180, 1200052, 'quest_min200_petrified_wood', 176, '', 0, 70.0, 168.0, -1252.0, 0.8, 9180, 22002),
+(9181, 1200052, 'quest_min200_sheeps_eye', 176, '', 0, 96.0, 168.0, -1250.0, -0.6, 9181, 22002),
+(9182, 1200052, 'quest_min200_ewer_fragment', 176, '', 0, 92.0, 168.0, -1280.0, -2.4, 9182, 22002);
