@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1968 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1976 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -1972,4 +1972,12 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (31007, 1091105, 'wdk300_powle_box', 206, '', 0, 175.0, 27.5, -1571.0, 0.0, 0, 0, NULL),
 (31008, 1000411, 'wdk300_elyn_quivers_hold', 206, '', 0, 228.0, 12.0, -1278.0, 0.8, 0, 0, NULL),
 (31009, 1000596, 'marcelloix', 206, '', 0, 0.0, 8.75, -1259.5, 1.57, 0, 0, NULL),
-(31011, 1091107, 'wdk306_mirror_bank', 150, '', 0, 260.0, 5.46, -400.0, 0.0, 0, 0, NULL);
+(31011, 1091107, 'wdk306_mirror_bank', 150, '', 0, 260.0, 5.46, -400.0, 0.0, 0, 0, NULL),
+(31012, 1000368, 'lalatta_ebony_stalls', 206, '', 0, 186.0, 27.7, -1395.0, 1.3, 0, 0, NULL),
+(31013, 1000467, 'lalatta_atelier_fenyll', 206, '', 0, 96.0, 20.0, -1476.0, 0.8, 0, 0, NULL),
+(31014, 1091108, 'tan200_chocobo_stables_trigger', 206, '', 0, 66.0, 11.73, -1246.0, 0.0, 0, 0, NULL),
+(31015, 1000978, 'gylbart', 154, '', 0, 1455.0, -11.73, 870.0, 2.4, 0, 0, NULL),
+(31016, 1091109, 'tan300_owls_nest_road_trigger', 145, '', 0, 2530.0, 174.0, 1270.0, 0.0, 0, 0, NULL),
+(31017, 1091110, 'tan300_clearwater_trigger', 145, '', 0, 2170.0, 142.13, 630.0, 0.0, 0, 0, NULL),
+(31018, 1091111, 'tan306_lifemend_stump_trigger', 150, '', 0, -640.0, 4.0, -990.0, 0.0, 0, 0, NULL),
+(31019, 1091112, 'tan306_fenyll_gathering_trigger', 206, '', 0, 93.0, 20.0, -1472.0, 0.0, 0, 0, NULL);
