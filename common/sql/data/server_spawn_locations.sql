@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1961 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1965 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -1965,4 +1965,8 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (31020, 1091120, 'hrv200_quarrymill_weeds_trigger', 154, '', 0, 1448.6, -11.99, 920.3, 0.0, 0, 0, NULL),
 (31021, 1091121, 'hrv306_rychyld_growery_trigger', 206, '', 0, -206.0, 18.1, -1483.0, 0.0, 0, 0, NULL),
 (31022, 1091122, 'hrv306_flower_beds_trigger', 153, '', 0, -1311.0, -0.25, -214.0, 0.0, 0, 0, NULL),
-(31023, 1091123, 'hrv306_moogle_beds_trigger', 150, '', 0, -572.0, 3.38, -770.0, 0.0, 0, 0, NULL);
+(31023, 1091123, 'hrv306_moogle_beds_trigger', 150, '', 0, -572.0, 3.38, -770.0, 0.0, 0, 0, NULL),
+(31024, 1091124, 'cul_bismarck_alley_trigger', 230, '', 0, -490.0, 39.5, 33.0, 0.0, 0, 0, NULL),
+(31025, 1091125, 'cul300_merchant_trigger', 209, '', 0, 44.0, 195.5, 258.0, 0.0, 0, 0, NULL),
+(31026, 1091126, 'cul306_bethel_trigger', 230, '', 0, -591.0, 6.0, 64.0, 0.0, 0, 0, NULL),
+(31027, 1091127, 'cul306_prudentia_outside_trigger', 230, '', 0, -533.0, 28.0, 121.0, 0.0, 0, 0, NULL);
