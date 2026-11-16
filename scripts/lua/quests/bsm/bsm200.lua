@@ -23,8 +23,9 @@ horn); the journal follows the smith's lowest branch, so only that one is
 scripted.
 
 Mimidoa only stands in instances in 1.23b; here he has a public spawn on the
-balcony (spawn 31040). The quest pieces have no recipe on this server yet,
-so they are checked in the bag as they would come out of a synthesis.
+balcony (spawn 31040). The quest pieces come from our quest recipes
+(questrecipes/bsm.lua: the case on SEQ_010, the trembler on SEQ_015) and
+are checked in the bag as they come out of the synthesis.
 
 Journal: steps 111-114 of the quest journal sheet (0B/45/08/1B).
 

@@ -1,4 +1,5 @@
--- gamedata_gather_node_items: game data, 539 rows. Reloaded whole when this file changes.
+-- gamedata_gather_node_items: game data, 540 rows. Reloaded whole when this file changes.
+-- 9140: quest-only point for Fsh200's pixie remora (our own row, not retail; see server_gather_node_quests).
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `gamedata_gather_node_items`;
 INSERT INTO `gamedata_gather_node_items` (`id`, `itemCatalogId`, `remainder`, `aim`, `sweetspot`, `maxYield`) VALUES
@@ -541,4 +542,5 @@ INSERT INTO `gamedata_gather_node_items` (`id`, `itemCatalogId`, `remainder`, `a
 (5527, 10009204, 80, 50, 30, 3),
 (5528, 3011115, 80, 10, 30, 3),
 (5529, 3011135, 80, 50, 30, 3),
-(5530, 10009204, 80, 50, 30, 3);
+(5530, 10009204, 80, 50, 30, 3),
+(9140, 11000127, 80, 20, 30, 1);

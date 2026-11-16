@@ -24,8 +24,8 @@ experience.
 Simplified here: the island (the captives, the items to fetch and the
 earplug prompts, the danceIsland_* functions) has no zone on this server,
 so bsm30610, bsm30620 and bsm30630 play back to back. Mimidoa has a public
-spawn on the forge balcony (31040). The mold has no recipe on this server
-yet, so it is checked in the bag as it would come out of a synthesis.
+spawn on the forge balcony (31040). The mold comes from our quest recipe
+(questrecipes/bsm.lua, on SEQ_005) and is checked in the bag.
 
 Journal: steps 104-110 of the quest journal sheet (0B/45/08/1B).
 

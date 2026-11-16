@@ -1,4 +1,5 @@
--- gamedata_gather_nodes: game data, 116 rows. Reloaded whole when this file changes.
+-- gamedata_gather_nodes: game data, 117 rows. Reloaded whole when this file changes.
+-- 9140: quest-only point for Fsh200's pixie remora (our own row, not retail; see server_gather_node_quests).
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `gamedata_gather_nodes`;
 INSERT INTO `gamedata_gather_nodes` (`id`, `grade`, `attempts`, `item1`, `item2`, `item3`, `item4`, `item5`, `item6`, `item7`, `item8`, `item9`, `item10`, `item11`) VALUES
@@ -117,4 +118,5 @@ INSERT INTO `gamedata_gather_nodes` (`id`, `grade`, `attempts`, `item1`, `item2`
 (2110, 5, 3, 5519, 5520, 5521, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
 (2111, 4, 3, 5522, 5523, 5524, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
 (2112, 5, 3, 5525, 5526, 5527, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
-(2113, 4, 3, 5528, 5529, 5530, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+(2113, 4, 3, 5528, 5529, 5530, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
+(9140, 2, 3, 9140, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);

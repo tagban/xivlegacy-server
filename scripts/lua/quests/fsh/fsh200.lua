@@ -16,8 +16,9 @@ and the pirates lure the Sahagin out with pixie remoras, and sends you to
 fish some up off the cliffs of lowland La Noscea. Bring them back to her
 (fsh20020) for 20,000 gil and 2,000 experience.
 
-The remora is a quest-only catch that fishing on this server doesn't yield
-yet; it is checked in the bag as it would come off the line.
+The remora is a quest-only catch: our fishing point 9140 on the Lower La
+Noscea shore (server_gather_node_quests) shows only on SEQ_010 and yields
+it; it is checked in the bag as it comes off the line.
 
 Journal: steps 43, 44 and 118 of the quest journal sheet (0B/45/08/1B).
 
