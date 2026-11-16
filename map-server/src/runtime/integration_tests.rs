@@ -4229,6 +4229,11 @@ async fn load_gather_resolver_round_trips_seeded_rows() {
     assert_eq!(node2.num_items(), 5);
 }
 
+/// Ids of our own quest-only gathering rows (crafting/gathering guild
+/// quests): spawns, node templates and node items, kept apart from the
+/// retail catalog.
+const QUEST_GATHER_IDS: std::ops::RangeInclusive<u32> = 9100..=9199;
+
 /// Spawn loader round-trips the seeded rows and every row carries
 /// a valid harvest-type + position triple.
 #[tokio::test]
@@ -4243,7 +4248,22 @@ async fn load_gather_node_spawns_round_trips_seeded_rows() {
     assert!(spawns.len() >= 15);
     for s in &spawns {
         assert!(crate::gathering::is_valid_harvest_type(s.harvest_type));
-        assert!((2000..=2113).contains(&s.harvest_node_id));
+        if QUEST_GATHER_IDS.contains(&s.id) {
+            // Our quest-only points: their own template, and a quest gate.
+            assert!(
+                QUEST_GATHER_IDS.contains(&s.harvest_node_id),
+                "{}",
+                s.unique_id
+            );
+            assert!(
+                !s.quest_gates.is_empty(),
+                "{} has no quest gate",
+                s.unique_id
+            );
+        } else {
+            assert!((2000..=2113).contains(&s.harvest_node_id));
+            assert!(s.quest_gates.is_empty(), "{} is gated", s.unique_id);
+        }
         assert!(s.zone_id > 0);
         // Gathering points use the client's MiningPoint classes.
         assert!((1_200_052..=1_200_057).contains(&s.actor_class_id));
@@ -4498,13 +4518,22 @@ async fn gather_catalog_reseed_includes_mozk_rows() {
         .load_gather_resolver()
         .await
         .expect("gather catalog load");
+    // Our quest-only rows (QUEST_GATHER_IDS) come on top of the catalog.
+    let quest_nodes = resolver
+        .iter_nodes()
+        .filter(|n| QUEST_GATHER_IDS.contains(&n.id))
+        .count();
+    let quest_items = resolver
+        .iter_items()
+        .filter(|i| QUEST_GATHER_IDS.contains(&i.id))
+        .count();
     assert_eq!(
-        resolver.num_nodes(),
+        resolver.num_nodes() - quest_nodes,
         116,
         "2 tutorial + 114 mozk-sourced nodes"
     );
     assert_eq!(
-        resolver.num_items(),
+        resolver.num_items() - quest_items,
         539,
         "8 tutorial + 531 mozk-sourced items"
     );
