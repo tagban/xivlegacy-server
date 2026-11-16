@@ -4672,7 +4672,15 @@ async fn recalc_stats(
     } else {
         std::collections::HashMap::new()
     };
+    let hq_slots: std::collections::HashSet<u16> = if is_player {
+        db.load_equipped_hq_slots(actor_id, class_id)
+            .await
+            .unwrap_or_default()
+    } else {
+        std::collections::HashSet::new()
+    };
 
+    let mut param_changes: Vec<(usize, i16)> = Vec::new();
     let (pre_pools, post_pools, class_slot, main_skill_level) = {
         let mut c = handle.character.write().await;
         let pre = if is_player {
@@ -4703,6 +4711,7 @@ async fn recalc_stats(
             c.apply_player_stat_baseline();
             if let Ok(items) = catalogs.items.read() {
                 c.apply_player_gear_stats(&items, &equipped);
+                c.apply_player_hq_gear_stats(&items, &equipped, &hq_slots);
                 c.apply_player_weapon_stats(&items, &equipped);
                 c.apply_player_weapon_damage_power(&items, &equipped);
             }
@@ -4725,8 +4734,30 @@ async fn recalc_stats(
         // nameplate expect.
         let main_skill = c.chara.class.max(0) as u8;
         let main_skill_level = c.chara.level.max(1) as u16;
+        // The character window's stats (generalParameter): keep the
+        // copy the client has, and collect the slots that moved.
+        if is_player {
+            let new_params = c.player_general_parameter();
+            let old_params = c.battle_temp.general_parameter;
+            if broadcast {
+                param_changes = (0..new_params.len())
+                    .filter(|&i| new_params[i] != old_params[i])
+                    .map(|i| (i, new_params[i]))
+                    .collect();
+            }
+            c.battle_temp.general_parameter = new_params;
+        }
         (pre, post, main_skill, main_skill_level)
     };
+
+    // Stats go to the player only: other clients never show them.
+    if !param_changes.is_empty() {
+        for sub in
+            crate::packets::send::actor::build_battle_parameter_changes(actor_id, &param_changes)
+        {
+            send_to_self_if_player(registry, world, actor_id, sub.to_bytes()).await;
+        }
+    }
 
     // Broadcast HP/MP if any of the four pool values changed. Gating
     // keeps no-op recalcs (e.g. status-effect tick reroute) quiet — a

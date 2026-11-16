@@ -105,6 +105,8 @@ setlevel = 3
 maxall = 3
 setjob = 3
 gearset = 3
+equip = 3
+unequip = 3
 # only while the finaldays module is enabled (modules/finaldays)
 worldend = 3
 

@@ -45,7 +45,7 @@ account may use is its GM level against `settings/commands.toml`:
 | 0 | player | `!help`, `!gmhelp`, `!who`, `!version` |
 | 1 | helper | the same (give helpers commands by lowering them to 1) |
 | 2 | GM | moving players: `!zone`, `!camp`, `!warp`, `!home`, `!revive`, `!speed` |
-| 3 | senior GM | changing characters: `!givegil`, `!giveexp`, `!setclass`, `!setlevel`, `!setjob`, `!gearset`, grand companies, retainers |
+| 3 | senior GM | changing characters: `!givegil`, `!giveexp`, `!setclass`, `!setlevel`, `!setjob`, `!gearset`, `!equip`, grand companies, retainers |
 | 4 | administrator | `!setgm`, `!reload`, quest debugging; and any command not listed |
 
 Below `target_others` (GM by default) a command only works on whoever typed
@@ -96,6 +96,7 @@ camp = 0
 | `!maxall [level] [name]` | Every class to 50 (or `level`) |
 | `!setjob <job> [name]` / `!setjob none` | Take up a job (`pld`, `war`, `mnk`, `drg`, `brd`, `whm`, `blm`): the class goes to 30 if it's lower, the soul crystal and the job's first quest are given, then the switch to the class and the job / back to the class |
 | `!gearset <class or job> [level] [name]` | Give and equip a set for the class at that level (its own level by default) from the item tables: the best main hand (and shield or off-hand tool) of the class, armor and accessories everyone can wear with its stats. Ends on the job when a job is named and the soul crystal is held |
+| `!equip <item id> [hq\|+1\|+2\|+3] [name]` / `!unequip <slot\|all> [name]` | Put one piece on, in its own slot (a new one if the bag has none), with no class or level check / take a piece off (`head`, `body`, `legs`, `hands`, `feet`, `waist`, `neck`, `ears`, `wrists`, `ring`, `ring2`, `offhand`, or `all`) |
 | `!addkeyitem` `!delkeyitem` `!haskeyitem <id> [name]` | Key items |
 | `!setgil` `!takegil <amount> [name]` / `!givegil <qty> [name]` | Gil: set it, take some / add some |
 | `!addquest` `!completequest` `!delquest <quest id> [name]` | Quests |
@@ -107,7 +108,7 @@ camp = 0
 | `!event [name] [on\|off\|auto]` | Seasonal events (see below): list them, or switch one on or off whatever the date (`auto` goes back to its dates). Kept over restarts |
 | `!worldend` | (finaldays module, off by default) 1.0's Final Days: Nael van Darnus, his Imperials, Atomos and other level 70-80 monsters around you and in each city (the Bombard King only falls to /firedance). Again to end it |
 
-With no name, `!setclass`, `!setlevel`, `!maxall`, `!setjob` and `!gearset`
+With no name, `!setclass`, `!setlevel`, `!maxall`, `!setjob`, `!gearset`, `!equip` and `!unequip`
 work on the player you have targeted, else on you.
 
 The FFXI server's names work too: `!where`, `!ver`, `!raise`, `!kill <name>`,

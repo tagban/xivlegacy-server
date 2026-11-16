@@ -608,15 +608,20 @@ async fn equip_event_writes_db_row_and_sends_bracket_packets() {
     // set_end, end_change — 5 inventory packets. Post-2026-04-22 the
     // equip-triggered RecalcStats also emits the HP/MP state bundle
     // (2 subs — chara + player variants) since equipping non-zero-HP
-    // gear flips the pool values from zero to non-zero, so the total
-    // is now 7.
-    let mut received = 0;
-    while rx.try_recv().is_ok() {
-        received += 1;
+    // gear flips the pool values from zero to non-zero, and since
+    // 2026-11-16 the character window's stats (generalParameter, 2
+    // property packets here) — 9 in all, 4 of them property sets.
+    let mut ops = Vec::new();
+    while let Ok(bytes) = rx.try_recv() {
+        ops.push(u16::from_le_bytes([bytes[18], bytes[19]]));
     }
+    assert_eq!(ops.len(), 9, "{ops:x?}");
     assert_eq!(
-        received, 7,
-        "expected 5 inventory packets + 2 HP/MP state bundle packets"
+        ops.iter()
+            .filter(|&&op| op == crate::packets::opcodes::OP_SET_ACTOR_PROPERTY)
+            .count(),
+        4,
+        "expected 2 HP/MP + 2 character-window property packets: {ops:x?}"
     );
 }
 

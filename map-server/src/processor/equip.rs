@@ -287,7 +287,7 @@ impl PacketProcessor {
         }
     }
 
-    async fn remove_gear(&self, player_id: u32, equip_slot: u16) {
+    pub(super) async fn remove_gear(&self, player_id: u32, equip_slot: u16) {
         let class_id = self.current_class(player_id).await;
         let Ok(Some((server_item_id, catalog_id, quality))) =
             self.db.equipped_item(player_id, class_id, equip_slot).await
