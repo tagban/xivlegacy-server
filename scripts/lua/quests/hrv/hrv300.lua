@@ -24,8 +24,9 @@ at Amajina & Sons Linette and Nenekko take the letter (hrv30030), and
 Opyltyl hears the news and pays you (hrv30040): 30,000 gil and 3,000
 experience, like the other level-30 guild quests.
 
-The branch and the nut are gathered goods: Cicely checks the bag for them
-and has a line for when they aren't there yet.
+The branch and the nut are gathered goods, from two quest-only logging
+points in the Central Shroud (gathering points 9120-9121, shown on SEQ_014):
+Cicely checks the bag for them and has a line for when they aren't there yet.
 
 Journal: steps 138-144, 188 and 189 of the quest journal sheet.
 

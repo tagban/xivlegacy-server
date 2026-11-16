@@ -26,8 +26,9 @@ pays you back at the Growery (hrv30670): 36,000 gil and 3,600 experience,
 like the other level-36 guild quests.
 
 Rychyld has no class path in 1.23b, so her meetings are push circles. The
-yarzon dung is a gathered good: Opyltyl checks the bag for it and repeats
-his request when it isn't there yet. The pearl clover blossom is a key item.
+yarzon dung is a gathered good, from a quest-only logging point near
+Humblehearth (gathering point 9122, shown on SEQ_034): Opyltyl checks the
+bag for it and repeats his request when it isn't there yet. The pearl clover blossom is a key item.
 
 Journal: steps 145-156 of the quest journal sheet.
 
