@@ -1581,8 +1581,11 @@ impl Database {
                     r"SELECT id, actorClassId, uniqueId, zoneId,
                              privateAreaName, privateAreaLevel,
                              positionX, positionY, positionZ, rotation,
-                             harvestNodeId, harvestType
-                      FROM server_gather_node_spawns
+                             harvestNodeId, harvestType,
+                             (SELECT GROUP_CONCAT(gq.questId, ':', gq.sequence)
+                                FROM server_gather_node_quests gq
+                               WHERE gq.spawnId = gs.id)
+                      FROM server_gather_node_spawns gs
                       ORDER BY id ASC",
                 )?;
                 let rows: Vec<crate::gathering::GatherNodeSpawn> = stmt
@@ -1604,6 +1607,9 @@ impl Database {
                             harvest_type: r
                                 .get::<_, u32>(11)
                                 .unwrap_or(crate::gathering::HARVEST_TYPE_MINE),
+                            quest_gates: crate::gathering::parse_quest_gates(
+                                &r.get::<_, Option<String>>(12)?.unwrap_or_default(),
+                            ),
                         })
                     })?
                     .collect::<common::sql::Result<_>>()?;

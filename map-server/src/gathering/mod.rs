@@ -40,7 +40,9 @@ pub mod spawn;
 
 pub use node::{GatherNode, GatherNodeItem, NODE_ITEM_SLOTS};
 pub use resolver::GatherResolver;
-pub use spawn::{GatherNodeSpawn, HARVEST_TYPE_MINE};
+pub use spawn::{
+    GatherNodeSpawn, HARVEST_TYPE_MINE, held_quest_steps, parse_quest_gates, quest_gate_open,
+};
 
 // Re-exported for tests and callers that want the full harvest-type
 // namespace + the pivoted aim-slot record. Kept behind
