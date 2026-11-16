@@ -180,6 +180,13 @@ function onPush(player, quest, npc, eventName)
 	player:EndEvent();
 end
 
+-- Quest markers by sequence: each names the scene that ends the step in
+-- the client's marker index (01/03/05/A9, scene names in A8).
+MARKERS = {
+	[SEQ_005] = 11032201; -- bsm30610
+	[SEQ_030] = 11032205; -- bsm30640
+};
+
 function getJournalMapMarkerList(player, quest)
-	return {};
+	return MARKERS[quest:getSequence()];
 end

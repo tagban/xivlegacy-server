@@ -34,6 +34,7 @@ describe("An Ear for Quality (Bsm200)", function()
 
     it("SEQ_000: the forge's chatter, then Mimidoa's test", function()
         local w = walkthrough.start("Bsm200", 0)
+        w:expectMarkers(11032001)
 
         w:stateChange(0)
             :expectEnpc(MIMIDOA, QFLAG_TALK)
@@ -52,6 +53,7 @@ describe("An Ear for Quality (Bsm200)", function()
 
     it("SEQ_010: no gramophone case yet", function()
         local w = walkthrough.start("Bsm200", 10)
+        w:expectMarkers(11032002)
 
         w:stateChange(10):expectEnpc(MIMIDOA, QFLAG_TALK)
         w:talk(MIMIDOA):expectDelegate("processEvent007_2"):ack():expectNoRemoveItem()
@@ -69,6 +71,7 @@ describe("An Ear for Quality (Bsm200)", function()
 
     it("SEQ_015: Iofa's recipe, then his reminder", function()
         local w = walkthrough.start("Bsm200", 15)
+        w:expectMarkers(11032003)
 
         w:stateChange(15)
             :expectEnpc(IOFA, QFLAG_TALK)
@@ -120,6 +123,7 @@ describe("Song of the Sirens (Bsm300)", function()
 
     it("SEQ_006: Z'ssapa and the cave-in", function()
         local w = walkthrough.start("Bsm300", 6)
+        w:expectMarkers(11032101)
 
         w:stateChange(6):expectEnpc(ZSSAPA_CIRCLE, QFLAG_PUSH)
         w:talk(LINETTE):expectDelegate("processEvent004_2"):ack()
@@ -130,6 +134,7 @@ describe("Song of the Sirens (Bsm300)", function()
 
     it("SEQ_009: the trapped miner, and the ore", function()
         local w = walkthrough.start("Bsm300", 9)
+        w:expectMarkers(11032102)
 
         w:stateChange(9):expectEnpc(CAVEIN_CIRCLE, QFLAG_PUSH)
         w:push(CAVEIN_CIRCLE):expectDelegate("processEvent009"):ack()
@@ -149,6 +154,7 @@ describe("Song of the Sirens (Bsm300)", function()
 
     it("SEQ_020: the ferry captain and the sirens' waters", function()
         local w = walkthrough.start("Bsm300", 20)
+        w:expectMarkers(11032103)
 
         w:give(WINDWHEEL)
         w:stateChange(20):expectEnpc(FERRY_CIRCLE, QFLAG_PUSH)
@@ -191,6 +197,7 @@ describe("The Sound of Silence (Bsm306)", function()
 
     it("SEQ_005: no mold yet", function()
         local w = walkthrough.start("Bsm306", 5)
+        w:expectMarkers(11032201)
 
         w:stateChange(5):expectEnpc(MIMIDOA, QFLAG_TALK)
         w:talk(MIMIDOA):expectDelegate("processEvent005_6"):ack():expectNoRemoveItem()
@@ -211,6 +218,7 @@ describe("The Sound of Silence (Bsm306)", function()
 
     it("SEQ_030: the forge's word, the gramophone, and payment", function()
         local w = walkthrough.start("Bsm306", 30)
+        w:expectMarkers(11032205)
 
         w:stateChange(30):expectEnpc(MIMIDOA, QFLAG_REWARD)
         w:talk(SOSOZE):expectDelegate("processEvent030_8"):ack()

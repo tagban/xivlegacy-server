@@ -29,6 +29,7 @@ describe("To Fight a Fishback (Fsh200)", function()
 
     it("SEQ_000: the guild's chatter, then Maisie's job", function()
         local w = walkthrough.start("Fsh200", 0)
+        w:expectMarkers(11050001)
 
         w:stateChange(0)
             :expectEnpc(MAISIE, QFLAG_TALK)
@@ -42,6 +43,7 @@ describe("To Fight a Fishback (Fsh200)", function()
 
     it("SEQ_010: no remora yet", function()
         local w = walkthrough.start("Fsh200", 10)
+        w:expectMarkers(11050002)
 
         w:stateChange(10):expectEnpc(MAISIE, QFLAG_REWARD)
         w:talk(MAISIE):expectDelegate("processEvent010_9"):ack():expectNoRemoveItem()
@@ -70,6 +72,7 @@ describe("The Beast of the Barrel (Fsh300)", function()
 
     it("SEQ_000: Sisipu's bucket of feed", function()
         local w = walkthrough.start("Fsh300", 0)
+        w:expectMarkers(11050101)
 
         w:stateChange(0):expectEnpc(SISIPU, QFLAG_TALK)
         w:talk(NNMULIKA):expectDelegate("processEvent010_1000"):ack()
@@ -80,6 +83,7 @@ describe("The Beast of the Barrel (Fsh300)", function()
 
     it("SEQ_010: staying ashore", function()
         local w = walkthrough.start("Fsh300", 10)
+        w:expectMarkers(11050102)
 
         w:stateChange(10):expectEnpc(RERENASU, QFLAG_TALK)
         w:talk(SISIPU):expectDelegate("processEvent010_2"):ack()
@@ -108,6 +112,7 @@ describe("The Beast of the Barrel (Fsh300)", function()
 
     it("SEQ_029: back to the Barrel to dance and fish", function()
         local w = walkthrough.start("Fsh300", 29)
+        w:expectMarkers(11050104)
 
         w:stateChange(29):expectEnpc(RERENASU, QFLAG_TALK)
         w:talk(DACA_JINJAHL):expectDelegate("processEvent028_6"):ack()
@@ -120,6 +125,7 @@ describe("The Beast of the Barrel (Fsh300)", function()
 
     it("SEQ_050: Sisipu hears the tale", function()
         local w = walkthrough.start("Fsh300", 50)
+        w:expectMarkers(11050107)
 
         w:stateChange(50):expectEnpc(SISIPU, QFLAG_TALK)
         w:talk(SISIPU):expectDelegate("processEvent060"):ack():expectStartSequence(60)
@@ -127,6 +133,7 @@ describe("The Beast of the Barrel (Fsh300)", function()
 
     it("SEQ_060: the Echo at the netmaster's door", function()
         local w = walkthrough.start("Fsh300", 60)
+        w:expectMarkers(11050108)
 
         w:stateChange(60):expectEnpc(SISIPU, QFLAG_TALK)
         w:talk(ASTRID):expectDelegate("processEvent050_3"):ack()
@@ -156,6 +163,7 @@ describe("Polishing the Mast (Fsh306)", function()
 
     it("SEQ_000: the meeting and the sale", function()
         local w = walkthrough.start("Fsh306", 0)
+        w:expectMarkers(11050201)
 
         w:stateChange(0):expectEnpc(NNMULIKA, QFLAG_TALK)
         w:talk(MAISIE):expectDelegate("processEvent005_6"):ack()
@@ -172,6 +180,7 @@ describe("Polishing the Mast (Fsh306)", function()
 
     it("SEQ_015: no nautilus yet", function()
         local w = walkthrough.start("Fsh306", 15)
+        w:expectMarkers(11050202)
 
         w:talk(NNMULIKA):expectDelegate("processEvent016"):ack():expectNoRemoveItem()
     end)
@@ -189,6 +198,7 @@ describe("Polishing the Mast (Fsh306)", function()
 
     it("SEQ_020: turned away at the netmaster's door", function()
         local w = walkthrough.start("Fsh306", 20)
+        w:expectMarkers(11050203)
 
         w:stateChange(20):expectEnpc(SISIPU, QFLAG_TALK)
         w:talk(RERENASU):expectDelegate("processEvent020_6"):ack()
@@ -197,6 +207,7 @@ describe("Polishing the Mast (Fsh306)", function()
 
     it("SEQ_030-050: the Echo, three times", function()
         local w = walkthrough.start("Fsh306", 30)
+        w:expectMarkers(11050204)
 
         w:stateChange(30):expectEnpc(SISIPU, QFLAG_TALK)
         w:talk(SISIPU):expectDelegate("processEvent040"):answer(1):expectStartSequence(40)
