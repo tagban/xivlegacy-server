@@ -147,6 +147,7 @@ Leve objectives/rewards are in passiveGL_craft.
 
 require ("global")
 require ("synthesis")
+require ("questrecipes")
 
 -- Synthesis action animations (standard, rapid, careful).
 local actionAnim = {
@@ -251,6 +252,14 @@ function onEventStarted(player, commandactor, triggerName, arg1, arg2, arg3, arg
 							recipes[#recipes + 1] = allRecipes[i];
 							itemIds[#itemIds + 1] = allRecipes[i].resultItemID;
 						end
+					end
+				end
+				-- Guild quest items, made only on their quest step (questrecipes.lua).
+				for _, r in ipairs(QuestRecipes.forMaterials(player, materials)) do
+					anyRecipe = true;
+					if (r.classId == classId) then
+						recipes[#recipes + 1] = r;
+						itemIds[#itemIds + 1] = r.resultItemID;
 					end
 				end
 
