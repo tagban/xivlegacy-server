@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1970 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1989 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -1962,6 +1962,25 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (30919, 1001798, 'asw_imp_strumpet', 175, '', 0, -178.0, 191.0, 104.0, 0.0, 0, 0, NULL),
 (30920, 1001799, 'asw_imp_senior', 175, '', 0, -88.0, 196.0, 60.0, 0.0, 0, 0, NULL),
 (30921, 1001800, 'asw_imp_songster', 175, '', 0, -60.0, 196.0, 44.0, 0.0, 0, 0, NULL),
+(31000, 1091100, 'wdk200_acorn_orchard_trigger', 206, '', 0, -36.0, 8.0, -1256.0, 0.0, 0, 0, NULL),
+(31001, 1091101, 'wdk200_sturdy_branch', 154, '', 0, 1435.0, -13.0, 878.0, 0.0, 0, 0, NULL),
+(31002, 1091102, 'wdk200_supple_branch', 154, '', 0, 1440.0, -14.03, 885.0, 0.0, 0, 0, NULL),
+(31003, 1091103, 'wdk200_blooming_branch', 154, '', 0, 1448.0, -16.5, 890.0, 0.0, 0, 0, NULL),
+(31004, 1000556, 'wybir', 154, '', 0, 1445.0, -13.32, 880.0, 2.4, 0, 0, NULL),
+(31005, 1091104, 'wdk300_workshop_door', 206, '', 0, -11.0, 12.07, -1254.0, 0.0, 0, 0, NULL),
+(31006, 1000412, 'wdk300_ryd_wailing_barracks', 206, '', 0, 166.0, 27.5, -1572.0, 1.57, 0, 0, NULL),
+(31007, 1091105, 'wdk300_powle_box', 206, '', 0, 175.0, 27.5, -1571.0, 0.0, 0, 0, NULL),
+(31008, 1000411, 'wdk300_elyn_quivers_hold', 206, '', 0, 228.0, 12.0, -1278.0, 0.8, 0, 0, NULL),
+(31009, 1000596, 'marcelloix', 206, '', 0, 0.0, 8.75, -1259.5, 1.57, 0, 0, NULL),
+(31011, 1091107, 'wdk306_mirror_bank', 150, '', 0, 260.0, 5.46, -400.0, 0.0, 0, 0, NULL),
+(31012, 1000368, 'lalatta_ebony_stalls', 206, '', 0, 186.0, 27.7, -1395.0, 1.3, 0, 0, NULL),
+(31013, 1000467, 'lalatta_atelier_fenyll', 206, '', 0, 96.0, 20.0, -1476.0, 0.8, 0, 0, NULL),
+(31014, 1091108, 'tan200_chocobo_stables_trigger', 206, '', 0, 66.0, 11.73, -1246.0, 0.0, 0, 0, NULL),
+(31015, 1000978, 'gylbart', 154, '', 0, 1455.0, -11.73, 870.0, 2.4, 0, 0, NULL),
+(31016, 1091109, 'tan300_owls_nest_road_trigger', 145, '', 0, 2530.0, 174.0, 1270.0, 0.0, 0, 0, NULL),
+(31017, 1091110, 'tan300_clearwater_trigger', 145, '', 0, 2170.0, 142.13, 630.0, 0.0, 0, 0, NULL),
+(31018, 1091111, 'tan306_lifemend_stump_trigger', 150, '', 0, -640.0, 4.0, -990.0, 0.0, 0, 0, NULL),
+(31019, 1091112, 'tan306_fenyll_gathering_trigger', 206, '', 0, 93.0, 20.0, -1472.0, 0.0, 0, 0, NULL),
 (31020, 1091120, 'hrv200_quarrymill_weeds_trigger', 154, '', 0, 1448.6, -11.99, 920.3, 0.0, 0, 0, NULL),
 (31021, 1091121, 'hrv306_rychyld_growery_trigger', 206, '', 0, -206.0, 18.1, -1483.0, 0.0, 0, 0, NULL),
 (31022, 1091122, 'hrv306_flower_beds_trigger', 153, '', 0, -1311.0, -0.25, -214.0, 0.0, 0, 0, NULL),
