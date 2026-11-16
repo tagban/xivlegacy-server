@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1962 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1965 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -1966,4 +1966,7 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (31061, 1000906, 'wvr306_chuchumu_copperbell', 172, '', 0, -704.0, 119.5, -90.0, 0.0, 0, 0, NULL),
 (31062, 1000379, 'theldry', 206, '', 0, 198.5, 27.7, -1395.0, -1.94, 0, 0, NULL),
 (31063, 1091160, 'wvr200_golden_bazaar_trigger', 171, '', 0, 1128.0, 312.2, -1134.0, 0.0, 0, 0, NULL),
-(31064, 1091161, 'wvr306_gold_court_trigger', 209, '', 0, -136.0, 198.0, 160.0, 0.0, 0, 0, NULL);
+(31064, 1091161, 'wvr306_gold_court_trigger', 209, '', 0, -136.0, 198.0, 160.0, 0.0, 0, 0, NULL),
+(31070, 1000932, 'slyhhia', 209, '', 0, -216.0, 229.5, 301.0, 0.0, 0, 0, NULL),
+(31071, 1000853, 'damielliot_sickroom', 209, '', 0, -222.0, 229.5, 310.0, 2.6, 0, 0, NULL),
+(31072, 1001039, 'alc_softspoken_schoolgirl', 209, '', 0, -224.5, 229.5, 308.0, 1.0, 0, 0, NULL);
