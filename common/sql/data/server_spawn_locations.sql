@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1997 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 2010 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -1962,6 +1962,19 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (30919, 1001798, 'asw_imp_strumpet', 175, '', 0, -178.0, 191.0, 104.0, 0.0, 0, 0, NULL),
 (30920, 1001799, 'asw_imp_senior', 175, '', 0, -88.0, 196.0, 60.0, 0.0, 0, 0, NULL),
 (30921, 1001800, 'asw_imp_songster', 175, '', 0, -60.0, 196.0, 44.0, 0.0, 0, 0, NULL),
+(31080, 1000949, 'colbernoux', 209, '', 0, -124.0, 200.2, 264.0, 1.0, 0, 0, NULL),
+(31081, 1000887, 'zssapa', 176, '', 0, 104.0, 174.5, -1120.0, -0.5, 0, 0, NULL),
+(31082, 1000888, 'nenekko', 176, '', 0, 101.0, 174.5, -1117.0, -0.8, 0, 0, NULL),
+(31083, 1001498, 'sence', 209, '', 0, -139.0, 201.5, 262.0, 1.57, 0, 0, NULL),
+(31084, 1000040, 'popokkuli', 209, '', 0, -99.0, 195.6, 324.0, -0.3, 0, 0, NULL),
+(31085, 1000041, 'seserukka', 209, '', 0, -98.0, 195.6, 325.5, -0.45, 0, 0, NULL),
+(31086, 1000703, 'cheerful_coachman', 206, '', 0, 61.5, 11.79, -1243.5, -2.76, 0, 0, NULL),
+(31087, 1091180, 'gld300_flower_field_trigger', 154, '', 0, 1497.5, -0.09, 1321.5, 0.0, 0, 0, NULL),
+(31088, 1091181, 'gld306_erralig_chamber_trigger', 209, '', 0, -288.0, 206.1, 213.0, 0.0, 0, 0, NULL),
+(31089, 1091182, 'min300_flower_field_trigger', 154, '', 0, 1496.0, 0.0, 1323.0, 0.0, 0, 0, NULL),
+(31090, 1091183, 'min300_lapidaries_trigger', 209, '', 0, -133.0, 201.6, 252.0, 0.0, 0, 0, NULL),
+(31091, 1091184, 'min306_sildih_mirage_trigger', 170, '', 0, 147.0, 152.11, 521.0, 0.0, 0, 0, NULL),
+(31092, 1091185, 'min306_ferry_docks_trigger', 172, '', 0, -2204.0, 14.0, -424.0, 0.0, 0, 0, NULL),
 (31060, 1000905, 'chuchumu', 209, '', 0, 50.0, 194.2, 249.0, 0.0, 0, 0, NULL),
 (31061, 1000906, 'wvr306_chuchumu_copperbell', 172, '', 0, -704.0, 119.5, -90.0, 0.0, 0, 0, NULL),
 (31062, 1000379, 'theldry', 206, '', 0, 198.5, 27.7, -1395.0, -1.94, 0, 0, NULL),
@@ -1991,7 +2004,8 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (31019, 1091112, 'tan306_fenyll_gathering_trigger', 206, '', 0, 93.0, 20.0, -1472.0, 0.0, 0, 0, NULL),
 (31020, 1091120, 'hrv200_quarrymill_weeds_trigger', 154, '', 0, 1448.6, -11.99, 920.3, 0.0, 0, 0, NULL),
 (31021, 1091121, 'hrv306_rychyld_growery_trigger', 206, '', 0, -206.0, 18.1, -1483.0, 0.0, 0, 0, NULL),
-(31022, 1091122, 'hrv306_flower_beds_trigger', 153, '', 0, -1311.0, -0.25, -214.0, 0.0, 0, 0, NULL),
+(31022, 1091122, 'hrv306_flower_beds_trigger', 153, '', 0, -1311.0, -0.25, -214.0, 0.0, 0, 0, NULL);
+INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
 (31023, 1091123, 'hrv306_moogle_beds_trigger', 150, '', 0, -572.0, 3.38, -770.0, 0.0, 0, 0, NULL),
 (31024, 1091124, 'cul_bismarck_alley_trigger', 230, '', 0, -490.0, 39.5, 33.0, 0.0, 0, 0, NULL),
 (31025, 1091125, 'cul300_merchant_trigger', 209, '', 0, 44.0, 195.5, 258.0, 0.0, 0, 0, NULL),
