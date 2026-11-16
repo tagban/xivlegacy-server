@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 1976 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 1989 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -1980,4 +1980,17 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (31016, 1091109, 'tan300_owls_nest_road_trigger', 145, '', 0, 2530.0, 174.0, 1270.0, 0.0, 0, 0, NULL),
 (31017, 1091110, 'tan300_clearwater_trigger', 145, '', 0, 2170.0, 142.13, 630.0, 0.0, 0, 0, NULL),
 (31018, 1091111, 'tan306_lifemend_stump_trigger', 150, '', 0, -640.0, 4.0, -990.0, 0.0, 0, 0, NULL),
-(31019, 1091112, 'tan306_fenyll_gathering_trigger', 206, '', 0, 93.0, 20.0, -1472.0, 0.0, 0, 0, NULL);
+(31019, 1091112, 'tan306_fenyll_gathering_trigger', 206, '', 0, 93.0, 20.0, -1472.0, 0.0, 0, 0, NULL),
+(31020, 1091120, 'hrv200_quarrymill_weeds_trigger', 154, '', 0, 1448.6, -11.99, 920.3, 0.0, 0, 0, NULL),
+(31021, 1091121, 'hrv306_rychyld_growery_trigger', 206, '', 0, -206.0, 18.1, -1483.0, 0.0, 0, 0, NULL),
+(31022, 1091122, 'hrv306_flower_beds_trigger', 153, '', 0, -1311.0, -0.25, -214.0, 0.0, 0, 0, NULL),
+(31023, 1091123, 'hrv306_moogle_beds_trigger', 150, '', 0, -572.0, 3.38, -770.0, 0.0, 0, 0, NULL),
+(31024, 1091124, 'cul_bismarck_alley_trigger', 230, '', 0, -490.0, 39.5, 33.0, 0.0, 0, 0, NULL),
+(31025, 1091125, 'cul300_merchant_trigger', 209, '', 0, 44.0, 195.5, 258.0, 0.0, 0, 0, NULL),
+(31026, 1091126, 'cul306_bethel_trigger', 230, '', 0, -591.0, 6.0, 64.0, 0.0, 0, 0, NULL),
+(31027, 1091127, 'cul306_prudentia_outside_trigger', 230, '', 0, -533.0, 28.0, 121.0, 0.0, 0, 0, NULL),
+(31040, 1000176, 'mimidoa', 230, '', 0, -483.67, 44.5, 404.51, 0.793, 0, 1015, NULL),
+(31041, 1091140, 'bsm300_zssapa_trigger', 176, '', 0, 104.0, 174.5, -1131.0, 0.0, 0, 0, NULL),
+(31042, 1091141, 'bsm300_cavein_trigger', 176, '', 0, 86.0, 168.0, -1275.0, 0.0, 0, 0, NULL),
+(31043, 1091142, 'bsm300_ferry_trigger', 230, '', 0, -838.0, 6.0, 238.0, 0.0, 0, 0, NULL),
+(31044, 1000155, 'sisipu', 230, '', 0, -617.56, 4.55, 344.91, 1.11, 0, 0, NULL);

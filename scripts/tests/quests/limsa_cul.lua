@@ -1,0 +1,253 @@
+-- Culinarians' Guild: Cul200 "Showdown", Cul300 "Mystery of the Gastronome
+-- Gone Home", Cul306 "Something in the Soup".
+--
+-- Quest-hook legs only (the `walkthrough` bridge); each case seeds the
+-- sequence it walks.
+
+-- Actor class ids (from scripts/lua/quests/cul/*.lua).
+local GERULF     = 1000063
+local AENTFOET   = 1000064
+local FRAILOISE  = 1000065
+local CHARLYS    = 1000138
+local PRUDENTIA  = 1000168
+local PULMIA     = 1000169
+local RSUSHMO    = 1000170
+local KIKICHUA   = 1000171
+local HOBRIAUT   = 1000172
+local HLAHONO    = 1000250
+local TITTERING  = 1000253
+local DEAUSTIE   = 1000293
+local ALLEY      = 1091124
+local MERCHANT   = 1091125
+local BETHEL     = 1091126
+local OUTSIDE    = 1091127
+
+local PIE_CRUST  = 11000069
+local MEATBALL   = 11000071
+
+describe("Showdown (Cul200)", function()
+    it("offer: Charlys welcomes you to the Bismarck", function()
+        local w = walkthrough.start("Cul200", 65535)
+        w:stateChange(65535):expectEnpc(CHARLYS, QFLAG_TALK)
+        w:talk(CHARLYS):expectDelegate("processEventCharlysStart"):answer(1)
+    end)
+
+    it("SEQ_000: the kitchen, then the two chefs", function()
+        local w = walkthrough.start("Cul200", 0)
+        w:stateChange(0):expectEnpc(PRUDENTIA, QFLAG_TALK):expectEnpc(PULMIA, QFLAG_TALK)
+        w:expectMarkers(11044001)
+        w:talk(AENTFOET):expectDelegate("processEvent005_3"):ack()
+        w:talk(CHARLYS):expectDelegate("processEvent005_7"):ack()
+        w:talk(PULMIA):expectDelegate("processEvent010"):ack():expectStartSequence(10)
+    end)
+
+    it("SEQ_010: turning Prudentia down, then helping her", function()
+        local w = walkthrough.start("Cul200", 10)
+        w:stateChange(10):expectEnpc(PRUDENTIA, QFLAG_TALK):expectEnpc(PULMIA, QFLAG_TALK)
+        w:expectMarkers(11044002, 11044003)
+        w:talk(PRUDENTIA):expectDelegate("processEvent015"):answer(0)
+        w:expectSequence(10)
+        w:talk(PRUDENTIA):expectDelegate("processEvent015"):answer(1):expectStartSequence(15)
+    end)
+
+    it("SEQ_015 (Prudentia): no pie crust yet, then the hand-in", function()
+        local w = walkthrough.start("Cul200", 15)
+        w:stateChange(15):expectEnpc(PRUDENTIA, QFLAG_TALK):expectEnpc(PULMIA, QFLAG_NONE)
+        w:expectMarkers(11044002)
+        w:talk(CHARLYS):expectDelegate("processEvent010_2"):ack()
+        w:talk(PULMIA):expectDelegate("processEvent015_3"):ack()
+        w:talk(PRUDENTIA):expectDelegate("processEvent015_2"):ack():expectNoRemoveItem()
+        w:expectSequence(15)
+        w:give(PIE_CRUST, 1)
+        w:talk(PRUDENTIA):expectDelegate("processEvent020"):ack()
+            :expectRemoveItem(PIE_CRUST, 1)
+            :expectStartSequence(20)
+    end)
+
+    it("SEQ_010/015 (Pulmia): helping Pulmia instead", function()
+        local w = walkthrough.start("Cul200", 10)
+        w:talk(PULMIA):expectDelegate("processEvent017"):answer(1)
+            :expectFlagSet(0)
+            :expectStartSequence(15)
+        w:stateChange(15):expectEnpc(PULMIA, QFLAG_TALK):expectEnpc(PRUDENTIA, QFLAG_NONE)
+        w:expectMarkers(11044003)
+        w:talk(PRUDENTIA):expectDelegate("processEvent015_4"):ack()
+        w:talk(PULMIA):expectDelegate("processEvent015_5"):ack():expectNoRemoveItem()
+        w:give(PIE_CRUST, 1)
+        w:talk(PULMIA):expectDelegate("processEvent020"):ack()
+            :expectRemoveItem(PIE_CRUST, 1)
+            :expectStartSequence(20)
+    end)
+
+    it("SEQ_020: Prudentia behind the restaurant, and payment", function()
+        local w = walkthrough.start("Cul200", 20)
+        w:stateChange(20):expectEnpc(ALLEY, QFLAG_PUSH)
+        w:expectMarkers(11044004)
+        w:talk(TITTERING):expectDelegate("processEvent020_2"):ack()
+        w:talk(PULMIA):expectDelegate("processEvent030_2"):ack()
+        w:talk(KIKICHUA):expectDelegate("processEvent030_6"):ack()
+        w:talk(PRUDENTIA):expectDelegate("processEvent1000_1"):ack()
+        w:push(ALLEY):expectDelegate("processEvent030"):ack()
+            :expectDelegate("sqrwa"):ack()
+            :expectGil(20000):expectExp(2000)
+            :expectCompleted(110440)
+    end)
+end)
+
+describe("Mystery of the Gastronome Gone Home (Cul300)", function()
+    it("offer: Charlys says Prudentia is low again", function()
+        local w = walkthrough.start("Cul300", 65535)
+        w:stateChange(65535):expectEnpc(CHARLYS, QFLAG_TALK)
+        w:talk(CHARLYS):expectDelegate("processEventCharlysStart"):answer(1)
+    end)
+
+    it("SEQ_000: Prudentia's missing customer", function()
+        local w = walkthrough.start("Cul300", 0)
+        w:stateChange(0):expectEnpc(PRUDENTIA, QFLAG_TALK)
+        w:expectMarkers(11044101)
+        w:talk(PULMIA):expectDelegate("processEvent005_2"):ack()
+        w:talk(HLAHONO):expectDelegate("processEvent005_9"):ack()
+        w:talk(PRUDENTIA):expectDelegate("processEvent010"):ack():expectStartSequence(10)
+    end)
+
+    it("SEQ_010: Charlys places the merchant", function()
+        local w = walkthrough.start("Cul300", 10)
+        w:stateChange(10):expectEnpc(CHARLYS, QFLAG_TALK)
+        w:talk(PRUDENTIA):expectDelegate("processEvent010_2"):ack()
+        w:talk(CHARLYS):expectDelegate("processEvent012"):ack():expectStartSequence(12)
+    end)
+
+    it("SEQ_012: Deaustie at Sunsilk Tapestries", function()
+        local w = walkthrough.start("Cul300", 12)
+        w:stateChange(12):expectEnpc(DEAUSTIE, QFLAG_TALK)
+        w:talk(CHARLYS):expectDelegate("processEvent012_2"):ack()
+        w:talk(DEAUSTIE):expectDelegate("processEvent014"):ack():expectStartSequence(14)
+    end)
+
+    it("SEQ_014-018: the merchant, brushed off, won over, then talking", function()
+        local w = walkthrough.start("Cul300", 14)
+        w:stateChange(14):expectEnpc(MERCHANT, QFLAG_PUSH)
+        w:expectMarkers(11044102)
+        w:talk(DEAUSTIE):expectDelegate("processEvent014_2"):ack()
+        w:push(MERCHANT):expectDelegate("processEvent016"):ack():expectStartSequence(16)
+        w:push(MERCHANT):expectDelegate("processEvent016_2"):ack():expectFlagSet(0)
+        w:expectSequence(16)
+        w:push(MERCHANT):expectDelegate("processEvent016_1"):ack():expectStartSequence(18)
+        w:push(MERCHANT):expectDelegate("processEvent020"):ack():expectStartSequence(20)
+    end)
+
+    it("SEQ_020: Charlys hears it", function()
+        local w = walkthrough.start("Cul300", 20)
+        w:stateChange(20):expectEnpc(CHARLYS, QFLAG_TALK)
+        w:talk(CHARLYS):expectDelegate("processEvent025"):ack():expectStartSequence(25)
+    end)
+
+    it("SEQ_025: the Qiqirn in the alley", function()
+        local w = walkthrough.start("Cul300", 25)
+        w:stateChange(25):expectEnpc(ALLEY, QFLAG_PUSH)
+        w:expectMarkers(11044103)
+        w:talk(CHARLYS):expectDelegate("processEvent025_2"):ack()
+        w:talk(RSUSHMO):expectDelegate("processEvent025_9"):ack()
+        w:push(ALLEY):expectDelegate("processEvent030"):ack():expectStartSequence(30)
+    end)
+
+    it("SEQ_030: Charlys's payment", function()
+        local w = walkthrough.start("Cul300", 30)
+        w:stateChange(30):expectEnpc(CHARLYS, QFLAG_REWARD)
+        w:talk(PRUDENTIA):expectDelegate("processEvent030_2"):ack()
+        w:talk(AENTFOET):expectDelegate("processEvent030_9"):ack()
+        w:talk(CHARLYS):expectDelegate("processEvent035"):ack()
+            :expectDelegate("sqrwa"):ack()
+            :expectGil(30000):expectExp(3000)
+            :expectCompleted(110441)
+    end)
+end)
+
+describe("Something in the Soup (Cul306)", function()
+    it("SEQ_050: three cooks hand over the ingredients, once each", function()
+        local w = walkthrough.start("Cul306", 50)
+        w:talk(GERULF):expectDelegate("processEvent050_4"):ack()
+            :expectAddItem(11000074, 1):expectFlagSet(0)
+        w:talk(FRAILOISE):expectDelegate("processEvent050_8"):ack()
+            :expectAddItem(11000075, 1):expectFlagSet(1)
+        w:talk(HLAHONO):expectDelegate("processEvent050_6"):ack()
+            :expectAddItem(11000072, 2):expectFlagSet(2)
+        w:talk(HLAHONO):expectDelegate("processEvent050_6"):ack()
+        w:talk(RSUSHMO):expectDelegate("processEvent050_3"):ack()
+    end)
+
+    it("offer: Prudentia's proposition", function()
+        local w = walkthrough.start("Cul306", 65535)
+        w:stateChange(65535):expectEnpc(PRUDENTIA, QFLAG_TALK)
+        w:talk(PRUDENTIA):expectDelegate("processEventPrudentiaStart"):answer(1)
+    end)
+
+    it("SEQ_000: the Echo on Prudentia", function()
+        local w = walkthrough.start("Cul306", 0)
+        w:stateChange(0):expectEnpc(PRUDENTIA, QFLAG_TALK)
+        w:expectMarkers(11044202)
+        w:talk(RSUSHMO):expectDelegate("processEvent010_3"):ack()
+        w:talk(FRAILOISE):expectDelegate("processEvent010_7"):ack()
+        w:talk(PRUDENTIA):expectDelegate("processEvent020"):answer(0)
+        w:expectSequence(0)
+        w:talk(PRUDENTIA):expectDelegate("processEvent020"):answer(1):expectStartSequence(10)
+    end)
+
+    it("SEQ_010: she storms out", function()
+        local w = walkthrough.start("Cul306", 10)
+        w:stateChange(10):expectEnpc(PRUDENTIA, QFLAG_TALK)
+        w:expectMarkers(11044203)
+        w:talk(PRUDENTIA):expectDelegate("processEvent030"):ack():expectStartSequence(30)
+    end)
+
+    it("SEQ_030: the bethel", function()
+        local w = walkthrough.start("Cul306", 30)
+        w:stateChange(30):expectEnpc(BETHEL, QFLAG_PUSH)
+        w:expectMarkers(11044204)
+        w:talk(CHARLYS):expectDelegate("processEvent030_2"):ack()
+        w:talk(KIKICHUA):expectDelegate("processEvent030_5"):ack()
+        w:push(BETHEL):expectDelegate("processEvent040"):ack():expectStartSequence(40)
+    end)
+
+    it("SEQ_040: the Echo at the bethel", function()
+        local w = walkthrough.start("Cul306", 40)
+        w:stateChange(40):expectEnpc(BETHEL, QFLAG_PUSH)
+        w:expectMarkers(11044205)
+        w:push(BETHEL):expectDelegate("processEvent050"):answer(0)
+        w:expectSequence(40)
+        w:push(BETHEL):expectDelegate("processEvent050"):answer(1):expectStartSequence(50)
+    end)
+
+    it("SEQ_050: without the meatball nothing happens, then the antidote", function()
+        local w = walkthrough.start("Cul306", 50)
+        w:stateChange(50):expectEnpc(OUTSIDE, QFLAG_PUSH)
+        w:expectMarkers(11044206)
+        w:talk(CHARLYS):expectDelegate("processEvent050_2"):ack()
+        w:push(OUTSIDE):expectNoRemoveItem()
+        w:expectSequence(50)
+        w:give(MEATBALL, 1)
+        w:push(OUTSIDE):expectDelegate("processEvent060"):ack()
+            :expectRemoveItem(MEATBALL, 1)
+            :expectStartSequence(60)
+    end)
+
+    it("SEQ_060: Pulmia, Lienart and Adela", function()
+        local w = walkthrough.start("Cul306", 60)
+        w:stateChange(60):expectEnpc(BETHEL, QFLAG_PUSH)
+        w:expectMarkers(11044207)
+        w:push(BETHEL):expectDelegate("processEvent065"):ack():expectStartSequence(65)
+    end)
+
+    it("SEQ_065: Charlys explains, and pays you", function()
+        local w = walkthrough.start("Cul306", 65)
+        w:stateChange(65):expectEnpc(CHARLYS, QFLAG_REWARD)
+        w:expectMarkers(11044208)
+        w:talk(PRUDENTIA):expectDelegate("processEvent065_2"):ack()
+        w:talk(GERULF):expectDelegate("processEvent065_4"):ack()
+        w:talk(HOBRIAUT):expectDelegate("processEvent065_7"):ack()
+        w:talk(CHARLYS):expectDelegate("processEvent070"):ack()
+            :expectDelegate("sqrwa"):ack()
+            :expectGil(36000):expectExp(3600)
+            :expectCompleted(110442)
+    end)
+end)
