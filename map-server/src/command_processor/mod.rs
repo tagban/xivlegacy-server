@@ -1141,6 +1141,13 @@ impl CommandProcessor {
         let Some(handle) = self.registry.get(chara_id).await else {
             return format!("{name} is not online");
         };
+        if let Some(z) = explicit_zone
+            && self.world.zone(z).await.is_none()
+        {
+            return format!(
+                "zone {z} is not loaded on this map server (no map name in server_zones), so there is nothing to warp to"
+            );
+        }
         // Persist destination + base position on CharaState so the
         // next zone-in bundle reads them.
         let rotation;
@@ -2390,6 +2397,35 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(out, "Warp Target is not online");
+    }
+
+    #[tokio::test]
+    async fn warp_to_an_unloaded_zone_is_refused() {
+        use crate::runtime::actor_registry::{ActorHandle, ActorKindTag};
+        let (cmd, db) = fixture().await;
+        db.conn_for_test()
+            .call_db(|c| {
+                c.execute(
+                    r"INSERT INTO characters (id, userId, slot, serverId, name)
+                      VALUES (46, 0, 0, 0, 'Lost Traveler')",
+                    [],
+                )?;
+                Ok(())
+            })
+            .await
+            .unwrap();
+        let mut character = crate::actor::Character::new(46);
+        character.base.zone_id = 155;
+        character.base.position_y = 4.0;
+        let handle = ActorHandle::new(46, ActorKindTag::Player, 100, 46, character);
+        cmd.registry.insert(handle.clone()).await;
+
+        // 138 (La Noscea) is a server_zones row with no map name: never loaded.
+        let out = cmd.run("warp 138 0 0 0 Lost Traveler").await.unwrap();
+        assert!(out.starts_with("zone 138 is not loaded"), "got {out}");
+        let c = handle.character.read().await;
+        assert_eq!(c.base.zone_id, 155, "the player stays where they were");
+        assert_eq!(c.base.position_y, 4.0);
     }
 
     #[tokio::test]

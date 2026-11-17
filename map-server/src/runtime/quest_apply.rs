@@ -2925,6 +2925,18 @@ pub(crate) async fn apply_do_zone_change(
             }
             _ => (zone_id, private_area, private_area_type, x, y, z),
         };
+    // A zone this map server never loaded (a server_zones row with no map
+    // name, or a typo'd id): going on would latch the client's zone change
+    // and then replay the old zone's bundle, and the client waits on "Now
+    // Loading" for good. Refuse it and leave the player where they are.
+    if world.zone(zone_id).await.is_none() {
+        tracing::warn!(
+            player = player_id,
+            zone = zone_id,
+            "DoZoneChange refused: zone not loaded on this map server"
+        );
+        return;
+    }
     let Some(handle) = registry.get(player_id).await else {
         tracing::warn!(player = player_id, "DoZoneChange: actor missing");
         return;
