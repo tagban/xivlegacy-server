@@ -541,6 +541,26 @@ impl Character {
         }
     }
 
+    /// The HQ bonus of each high-quality piece worn (`hq_slots`, from
+    /// [`Database::load_equipped_hq_slots`](crate::database::Database::load_equipped_hq_slots)),
+    /// on top of [`apply_player_gear_stats`].
+    pub fn apply_player_hq_gear_stats(
+        &mut self,
+        items: &std::collections::HashMap<u32, crate::data::ItemData>,
+        equipped_by_slot: &std::collections::HashMap<u16, u32>,
+        hq_slots: &std::collections::HashSet<u16>,
+    ) {
+        for slot in hq_slots {
+            let Some(item) = equipped_by_slot.get(slot).and_then(|c| items.get(c)) else {
+                continue;
+            };
+            for (mod_id, delta) in &item.hq_bonuses {
+                self.chara.mods.add_raw(*mod_id, *delta as f64);
+                self.gear_mods.push((*mod_id, *delta as f64));
+            }
+        }
+    }
+
     /// Food / medicine bonuses on top of gear and derivation: each adds
     /// `percent` of the stat as it stands, up to `cap`. Stats with nothing
     /// to scale (EXP bonus) take the percent itself. Clears the buff once
@@ -711,6 +731,27 @@ impl Character {
         self.chara
             .mods
             .add(EnfeeblingMagicPotency, (pie_v * 0.25).floor());
+    }
+
+    /// The player's `charaWork.battleTemp.generalParameter[35]` as the
+    /// client's character window reads it: slots 0-2 are the nameplate
+    /// flags (always 1 for a player), and slots 3-34 are the stats in
+    /// modifier-id order (STR 3 .. PIE 8, resistances 9-14, Accuracy 15,
+    /// Evasion 16, Attack 17, Defense 18, magic 23-28, Craftsmanship 29,
+    /// Magic Craftsmanship 30, Control 31, Gathering 32, Output 33,
+    /// Perception 34). The client's CharaBaseClass getters (getAttack,
+    /// getCraftProcessing, ...) index the same slots. HP/MP travel as
+    /// hpMax/mpMax instead.
+    pub fn player_general_parameter(&self) -> [i16; 35] {
+        let mut p = [0i16; 35];
+        p[0] = 1;
+        p[1] = 1;
+        p[2] = 1;
+        for (i, slot) in p.iter_mut().enumerate().skip(3) {
+            let v = self.chara.mods.get_raw(i as u32).floor();
+            *slot = v.clamp(f64::from(i16::MIN), f64::from(i16::MAX)) as i16;
+        }
+        p
     }
 
     // ----- Class / level ----------------------------------------------------

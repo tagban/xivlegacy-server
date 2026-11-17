@@ -521,6 +521,11 @@ pub struct ItemData {
     /// crystal stacks) because `gamedata_items_equipment` has no row —
     /// the loader's LEFT JOIN fills with `NULL` and we skip.
     pub gear_bonuses: Vec<(u32, i32)>,
+    /// The high-quality bonus: paramBonus slot 4 of a crafted piece, worn
+    /// on top of [`Self::gear_bonuses`] only when the item is HQ (quality
+    /// 2-4). Archived NQ tooltips never list it (841 crafted items
+    /// checked), and only crafted gear has one.
+    pub hq_bonuses: Vec<(u32, i32)>,
     /// `Some` for weapons (main-hand / offhand / shields), `None`
     /// otherwise. Read by `apply_player_weapon_stats` during recalc —
     /// the main-hand entry drives Delay / HitCount / AttackType; both

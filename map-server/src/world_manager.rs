@@ -2919,17 +2919,23 @@ impl WorldManager {
             class_slot,
             active_level as u16,
         ));
-        // `battleTemp.generalParameter[0..3] = 1` matches C# defaults for
-        // NAMEPLATE_SHOWN (0), TARGETABLE (1), NAMEPLATE_SHOWN2 (2), and
-        // STR (3). Leaving them 0 would still emit an empty
-        // /battleParameter packet (Meteor does that too), but seeding
-        // the nameplate flags lines up with the explicit
-        // `generalParameter[0..3]` setters C# stamps during spawn.
-        let mut general_parameter = [0i16; 35];
-        general_parameter[0] = 1;
-        general_parameter[1] = 1;
-        general_parameter[2] = 1;
-        general_parameter[3] = 1;
+        // `battleTemp.generalParameter[0..3] = 1` are the nameplate flags
+        // NAMEPLATE_SHOWN (0), TARGETABLE (1), NAMEPLATE_SHOWN2 (2) the
+        // client's DepictionJudge reads. Slots 3-34 are the character
+        // window's stats (STR .. Perception), worked out by the login
+        // stat rebuild (gear included). Before that rebuild has run (no
+        // Lua) the old seed goes out: flags and STR 1.
+        let mut general_parameter = {
+            let c = actor_handle.character.read().await;
+            c.battle_temp.general_parameter
+        };
+        if general_parameter[0] == 0 {
+            general_parameter = [0i16; 35];
+            general_parameter[0] = 1;
+            general_parameter[1] = 1;
+            general_parameter[2] = 1;
+            general_parameter[3] = 1;
+        }
         subpackets.extend(tx::actor::build_battle_parameter(
             actor_id,
             &general_parameter,

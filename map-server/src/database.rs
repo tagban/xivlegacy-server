@@ -1066,6 +1066,7 @@ impl Database {
                         // non-equipment items — fallback to -1 (the
                         // empty-slot sentinel) so the parser skips them.
                         let mut bonuses: Vec<(u32, i32)> = Vec::new();
+                        let mut hq_bonuses: Vec<(u32, i32)> = Vec::new();
                         for slot in 0..10 {
                             // columns: 13 (type1), 14 (value1), 15 (type2), 16 (value2), ...
                             let type_idx = 13 + slot * 2;
@@ -1080,7 +1081,13 @@ impl Database {
                             if let Some(mod_id) = decode_param_bonus_type(ty)
                                 && val != 0
                             {
-                                bonuses.push((mod_id, val));
+                                // Slot 4 is the HQ bonus (see
+                                // `ItemData::hq_bonuses`).
+                                if slot == 3 {
+                                    hq_bonuses.push((mod_id, val));
+                                } else {
+                                    bonuses.push((mod_id, val));
+                                }
                             }
                         }
                         // Weapon columns: 33 (damageInterval), 34
@@ -1136,6 +1143,7 @@ impl Database {
                                 buy_price: r.get::<_, u32>(11).unwrap_or_default(),
                                 sell_price: r.get::<_, u32>(12).unwrap_or_default(),
                                 gear_bonuses: bonuses,
+                                hq_bonuses,
                                 weapon,
                                 ..Default::default()
                             },
@@ -1186,6 +1194,40 @@ impl Database {
                                 r.get::<_, u32>(1).unwrap_or_default(),
                             ))
                         },
+                    )?
+                    .collect::<common::sql::Result<_>>()?;
+                Ok(rows)
+            })
+            .await?;
+        Ok(rows.into_iter().collect())
+    }
+
+    /// The gear slots whose worn item is high quality (quality 2-4), for
+    /// the same character and class as
+    /// [`Self::load_equipped_catalog_ids`].
+    pub async fn load_equipped_hq_slots(
+        &self,
+        chara_id: u32,
+        class_id: u8,
+    ) -> Result<std::collections::HashSet<u16>> {
+        let rows = self
+            .conn
+            .call_db(move |c| {
+                let mut stmt = c.prepare(
+                    r"SELECT cie.equipSlot
+                      FROM characters_inventory_equipment cie
+                      JOIN server_items si ON si.id = cie.itemId
+                      WHERE cie.characterId = :cid
+                        AND (cie.classId = :class OR cie.classId = 0)
+                        AND si.quality >= 2",
+                )?;
+                let rows: Vec<u16> = stmt
+                    .query_map(
+                        named_params! {
+                            ":cid": chara_id,
+                            ":class": class_id,
+                        },
+                        |r| Ok(r.get::<_, u16>(0).unwrap_or_default()),
                     )?
                     .collect::<common::sql::Result<_>>()?;
                 Ok(rows)

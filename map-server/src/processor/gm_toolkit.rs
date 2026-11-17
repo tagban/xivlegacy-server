@@ -23,6 +23,11 @@
 //!   class at that level (default: the class's own level), picked from the
 //!   item tables: the best main hand (and off hand) of the class, and armor
 //!   and accessories everyone can wear, preferring the class's stats.
+//! - `!equip <item id> [hq|+1|+2|+3] [name]`: put that piece on, in the slot
+//!   the item tables give it (a new one when the bag has none of that
+//!   quality). No class or level check, like a GM's `!additem`.
+//! - `!unequip <slot|all> [name]`: take a piece off (head, body, legs,
+//!   hands, feet, waist, neck, ears, wrists, ring, ring2, offhand).
 //!
 //! With no name, a command works on the player the GM has targeted, else on
 //! the GM. Each needs the GM level `settings/commands.toml` gives it, and
@@ -42,7 +47,49 @@ use crate::runtime::class_level::{
     CLASSES, apply_set_level, class_by_name, class_name, class_of_job, job_by_name,
 };
 
-pub(crate) const COMMANDS: &[&str] = &["setclass", "setlevel", "maxall", "setjob", "gearset"];
+pub(crate) const COMMANDS: &[&str] = &[
+    "setclass", "setlevel", "maxall", "setjob", "gearset", "equip", "unequip",
+];
+
+/// `!unequip` slot names and the gear slot each one is.
+const SLOT_NAMES: &[(&str, u16)] = &[
+    ("offhand", SLOT_OFFHAND),
+    ("head", SLOT_HEAD),
+    ("body", SLOT_BODY),
+    ("legs", SLOT_LEGS),
+    ("hands", SLOT_HANDS),
+    ("feet", SLOT_FEET),
+    ("waist", SLOT_WAIST),
+    ("neck", SLOT_NECK),
+    ("ears", SLOT_EARS),
+    ("wrists", SLOT_WRISTS),
+    ("ring", SLOT_FINGER_RIGHT),
+    ("ring2", SLOT_FINGER_LEFT),
+];
+
+/// The gear slot for an item's `equipPoint`: main hand 36-39, off hand 2
+/// (shields) and 40 (tools), the armor table's points, rings on the right.
+fn slot_for_point(point: u16) -> Option<u16> {
+    match point {
+        36..=39 => Some(SLOT_MAINHAND),
+        2 | 40 => Some(SLOT_OFFHAND),
+        _ => ARMOR_SLOTS
+            .iter()
+            .find(|(p, _)| *p == point)
+            .map(|(_, slot)| *slot),
+    }
+}
+
+/// `hq`/`+1` .. `+3` → item quality 2-4 (`nq` 1).
+fn quality_word(word: &str) -> Option<u8> {
+    match word.to_ascii_lowercase().as_str() {
+        "nq" => Some(1),
+        "hq" | "hq1" | "+1" => Some(2),
+        "hq2" | "+2" => Some(3),
+        "hq3" | "+3" => Some(4),
+        _ => None,
+    }
+}
 
 /// The level a job's first quest asks of its class.
 const JOB_LEVEL: i16 = 30;
@@ -244,6 +291,8 @@ impl PacketProcessor {
             "setlevel" => self.gm_setlevel(handle, &args, can_target_others).await,
             "maxall" => self.gm_maxall(handle, &args, can_target_others).await,
             "setjob" => self.gm_setjob(handle, &args, can_target_others).await,
+            "equip" => self.gm_equip(handle, &args, can_target_others).await,
+            "unequip" => self.gm_unequip(handle, &args, can_target_others).await,
             _ => self.gm_gearset(handle, &args, can_target_others).await,
         };
         match &result {
@@ -335,6 +384,19 @@ impl PacketProcessor {
         item_id: u32,
         used: &mut Vec<u64>,
     ) -> bool {
+        self.equip_catalog_item_quality(id, equip_slot, item_id, 1, used)
+            .await
+    }
+
+    /// [`Self::equip_catalog_item`] for a given quality (1 normal, 2-4 HQ).
+    async fn equip_catalog_item_quality(
+        &self,
+        id: u32,
+        equip_slot: u16,
+        item_id: u32,
+        quality: u8,
+        used: &mut Vec<u64>,
+    ) -> bool {
         let mut pick = None;
         for attempt in 0..2 {
             let bag = self
@@ -344,7 +406,9 @@ impl PacketProcessor {
                 .unwrap_or_default();
             pick = bag
                 .iter()
-                .filter(|i| i.item_id == item_id && !used.contains(&i.unique_id))
+                .filter(|i| {
+                    i.item_id == item_id && i.quality == quality && !used.contains(&i.unique_id)
+                })
                 .max_by_key(|i| i.unique_id)
                 .map(|i| (i.unique_id, i.slot));
             if pick.is_some() || attempt == 1 {
@@ -355,7 +419,7 @@ impl PacketProcessor {
                 PKG_NORMAL,
                 item_id,
                 1,
-                1,
+                quality,
                 &self.registry,
                 Some(&self.world),
                 &self.db,
@@ -714,6 +778,69 @@ impl PacketProcessor {
             msg.push_str(&format!(" No room in the bag for: {}.", missed.join(", ")));
         }
         Ok(msg)
+    }
+    async fn gm_equip(
+        &self,
+        me: &ActorHandle,
+        args: &[&str],
+        others: bool,
+    ) -> Result<String, String> {
+        const USAGE: &str = "usage: !equip <item id> [hq|+1|+2|+3] [name]";
+        let item_id = args
+            .first()
+            .and_then(|w| w.parse::<u32>().ok())
+            .ok_or(USAGE)?;
+        let (quality, rest) = match args.get(1).and_then(|w| quality_word(w)) {
+            Some(q) => (q, &args[2..]),
+            None => (1, &args[1..]),
+        };
+        let (id, name) = self.toolkit_target(me, rest, others).await?;
+        self.online(id, &name).await?;
+        let rows = self.gear_rows().await?;
+        let row = rows
+            .iter()
+            .find(|r| r.catalog_id == item_id)
+            .ok_or_else(|| format!("item {item_id} is not gear"))?;
+        let slot = slot_for_point(row.equip_point)
+            .ok_or_else(|| format!("no gear slot for equip point {}", row.equip_point))?;
+        let mut used = Vec::new();
+        if !self
+            .equip_catalog_item_quality(id, slot, item_id, quality, &mut used)
+            .await
+        {
+            return Err(format!("no room in {name}'s bag for {}", row.name));
+        }
+        let hq = match quality {
+            2..=4 => format!(" +{}", quality - 1),
+            _ => String::new(),
+        };
+        Ok(format!("{name}: {}{hq} on.", row.name))
+    }
+
+    async fn gm_unequip(
+        &self,
+        me: &ActorHandle,
+        args: &[&str],
+        others: bool,
+    ) -> Result<String, String> {
+        const USAGE: &str = "usage: !unequip <slot|all> [name] (offhand, head, body, legs, hands, feet, waist, neck, ears, wrists, ring, ring2)";
+        let word = args.first().map(|w| w.to_ascii_lowercase()).ok_or(USAGE)?;
+        let slots: Vec<u16> = if word == "all" {
+            SLOT_NAMES.iter().map(|(_, s)| *s).collect()
+        } else {
+            let slot = SLOT_NAMES
+                .iter()
+                .find(|(n, _)| *n == word)
+                .map(|(_, s)| *s)
+                .ok_or(USAGE)?;
+            vec![slot]
+        };
+        let (id, name) = self.toolkit_target(me, &args[1..], others).await?;
+        self.online(id, &name).await?;
+        for slot in slots {
+            self.remove_gear(id, slot).await;
+        }
+        Ok(format!("{name}: {word} off."))
     }
 }
 

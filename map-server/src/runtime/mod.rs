@@ -43,6 +43,8 @@ pub mod summon;
 pub mod ticker;
 
 #[cfg(test)]
+mod gear_stats_tests;
+#[cfg(test)]
 mod integration_tests;
 
 #[cfg(test)]

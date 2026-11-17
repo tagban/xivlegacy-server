@@ -1382,6 +1382,21 @@ pub fn build_battle_parameter(actor_id: u32, general_parameter: &[i16; 35]) -> V
     b.done()
 }
 
+/// `charaWork/battleParameter` update carrying the given
+/// `(index, value)` slots, zeros included: unequipping a piece has to
+/// send its stat back down to 0, which [`build_battle_parameter`]
+/// (non-zero slots only, for the login bundle) can't express.
+pub fn build_battle_parameter_changes(actor_id: u32, changes: &[(usize, i16)]) -> Vec<SubPacket> {
+    let mut b = ActorPropertyPacketBuilder::new(actor_id, "charaWork/battleParameter");
+    for (i, v) in changes {
+        b.add_short(
+            &format!("charaWork.battleTemp.generalParameter[{i}]"),
+            *v as u16,
+        );
+    }
+    b.done()
+}
+
 use std::io::Write as _;
 
 #[cfg(test)]
