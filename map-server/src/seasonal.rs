@@ -17,6 +17,14 @@
 //! `!event <name> <on|off|auto>` overrides it and stores the override in
 //! `server_events`, so it survives a restart.
 //!
+//! An event can also change the look and sound of some zones while it
+//! runs (`[[<event>.zone]]`: a weather and/or a music id), and its
+//! decorations are background objects baked into the client's town
+//! layouts: an event spawn of class `MapObjOnlyShowHide` (5900006,
+//! `SHOW_HIDE_CLASS`) bound to one of them (`server_eventnpc_mapobj`)
+//! makes the client run the object's `show` schedule. When the event
+//! stops, the server runs `hide` on it before taking the actor away.
+//!
 //! Some of an event's NPCs show only at night, Eorzean time (All Saints'
 //! Wake's trickster imps: `night_classes`), and a script can make one
 //! vanish for a while (`VanishSeasonalActor`, an imp after its riddle).
@@ -105,11 +113,31 @@ impl Window {
     }
 }
 
+/// What an event changes in some zones while it runs.
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+pub struct ZoneLook {
+    pub zones: Vec<u32>,
+    /// Weather id (`SetWeather`), shown instead of the zone's own.
+    #[serde(default)]
+    pub weather: Option<u16>,
+    /// Music id (`SetMusic`), played instead of the zone's own.
+    #[serde(default)]
+    pub music: Option<u16>,
+}
+
+/// `/Chara/Npc/MapObj/MapObjOnlyShowHide` whose client `initForEvent`
+/// runs the bound background object's `show` schedule (5900007 runs
+/// `hide`).
+pub const SHOW_HIDE_CLASS: u32 = 5_900_006;
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Event {
     pub mode: Mode,
     pub windows: Vec<Window>,
+    /// Zones whose weather or music the event changes.
+    pub zone: Vec<ZoneLook>,
     /// Actor classes of this event that show only at night.
     pub night_classes: Vec<u32>,
     /// Night, in Eorzean hours: from `night_start` up to (not including)
@@ -123,6 +151,7 @@ impl Default for Event {
         Self {
             mode: Mode::Auto,
             windows: Vec::new(),
+            zone: Vec::new(),
             night_classes: Vec::new(),
             night_start: 19,
             night_end: 5,
@@ -281,6 +310,20 @@ impl State {
             .is_some_and(|until| clock.now < *until)
     }
 
+    fn zone_look(&self, zone_id: u32, day: MonthDay) -> (Option<u16>, Option<u16>) {
+        let (mut weather, mut music) = (None, None);
+        for (name, e) in &self.events {
+            if !self.active(name, day) {
+                continue;
+            }
+            for z in e.zone.iter().filter(|z| z.zones.contains(&zone_id)) {
+                weather = weather.or(z.weather);
+                music = music.or(z.music);
+            }
+        }
+        (weather, music)
+    }
+
     fn quest_open(&self, quest_id: u32, day: MonthDay) -> bool {
         let mut seasonal = false;
         for (name, e) in &self.events {
@@ -351,6 +394,54 @@ pub fn actor_hidden_at(actor_id: u32, clock: Clock) -> bool {
     state().read().is_ok_and(|s| s.hidden(actor_id, clock))
 }
 
+/// The weather and music running events give `zone_id` (the first
+/// running event, by name, that sets each wins).
+pub fn zone_look(zone_id: u32) -> (Option<u16>, Option<u16>) {
+    zone_look_on(zone_id, MonthDay::today())
+}
+
+pub fn zone_look_on(zone_id: u32, day: MonthDay) -> (Option<u16>, Option<u16>) {
+    state()
+        .read()
+        .map(|s| s.zone_look(zone_id, day))
+        .unwrap_or_default()
+}
+
+/// Whether any event, running or not, changes `zone_id`'s look.
+pub fn zone_has_look(zone_id: u32) -> bool {
+    state().read().is_ok_and(|s| {
+        s.events
+            .values()
+            .any(|e| e.zone.iter().any(|z| z.zones.contains(&zone_id)))
+    })
+}
+
+/// Names of the events running today, sorted; a change means zone looks
+/// may have to be sent again.
+pub fn running() -> Vec<String> {
+    let day = MonthDay::today();
+    state()
+        .read()
+        .map(|s| {
+            s.events
+                .keys()
+                .filter(|n| s.active(n, day))
+                .cloned()
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Whether hidden event actor `actor_id` is a decoration switch whose
+/// object must be hidden again before the actor goes.
+pub fn is_show_hide(actor_id: u32) -> bool {
+    state().read().is_ok_and(|s| {
+        s.actors
+            .get(&actor_id)
+            .is_some_and(|(_, class)| *class == SHOW_HIDE_CLASS)
+    })
+}
+
 /// One line per event for `!event`.
 pub fn describe() -> String {
     let day = MonthDay::today();
@@ -419,6 +510,18 @@ mod tests {
                     quests: vec![110802],
                 },
             ],
+            zone: vec![
+                ZoneLook {
+                    zones: vec![155, 206],
+                    weather: Some(8027),
+                    music: None,
+                },
+                ZoneLook {
+                    zones: vec![155],
+                    weather: Some(8001),
+                    music: Some(51),
+                },
+            ],
             ..Default::default()
         }
     }
@@ -466,6 +569,30 @@ mod tests {
         assert!(!off.quest_open(110801, MonthDay(12, 20)));
         let auto = with(Some(Mode::Auto));
         assert!(auto.active("starlight", MonthDay(12, 20)));
+    }
+
+    #[test]
+    fn zone_looks_follow_the_event() {
+        let s = with(None);
+        let day = MonthDay(12, 20);
+        // The first entry naming a zone wins each field.
+        assert_eq!(s.zone_look(155, day), (Some(8027), Some(51)));
+        assert_eq!(s.zone_look(206, day), (Some(8027), None));
+        assert_eq!(s.zone_look(175, day), (None, None));
+        assert_eq!(s.zone_look(155, MonthDay(7, 1)), (None, None));
+        let off = with(Some(Mode::Off));
+        assert_eq!(off.zone_look(155, day), (None, None));
+    }
+
+    #[test]
+    fn zone_looks_parse_from_settings() {
+        let e: Event = toml::from_str(
+            "mode = \"on\"\n[[zone]]\nzones = [155]\nweather = 8027\n[[zone]]\nzones = [133]\nmusic = 59\n",
+        )
+        .unwrap();
+        assert_eq!(e.zone.len(), 2);
+        assert_eq!(e.zone[0].weather, Some(8027));
+        assert_eq!(e.zone[1].music, Some(59));
     }
 
     #[test]

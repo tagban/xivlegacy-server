@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 2013 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 2024 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -1962,6 +1962,17 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (30919, 1001798, 'asw_imp_strumpet', 175, '', 0, -178.0, 191.0, 104.0, 0.0, 0, 0, NULL),
 (30920, 1001799, 'asw_imp_senior', 175, '', 0, -88.0, 196.0, 60.0, 0.0, 0, 0, NULL),
 (30921, 1001800, 'asw_imp_songster', 175, '', 0, -60.0, 196.0, 44.0, 0.0, 0, 0, NULL),
+(30930, 5900006, 'spl_poster_uldah_1', 209, '', 0, -135.3, 273.8, 150.5, 0.0, 0, 0, NULL),
+(30931, 5900006, 'spl_poster_uldah_2', 209, '', 0, -125.5, 271.3, 152.2, 0.0, 0, 0, NULL),
+(30932, 5900006, 'spl_poster_uldah_3', 209, '', 0, -78.5, 195.3, 65.6, 0.0, 0, 0, NULL),
+(30933, 5900006, 'spl_poster_uldah_4', 209, '', 0, -64.0, 195.3, 69.5, 0.0, 0, 0, NULL),
+(30934, 5900006, 'spl_poster_limsa_1', 230, '', 0, -438.1, 42.1, 175.3, 0.0, 0, 0, NULL),
+(30935, 5900006, 'spl_poster_limsa_2', 230, '', 0, -458.2, 41.9, 208.6, 0.0, 0, 0, NULL),
+(30936, 5900006, 'spl_poster_limsa_3', 230, '', 0, -468.6, 94.0, 211.8, 0.0, 0, 0, NULL),
+(30937, 5900006, 'spl_poster_limsa_4', 230, '', 0, -448.0, 0.0, 192.0, 0.0, 0, 0, NULL),
+(30938, 5900006, 'spl_poster_gridania_1', 206, '', 0, 76.0, 7.3, -1213.9, 0.0, 0, 0, NULL),
+(30939, 5900006, 'spl_poster_gridania_2', 206, '', 0, 76.0, -1.9, -1202.1, 0.0, 0, 0, NULL),
+(30940, 5900006, 'spl_poster_gridania_3', 206, '', 0, 52.0, -3.7, -1203.0, 0.0, 0, 0, NULL),
 (31080, 1000949, 'colbernoux', 209, '', 0, -124.0, 200.2, 264.0, 1.0, 0, 0, NULL),
 (31081, 1000887, 'zssapa', 176, '', 0, 104.0, 174.5, -1120.0, -0.5, 0, 0, NULL),
 (31082, 1000888, 'nenekko', 176, '', 0, 101.0, 174.5, -1117.0, -0.8, 0, 0, NULL),

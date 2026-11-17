@@ -44,6 +44,7 @@ impl CommandProcessor {
             tracing::warn!(error = %e, event = %name, "saving an event override");
         }
         let removed = self.world.remove_inactive_seasonal_actors().await;
+        self.world.refresh_seasonal_looks(&self.registry).await;
         tracing::info!(event = %name, mode = mode.as_str(), removed, "seasonal event switched");
         let state = if seasonal::is_active(&name) {
             "running"
@@ -51,7 +52,7 @@ impl CommandProcessor {
             "not running"
         };
         format!(
-            "{name} set to {}: {state}. Its NPCs show as players move; quest offers update on the next zone change.",
+            "{name} set to {}: {state}. Its NPCs and decorations show as players move; quest offers update on the next zone change.",
             mode.as_str()
         )
     }

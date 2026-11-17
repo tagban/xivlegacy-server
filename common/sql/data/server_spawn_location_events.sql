@@ -3,6 +3,7 @@
 -- starlight: the Starlight Celebration (Spl0i3 Winter Is Not Coming, Spl0i4 Gone with the Snow):
 --   30900-30902 the Black Rabbit Traders reps Ninipu (Limsa), Hastridie (Gridania), Wysskoen (Ul'dah);
 --   30903 Waldomar and 30904 Father Frost in Hyrstmill; 30905-30908 Spl0i4's search spots and hamlet-gate trigger.
+--   30930-30940 Starlight posters (MapObjOnlyShowHide 5900006 bound to the city layouts, server_eventnpc_mapobj): Ul'dah 30930-30933, Limsa 30934-30937, Gridania 30938-30940.
 -- allsaints: All Saints' Wake (Spl0i2 Impish Impositions):
 --   30910-30912 the Adventurers' Guild runners Ursielle (Limsa), Mudede (Gridania), Yvane (Ul'dah);
 --   30913-30921 the disguised trickster imps, three per city (night only, see settings/events.toml).
@@ -29,4 +30,15 @@ INSERT INTO `server_spawn_location_events` (`spawnId`, `eventName`) VALUES
 (30918, 'allsaints'),
 (30919, 'allsaints'),
 (30920, 'allsaints'),
-(30921, 'allsaints');
+(30921, 'allsaints'),
+(30930, 'starlight'),
+(30931, 'starlight'),
+(30932, 'starlight'),
+(30933, 'starlight'),
+(30934, 'starlight'),
+(30935, 'starlight'),
+(30936, 'starlight'),
+(30937, 'starlight'),
+(30938, 'starlight'),
+(30939, 'starlight'),
+(30940, 'starlight');

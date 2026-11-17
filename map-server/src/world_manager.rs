@@ -1298,12 +1298,19 @@ impl Default for WorldSettings {
     }
 }
 
+/// Weather transition when the sky changes in place (as `!worldend`).
+const WEATHER_FADE: u16 = 5;
+/// `SetMusic` mode 0x02, EFFECT_CROSSFADE (pmeteor `SetMusicPacket`).
+const MUSIC_CROSSFADE: u16 = 0x02;
+
 pub struct WorldManager {
     /// Server-global world tunables (Dalamud phase, weather) from config.
     world_settings: WorldSettings,
     /// Weather every zone shows in place of `world_settings.weather_id`
     /// while an event holds it (0 = none), e.g. `!worldend`'s Dalamud sky.
     weather_override: std::sync::atomic::AtomicU16,
+    /// Seasonal events running at the last `refresh_seasonal_looks`.
+    seasonal_running: std::sync::Mutex<Option<Vec<String>>>,
 
     zones: RwLock<HashMap<u32, Arc<RwLock<Zone>>>>,
 
@@ -1368,6 +1375,7 @@ impl WorldManager {
         Self {
             world_settings: WorldSettings::default(),
             weather_override: std::sync::atomic::AtomicU16::new(0),
+            seasonal_running: std::sync::Mutex::new(None),
             zones: RwLock::new(HashMap::new()),
             zone_entrances: RwLock::new(HashMap::new()),
             seamless_boundaries: RwLock::new(HashMap::new()),
@@ -1395,6 +1403,21 @@ impl WorldManager {
             .load(std::sync::atomic::Ordering::Relaxed)
         {
             0 => self.world_settings.weather_id,
+            w => w,
+        }
+    }
+
+    /// The weather players get in `zone_id`: a held sky (`!worldend`)
+    /// first, then a running seasonal event's weather for the zone
+    /// (`settings/events.toml`), then the configured weather.
+    pub fn zone_weather(&self, zone_id: u32) -> u16 {
+        match self
+            .weather_override
+            .load(std::sync::atomic::Ordering::Relaxed)
+        {
+            0 => crate::seasonal::zone_look(zone_id)
+                .0
+                .unwrap_or(self.world_settings.weather_id),
             w => w,
         }
     }
@@ -1964,11 +1987,72 @@ impl WorldManager {
                 continue;
             };
             for id in ids {
+                // A decoration goes back to its layout state first: the
+                // object keeps whatever schedule last ran on it.
+                if crate::seasonal::is_show_hide(id) {
+                    let mut sub = crate::packets::send::actor::build_play_bg_animation(id, "hide");
+                    sub.set_target_id(sid);
+                    client.send_bytes(sub.to_bytes()).await;
+                }
                 let mut sub = crate::packets::send::actor::build_remove_actor(id);
                 sub.set_target_id(sid);
                 client.send_bytes(sub.to_bytes()).await;
                 n += 1;
             }
+        }
+        n
+    }
+
+    /// When the set of running seasonal events changed since the last
+    /// call, send every player in a zone some event restyles
+    /// (`[[<event>.zone]]`) the weather and music their zone now has
+    /// (an event started or ended by date or by `!event`). Returns the
+    /// number of players updated.
+    pub async fn refresh_seasonal_looks(&self, registry: &ActorRegistry) -> usize {
+        let running = crate::seasonal::running();
+        {
+            let mut last = self
+                .seasonal_running
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            match last.as_ref() {
+                Some(prev) if *prev == running => return 0,
+                // The first look at boot: zone-ins already carry it.
+                None => {
+                    *last = Some(running);
+                    return 0;
+                }
+                _ => *last = Some(running),
+            }
+        }
+        let mut n = 0;
+        for s in self.all_sessions().await {
+            if s.current_private_area_name.is_some()
+                || !crate::seasonal::zone_has_look(s.current_zone_id)
+            {
+                continue;
+            }
+            let (Some(h), Some(client)) =
+                (registry.by_session(s.id).await, self.client(s.id).await)
+            else {
+                continue;
+            };
+            let zone_music = match self.zone(s.current_zone_id).await {
+                Some(z) => z.read().await.core.bgm_day,
+                None => continue,
+            };
+            let music = crate::seasonal::zone_look(s.current_zone_id)
+                .1
+                .unwrap_or(zone_music);
+            let weather = self.zone_weather(s.current_zone_id);
+            for mut sub in [
+                tx::misc::build_set_weather(h.actor_id, weather, WEATHER_FADE),
+                tx::misc::build_set_music(h.actor_id, music, MUSIC_CROSSFADE),
+            ] {
+                sub.set_target_id(s.id);
+                client.send_bytes(sub.to_bytes()).await;
+            }
+            n += 1;
         }
         n
     }
@@ -2514,6 +2598,12 @@ impl WorldManager {
             .as_ref()
             .map(|b| b.bgm_day)
             .unwrap_or(bgm_day);
+        // A running seasonal event's music for the public zone.
+        let bgm_day = match crate::seasonal::zone_look(session.current_zone_id).1 {
+            Some(m) if private_area_bind.is_none() => m,
+            _ => bgm_day,
+        };
+        let zone_weather = self.zone_weather(session.current_zone_id);
 
         // SEQ-005 content-warp — ship the UNMODIFIED parent region.
         //
@@ -2650,7 +2740,7 @@ impl WorldManager {
             self.world_settings.dalamud_phase,
             music_id,
             0x01,
-            self.weather_id(),
+            zone_weather,
             self.world_settings.weather_transition,
             region_id,
             zone_actor_id,
@@ -4065,9 +4155,11 @@ impl WorldManager {
                 &mut subpackets,
                 actor_id,
                 self.world_settings.dalamud_phase,
-                bgm_day,
+                crate::seasonal::zone_look(destination_zone_id)
+                    .1
+                    .unwrap_or(bgm_day),
                 0x04,
-                self.weather_id(),
+                self.zone_weather(destination_zone_id),
                 self.world_settings.weather_transition,
                 region_id,
                 zone_actor_id,

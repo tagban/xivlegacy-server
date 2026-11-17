@@ -30,6 +30,18 @@ start = "12-31"
 end = "01-16"
 quests = [110802]
 
+# An event can also change zone looks while it runs: weather and music
+# replace the zone's own for every player in the listed zones (the first
+# matching entry wins; leave a field out to keep the zone's own), e.g.
+#   [[starlight.zone]]
+#   zones = [155, 206]
+#   weather = 8001
+#   music = 51
+# Starlight sets none: no Starlight music track is known in the 1.23b
+# client, and the one seasonal weather that snows (8027, "wtr_hall" in
+# the Black Shroud's weather set) also brings out the All Saints' Wake
+# pumpkins and garlands in Gridania's guild halls.
+
 # All Saints' Wake (1.0 ran it Oct 18 - Nov 1, 2011): the Adventurers'
 # Guild runners (Ursielle, Mudede, Yvane) and the disguised trickster imps.
 # The imps (actor classes below) show only at night, Eorzean time, from
