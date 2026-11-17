@@ -215,6 +215,10 @@ impl GameTicker {
                 if removed > 0 {
                     tracing::info!(removed, "seasonal event NPCs removed");
                 }
+                let looks = self.world.refresh_seasonal_looks(&self.registry).await;
+                if looks > 0 {
+                    tracing::info!(players = looks, "seasonal weather and music sent");
+                }
             }
             // Liveness heartbeat — a frozen/starved ticker (the SEQ_005
             // wait(1) continuation silently never firing) is otherwise

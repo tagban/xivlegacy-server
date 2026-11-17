@@ -1,4 +1,4 @@
--- server_eventnpc_mapobj: game data, 75 rows. Reloaded whole when this file changes.
+-- server_eventnpc_mapobj: game data, 86 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_eventnpc_mapobj`;
 INSERT INTO `server_eventnpc_mapobj` (`id`, `layoutId`, `instanceId`) VALUES
@@ -76,4 +76,15 @@ INSERT INTO `server_eventnpc_mapobj` (`id`, `layoutId`, `instanceId`) VALUES
 (2167, 5013, 398),
 (2168, 5013, 408),
 (2169, 5013, 161),
-(2317, 321, 2952);
+(2317, 321, 2952),
+(30930, 431, 3545),
+(30931, 431, 3546),
+(30932, 431, 3547),
+(30933, 431, 3548),
+(30934, 131, 7238),
+(30935, 131, 7239),
+(30936, 131, 7240),
+(30937, 131, 7242),
+(30938, 331, 5414),
+(30939, 331, 5415),
+(30940, 331, 5416);
