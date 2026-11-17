@@ -1796,8 +1796,9 @@ impl Database {
     /// The [`send_inventory_package_update`] send path emits one `list_x01`
     /// per matching row, so spilled stacks render with no send-side change.
     ///
-    /// Package-capacity (`CAP_NORMAL`) enforcement is still deferred — this
-    /// only bounds per-stack size, not the total slot count.
+    /// New stacks take the lowest free slot below `CAP_NORMAL` (200); when
+    /// the bag is full the rest is not added (a warning is logged), since
+    /// an item at slot 200+ makes the client throw at every login.
     ///
     /// Returns the total quantity of this item+quality the character owns
     /// across ALL its NORMAL stacks after the add.
@@ -1884,9 +1885,22 @@ impl Database {
                 }
 
                 // Phase 2 — spill leftover into fresh capped stacks at the
-                // next free slots. Recompute `next_slot` each iteration
-                // since the prior insert just consumed one.
+                // lowest free slots. A full bag takes no more: whatever
+                // doesn't fit is dropped (logged below), because the client
+                // throws on an item at slot 200 or above and then can't log
+                // that character in at all.
                 while remaining > 0 {
+                    let Some(next_slot) =
+                        free_bag_slot(&tx, chara_id, 0, crate::inventory::CAP_NORMAL)?
+                    else {
+                        tracing::warn!(
+                            chara = chara_id,
+                            item = item_catalog_id,
+                            dropped = remaining,
+                            "AddItem: NORMAL bag is full, item not added",
+                        );
+                        break;
+                    };
                     let take = remaining.min(stack_max);
                     tx.execute(
                         r"INSERT INTO server_items (itemId, quantity, quality)
@@ -1898,15 +1912,6 @@ impl Database {
                         },
                     )?;
                     let sid = tx.last_insert_rowid();
-                    // Next empty slot = current NORMAL row count.
-                    // Matches `ItemPackage.end_of_list_index` in Rust.
-                    let next_slot: i32 = tx.query_row(
-                        r"SELECT COALESCE(MAX(slot), -1) + 1
-                          FROM characters_inventory
-                          WHERE characterId = :cid AND itemPackage = 0",
-                        named_params! { ":cid": chara_id },
-                        |r| r.get::<_, i32>(0),
-                    )?;
                     tx.execute(
                         r"INSERT INTO characters_inventory
                             (characterId, itemPackage, serverItemId, slot)
@@ -6523,6 +6528,40 @@ impl Database {
     }
 }
 
+/// The lowest free slot below `capacity` in one of a character's bags
+/// (`itemPackage`), or `None` when every slot is taken. New items must
+/// land below the bag's size: the 1.23b client throws on an item at or
+/// past `capacity` (a NORMAL item at slot 200 crashed it at every login).
+/// Filling gaps first also keeps slots from creeping up after items leave.
+fn free_bag_slot(
+    conn: &common::sql::Conn,
+    chara_id: u32,
+    package: u16,
+    capacity: u16,
+) -> common::sql::Result<Option<i32>> {
+    let mut stmt = conn.prepare(
+        r"SELECT slot FROM characters_inventory
+          WHERE characterId = :cid AND itemPackage = :pkg AND slot >= 0
+          ORDER BY slot",
+    )?;
+    let used: Vec<i32> = stmt
+        .query_map(
+            named_params! { ":cid": chara_id, ":pkg": package as i64 },
+            |r| r.get::<_, i32>(0),
+        )?
+        .collect::<common::sql::Result<_>>()?;
+    let mut want = 0;
+    for slot in used {
+        if slot > want {
+            break;
+        }
+        if slot == want {
+            want += 1;
+        }
+    }
+    Ok((want < i32::from(capacity)).then_some(want))
+}
+
 /// Outcome of a [`Database::purchase_retainer_bazaar_item`] call.
 /// Explicit variants so callers can distinguish "someone else
 /// grabbed this listing a tick ago" from "you're broke" from "you
@@ -7334,6 +7373,41 @@ mod add_harvest_item_stack_cap_tests {
         assert_eq!(rows.len(), 1, "sub-cap adds merge, not spill");
         assert_eq!(rows[0].1, 5);
         assert_eq!(rows[0].2, 0);
+
+        let _ = std::fs::remove_file(&path);
+    }
+    /// A full bag (200 slots) takes nothing more: no row lands at slot 200
+    /// (the client throws on it and the character can't log in again).
+    /// A slot freed in the middle is reused before anything else.
+    #[tokio::test]
+    async fn add_harvest_item_stops_at_bag_size_and_reuses_gaps() {
+        const ITEM: u32 = 90_000_005;
+        let path = tempdb("bag-full");
+        let db = Database::open(&path).await.expect("open db");
+        seed_item_cap(&db, ITEM, 1).await;
+
+        assert_eq!(db.add_harvest_item(0, ITEM, 199, 1).await.unwrap(), 199);
+        // one slot left: 3 asked for, 1 fits
+        assert_eq!(db.add_harvest_item(0, ITEM, 3, 1).await.unwrap(), 200);
+        assert_eq!(db.add_harvest_item(0, ITEM, 1, 1).await.unwrap(), 200);
+        let rows = normal_rows(&db, ITEM).await;
+        assert_eq!(rows.len(), 200);
+        assert_eq!(rows.iter().map(|r| r.2).max(), Some(199));
+
+        // free slot 57; the next add goes there, not past the end
+        db.conn_for_test()
+            .call_db(|c| {
+                c.execute(
+                    "DELETE FROM characters_inventory WHERE characterId = 0 AND slot = 57",
+                    [],
+                )?;
+                Ok(())
+            })
+            .await
+            .unwrap();
+        assert_eq!(db.add_harvest_item(0, ITEM, 2, 1).await.unwrap(), 200);
+        let slots: Vec<u16> = normal_rows(&db, ITEM).await.iter().map(|r| r.2).collect();
+        assert_eq!(slots, (0..200).collect::<Vec<u16>>());
 
         let _ = std::fs::remove_file(&path);
     }
