@@ -1,4 +1,4 @@
--- server_battlenpc_spawn_locations: game data, 4952 rows. Reloaded whole when this file changes.
+-- server_battlenpc_spawn_locations: game data, 4984 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_spawn_locations`;
 INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `groupId`, `positionX`, `positionY`, `positionZ`, `rotation`) VALUES
@@ -4967,4 +4967,31 @@ INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `
 (3479, 'etc2i2_lunatic_lamb', 30503, 2532.0, 173.25, 1250.0, 3.14),
 (3480, 'etc2i2_lunatic_lamb', 30504, 2512.0, 179.52, 1236.0, 3.14),
 (3481, 'etc2i2_lunatic_lamb', 30505, 2538.0, 178.54, 1236.0, 3.14),
-(3482, 'etc2i2_lunatic_shepherd', 30506, 2525.0, 184.05, 1230.0, 3.14);
+(3482, 'etc2i2_lunatic_shepherd', 30506, 2525.0, 184.05, 1230.0, 3.14),
+(1900, 'sum6a0_flamefist_ahlygg_roh', 31600, 2441.0, 257.22, 1550.0, -2.4),
+(1901, 'sum6a0_zaharak_sniper', 31601, 2396.0, 247.76, 1545.0, 0.6),
+(1902, 'sum6a0_zaharak_halberdier', 31602, 2436.0, 248.83, 1515.0, -1.2),
+(1903, 'sum6a0_zaharak_drubber', 31603, 2386.0, 252.91, 1525.0, 1.0),
+(1904, 'sum6a0_zaharak_ostiary', 31604, 2401.0, 256.83, 1560.0, 2.8),
+(1905, 'sum6a0_zaharak_drubber', 31603, 2416.0, 248.21, 1545.0, 0.0),
+(1906, 'sum6a0_ifrit_hard', 31605, 2510.0, 247.4, 2204.0, 0.0),
+(1910, 'sum6g0_natalan_pikecarver', 31606, 980.0, 287.11, -42.0, 0.8),
+(1911, 'sum6g0_natalan_logsplitter', 31607, 940.0, 289.64, -42.0, -0.8),
+(1912, 'sum6g0_natalan_wolftamer', 31608, 970.0, 287.04, -67.0, 0.0),
+(1913, 'sum6g0_natalan_boneknitter', 31609, 1000.0, 294.02, -62.0, -1.6),
+(1914, 'sum6g0_natalan_pikecarver', 31606, 985.0, 291.49, -7.0, 2.4),
+(1915, 'sum6g0_garuda_hard', 31610, 1490.0, 302.0, -280.0, 1.57),
+(1920, 'sum6m0_queen_gougou', 31611, -1420.0, -8.3, 300.0, 0.0),
+(1921, 'sum6m0_buata', 31612, -1440.0, -16.4, 380.0, 0.0),
+(1922, 'sum6m0_capricious_cassie', 31613, -1260.0, -2.0, 300.0, 0.0),
+(1923, 'sum6m0_spiteful', 31614, -1400.0, -14.8, 250.0, 0.0),
+(1924, 'sum6m0_great_oak', 31615, -1300.0, -22.1, 250.0, 0.0),
+(1925, 'sum6m0_mog_tanker', 31616, -2368.0, -22.6, -910.0, 0.0),
+(1926, 'sum6m0_mog_attacker', 31617, -2380.0, -22.6, -905.0, 0.0),
+(1927, 'sum6m0_mog_sniper', 31618, -2356.0, -22.6, -905.0, 0.0),
+(1928, 'sum6m0_mog_healer', 31619, -2385.0, -22.6, -915.0, 0.0),
+(1929, 'sum6m0_mog_nuker', 31620, -2351.0, -22.6, -915.0, 0.0),
+(1930, 'sum6m0_mog_buffer', 31621, -2375.0, -22.6, -920.0, 0.0),
+(1931, 'sum6m0_mog_debuffer', 31622, -2361.0, -22.6, -920.0, 0.0),
+(1932, 'sum6m0_moggle_mog', 31623, -2368.0, -22.6, -930.0, 0.0),
+(1933, 'sum6w0_nael_van_darnus_hard', 31624, 0.0, 0.0, 6.0, 3.14);
