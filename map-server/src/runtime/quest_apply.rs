@@ -2579,6 +2579,28 @@ pub(crate) fn closes_raid_ui_on_leave(active: &crate::data::ActiveContentScript)
         && active.content_script.starts_with("SimpleContentDungeon")
 }
 
+/// The `(player, director)` notice events [`close_raid_ui_on_client`] has
+/// kicked and the client hasn't answered yet. When the copy is gone by the
+/// time the client's EventStart for it arrives (a quest's own way out, such
+/// as Etc200's tomb, tears the copy down in the same tick), no director is
+/// left to end the event, and the client would stay inside it and start no
+/// NPC talk until a relog. [`take_raid_ui_close_kick`] lets the EventStart
+/// router end it instead.
+fn raid_ui_close_kicks() -> &'static std::sync::Mutex<std::collections::HashSet<(u32, u32)>> {
+    static KICKS: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<(u32, u32)>>> =
+        std::sync::OnceLock::new();
+    KICKS.get_or_init(Default::default)
+}
+
+/// Whether `director`'s raid-UI notice event for `player` is still open
+/// (see [`raid_ui_close_kicks`]); forgets it either way.
+pub(crate) fn take_raid_ui_close_kick(player_id: u32, director: u32) -> bool {
+    raid_ui_close_kicks()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(&(player_id, director))
+}
+
 /// Runs the copy director's `clearEvent` on one player's client inside a
 /// notice event of its own (kick, function, end; the same order the Grand
 /// Company raid directors use for `exitCutScene`), for a copy where
@@ -2600,6 +2622,10 @@ async fn close_raid_ui_on_client(
     };
     use crate::packets::send::events;
     let director = active.director_actor_id;
+    raid_ui_close_kicks()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert((player_id, director));
     for mut sub in [
         events::build_kick_event(player_id, director, "noticeEvent", 5, &[]),
         events::build_run_event_function(player_id, director, "noticeEvent", 5, "clearEvent", &[]),
