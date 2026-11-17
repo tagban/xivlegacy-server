@@ -95,7 +95,13 @@ const COMMAND_SYNTAX: &[&str] = &[
     "setmusic <music id> [name]",
     "setweather <weather id>",
     "worldend",
-    "event [name] [on|off|auto]",
+    "event [name] [on|off|auto] | event auto",
+    "starlight",
+    "moonfire",
+    "halloween",
+    "allsaints",
+    "easter",
+    "hatchingtide",
     "zone <zone id or name> [name]",
     "camp [camp name] [name]",
     "warp <x> <y> <z> [name] | warp <zone> <x> <y> <z> [name]",
@@ -315,6 +321,9 @@ impl CommandProcessor {
             "speed" => self.handle_speed(&args).await,
             "worldend" => self.handle_worldend(&args).await,
             "event" => self.handle_event(&args).await,
+            "starlight" | "moonfire" | "allsaints" | "halloween" | "hatchingtide" | "easter" => {
+                self.handle_event_switch(&cmd).await
+            }
             other => format!("unknown command: {other} (args={:?})", args.rest()),
         };
         if args.was_refused() {
