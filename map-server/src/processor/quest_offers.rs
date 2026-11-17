@@ -52,9 +52,17 @@ fn is_offerable(script_name: &str, has_prerequisite: bool) -> bool {
 /// `prerequisite` column can't say: Fade to White follows whichever
 /// nation's level 13 quest the player finished, and The Usual Suspect
 /// (Hildibrand's first case, Etc5u1) follows whichever nation's Etc5?0.
+/// Louisoix's level 45 primal battles follow the Grand Company battle
+/// against the same foe in any company: Ifrit Bleeds, We Can Kill It
+/// (Sum6a0) follows It Kills with Fire (Gc?101), and Taming the Tempest
+/// (Sum6g0) follows In for Garuda Wakening (Gc?104). A Feast of Fools
+/// (Sum6m0), the moogle king, also follows It Kills with Fire.
 const ANY_OF_PREREQUISITES: &[(u32, &[u32])] = &[
     (110013, &[110004, 110008, 110012]),
     (110849, &[110828, 110838, 110848]),
+    (110627, &[111416, 111616, 111816]),
+    (110867, &[111430, 111630, 111830]),
+    (110816, &[111416, 111616, 111816]),
 ];
 
 /// The quests any one of which unlocks this one (empty: none needed).
@@ -504,6 +512,21 @@ mod tests {
         assert_eq!(prerequisites(110013, 0), vec![110004, 110008, 110012]);
         assert_eq!(prerequisites(110011, 110010), vec![110010]);
         assert!(prerequisites(110001, 0).is_empty());
+    }
+
+    #[test]
+    fn ifrit_bleeds_follows_any_companys_it_kills_with_fire() {
+        assert_eq!(prerequisites(110627, 0), vec![111416, 111616, 111816]);
+    }
+
+    #[test]
+    fn taming_the_tempest_follows_any_companys_garuda_wakening() {
+        assert_eq!(prerequisites(110867, 0), vec![111430, 111630, 111830]);
+    }
+
+    #[test]
+    fn a_feast_of_fools_follows_any_companys_it_kills_with_fire() {
+        assert_eq!(prerequisites(110816, 0), vec![111416, 111616, 111816]);
     }
 
     #[test]

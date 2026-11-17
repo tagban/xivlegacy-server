@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 2021 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 2024 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -2026,4 +2026,7 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (31041, 1091140, 'bsm300_zssapa_trigger', 176, '', 0, 104.0, 174.5, -1131.0, 0.0, 0, 0, NULL),
 (31042, 1091141, 'bsm300_cavein_trigger', 176, '', 0, 86.0, 168.0, -1275.0, 0.0, 0, 0, NULL),
 (31043, 1091142, 'bsm300_ferry_trigger', 230, '', 0, -838.0, 6.0, 238.0, 0.0, 0, 0, NULL),
-(31044, 1000155, 'sisipu', 230, '', 0, -617.56, 4.55, 344.91, 1.11, 0, 0, NULL);
+(31044, 1000155, 'sisipu', 230, '', 0, -617.56, 4.55, 344.91, 1.11, 0, 0, NULL),
+(31200, 1091200, 'sum6a0_beastman_aetheryte', 174, '', 0, 1628.0, 249.88, 1070.0, 0.0, 0, 0, NULL),
+(31201, 1091201, 'sum6g0_beastman_aetheryte', 143, '', 0, 1196.0, 297.0, -143.0, 0.0, 0, 0, NULL),
+(31202, 1001836, 'sum6m0_pukwa_pika', 153, '', 0, -1345.0, -16.0, 355.0, -1.57, 0, 0, NULL);

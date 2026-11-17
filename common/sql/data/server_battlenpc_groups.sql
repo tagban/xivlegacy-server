@@ -1,4 +1,4 @@
--- server_battlenpc_groups: game data, 865 rows. Reloaded whole when this file changes.
+-- server_battlenpc_groups: game data, 891 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_groups`;
 INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLevel`, `maxLevel`, `respawnTime`, `hp`, `mp`, `dropListId`, `allegiance`, `spawnType`, `animationId`, `actorState`, `privateAreaName`, `privateAreaLevel`, `zoneId`) VALUES
@@ -868,4 +868,29 @@ INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLe
 (30503, 30503, 'etc2i2_lunatic_lamb', 45, 45, 0, 1300, 0, 0, 0, 16, 0, 0, '', 0, 145),
 (30504, 30504, 'etc2i2_lunatic_lamb', 45, 45, 0, 1300, 0, 0, 0, 16, 0, 0, '', 0, 145),
 (30505, 30505, 'etc2i2_lunatic_lamb', 45, 45, 0, 1300, 0, 0, 0, 16, 0, 0, '', 0, 145),
-(30506, 30506, 'etc2i2_lunatic_shepherd', 46, 46, 0, 2600, 0, 0, 0, 16, 0, 0, '', 0, 145);
+(30506, 30506, 'etc2i2_lunatic_shepherd', 46, 46, 0, 2600, 0, 0, 0, 16, 0, 0, '', 0, 145),
+(31600, 31600, 'sum6a0_flamefist_ahlygg_roh', 59, 59, 900, 9000, 0, 0, 0, 0, 0, 0, '', 0, 174),
+(31601, 31601, 'sum6a0_zaharak_sniper', 52, 55, 60, 2400, 0, 0, 0, 0, 0, 0, '', 0, 174),
+(31602, 31602, 'sum6a0_zaharak_halberdier', 54, 57, 60, 2400, 0, 0, 0, 0, 0, 0, '', 0, 174),
+(31603, 31603, 'sum6a0_zaharak_drubber', 50, 53, 60, 2400, 0, 0, 0, 0, 0, 0, '', 0, 174),
+(31604, 31604, 'sum6a0_zaharak_ostiary', 55, 57, 60, 2400, 0, 0, 0, 0, 0, 0, '', 0, 174),
+(31605, 31605, 'sum6a0_ifrit_hard', 52, 52, 0, 36000, 0, 0, 0, 1, 0, 0, '', 0, 240),
+(31606, 31606, 'sum6g0_natalan_pikecarver', 50, 53, 60, 2400, 0, 0, 0, 0, 0, 0, '', 0, 143),
+(31607, 31607, 'sum6g0_natalan_logsplitter', 50, 53, 60, 2400, 0, 0, 0, 0, 0, 0, '', 0, 143),
+(31608, 31608, 'sum6g0_natalan_wolftamer', 51, 54, 60, 2400, 0, 0, 0, 0, 0, 0, '', 0, 143),
+(31609, 31609, 'sum6g0_natalan_boneknitter', 52, 55, 60, 2400, 0, 0, 0, 0, 0, 0, '', 0, 143),
+(31610, 31610, 'sum6g0_garuda_hard', 52, 52, 0, 40000, 0, 0, 0, 1, 0, 0, '', 0, 239),
+(31611, 31611, 'sum6m0_queen_gougou', 50, 50, 600, 6000, 0, 0, 0, 0, 0, 0, '', 0, 153),
+(31612, 31612, 'sum6m0_buata', 50, 50, 600, 6000, 0, 0, 0, 0, 0, 0, '', 0, 153),
+(31613, 31613, 'sum6m0_capricious_cassie', 51, 51, 600, 6500, 0, 0, 0, 0, 0, 0, '', 0, 153),
+(31614, 31614, 'sum6m0_spiteful', 51, 51, 600, 6500, 0, 0, 0, 0, 0, 0, '', 0, 153),
+(31615, 31615, 'sum6m0_great_oak', 52, 52, 600, 8000, 0, 0, 0, 0, 0, 0, '', 0, 153),
+(31616, 31616, 'sum6m0_mog_tanker', 50, 50, 0, 4000, 0, 0, 0, 1, 0, 0, '', 0, 238),
+(31617, 31617, 'sum6m0_mog_attacker', 50, 50, 0, 3000, 0, 0, 0, 1, 0, 0, '', 0, 238),
+(31618, 31618, 'sum6m0_mog_sniper', 50, 50, 0, 3000, 0, 0, 0, 1, 0, 0, '', 0, 238),
+(31619, 31619, 'sum6m0_mog_healer', 50, 50, 0, 3000, 0, 0, 0, 1, 0, 0, '', 0, 238),
+(31620, 31620, 'sum6m0_mog_nuker', 50, 50, 0, 3000, 0, 0, 0, 1, 0, 0, '', 0, 238),
+(31621, 31621, 'sum6m0_mog_buffer', 50, 50, 0, 3000, 0, 0, 0, 1, 0, 0, '', 0, 238),
+(31622, 31622, 'sum6m0_mog_debuffer', 50, 50, 0, 3000, 0, 0, 0, 1, 0, 0, '', 0, 238),
+(31623, 31623, 'sum6m0_moggle_mog', 52, 52, 0, 36000, 0, 0, 0, 1, 0, 0, '', 0, 238),
+(31624, 31624, 'sum6w0_nael_van_darnus_hard', 52, 52, 0, 40000, 0, 0, 0, 1, 0, 0, '', 0, 257);

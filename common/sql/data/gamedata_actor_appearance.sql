@@ -1,4 +1,4 @@
--- gamedata_actor_appearance: game data, 7842 rows. Reloaded whole when this file changes.
+-- gamedata_actor_appearance: game data, 7844 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `gamedata_actor_appearance`;
 INSERT INTO `gamedata_actor_appearance` (`id`, `base`, `size`, `hairStyle`, `hairHighlightColor`, `hairVariation`, `faceType`, `characteristics`, `characteristicsColor`, `faceEyebrows`, `faceIrisSize`, `faceEyeShape`, `faceNose`, `faceFeatures`, `faceMouth`, `ears`, `hairColor`, `skinColor`, `eyeColor`, `voice`, `mainHand`, `offHand`, `spMainHand`, `spOffHand`, `throwing`, `pack`, `pouch`, `head`, `body`, `legs`, `hands`, `feet`, `waist`, `neck`, `leftEar`, `rightEar`, `leftIndex`, `rightIndex`, `leftFinger`, `rightFinger`) VALUES
@@ -7858,4 +7858,6 @@ INSERT INTO `gamedata_actor_appearance` (`id`, `base`, `size`, `hairStyle`, `hai
 (9220405, 7, 2, 4, 0, 0, 1, 0, 0, 5, 1, 0, 1, 2, 3, 2, 21, 10, 11, 0, 58724372, 59772948, 0, 0, 0, 0, 0, 23883, 8352, 10337, 10336, 10336, 184320, 0, 0, 0, 0, 0, 0, 0),
 (9220406, 8, 1, 3, 0, 0, 7, 0, 0, 0, 1, 1, 0, 0, 0, 0, 55, 55, 53, 0, 168821790, 0, 0, 0, 0, 0, 0, 5380, 14624, 3106, 14624, 10304, 248832, 0, 0, 0, 0, 0, 0, 0),
 (9220407, 6, 1, 4, 0, 0, 4, 0, 0, 3, 0, 3, 2, 1, 3, 1, 70, 61, 53, 0, 310379590, 0, 0, 0, 0, 0, 0, 20507, 5379, 16641, 3265, 9504, 168960, 0, 0, 0, 0, 0, 0, 0),
-(9220408, 5, 2, 3, 0, 0, 5, 0, 0, 2, 1, 3, 2, 0, 2, 3, 3, 4, 6, 0, 347079684, 0, 0, 0, 0, 0, 0, 7266, 4290, 2114, 1024, 4321, 177152, 0, 0, 0, 0, 0, 0, 0);
+(9220408, 5, 2, 3, 0, 0, 5, 0, 0, 2, 1, 3, 2, 0, 2, 3, 3, 4, 6, 0, 347079684, 0, 0, 0, 0, 0, 0, 7266, 4290, 2114, 1024, 4321, 177152, 0, 0, 0, 0, 0, 0, 0),
+(1091200, 10999, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1024, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+(1091201, 10999, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1024, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);

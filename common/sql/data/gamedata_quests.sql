@@ -381,7 +381,7 @@ INSERT INTO `gamedata_quests` (`id`, `questName`, `className`, `prerequisite`, `
 (110867, 'Taming the Tempest', 'Sum6g0', 0, 45),
 (110868, 'A Relic Reborn', 'Etc106', 0, 50),
 (110869, 'Living on a Prayer', 'Etc304', 0, 45),
-(110870, 'The Raven, Nevermore', 'Sum6w0', 0, 45),
+(110870, 'The Raven, Nevermore', 'Sum6w0', 110869, 45),
 (111201, 'Pride and Duty (Will Take You from the Mountain)', 'War0j1', 0, 30),
 (111202, 'Embracing the Beast', 'War0j2', 111201, 35),
 (111203, 'Curious Gorge Goes to the Bazaar', 'War0j3', 111202, 40),
