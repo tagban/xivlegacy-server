@@ -263,6 +263,43 @@ pub fn names() -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// The quests `name`'s windows list, in order, without repeats.
+pub fn quests_of(name: &str) -> Vec<u32> {
+    let mut out: Vec<u32> = Vec::new();
+    if let Ok(s) = state().read()
+        && let Some(e) = s.events.get(&name.to_ascii_lowercase())
+    {
+        for q in e.windows.iter().flat_map(|w| w.quests.iter()) {
+            if !out.contains(q) {
+                out.push(*q);
+            }
+        }
+    }
+    out
+}
+
+/// The event a switch command (`!starlight`, `!halloween` ...) names.
+pub fn switch_target(command: &str) -> Option<&'static str> {
+    match command {
+        "starlight" => Some("starlight"),
+        "moonfire" => Some("moonfire"),
+        "allsaints" | "halloween" => Some("allsaints"),
+        "hatchingtide" | "easter" => Some("hatchingtide"),
+        _ => None,
+    }
+}
+
+/// The modes that run `target` alone: it on, every other event off.
+pub fn solo_modes(target: &str) -> Vec<(String, Mode)> {
+    names()
+        .into_iter()
+        .map(|n| {
+            let m = if n == target { Mode::On } else { Mode::Off };
+            (n, m)
+        })
+        .collect()
+}
+
 pub fn exists(name: &str) -> bool {
     state()
         .read()
@@ -662,6 +699,16 @@ mod tests {
         assert_eq!(eorzea_hour_at(175), 1);
         assert_eq!(eorzea_hour_at(175 * 24), 0);
         assert_eq!(eorzea_hour_at(175 * 24 + 175 * 19), 19);
+    }
+
+    #[test]
+    fn switch_commands_name_their_events() {
+        assert_eq!(switch_target("halloween"), Some("allsaints"));
+        assert_eq!(switch_target("allsaints"), Some("allsaints"));
+        assert_eq!(switch_target("easter"), Some("hatchingtide"));
+        assert_eq!(switch_target("moonfire"), Some("moonfire"));
+        assert_eq!(switch_target("starlight"), Some("starlight"));
+        assert_eq!(switch_target("event"), None);
     }
 
     #[test]

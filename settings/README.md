@@ -138,6 +138,11 @@ year. To change them, copy the event's whole block (all its windows) from
 `settings/default/events.toml` into your `settings/events.toml` and edit
 the dates; `mode = "on"` runs it whatever the date, `"off"` never.
 
+`!starlight`, `!moonfire`, `!halloween` (or `!allsaints`) and `!easter` (or
+`!hatchingtide`) run that one event and stop every other; the reply names
+any of its quests not built yet. `!event auto` puts every event back on the
+calendar.
+
 `!event starlight on` or `off` overrides the file until `!event starlight
 auto`. NPCs appear or vanish around players within a minute; quest offers
 change at the player's next zone change. A quest already taken stays in the
