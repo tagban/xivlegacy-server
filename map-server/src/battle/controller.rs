@@ -141,11 +141,15 @@ pub struct BattleNpcControllerState {
     /// TP moves this monster may use: its pool's skill list filtered to
     /// its level at spawn (`Catalogs::monster_commands`).
     pub skills: Vec<BattleCommand>,
-    /// A move the `usemove` GM command queued: used on the next combat
-    /// tick whatever the TP, gap or reach. The container clears it when the
-    /// move readies (not when it is picked), so a move or cast already in
-    /// flight delays it rather than dropping it.
+    /// A move the `usemove` GM command (or a script's `UseMonsterMove`)
+    /// queued: used once on the next combat tick whatever the TP, gap or
+    /// reach. The container clears it when the move readies (not when it is
+    /// picked), so a move or cast already in flight delays it rather than
+    /// dropping it.
     pub forced_skill: Option<BattleCommand>,
+    /// The forced move wasn't on `skills`: it went on only to be used, and
+    /// comes off again once it readies, so the monster doesn't keep it.
+    pub forced_added: bool,
     /// Spells from the pool's spell list, same level filter. A caster
     /// picks one per cast; empty keeps the single `spell`.
     pub spells: Vec<BattleCommand>,
@@ -625,6 +629,7 @@ impl Controller {
                 Some(i) => i,
                 None => {
                     self.battle.skills.push(cmd);
+                    self.battle.forced_added = true;
                     self.battle.skills.len() - 1
                 }
             };

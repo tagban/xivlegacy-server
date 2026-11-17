@@ -263,6 +263,16 @@ pub enum LuaCommand {
         modifier_key: u32,
         value: i64,
     },
+    /// `bnpc:LearnMonsterMove(id)` / `bnpc:UseMonsterMove(id)`: a content
+    /// script adds a monster move to a battle NPC's own move list
+    /// (`learn`), or makes it use that move on its next combat tick
+    /// whatever its TP (the `!usemove` path). Thornmarch's king takes a
+    /// fallen moogle's move this way.
+    MonsterMove {
+        actor_id: u32,
+        command_id: u16,
+        learn: bool,
+    },
     /// Phase C3 — `actor:Engage(target)` (C#
     /// `Controller::Engage(target)`). Starts combat: pushes a
     /// `BattleState::Attack` onto the actor's AIContainer with the

@@ -221,6 +221,32 @@ impl UserData for LuaActor {
             Ok(())
         });
 
+        // `bnpc:LearnMonsterMove(id)` adds a monster move to this battle
+        // NPC's list; `bnpc:UseMonsterMove(id)` makes it use the move on
+        // its next combat tick (see `LuaCommand::MonsterMove`).
+        methods.add_method("LearnMonsterMove", |_, this, command_id: u16| {
+            push(
+                &this.queue,
+                LuaCommand::MonsterMove {
+                    actor_id: this.actor_id,
+                    command_id,
+                    learn: true,
+                },
+            );
+            Ok(())
+        });
+        methods.add_method("UseMonsterMove", |_, this, command_id: u16| {
+            push(
+                &this.queue,
+                LuaCommand::MonsterMove {
+                    actor_id: this.actor_id,
+                    command_id,
+                    learn: false,
+                },
+            );
+            Ok(())
+        });
+
         // Phase C2 — combat-tutorial onUpdate bindings (was a B6 stub
         // pair). Now read from the snapshot fields populated at
         // LuaActor construction; falls back to safe defaults

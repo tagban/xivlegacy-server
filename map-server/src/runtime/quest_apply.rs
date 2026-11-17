@@ -839,6 +839,14 @@ pub async fn apply_runtime_lua_command(
             apply_set_actor_mod(actor_id, modifier_key, value, registry).await;
             true
         }
+        LC::MonsterMove {
+            actor_id,
+            command_id,
+            learn,
+        } => {
+            apply_monster_move(actor_id, command_id, learn, registry, lua).await;
+            true
+        }
         LC::ActorEngage {
             actor_id,
             target_actor_id,
@@ -2768,6 +2776,48 @@ async fn apply_set_actor_mod(
         modifier_key,
         value,
         "SetActorMod applied",
+    );
+}
+
+/// `bnpc:LearnMonsterMove(id)` / `bnpc:UseMonsterMove(id)`: add a monster
+/// move to the battle NPC's list, or queue it for its next combat tick
+/// (the `!usemove` path: no TP needed, and an idle monster waits for a foe).
+async fn apply_monster_move(
+    actor_id: u32,
+    command_id: u16,
+    learn: bool,
+    registry: &ActorRegistry,
+    lua: Option<&Arc<LuaEngine>>,
+) {
+    let Some(cmd) = lua.and_then(|l| {
+        l.catalogs()
+            .battle_commands
+            .read()
+            .ok()
+            .and_then(|c| c.get(&command_id).map(|gd| gd.to_battle_command()))
+    }) else {
+        tracing::debug!(command_id, "MonsterMove skipped — no such battle command");
+        return;
+    };
+    let Some(handle) = registry.get(actor_id).await else {
+        return;
+    };
+    let mut c = handle.character.write().await;
+    let Some(ctrl) = c.ai_container.controller.as_mut() else {
+        return;
+    };
+    if learn {
+        if !ctrl.battle.skills.iter().any(|s| s.id == command_id) {
+            ctrl.battle.skills.push(cmd);
+        }
+    } else {
+        ctrl.battle.forced_skill = Some(cmd);
+    }
+    tracing::debug!(
+        actor = format!("0x{actor_id:08X}"),
+        command_id,
+        learn,
+        "MonsterMove applied",
     );
 }
 
