@@ -1,4 +1,4 @@
--- gamedata_actor_class: game data, 8135 rows. Reloaded whole when this file changes.
+-- gamedata_actor_class: game data, 8137 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `gamedata_actor_class`;
 INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propertyFlags`, `eventConditions`) VALUES
@@ -13385,7 +13385,22 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
 (1001833, '/Chara/Npc/Populace/PopulaceStandard', 1000353, 19, '{"talkEventConditions":[{"unknown1":4,"unknown2":0,"conditionName":"talkDefault"}],"noticeEventConditions":[{"unknown1":0,"unknown2":1,"conditionName":"noticeEvent"}]}'),
 (1001834, '/Chara/Npc/Populace/PopulaceStandard', 2200183, 19, '{"talkEventConditions":[{"unknown1":4,"unknown2":0,"conditionName":"talkDefault"}],"noticeEventConditions":[{"unknown1":0,"unknown2":1,"conditionName":"noticeEvent"}]}'),
 (1001835, '/Chara/Npc/Populace/PopulaceStandard', 1200227, 19, '{"talkEventConditions":[{"unknown1":4,"unknown2":0,"conditionName":"talkDefault"}],"noticeEventConditions":[{"unknown1":0,"unknown2":1,"conditionName":"noticeEvent"}]}'),
-(1001836, '', 2480006, 0, NULL),
+(1001836, '/Chara/Npc/Populace/InstanceRaidGuide/InstanceRaidGuide', 2480006, 19, '{
+  "talkEventConditions": [
+    {
+      "unknown1": 4,
+      "unknown2": 0,
+      "conditionName": "talkDefault"
+    }
+  ],
+  "noticeEventConditions": [
+    {
+      "unknown1": 0,
+      "unknown2": 1,
+      "conditionName": "noticeEvent"
+    }
+  ]
+}'),
 (1001837, '', 2480007, 0, NULL),
 (1001838, '/Chara/Npc/Populace/PopulaceStandard', 2480008, 19, '{
   "talkEventConditions": [
@@ -30800,21 +30815,21 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
 (2162034, '', 3106552, 0, NULL),
 (2162035, '', 3106552, 0, NULL),
 (2162036, '', 3106552, 0, NULL),
-(2162037, '', 3106552, 0, NULL),
+(2162037, '/Chara/Npc/Monster/Lizardman/LizardmanPugilistStandard', 3106552, 0, NULL),
 (2162038, '', 3106553, 0, NULL),
 (2162039, '', 3106554, 0, NULL),
 (2162040, '', 3106554, 0, NULL),
 (2162041, '', 3106554, 0, NULL),
 (2162042, '', 3106554, 0, NULL),
 (2162043, '', 3106554, 0, NULL),
-(2162044, '', 3106554, 0, NULL),
+(2162044, '/Chara/Npc/Monster/Lizardman/LizardmanPugilistStandard', 3106554, 0, NULL),
 (2162045, '', 3106555, 0, NULL),
 (2162046, '', 3106556, 0, NULL),
 (2162047, '', 3106556, 0, NULL),
 (2162048, '', 3106556, 0, NULL),
 (2162049, '', 3106556, 0, NULL),
-(2162050, '', 3106556, 0, NULL),
-(2162051, '', 3106557, 0, NULL),
+(2162050, '/Chara/Npc/Monster/Lizardman/LizardmanPugilistStandard', 3106556, 0, NULL),
+(2162051, '/Chara/Npc/Monster/Lizardman/LizardmanPugilistStandard', 3106557, 0, NULL),
 (2162052, '', 3106558, 0, NULL),
 (2162053, '', 3106559, 0, NULL),
 (2162054, '', 3106560, 0, NULL),
@@ -30822,7 +30837,7 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
 (2162056, '', 3106561, 0, NULL),
 (2162057, '', 3106559, 0, NULL),
 (2162058, '', 3106562, 0, NULL),
-(2162059, '', 3106562, 0, NULL),
+(2162059, '/Chara/Npc/Monster/Lizardman/LizardmanPugilistStandard', 3106562, 0, NULL),
 (2162060, '', 3106564, 0, NULL),
 (2162061, '/Chara/Npc/Monster/Fighter/FighterAllyOpeningAttacker', 3106563, 0, NULL),
 (2180001, '/Chara/Npc/Monster/Empire/EmpireStandard', 3180001, 0, NULL),
@@ -31817,7 +31832,7 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
 (2209004, '/Chara/Npc/Monster/Killermachine/KillermachineNormalStandard', 3109004, 0, NULL),
 (2209005, '/Chara/Npc/Monster/Killermachine/KillermachineNormalStandard', 3109002, 0, NULL),
 (2209501, '/Chara/Npc/Monster/Garuda/GarudaNormal', 3209501, 0, NULL),
-(2209502, '', 3209501, 0, NULL),
+(2209502, '/Chara/Npc/Monster/Garuda/GarudaNormal', 3209501, 0, NULL),
 (2209503, '', 1, 0, NULL),
 (2209504, '', 3209502, 0, NULL),
 (2209505, '', 3209503, 0, NULL),
@@ -31851,14 +31866,14 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
 (2210301, '/Chara/Npc/Monster/Goblin/GoblinBommerGlaStandard', 3210301, 0, NULL),
 (2210302, '/Chara/Npc/Monster/Goblin/GoblinBommerGlaStandard', 3210302, 0, NULL),
 (2210303, '/Chara/Npc/Monster/Goblin/GoblinBommerGlaStandard', 3210303, 0, NULL),
-(2210401, '', 3210401, 0, NULL),
-(2210402, '', 3210402, 0, NULL),
-(2210403, '', 3210403, 0, NULL),
-(2210404, '', 3210404, 0, NULL),
-(2210405, '', 3210405, 0, NULL),
-(2210406, '', 3210406, 0, NULL),
-(2210407, '', 3210407, 0, NULL),
-(2210408, '', 3210408, 0, NULL),
+(2210401, '/Chara/Npc/Monster/Moogle/MoogleDarkTanker', 3210401, 0, NULL),
+(2210402, '/Chara/Npc/Monster/Moogle/MoogleDarkAttacker', 3210402, 0, NULL),
+(2210403, '/Chara/Npc/Monster/Moogle/MoogleDarkSniper', 3210403, 0, NULL),
+(2210404, '/Chara/Npc/Monster/Moogle/MoogleDarkHealer', 3210404, 0, NULL),
+(2210405, '/Chara/Npc/Monster/Moogle/MoogleDarkNuker', 3210405, 0, NULL),
+(2210406, '/Chara/Npc/Monster/Moogle/MoogleDarkBuffer', 3210406, 0, NULL),
+(2210407, '/Chara/Npc/Monster/Moogle/MoogleDarkDebuffer', 3210407, 0, NULL),
+(2210408, '/Chara/Npc/Monster/Moogle/MoogleDarkKing', 3210408, 0, NULL),
 (2210501, '', 3210501, 0, NULL),
 (2210502, '', 3210502, 0, NULL),
 (2210503, '', 3210503, 0, NULL),
@@ -36655,6 +36670,28 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
   ]
 }'),
 (1091142, '/Chara/Npc/Populace/PopulaceStandard', 0, 1, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "4.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1091200, '/Chara/Npc/Populace/InstanceRaidGuide/InstanceRaidGuide', 0, 0, '{
+  "pushWithCircleEventConditions": [
+    {
+      "isEnabled": "false",
+      "radius": "4.0",
+      "outwards": "false",
+      "silent": "false",
+      "conditionName": "pushDefault"
+    }
+  ]
+}'),
+(1091201, '/Chara/Npc/Populace/InstanceRaidGuide/InstanceRaidGuide', 0, 0, '{
   "pushWithCircleEventConditions": [
     {
       "isEnabled": "false",

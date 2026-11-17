@@ -1,4 +1,4 @@
--- server_battlenpc_pools: game data, 580 rows. Reloaded whole when this file changes.
+-- server_battlenpc_pools: game data, 606 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_pools`;
 INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId`, `currentJob`, `combatSkill`, `combatDelay`, `combatDmgMult`, `aggroType`, `immunity`, `linkType`, `spellListId`, `skillListId`) VALUES
@@ -583,4 +583,29 @@ INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId
 (30503, 2280197, 'etc2i2_lunatic_lamb', 29, 0, 1, 4500, 1.0, 0, 0, 0, 0, 0),
 (30504, 2280198, 'etc2i2_lunatic_lamb', 29, 0, 1, 4500, 1.0, 0, 0, 0, 0, 0),
 (30505, 2280301, 'etc2i2_lunatic_lamb', 29, 0, 1, 4500, 1.0, 0, 0, 0, 0, 0),
-(30506, 2280302, 'etc2i2_lunatic_shepherd', 29, 0, 1, 4200, 1.1, 0, 0, 0, 0, 0);
+(30506, 2280302, 'etc2i2_lunatic_shepherd', 29, 0, 1, 4200, 1.1, 0, 0, 0, 0, 0),
+(31600, 2162051, 'Flamefist Ahlygg Roh', 23, 0, 1, 3800, 1.0, 1, 0, 0, 0, 23),
+(31601, 2162037, 'Zahar''ak Sniper', 23, 0, 1, 4200, 1.0, 1, 0, 0, 0, 23),
+(31602, 2162044, 'Zahar''ak Halberdier', 23, 0, 1, 4200, 1.0, 1, 0, 0, 0, 23),
+(31603, 2162050, 'Zahar''ak Drubber', 23, 0, 1, 4200, 1.0, 1, 0, 0, 0, 23),
+(31604, 2162059, 'Zahar''ak Ostiary', 23, 0, 1, 4200, 1.0, 1, 0, 0, 0, 23),
+(31605, 2207301, 'Ifrit', 54, 0, 1, 3600, 1.5, 1, 0, 0, 0, 30100),
+(31606, 2106447, 'Natalan Pikecarver', 24, 0, 1, 4200, 1.0, 1, 0, 0, 0, 24),
+(31607, 2106453, 'Natalan Logsplitter', 24, 0, 1, 4200, 1.0, 1, 0, 0, 0, 24),
+(31608, 2106460, 'Natalan Wolftamer', 24, 0, 1, 4200, 1.0, 1, 0, 0, 0, 24),
+(31609, 2106467, 'Natalan Boneknitter', 24, 0, 1, 4200, 1.0, 1, 0, 0, 0, 24),
+(31610, 2209502, 'Garuda', 59, 0, 1, 3600, 1.5, 1, 0, 0, 0, 30109),
+(31611, 2100519, 'Queen Gougou', 4, 0, 1, 3800, 1.2, 1, 0, 0, 0, 4),
+(31612, 2101515, 'Buata', 9, 0, 1, 3800, 1.2, 1, 0, 0, 0, 9),
+(31613, 2101011, 'Capricious Cassie', 16, 0, 1, 4000, 1.2, 1, 0, 0, 0, 16),
+(31614, 2106221, 'Spiteful', 50, 0, 1, 3800, 1.2, 1, 0, 0, 0, 50),
+(31615, 2102806, 'Great Oak', 16, 0, 1, 4400, 1.2, 1, 0, 0, 0, 0),
+(31616, 2210401, 'Dark Moogle (Tanker)', 29, 0, 1, 4000, 1.0, 1, 0, 0, 0, 0),
+(31617, 2210402, 'Dark Moogle (Attacker)', 29, 0, 1, 3600, 1.0, 1, 0, 0, 0, 0),
+(31618, 2210403, 'Dark Moogle (Sniper)', 29, 0, 1, 4000, 1.0, 1, 0, 0, 0, 0),
+(31619, 2210404, 'Dark Moogle (Healer)', 29, 0, 1, 4400, 1.0, 1, 0, 0, 0, 0),
+(31620, 2210405, 'Dark Moogle (Nuker)', 29, 0, 1, 4400, 1.0, 1, 0, 0, 0, 0),
+(31621, 2210406, 'Dark Moogle (Buffer)', 29, 0, 1, 4400, 1.0, 1, 0, 0, 0, 0),
+(31622, 2210407, 'Dark Moogle (Debuffer)', 29, 0, 1, 4400, 1.0, 1, 0, 0, 0, 0),
+(31623, 2210408, 'Good King Moggle Mog XII', 29, 0, 1, 3600, 1.5, 1, 0, 0, 0, 0),
+(31624, 2210901, 'Nael van Darnus', 29, 0, 1, 3600, 1.5, 1, 0, 0, 0, 30115);

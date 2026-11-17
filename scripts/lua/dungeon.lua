@@ -52,6 +52,18 @@ DUNGEONS = {
 		entry = {2483.0, 248.3, 2194.0, 0.0},		-- the west edge of the Bowl, from cut scene GC010110
 		exit = {206, 14.0, 22.2, -1552.0, 0.0},		-- Apkallus Falls, Gridania
 	},
+	-- Ifrit grown stronger, for Louisoix's Ifrit Bleeds, We Can Kill It
+	-- (Sum6a0): the Bowl of Embers (Hard), the client's raid list entry 3.
+	-- Same map and zone as the GC battle; entered through the Amalj'aa's
+	-- beastman aetheryte in the cave under Camp Broken Water, where you
+	-- return after. A second battle on a zone sets "second", so the zone's
+	-- own lookup (Return, the GC directors' leaveDungeon) keeps its first.
+	embers_hard = {
+		zone = 240, name = "BowlOfEmbers", content = "SimpleContentBowlOfEmbersHard",
+		director = "InstanceRaid/InstanceRaidNormalIfrit", second = true,
+		entry = {2483.0, 248.3, 2194.0, 0.0},		-- the west edge of the Bowl, as the GC battle
+		exit = {174, 1650.0, 251.9, 1070.0, 1.57},	-- the beastman aetheryte's cave, Southern Thanalan
+	},
 	-- Garuda's battle for the Grand Companies' In for Garuda Wakening
 	-- (Gc?104), entered through the beastman aetheryte at the north-east tip
 	-- of Feathergorge, where you return after.
@@ -60,6 +72,26 @@ DUNGEONS = {
 		director = "InstanceRaid/InstanceRaidLesserGaruda",
 		entry = {1508.0, 302.0, -274.0, -1.16},	-- the bowl's east rim
 		exit = {143, 1027.0, 290.8, -137.0, 0.0},	-- Feathergorge, Coerthas Central Highlands
+	},
+	-- Garuda grown stronger, for Louisoix's Taming the Tempest (Sum6g0): the
+	-- Howling Eye (Hard), the client's raid list entry 11. Same map and zone
+	-- as the GC battle ("second"); entered through the Ixal's beastman
+	-- aetheryte in the cave north-east of Natalan, where you return after.
+	howling_hard = {
+		zone = 239, name = "HowlingEye", content = "SimpleContentHowlingEyeHard",
+		director = "InstanceRaid/InstanceRaidNormalGaruda", second = true,
+		entry = {1508.0, 302.0, -274.0, -1.16},	-- the bowl's east rim, as the GC battle
+		exit = {143, 1196.0, 297.7, -130.0, 3.14},	-- the beastman aetheryte's cave, Coerthas Central Highlands
+	},
+	-- Good King Moggle Mog XII's court, for Louisoix's A Feast of Fools
+	-- (Sum6m0): Thornmarch, the client's raid list entry 5, on the West
+	-- Shroud map. Pukwa Pika opens the ward south of Turning Leaf, where
+	-- you return after.
+	thornmarch = {
+		zone = 238, name = "Thornmarch", content = "SimpleContentThornmarch",
+		director = "InstanceRaid/InstanceRaidDarkMoogle",
+		entry = {-2368.0, -23.2, -860.0, 3.14},	-- the moogle ring's north side (layout isgrp_mog_ring)
+		exit = {153, -1342.0, -16.0, 350.0, 3.14},	-- before Pukwa Pika, south of Turning Leaf
 	},
 	-- The Grand Companies' assault on Castrum Novum's lunar transmitter
 	-- (United We Stand, Gc?106), entered through the aetherial gate in Jagged
@@ -79,11 +111,21 @@ DUNGEONS = {
 		entry = {0.0, 0.0, -8.0, 0.0},				-- the Allagan dais's south side
 		exit = {206, -202.0, 22.4, -1608.5, 1.57},	-- the clearing before the Lotus Stand, Gridania
 	},
+	-- Nael van Darnus again, for The Raven, Nevermore (Sum6w0): Rivenroad
+	-- (Hard), the client's raid list entry 16. Same map and zone as the GC
+	-- battle ("second"); Serpent Private Dauremant puts you aboard the
+	-- Enterprise in Gridania, where it sets you down after.
+	rivenroad_hard = {
+		zone = 257, name = "Rivenroad", content = "SimpleContentRivenroadHard",
+		director = "InstanceRaid/InstanceRaidNormalWhiteGeneral", second = true,
+		entry = {0.0, 0.0, -8.0, 0.0},				-- the Allagan dais's south side, as the GC battle
+		exit = {155, 61.5, -7.0, -1212.0, 0.0},		-- between Serpent Privates Hodder and Dauremant, Adventurers' Guild, Gridania
+	},
 }
 
 local function byZone(zoneId)
 	for _, d in pairs(DUNGEONS) do
-		if d.zone == zoneId then return d end
+		if d.zone == zoneId and not d.second then return d end
 	end
 end
 
@@ -115,8 +157,9 @@ function enterDungeon(player, key)
 		d.entry[1], d.entry[2], d.entry[3], d.entry[4], 15);
 end
 
-function leaveDungeon(player)
-	local d = byZone(player:GetZoneID());
+-- key names the battle when its zone holds more than one (a "second").
+function leaveDungeon(player, key)
+	local d = (key ~= nil and DUNGEONS[key]) or byZone(player:GetZoneID());
 	player:LeaveContent();
 	if d ~= nil then
 		GetWorldManager():DoZoneChange(player, d.exit[1], nil, 0, 15, d.exit[2], d.exit[3], d.exit[4], d.exit[5]);
