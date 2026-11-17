@@ -683,6 +683,16 @@ mod tests {
         let a = &events["allsaints"];
         assert!(a.windows.iter().any(|w| w.quests == [110800]));
         assert_eq!(a.night_classes.len(), 9);
+        // the yearly calendar
+        let on = |name: &str, day: MonthDay| events[name].windows.iter().any(|w| w.contains(day));
+        assert!(on("allsaints", MonthDay(10, 1)) && on("allsaints", MonthDay(10, 31)));
+        assert!(!on("allsaints", MonthDay(9, 30)) && !on("allsaints", MonthDay(11, 1)));
+        assert!(on("starlight", MonthDay(11, 1)) && on("starlight", MonthDay(1, 16)));
+        assert!(!on("starlight", MonthDay(10, 31)) && !on("starlight", MonthDay(1, 17)));
+        assert!(on("hatchingtide", MonthDay(4, 1)) && on("hatchingtide", MonthDay(4, 30)));
+        assert!(!on("hatchingtide", MonthDay(3, 31)) && !on("hatchingtide", MonthDay(5, 1)));
+        assert!(on("moonfire", MonthDay(6, 1)) && on("moonfire", MonthDay(8, 31)));
+        assert!(!on("moonfire", MonthDay(5, 31)) && !on("moonfire", MonthDay(9, 1)));
         assert!(a.is_night(19) && a.is_night(4) && !a.is_night(5) && !a.is_night(18));
     }
 }
