@@ -1,4 +1,9 @@
-#!/usr/bin/env bash
+#!/bin/sh
+# Alpine has no bash out of the box: fetch it, then carry on under bash.
+if [ -z "${BASH_VERSION:-}" ]; then
+    if ! command -v bash >/dev/null 2>&1 && command -v apk >/dev/null 2>&1; then apk add --no-cache -q bash; fi
+    exec bash "$0" "$@"
+fi
 # XIVLegacy server: one-time setup of a Linux machine (a small VPS is the target:
 # 1 GB RAM, 1-2 x86-64 vCPUs). Run as root from an unpacked server bundle or a
 # checkout of the repository:
@@ -41,7 +46,7 @@ while [ $# -gt 0 ]; do
         --ssh-port) SSH_PORT="$2"; shift 2 ;;
         --no-firewall) FIREWALL=0; shift ;;
         --no-swap) SWAP=0; shift ;;
-        -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
+        -h|--help) sed -n "7,35p" "$0"; exit 0 ;;
         *) echo "unknown option: $1 (see --help)" >&2; exit 2 ;;
     esac
 done
@@ -111,8 +116,12 @@ else
     mkdir -p "$CNF_DIR"
     grep -qs '!includedir /etc/my.cnf.d' /etc/my.cnf || printf '\n!includedir /etc/my.cnf.d\n' >> /etc/my.cnf
 fi
-install -m 0644 "$HERE/mariadb-small.cnf" "$CNF_DIR/90-xivlegacy.cnf"
-say "MariaDB config: $CNF_DIR/90-xivlegacy.cnf (127.0.0.1 only, small buffers)"
+# 'zz-' so it's read last: Alpine's own mariadb-server.cnf turns TCP off (skip-networking).
+CNF_CHANGED=1
+if cmp -s "$HERE/mariadb-small.cnf" "$CNF_DIR/zz-xivlegacy.cnf" 2>/dev/null; then CNF_CHANGED=0; fi
+rm -f "$CNF_DIR/90-xivlegacy.cnf"
+install -m 0644 "$HERE/mariadb-small.cnf" "$CNF_DIR/zz-xivlegacy.cnf"
+say "MariaDB config: $CNF_DIR/zz-xivlegacy.cnf (127.0.0.1 only, small buffers)"
 
 # A fresh data folder needs initializing on Alpine and Arch (Debian and RHEL do it themselves).
 MYSQL_DATADIR=/var/lib/mysql
@@ -125,15 +134,33 @@ if [ ! -d "$MYSQL_DATADIR/mysql" ]; then
     esac
 fi
 
+# Restart MariaDB only for a new config, and then with the game servers stopped
+# (on a second run they may be up).
+XIV_WAS_UP=0
+if [ "$CNF_CHANGED" = 1 ] && [ -x /usr/local/sbin/xiv ] && [ -L "$OPT/current" ]; then
+    if [ "$(/usr/local/sbin/xiv status 2>/dev/null | sed -n 's/^Ports listening: \([0-9]\).*/\1/p')" != 0 ]; then
+        XIV_WAS_UP=1
+        say "stopping the game servers while MariaDB restarts"
+        if [ "$INIT" = systemd ]; then systemctl stop xivlegacy.target; else for s in map world lobby web; do rc-service "xivlegacy-$s" stop >/dev/null 2>&1 || true; done; fi
+    fi
+fi
 if [ "$INIT" = systemd ]; then
     systemctl enable -q mariadb
-    systemctl restart mariadb
+    if [ "$CNF_CHANGED" = 1 ]; then systemctl restart mariadb; else systemctl start mariadb; fi
 else
     rc-update add mariadb default >/dev/null 2>&1 || true
-    rc-service mariadb restart >/dev/null 2>&1 || rc-service mariadb start
+    if rc-service mariadb status >/dev/null 2>&1; then
+        [ "$CNF_CHANGED" = 0 ] || rc-service mariadb restart >/dev/null
+    elif ! rc-service mariadb start >/dev/null 2>&1; then
+        # A first start can outlast OpenRC's wait on a slow disk; give it one more go.
+        sleep 10
+        rc-service mariadb zap >/dev/null 2>&1 || true
+        pkill -x mariadbd 2>/dev/null && sleep 5 || true
+        rc-service mariadb start >/dev/null
+    fi
 fi
 
-for _ in $(seq 60); do
+for _ in $(seq 120); do
     "$MARIADB" -N -B -e 'SELECT 1' >/dev/null 2>&1 && break
     sleep 1
 done
@@ -340,6 +367,11 @@ RC
     say "OpenRC services: xivlegacy-{web,lobby,world,map} (logs in $LOGDIR)"
 fi
 
+if [ "$XIV_WAS_UP" = 1 ]; then
+    say "starting the game servers again"
+    /usr/local/sbin/xiv start >/dev/null || warn "the game servers didn't come back; see: xiv logs"
+fi
+
 # ---------------------------------------------------------------- 6. firewall
 if [ "$FIREWALL" = 1 ]; then
     if [ -z "$SSH_PORT" ]; then
@@ -389,6 +421,7 @@ if [ "$SWAP" = 1 ]; then
 fi
 
 # ---------------------------------------------------------------- 8. the xiv command
+mkdir -p /usr/local/sbin
 install -m 0755 "$HERE/xiv.sh" /usr/local/sbin/xiv.new
 mv -f /usr/local/sbin/xiv.new /usr/local/sbin/xiv
 say "installed the 'xiv' command (/usr/local/sbin/xiv)"

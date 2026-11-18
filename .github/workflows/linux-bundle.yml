@@ -90,6 +90,9 @@ jobs:
 
       - name: Package
         id: pkg
+        env:
+          # Through the environment, not pasted into the script: branch names are user input.
+          REF_NAME: ${{ github.event.inputs.ref || github.head_ref || github.ref_name }}
         run: |
           set -euo pipefail
           sha="$(git rev-parse HEAD)"
@@ -106,7 +109,7 @@ jobs:
           cp -R ops/linux "$stage/ops/linux"
           {
             echo "commit=$sha"
-            echo "ref=${{ github.event.inputs.ref || github.ref_name }}"
+            echo "ref=$REF_NAME"
             echo "built=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             echo "target=$TARGET"
           } > "$stage/BUILD"

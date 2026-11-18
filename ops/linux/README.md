@@ -195,8 +195,8 @@ itself, up to 5 times an hour.
   automatically: `xiv import /var/backups/xivlegacy/<that file>` does that.
 - **MariaDB won't start after install**: `journalctl -u mariadb` (or
   `/var/log/mysql`); the small-memory settings are in
-  `/etc/mysql/mariadb.conf.d/90-xivlegacy.cnf` (Debian/Ubuntu) or
-  `/etc/my.cnf.d/90-xivlegacy.cnf` (others).
+  `/etc/mysql/mariadb.conf.d/zz-xivlegacy.cnf` (Debian/Ubuntu) or
+  `/etc/my.cnf.d/zz-xivlegacy.cnf` (others).
 
 ## Tested
 

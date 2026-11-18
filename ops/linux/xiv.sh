@@ -52,7 +52,7 @@ say()  { printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"; [ -w "$OPS_STATE"
 warn() { say "warning: $*" >&2; }
 die()  { say "error: $*" >&2; exit 1; }
 
-need_root() { [ "$(id -u)" -eq 0 ] || die "run as root (sudo xiv $*)"; }
+need_root() { [ "$(id -u)" -eq 0 ] || die "run as root (sudo xiv $*)"; mkdir -p "$OPS_STATE"; }
 
 if [ -d /run/systemd/system ]; then INIT=systemd; else INIT=openrc; fi
 
@@ -155,7 +155,10 @@ write_settings() {
         done
     fi
     printf 'RUST_LOG=%s\n' "$RUST_LOG" > "$VAR/runtime.env"
-    chown -h "$SVC_USER:$SVC_USER" "$s" "$s"/*.toml "$VAR/runtime.env" 2>/dev/null || true
+    # Root's files: the servers only read them.
+    chown -h root:root "$s" "$s"/*.toml "$VAR/runtime.env" 2>/dev/null || true
+    chmod 0755 "$s"
+    chmod 0644 "$s"/*.toml "$VAR/runtime.env"
 }
 
 # ---------------------------------------------------------------- services
@@ -189,10 +192,11 @@ start_all() {
     if [ "$INIT" = systemd ]; then
         systemctl reset-failed 'xivlegacy-*' 2>/dev/null || true
         systemctl enable -q xivlegacy.target
-        systemctl start --no-block xivlegacy.target
+        systemctl start --no-block xivlegacy.target 9>&-
     else
         for s in $SERVICES; do rc-update add "xivlegacy-$s" default >/dev/null 2>&1 || true; done
-        for s in $SERVICES; do rc-service "xivlegacy-$s" start >/dev/null || return 1; done
+        # 9>&-: the services must not inherit xiv's lock (OpenRC starts them as our children).
+        for s in $SERVICES; do rc-service "xivlegacy-$s" start >/dev/null 9>&- || return 1; done
     fi
     wait_up 900
 }
@@ -201,7 +205,7 @@ stop_all() {
     if [ "$INIT" = systemd ]; then
         systemctl stop xivlegacy.target xivlegacy-map xivlegacy-world xivlegacy-lobby xivlegacy-web 2>/dev/null || true
     else
-        for s in map world lobby web; do rc-service "xivlegacy-$s" stop >/dev/null 2>&1 || true; done
+        for s in map world lobby web; do rc-service "xivlegacy-$s" stop >/dev/null 2>&1 9>&- || true; done
     fi
     local i
     for i in $(seq 30); do [ "$(ports_up)" -eq 0 ] && break; sleep 1; done
@@ -279,7 +283,9 @@ install_dir() {
     sha="$(sed -n 's/^commit=//p' "$src/BUILD")"
     [ -n "$sha" ] || die "$src/BUILD has no commit"
     NEW_RELEASE="$OPT/releases/$sha"
-    if [ "$(cd "$src" && pwd -P)" != "$(cd "$NEW_RELEASE" 2>/dev/null && pwd -P || true)" ]; then
+    if [ -f "$NEW_RELEASE/SHA256SUMS" ] && cmp -s "$src/SHA256SUMS" "$NEW_RELEASE/SHA256SUMS"; then
+        :   # already installed, file for file
+    elif [ "$(cd "$src" && pwd -P)" != "$(cd "$NEW_RELEASE" 2>/dev/null && pwd -P || true)" ]; then
         rm -rf "$NEW_RELEASE.tmp"
         cp -a "$src" "$NEW_RELEASE.tmp"
         rm -rf "$NEW_RELEASE"
@@ -338,9 +344,9 @@ deploy() {
     # The ops scripts ride in the bundle; keep the installed 'xiv' in step.
     if [ -f "$new/ops/linux/xiv.sh" ]; then install -m 0755 "$new/ops/linux/xiv.sh" /usr/local/sbin/xiv.new && mv -f /usr/local/sbin/xiv.new /usr/local/sbin/xiv; fi
     state_set previous "$old"
-    state_set deployed_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     state_set stopped 0
     if start_all; then
+        state_set deployed_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
         say "deployed ${sha:0:10} OK"
         # Keep the 5 newest releases plus whatever is current/previous.
         # shellcheck disable=SC2012
@@ -403,9 +409,9 @@ status() {
 # Runs as the service user right after the web server starts: wait for /healthz
 # (the database is set up by then), then point server_zones at this map port.
 wait_web() {
-    local i url user pass host port db web_host="$BIND_IP"
+    local url user pass host port db web_host="$BIND_IP"
     [ "$web_host" = 0.0.0.0 ] && web_host=127.0.0.1
-    for i in $(seq 840); do
+    for _ in $(seq 840); do
         if curl -fs -o /dev/null "http://$web_host:$WEB_PORT/healthz"; then
             url="${XIVLEGACY_DB_URL:-}"
             if [ -n "$url" ] && [ -n "$MARIADB" ]; then
@@ -414,7 +420,7 @@ wait_web() {
                 host="$(printf '%s' "$url" | sed -n 's#.*@\([^:/]*\).*#\1#p')"
                 port="$(printf '%s' "$url" | sed -n 's#.*@[^:/]*:\([0-9]*\)/.*#\1#p')"
                 db="$(printf '%s' "$url" | sed -n 's#.*/\([^/?]*\).*#\1#p')"
-                MYSQL_PWD="$pass" "$MARIADB" -h "$host" -P "${port:-3306}" -u "$user" "$db" -e \
+                MYSQL_PWD="$pass" "$MARIADB" --skip-ssl -h "$host" -P "${port:-3306}" -u "$user" "$db" -e \
                     "UPDATE server_zones SET serverPort = $MAP_PORT WHERE serverIp = '127.0.0.1' AND serverPort BETWEEN 1989 AND 1999 AND serverPort <> $MAP_PORT;" \
                     || echo "warning: couldn't point server_zones at port $MAP_PORT" >&2
             fi

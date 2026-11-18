@@ -1,5 +1,5 @@
 # XIVLegacy: MariaDB sized for a 1 GB VPS. install.sh copies this into the
-# distribution's MariaDB config folder as 90-xivlegacy.cnf (read after the
+# distribution's MariaDB config folder as zz-xivlegacy.cnf (read after the
 # distribution's own files, so these values win).
 #
 # The whole XIVLegacy database (game data + players) is under 100 MB, so a
