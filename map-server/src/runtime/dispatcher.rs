@@ -3619,6 +3619,19 @@ async fn resolve_action(
         )
         .await;
     }
+
+    // Self-destruct spends the monster that uses it: once the blast lands,
+    // the bomb falls. Nobody gets the kill.
+    if !attacker_handle.is_player() && self_destructs(command) {
+        attacker_handle.character.write().await.chara.hp = 0;
+        die_if_defender_fell(attacker_actor_id, None, registry, world, zone, lua, db).await;
+    }
+}
+
+/// A move that KOs its own user when it lands (the bomb's Self-destruct,
+/// both of its command rows).
+pub(crate) fn self_destructs(command: &BattleCommand) -> bool {
+    command.name == "self_destruct"
 }
 
 /// pmeteor `CommandResultX01PacketCommand.Attack` — the synthetic
@@ -5969,6 +5982,18 @@ pub(crate) async fn send_to_self_if_player(
         let mut bytes = bytes;
         common::subpacket::SubPacket::stamp_target_id_if_zero(&mut bytes, handle.session_id);
         client.send_bytes(bytes).await;
+    }
+}
+
+#[cfg(test)]
+mod self_destruct_tests {
+    use super::*;
+
+    #[test]
+    fn only_self_destruct_spends_its_user() {
+        assert!(self_destructs(&BattleCommand::new(23033, "self_destruct")));
+        assert!(self_destructs(&BattleCommand::new(23628, "self_destruct")));
+        assert!(!self_destructs(&BattleCommand::new(23034, "bomb_toss")));
     }
 }
 

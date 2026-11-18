@@ -40,7 +40,7 @@ KINDS = [
     (42, 'Dodo', [42], '', [], [(23013, 23020, 'zam', [2102001, 2202003])], ['Dodo']),
     (31, 'Basilisk', [31], '', [], [(23021, 23027, 'ge', []), (23105, 23106, 'name', [])], ['Basilisk', 'Peiste']),
     (32, 'Raptor', [32], '', [], [(23028, 23031, 'zam', [2100203]), (23101, 23104, 'zam', [2100205])], ['Raptor']),
-    (64, 'Bomb', [64], '', [], [(23032, 23036, 'zam', [2101605, 2101602])], ['Bomb']),
+    (64, 'Bomb', [64], '', [], [(23032, 23036, 'zam', [2101605, 2101602]), (23628, 23628, 'modern', [])], ['Bomb']),
     (20, 'Jellyfish', [20], '', [], [(23037, 23040, 'ge', [])], ['Aurelia', 'Jellyfish']),
     (60, 'Ogre', [60], '', [], [(23041, 23046, 'ge', [])], ['Ogre', 'Dhara']),
     (43, 'Bat', [43], '', [], [(23047, 23049, 'name', [2204102, 2104101])], ['Bat']),
@@ -267,6 +267,12 @@ for lid, fam, jobs, rx, ids in SPELL_LISTS:
     for i in ids:
         assert i not in fam_of, (i, fam)
         fam_of[i] = (lid, fam, 'name', [], i - 23507, [])
+
+# A second command row for a move the kind already has: it plays the same
+# model motion (the bomb's two Self-destruct rows; both KO the bomb).
+SAME_ANIMATION = {23628: 23033}
+for i, j in SAME_ANIMATION.items():
+    fam_of[i] = fam_of[i][:4] + (fam_of[j][4],) + fam_of[i][5:]
 
 def genus_of(lid):
     return lid if lid in GENUS else 0
