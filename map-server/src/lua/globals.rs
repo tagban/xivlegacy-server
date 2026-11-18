@@ -165,8 +165,9 @@ pub fn install_globals(
             t.set("difficulty", gd.difficulty)?;
             t.set("leveType", gd.leve_type)?;
             t.set("rewardExp", gd.reward_exp)?;
-            // battle leves carry no amount; show the one-star payout
-            let gil = if gd.reward_gil == 0 && gd.class_type == 1 {
+            // battle and fieldcraft leves carry no amount; show the
+            // one-star payout
+            let gil = if gd.reward_gil == 0 && matches!(gd.class_type, 1 | 2) {
                 crate::leve::battle::reward_gil(gd.level, 1).max(0) as u32
             } else {
                 gd.reward_gil
@@ -208,6 +209,30 @@ pub fn install_globals(
         globals.set("GetGuildleveOffers", f)?;
     }
 
+    // GetFieldLeveOffers(location, skill) — the fieldcraft leves a city's
+    // levemete lists for a gathering class (location 1 Limsa Lominsa,
+    // 2 Gridania, 3 Ul'dah; skill 39 Miner, 40 Botanist, 41 Fisher): up to
+    // 8 ids near the player's `level` in that class, only those whose camp
+    // zone has gathering points of the class's kind.
+    {
+        let cats = catalogs.clone();
+        let f = lua.create_function(
+            move |_, (location, skill, level): (u8, u8, u16)| -> mlua::Result<Vec<u32>> {
+                let zones: std::collections::HashSet<(u32, u32)> = cats
+                    .gather_node_metadata
+                    .read()
+                    .map(|m| m.iter().map(|((z, _), v)| (*z, v.harvest_type)).collect())
+                    .unwrap_or_default();
+                Ok(cats
+                    .guildleves
+                    .read()
+                    .map(|m| crate::leve::battle::field_offers(&m, location, skill, level, &zones))
+                    .unwrap_or_default())
+            },
+        )?;
+        globals.set("GetFieldLeveOffers", f)?;
+    }
+
     // GetFactionLeveOffers(faction, level) — the faction leves (faction 1
     // Broken Blade, 2 Azeyma's Shields, 3 Horn and Hand) the levemete lists
     // at that level band: up to 8 ids (crate::leve::faction).
@@ -218,7 +243,13 @@ pub fn install_globals(
                 Ok(cats
                     .guildleves
                     .read()
-                    .map(|m| crate::leve::faction::offers(&m, faction, level))
+                    .map(|m| {
+                        let now = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_secs())
+                            .unwrap_or_default();
+                        crate::leve::faction::offers(&m, faction, level, now)
+                    })
                     .unwrap_or_default())
             },
         )?;

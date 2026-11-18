@@ -1616,6 +1616,47 @@ impl UserData for LuaPlayer {
                 None => (None, None),
             })
         });
+        methods.add_method(
+            "IsLeveGatherPoint",
+            |_, this, (zone_id, unique_id): (u32, String)| {
+                Ok(crate::leve::battle::is_field_point(
+                    this.snapshot.actor_id,
+                    zone_id,
+                    &unique_id,
+                ))
+            },
+        );
+        methods.add_method("IsLeveCrate", |_, this, npc: mlua::Value| {
+            Ok(crate::leve::battle::is_crate(
+                this.snapshot.actor_id,
+                lua_target_to_actor_id(&npc),
+            ))
+        });
+        methods.add_method("OpenLeveCrate", |_, this, npc: mlua::Value| {
+            push(
+                &this.queue,
+                LuaCommand::OpenLeveCrate {
+                    player_id: this.snapshot.actor_id,
+                    crate_actor_id: lua_target_to_actor_id(&npc),
+                },
+            );
+            Ok(())
+        });
+        methods.add_method(
+            "LeveGatherVisit",
+            |_, this, (zone_id, unique_id, gained): (u32, String, u32)| {
+                push(
+                    &this.queue,
+                    LuaCommand::LeveGatherVisit {
+                        player_id: this.snapshot.actor_id,
+                        zone_id,
+                        unique_id,
+                        gained,
+                    },
+                );
+                Ok(())
+            },
+        );
         methods.add_method("AbandonGuildleve", |_, this, _: ()| {
             push(
                 &this.queue,

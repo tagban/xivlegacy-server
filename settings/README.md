@@ -105,6 +105,7 @@ camp = 0
 | `!spawn <class id> [level] [count] [path=…] [genus=…]` / `!despawn` | Monsters around you for testing (up to 8, never respawn; `path=` tries a class path, `genus=` a family) / remove them |
 | `!sethp <hp>` | Your current HP (up to your max), for testing potions and healing |
 | `!kill` / `!kill all` | Defeat your target or the nearest monster / every monster within 20 yalms, as if you'd won the fight (EXP, quest and leve kills count) |
+| `!leve <id> [stars]` / `!leve status` / `!leve go` / `!leve poke` / `!leve open` / `!leve camp <id>` / `!leve abandon` | Start a levequest without a card / show the running one's counts and targets / go to its nearest target (or crate, or behind the beast to follow) / poke every disguised beast nearby / open the errand crate you stand by / go to a leve's camp aetheryte / abandon the running leve |
 | `!event [name] [on\|off\|auto]` | Seasonal events (see below): list them, or switch one on or off whatever the date (`auto` goes back to its dates). Kept over restarts |
 | `!worldend` | (finaldays module, off by default) 1.0's Final Days: Nael van Darnus, his Imperials, Atomos and other level 70-80 monsters around you and in each city (the Bombard King only falls to /firedance). Again to end it |
 

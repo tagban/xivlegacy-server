@@ -521,6 +521,24 @@ impl Database {
     }
 
     /// Every monster spawn point in a zone (positions on the ground).
+    /// Where a zone's NPCs and objects stand (an errand leve's crates
+    /// in town go beside them).
+    pub async fn npc_spawn_points(&self, zone_id: u32) -> Result<Vec<(f32, f32, f32)>> {
+        self.conn
+            .call_db(move |c| {
+                let mut stmt = c.prepare(
+                    r"SELECT positionX, positionY, positionZ
+                      FROM server_spawn_locations WHERE zoneId = ?1",
+                )?;
+                let rows = stmt
+                    .query_map([zone_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+                    .collect::<common::sql::Result<_>>()?;
+                Ok(rows)
+            })
+            .await
+            .context("leve data query")
+    }
+
     pub async fn battlenpc_spawn_points(&self, zone_id: u32) -> Result<Vec<(f32, f32, f32)>> {
         self.conn
             .call_db(move |c| {
@@ -1323,7 +1341,7 @@ impl Database {
                              authority,
                              (SELECT s.zoneId FROM server_spawn_locations s
                                  WHERE s.actorClassId = aetheryte LIMIT 1),
-                             factionCreditRequired
+                             factionCreditRequired, skill, objective
                       FROM gamedata_guildleves",
                 )?;
                 let rows: Vec<(u32, GuildleveGamedata)> = stmt
@@ -1362,6 +1380,8 @@ impl Database {
                                 authority: r.get::<_, u32>(31).unwrap_or_default(),
                                 camp_zone: r.get::<_, u32>(32).unwrap_or_default(),
                                 faction_credit_required: r.get::<_, u32>(33).unwrap_or_default(),
+                                skill: r.get::<_, u8>(34).unwrap_or_default(),
+                                objective: r.get::<_, u32>(35).unwrap_or_default(),
                                 survive: None,
                             },
                         ))

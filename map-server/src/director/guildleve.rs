@@ -76,6 +76,9 @@ pub fn guildleve_script_for_plate(guildleve_id: u32, plate_id: u32) -> Option<&'
         20036 => "Guildleve/PrivateGLBattleSweepSpecial",
         20049 => "Guildleve/PrivateGLBattleSweepEpic",
         20051 => "Guildleve/CompanyleveRescueNormal",
+        // Fieldcraft (gathering) leves: the client's harvest director,
+        // whose tracker lines read the leve sheet's objective text.
+        20029 | 20044 => "Guildleve/PrivateGLHarvestItemGet",
         _ => return None,
     })
 }

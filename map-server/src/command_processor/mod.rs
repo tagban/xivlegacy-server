@@ -140,7 +140,7 @@ const COMMAND_SYNTAX: &[&str] = &[
     "settp <tp 0-3000> [name]",
     "usemove <command id> (target, else nearest monster)",
     "monstermode [class id | ok [move] | bad [move] [note]] (become your target monster; again to let go; mark a move)",
-    "leve <guildleve id> [stars 1-5] | leve abandon",
+    "leve <guildleve id> [stars 1-5] | leve abandon | leve status | leve go | leve poke | leve open | leve camp <id>",
     "factioncredit <faction 1-3> <amount>",
     "setgm <level 0-4> <name>",
     "reload",
