@@ -436,6 +436,17 @@ impl GameTicker {
                     active.instance_id,
                 )
                 .await;
+                // Raid-mode copies' boss chests nobody opened in time.
+                crate::runtime::dungeon_chest::tick(
+                    now_ms,
+                    &self.registry,
+                    &self.world,
+                    &self.db,
+                    lua,
+                    active.parent_zone_id,
+                    active.instance_id,
+                )
+                .await;
                 let script_path = lua.resolver().content(&active.content_script);
                 if !script_path.exists() {
                     continue;
