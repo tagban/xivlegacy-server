@@ -4250,6 +4250,10 @@ pub async fn apply_add_exp(
     if exp == 0 {
         return;
     }
+    // No EXP in Monster Mode (the level on show is the monster's).
+    if crate::runtime::monster_mode::is_transformed(actor_id) {
+        return;
+    }
     let Some(handle) = registry.get(actor_id).await else {
         return;
     };

@@ -756,6 +756,9 @@ impl PacketProcessor {
     /// The spot is left alone inside a content copy (relogs there go by the
     /// copy's own rules) and mid-warp (the warp saved its destination).
     pub(crate) async fn save_on_leave(&self, handle: &ActorHandle, session_id: u32) {
+        // Monster Mode: the player's own body comes back before anything
+        // is saved, so the monster's HP never reaches the database.
+        crate::runtime::monster_mode::release(handle.actor_id).await;
         let (x, y, z, rot, hp, hp_max, mp, mp_max, statuses) = {
             let c = handle.character.read().await;
             (
@@ -6371,6 +6374,15 @@ impl PacketProcessor {
     /// deviation per
     /// `feedback_meteor_decomp_authoritative_for_engine_bindings.md`.
     async fn apply_do_class_change(&self, player_id: u32, class_id: u8) {
+        // Changing gear or class ends Monster Mode first, so the change
+        // lands on the player's own body.
+        if crate::runtime::monster_mode::release(player_id)
+            .await
+            .is_some()
+        {
+            crate::runtime::monster_mode::refresh_client(&self.registry, &self.world, player_id)
+                .await;
+        }
         let Some(handle) = self.registry.get(player_id).await else {
             tracing::debug!(player = player_id, class_id, "DoClassChange: actor missing");
             return;
@@ -10520,6 +10532,8 @@ impl PacketProcessor {
         // (crate::linkshells; group packets sent during the login burst
         // were ignored).
         if !had_deferred_warp && let Some(h) = self.registry.by_session(session_id).await {
+            crate::runtime::monster_mode::after_zone_in(&self.registry, &self.world, h.actor_id)
+                .await;
             crate::linkshells::send_login(&self.registry, &self.world, &self.db, h.actor_id).await;
             // Status icons and countdowns: the zone-in rebuilt the player's
             // actor without them (effects restored at login showed none).
@@ -10769,6 +10783,28 @@ impl PacketProcessor {
             {
                 let mut c = handle.character.write().await;
                 c.base.zone_id = dest;
+            }
+            // Monster Mode carries across field-to-field crossings and
+            // ends at the edge of a town.
+            if crate::runtime::monster_mode::is_transformed(actor_id) {
+                let field = match self.world.zone(dest).await {
+                    Some(z) => {
+                        crate::runtime::monster_mode::is_field_zone(&z.read().await.core.zone_name)
+                    }
+                    None => false,
+                };
+                if !field
+                    && crate::runtime::monster_mode::release(actor_id)
+                        .await
+                        .is_some()
+                {
+                    crate::runtime::monster_mode::refresh_client(
+                        &self.registry,
+                        &self.world,
+                        actor_id,
+                    )
+                    .await;
+                }
             }
             let pa = self.world.session(session_id).await.and_then(|s| {
                 s.current_private_area_name
