@@ -392,6 +392,46 @@ impl LuaEngine {
         })
     }
 
+    /// [`call_player_hook`] with string arguments after the player, the way
+    /// a GM command script's `onTrigger(player, argc, ...)` takes what was
+    /// typed: `args` are passed as `argc` then each word.
+    pub fn call_player_hook_with_args(
+        &self,
+        script_path: &Path,
+        function_name: &str,
+        snapshot: userdata::PlayerSnapshot,
+        args: &[&str],
+    ) -> Result<LuaCallResult> {
+        let (lua, queue) = self.load_script(script_path)?;
+        let f: Function = lua.globals().get(function_name).map_err(|e| {
+            anyhow::anyhow!("{function_name} not in {}: {e}", script_path.display())
+        })?;
+        let player = userdata::LuaPlayer {
+            snapshot,
+            queue: queue.clone(),
+        };
+        let mut values = vec![
+            Value::UserData(
+                lua.create_userdata(player)
+                    .map_err(|e| anyhow::anyhow!("create_userdata(LuaPlayer): {e}"))?,
+            ),
+            Value::Integer(args.len() as i64),
+        ];
+        for a in args {
+            values.push(Value::String(
+                lua.create_string(a)
+                    .map_err(|e| anyhow::anyhow!("create_string: {e}"))?,
+            ));
+        }
+        let result: Value = f
+            .call::<Value>(mlua::MultiValue::from_vec(values))
+            .map_err(|e| anyhow::anyhow!("{function_name}: {e}"))?;
+        Ok(LuaCallResult {
+            value: result,
+            commands: CommandQueue::drain(&queue),
+        })
+    }
+
     /// Variant of [`call_player_hook`] that keeps any commands the script
     /// emitted *before* it errored out. Side effects queued up to the point
     /// of the error are still valid — for `onLogin` in particular the

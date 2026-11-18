@@ -129,8 +129,8 @@ server's local date. The shipped calendar repeats every year:
 |---|---|---|---|
 | All Saints' Wake | `allsaints` | Oct 1 - Oct 31 | Impish Impositions |
 | Starlight Celebration | `starlight` | Nov 1 - Jan 16 | Winter Is Not Coming (all of it); Gone with the Snow from Dec 26 |
-| Hatching-tide | `hatchingtide` | Apr 1 - Apr 30 | The Dreamer's Gospel and The Dreamer's Dilemma (one of each per adventurer, offered in all three cities); Scrambled Eggs (being built) |
-| Moonfire Faire | `moonfire` | Jun 1 - Aug 31 | (being built) The Heat Is On, Bombard Backlash |
+| Hatching-tide | `hatchingtide` | Apr 1 - Apr 30 | The Dreamer's Gospel and The Dreamer's Dilemma (one of each per adventurer, offered in all three cities); Scrambled Eggs (after a Dilemma; rings, caps and daily gifts for egg sets) |
+| Moonfire Faire | `moonfire` | Jun 1 - Aug 31 | The Heat Is On (2011: fireworks and summer suits), then Bombard Backlash (2012: yukata); dance at Bombards, trade their ash |
 
 An event's NPCs and decorations show while any of its windows is open, and
 each window's quests are offered only while it is open. Each window's dates

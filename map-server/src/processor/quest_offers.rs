@@ -58,7 +58,9 @@ fn is_offerable(script_name: &str, has_prerequisite: bool) -> bool {
 /// (Sum6g0) follows In for Garuda Wakening (Gc?104). A Feast of Fools
 /// (Sum6m0), the moogle king, also follows It Kills with Fire.
 /// Hatching-tide: each city's Dreamer's Dilemma (Spl0u2, Spl0g2, Spl0l2)
-/// follows any city's Dreamer's Gospel.
+/// follows any city's Dreamer's Gospel, and Scrambled Eggs (Spl101, the
+/// next year's quest) follows any city's Dreamer's Dilemma. Moonfire
+/// Faire's Bombard Backlash (Spl102) follows The Heat Is On (Spl0i1).
 const ANY_OF_PREREQUISITES: &[(u32, &[u32])] = &[
     (110013, &[110004, 110008, 110012]),
     (110849, &[110828, 110838, 110848]),
@@ -68,6 +70,8 @@ const ANY_OF_PREREQUISITES: &[(u32, &[u32])] = &[
     (110790, HATCHING_GOSPELS),
     (110795, HATCHING_GOSPELS),
     (110805, HATCHING_GOSPELS),
+    (110859, HATCHING_DILEMMAS),
+    (110860, &[110799]),
 ];
 
 /// The Dreamer's Gospel in Ul'dah, Gridania and Limsa Lominsa.
@@ -76,7 +80,10 @@ const HATCHING_GOSPELS: &[u32] = &[110789, 110794, 110804];
 /// Quests of which an adventurer does one: the same seasonal quest in
 /// each city (one Dreamer's Gospel, one Dreamer's Dilemma). Once one is
 /// taken or done, the others aren't offered.
-const ONE_OF: &[&[u32]] = &[HATCHING_GOSPELS, &[110790, 110795, 110805]];
+const ONE_OF: &[&[u32]] = &[HATCHING_GOSPELS, HATCHING_DILEMMAS];
+
+/// The Dreamer's Dilemma in Ul'dah, Gridania and Limsa Lominsa.
+const HATCHING_DILEMMAS: &[u32] = &[110790, 110795, 110805];
 
 /// Whether `quest_id` is kept back because the player took (`has`) or
 /// finished (`done`) another quest of its `ONE_OF` set.
@@ -525,6 +532,8 @@ mod tests {
         assert_eq!(prerequisites(110795, 0), vec![110789, 110794, 110804]);
         assert!(one_of_taken(110805, none, |q| q == 110790));
         assert!(!one_of_taken(110805, none, |q| q == 110789));
+        assert_eq!(prerequisites(110859, 0), vec![110790, 110795, 110805]);
+        assert_eq!(prerequisites(110860, 0), vec![110799]);
         // quests in no set are never kept back
         assert!(!one_of_taken(110801, |_| true, |_| true));
     }

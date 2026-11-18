@@ -40,6 +40,12 @@ const RELINQUISH_SECS: u64 = 4;
 
 impl CommandProcessor {
     pub(super) async fn handle_monstermode(&self, args: &Args<'_>) -> String {
+        if !mm::enabled() {
+            return format!(
+                "Monster Mode isn't enabled on this server (the {} module is off).",
+                mm::MODULE
+            );
+        }
         let me = match self.invoker_id(args).await {
             Ok(id) => id,
             Err(e) => return e,
@@ -89,6 +95,8 @@ impl CommandProcessor {
             return "Monster Mode works only out in the field.".into();
         }
 
+        // The tester form earns no Monster Points.
+        let tester_form = !args.rest().is_empty();
         let target = match args.rest().first() {
             // `!monstermode <class id>`: the nearest monster of that class.
             Some(word) => match word.parse::<u32>() {
@@ -128,6 +136,7 @@ impl CommandProcessor {
             target,
             mob.character.clone(),
             label.clone(),
+            !tester_form,
         )
         .await
         {

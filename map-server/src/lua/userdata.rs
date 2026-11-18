@@ -5506,6 +5506,10 @@ pub struct LuaItemPackage {
     pub is_retainer: bool,
 }
 
+/// `global.lua`'s `INV_ERROR_*` codes that `ItemPackage.AddItem` answers with.
+const INV_ERROR_SUCCESS: i64 = 0;
+const INV_ERROR_SYSTEM_ERROR: i64 = 3;
+
 impl UserData for LuaItemPackage {
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
         // `pkg:AddItem(catalogId[, qty[, quality]])`. Quality is 1 for
@@ -5513,12 +5517,18 @@ impl UserData for LuaItemPackage {
         // anything else counts as normal. Lowercase
         // alias `addItem` exists for the etc/etc5* quest scripts
         // that predate the C# UpperCamel sweep (7 call sites).
+        //
+        // Returns `INV_ERROR_SUCCESS` (0) once the add is queued, like the
+        // C# `ItemPackage.AddItem` result the scripts check: `shop.lua`
+        // only takes the price on success, so returning nothing here gave
+        // every shop item away for free. A bad catalog id returns
+        // `INV_ERROR_SYSTEM_ERROR` (3).
         let add_item_handler =
-            |_: &mlua::Lua, this: &LuaItemPackage, args: mlua::MultiValue| -> mlua::Result<()> {
+            |_: &mlua::Lua, this: &LuaItemPackage, args: mlua::MultiValue| -> mlua::Result<i64> {
                 // `AddItem(catalogId)` or `AddItem(catalogId, qty)`.
                 let mut iter = args.into_iter();
                 let Some(Value::Integer(catalog)) = iter.next() else {
-                    return Ok(());
+                    return Ok(INV_ERROR_SYSTEM_ERROR);
                 };
                 let qty = match iter.next() {
                     Some(Value::Integer(q)) => q as i32,
@@ -5550,7 +5560,7 @@ impl UserData for LuaItemPackage {
                     }
                 };
                 push(&this.queue, cmd);
-                Ok(())
+                Ok(INV_ERROR_SUCCESS)
             };
         methods.add_method("AddItem", add_item_handler);
         methods.add_method("addItem", add_item_handler);
@@ -5576,9 +5586,11 @@ impl UserData for LuaItemPackage {
             }
             Ok(())
         });
-        methods.add_method(
-            "RemoveItem",
-            |_, this, (catalog, quantity): (u32, Option<i32>)| {
+        // `pkg:RemoveItem(catalogId[, qty])`. Lowercase alias `removeItem`
+        // for the scripts that predate the UpperCamel sweep (`shop.lua`
+        // used it, and an unbound method is a Lua error).
+        let remove_item_handler =
+            |_: &mlua::Lua, this: &LuaItemPackage, (catalog, quantity): (u32, Option<i32>)| {
                 push(
                     &this.queue,
                     LuaCommand::RemoveItem {
@@ -5589,8 +5601,9 @@ impl UserData for LuaItemPackage {
                     },
                 );
                 Ok(())
-            },
-        );
+            };
+        methods.add_method("RemoveItem", remove_item_handler);
+        methods.add_method("removeItem", remove_item_handler);
         // `package:HasItem(catalogId, [minQty])` — answer locally from
         // the inventory snapshot the owning `LuaPlayer` cloned in at
         // `GetItemPackage(...)` time. Mirrors C#
@@ -6775,6 +6788,81 @@ mod send_game_message_tests {
                 (0xA0F4_E204, 21, vec![]),
                 (crate::packets::send::WORLD_MASTER_ACTOR_ID, 40339, vec![]),
             ]
+        );
+    }
+}
+
+#[cfg(test)]
+mod shop_purchase_tests {
+    use super::*;
+    use crate::lua::command::{CommandQueue, LuaCommand};
+
+    /// Buying from a gil shop runs `shop.lua`'s `purchaseItem`, which only
+    /// takes the price when `AddItem` answers `INV_ERROR_SUCCESS`. `AddItem`
+    /// used to return nothing (and the script called an unbound lowercase
+    /// `removeItem`), so every shop gave its goods away for free.
+    #[test]
+    fn purchase_takes_the_price() {
+        let lua = mlua::Lua::new();
+        let queue = CommandQueue::new();
+        let player = LuaPlayer {
+            snapshot: PlayerSnapshot {
+                actor_id: 9,
+                inventory: vec![(1_000_001, 5_000)],
+                ..Default::default()
+            },
+            queue: queue.clone(),
+        };
+        lua.globals().set("player", player).unwrap();
+        let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../scripts/lua");
+        lua.load(
+            "INVENTORY_NORMAL = 0; INVENTORY_CURRENCY = 99; MESSAGE_TYPE_SYSTEM = 0x20;\n\
+             INV_ERROR_SUCCESS = 0; INV_ERROR_FULL = 1;\n\
+             INV_ERROR_ALREADY_HAS_UNIQUE = 2; INV_ERROR_SYSTEM_ERROR = 3;\n\
+             function GetWorldMaster() return nil end",
+        )
+        .exec()
+        .unwrap();
+        lua.load(std::fs::read_to_string(format!("{root}/shop.lua")).unwrap())
+            .exec()
+            .unwrap();
+        lua.load("purchaseItem(player, INVENTORY_NORMAL, 4030110, 1, 1, 2700, 1000001)")
+            .exec()
+            .unwrap();
+        let cmds = CommandQueue::drain(&queue);
+        assert!(cmds.iter().any(|c| matches!(
+            c,
+            LuaCommand::AddItem {
+                item_id: 4_030_110,
+                quantity: 1,
+                ..
+            }
+        )));
+        assert!(
+            cmds.iter().any(|c| matches!(
+                c,
+                LuaCommand::RemoveItem {
+                    item_package: 99,
+                    catalog_id: 1_000_001,
+                    quantity: 2_700,
+                    ..
+                }
+            )),
+            "the price wasn't taken: {cmds:?}"
+        );
+
+        // A second dagger in the same visit costs 5,400 in all, more than
+        // the 5,000 the visit started with: refused, nothing added or taken.
+        lua.load("purchaseItem(player, INVENTORY_NORMAL, 4030110, 1, 1, 2700, 1000001)")
+            .exec()
+            .unwrap();
+        let cmds = CommandQueue::drain(&queue);
+        assert!(
+            !cmds.iter().any(|c| matches!(
+                c,
+                LuaCommand::AddItem { .. } | LuaCommand::RemoveItem { .. }
+            )),
+            "a second buy spent money the visit already spent: {cmds:?}"
         );
     }
 }
