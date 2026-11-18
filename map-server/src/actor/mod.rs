@@ -504,11 +504,13 @@ impl CharaState {
 
 /// Stat bonuses from food or medicine, applied by the stat recalc while
 /// `status_id` is on the character.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct FoodBuff {
     pub status_id: u32,
     /// (modifier id, percent, cap; 0 = no cap)
     pub bonuses: Vec<(u32, i32, i32)>,
+    /// (modifier id, flat amount): `15xxx` paramBonus types on food.
+    pub flat: Vec<(u32, i32)>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -550,7 +552,8 @@ pub struct Character {
     pub quest_offers_level: Option<i16>,
     /// The food or medicine buff riding the Well Fed status
     /// (`processor/items.rs`); the stat recalc applies it while it lasts.
-    pub food: Option<FoodBuff>,
+    /// One per buff status (Well Fed, Medicated, Bloodwall...).
+    pub food: Vec<FoodBuff>,
     /// Net modifier change each active status effect's `onGain` made,
     /// by effect id (`status/script.rs`). Taken back off when it goes.
     pub status_mods: std::collections::HashMap<u32, Vec<(u32, f64)>>,
@@ -572,6 +575,9 @@ pub struct Character {
     /// What the player's gear added to their modifiers at the last
     /// recalc (the stat rebuild clears the mods themselves).
     pub gear_mods: Vec<(u32, f64)>,
+    /// What food and medicine added at the last recalc, taken off before
+    /// the next one (EXP, Evasion and the like aren't zeroed by the rebuild).
+    pub food_mods: Vec<(u32, f64)>,
 }
 
 impl Character {
@@ -603,7 +609,7 @@ impl Character {
             quest_journal: crate::actor::quest::QuestJournal::default(),
             quest_offers: Default::default(),
             quest_offers_level: None,
-            food: None,
+            food: Vec::new(),
             status_mods: Default::default(),
             speed_sent: 1.0,
             knockback_speed_until_ms: 0,
@@ -611,6 +617,7 @@ impl Character {
             traits: Vec::new(),
             trait_mods: Vec::new(),
             gear_mods: Vec::new(),
+            food_mods: Vec::new(),
         }
     }
 }

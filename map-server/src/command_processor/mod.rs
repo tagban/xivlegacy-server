@@ -93,6 +93,7 @@ const COMMAND_SYNTAX: &[&str] = &[
     "delquest <quest id> [name]",
     "addtitle <title id> [name]",
     "addeffect <status id> [seconds] [magnitude] [name | 0x<actor id>]",
+    "resetrecast <name>",
     "addallaetherytes [name]",
     "setmusic <music id> [name]",
     "setweather <weather id>",
@@ -295,6 +296,7 @@ impl CommandProcessor {
             "setmusic" => self.handle_setmusic(&args).await,
             "setweather" => self.handle_setweather(&args).await,
             "revive" => self.handle_revive(&args).await,
+            "resetrecast" => self.handle_resetrecast(&args).await,
             "home" => self.handle_home(&args).await,
             "sethome" => self.handle_set_home(&args).await,
             "die" => self.handle_die(&args).await,
@@ -376,6 +378,21 @@ impl CommandProcessor {
                 )
                 .await;
                 format!("revived {name} (actor {actor_id})")
+            }
+            TargetLookup::Err(e) => e,
+        }
+    }
+
+    /// `resetrecast <name>` — make every item ready to use again for a
+    /// player (item recast groups), for testing items back to back.
+    async fn handle_resetrecast(&self, args: &Args<'_>) -> String {
+        let Some(name) = args.rest_joined(0) else {
+            return "usage: resetrecast <name>".into();
+        };
+        match self.resolve_live_target(&name).await {
+            TargetLookup::Ok { actor_id, .. } => {
+                crate::processor::items::reset_recasts(actor_id);
+                format!("item recasts reset for {name}")
             }
             TargetLookup::Err(e) => e,
         }

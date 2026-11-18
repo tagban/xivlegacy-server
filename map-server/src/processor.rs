@@ -648,6 +648,9 @@ impl PacketProcessor {
             }
         }
 
+        // Food / medicine statuses name their item; rebuild their bonuses.
+        self.restore_item_buffs(&mut character).await;
+
         // The restored effects' `onGain` stat changes (a relogged Protect's
         // Defense). Only those: the client isn't in yet, so no packets.
         let restore_gains: Vec<crate::status::StatusEvent> = if loaded.status_effects.is_empty() {

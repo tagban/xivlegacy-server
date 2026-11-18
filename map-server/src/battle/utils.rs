@@ -726,7 +726,8 @@ pub fn finish_action_physical(
     calculate_physical_damage_taken(attacker, defender, action);
 
     let enmity_mod = skill.as_deref().map(|s| s.enmity_modifier).unwrap_or(1.0) as f64;
-    action.enmity = ((action.enmity as f64) * enmity_mod).min(u16::MAX as f64) as u16;
+    action.enmity =
+        ((action.enmity as f64) * enmity_mod * enmity_scale(attacker)).min(u16::MAX as f64) as u16;
 
     let request = if defender.actor_id == 0 {
         None
@@ -740,6 +741,12 @@ pub fn finish_action_physical(
 
     results.add_action(action.clone());
     request
+}
+
+/// The attacker's `Enmity` modifier as a percent on the enmity it makes
+/// (Maddening Potion +100, Nerve Drops -80, gear "Enmity -20").
+pub fn enmity_scale(attacker: &CombatView<'_>) -> f64 {
+    (1.0 + attacker.get_mod(Modifier::Enmity) / 100.0).max(0.0)
 }
 
 pub fn finish_action_spell(
@@ -767,6 +774,7 @@ pub fn finish_action_spell(
 
     handle_stoneskin(defender_mods, action);
     calculate_spell_damage_taken(attacker, defender, action);
+    action.enmity = ((action.enmity as f64) * enmity_scale(attacker)).min(u16::MAX as f64) as u16;
 
     results.add_action(action.clone());
     if defender.actor_id == 0 {

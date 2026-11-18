@@ -450,7 +450,12 @@ impl Character {
     /// stats: the share the accuracy, evasion and potency formulas count.
     pub fn bonus_mod_totals(&self) -> crate::actor::modifier::ModifierMap {
         let mut totals = self.status_mod_totals();
-        for &(k, d) in self.trait_mods.iter().chain(&self.gear_mods) {
+        for &(k, d) in self
+            .trait_mods
+            .iter()
+            .chain(&self.gear_mods)
+            .chain(&self.food_mods)
+        {
             totals.add_raw(k, d);
         }
         totals
@@ -562,28 +567,37 @@ impl Character {
     }
 
     /// Food / medicine bonuses on top of gear and derivation: each adds
-    /// `percent` of the stat as it stands, up to `cap`. Stats with nothing
-    /// to scale (EXP bonus) take the percent itself. Clears the buff once
-    /// its status is gone.
+    /// `percent` of the stat as it stands, up to `cap`, then the flat
+    /// amounts. Stats with nothing to scale (EXP bonus) take the percent
+    /// itself. A buff whose status is gone is dropped.
     pub fn apply_food_bonuses(&mut self) {
-        let Some(food) = &self.food else {
-            return;
-        };
-        if !self.status_effects.has(food.status_id) {
-            self.food = None;
-            return;
-        }
-        for &(mod_id, percent, cap) in &food.bonuses {
-            let base = self.chara.mods.get_raw(mod_id);
-            let mut delta = if base > 0.0 {
-                (base * percent as f64 / 100.0).floor()
-            } else {
-                percent as f64
-            };
-            if cap > 0 {
-                delta = delta.min(cap as f64);
+        // Last recalc's bonuses on stats the rebuild doesn't zero come off
+        // first, so they don't stack.
+        for (k, d) in std::mem::take(&mut self.food_mods) {
+            if !PLAYER_PIPELINE_MODS.iter().any(|m| *m as u32 == k) {
+                self.chara.mods.subtract_raw(k, d);
             }
-            self.chara.mods.add_raw(mod_id, delta);
+        }
+        let effects = &self.status_effects;
+        self.food.retain(|f| effects.has(f.status_id));
+        for food in &self.food {
+            for &(mod_id, percent, cap) in &food.bonuses {
+                let base = self.chara.mods.get_raw(mod_id);
+                let mut delta = if base > 0.0 {
+                    (base * percent as f64 / 100.0).floor()
+                } else {
+                    percent as f64
+                };
+                if cap > 0 {
+                    delta = delta.min(cap as f64);
+                }
+                self.chara.mods.add_raw(mod_id, delta);
+                self.food_mods.push((mod_id, delta));
+            }
+            for &(mod_id, amount) in &food.flat {
+                self.chara.mods.add_raw(mod_id, amount as f64);
+                self.food_mods.push((mod_id, amount as f64));
+            }
         }
     }
 
@@ -956,13 +970,20 @@ mod recalc_tests {
         c.status_effects
             .add_status_effect(well_fed, 1, 0, 30328, &mut outbox);
         // Boiled Egg: HP +15% (up to 30), EXP +3%.
-        c.food = Some(crate::actor::FoodBuff {
+        c.food = vec![crate::actor::FoodBuff {
             status_id: 223_999,
             bonuses: vec![(Modifier::Hp as u32, 15, 30), (62, 3, 0)],
-        });
+            flat: vec![(Modifier::Vitality as u32, 2)],
+        }];
         c.chara.mods.set(Modifier::Hp, 590.0);
         c.apply_food_bonuses();
         assert_eq!(c.chara.mods.get(Modifier::Hp), 620.0);
+        assert_eq!(c.chara.mods.get_raw(62), 3.0);
+        assert_eq!(c.chara.mods.get(Modifier::Vitality), 2.0);
+        // A second rebuild doesn't stack the EXP bonus (not zeroed by the reset).
+        c.chara.mods.set(Modifier::Hp, 590.0);
+        c.chara.mods.set(Modifier::Vitality, 0.0);
+        c.apply_food_bonuses();
         assert_eq!(c.chara.mods.get_raw(62), 3.0);
 
         c.status_effects
@@ -970,7 +991,8 @@ mod recalc_tests {
         c.chara.mods.set(Modifier::Hp, 590.0);
         c.apply_food_bonuses();
         assert_eq!(c.chara.mods.get(Modifier::Hp), 590.0);
-        assert!(c.food.is_none());
+        assert_eq!(c.chara.mods.get_raw(62), 0.0);
+        assert!(c.food.is_empty());
     }
 
     #[test]
