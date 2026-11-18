@@ -3,10 +3,10 @@ require ("modifiers")
 require ("quests/com/com0g1")
 
 -- Breaking the Seals' familiar southwest of Quarrymill (content
--- SimpleContentCom0g101). The duty is entered in place, so there is no
--- loading veil to lift: the entry kick is simply closed. Once the familiar
--- falls, Urianger has his parting words (processEventUriangerMore) and the
--- quest sends you back.
+-- SimpleContentCom0g101). The duty is entered in place, but the entry kick
+-- still raises the loading veil, so it is lifted and the kick closed. Once
+-- the familiar falls, Urianger has his parting words
+-- (processEventUriangerMore) and the quest sends you back.
 
 function init()
 	return "/Director/Quest/SimpleQuestBattle/QuestDirectorCom0g101";
@@ -16,6 +16,10 @@ function onEventStarted(player, actor, triggerName)
 	-- By id: GetQuest resolves names only for the opening quests.
 	local quest = player:GetQuest(111601);
 
+	-- The entry kick raises the Now Loading veil even in place (the screen
+	-- dims, a spinner turns, and no command or talk starts until it's
+	-- lifted); questBaseRewardSeting is the client's call that lifts it.
+	callClientFunction(player, "delegateEvent", player, quest, "questBaseRewardSeting");
 	player:EndEvent();
 
 	-- A duty that ends any other way purges this coroutine with the content.

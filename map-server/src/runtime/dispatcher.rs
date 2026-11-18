@@ -83,7 +83,9 @@ pub async fn dispatch_status_event(
             // sets `actor_id = session_id`), so it feeds
             // `save_player_status_effects` directly. Mirrors C#
             // `Database.SavePlayerStatusEffects`.
-            if let Some(handle) = registry.get(*owner_actor_id).await {
+            if let Some(handle) = registry.get(*owner_actor_id).await
+                && handle.is_player()
+            {
                 let entries = {
                     let c = handle.character.read().await;
                     c.status_effects.to_db_entries()
@@ -149,6 +151,7 @@ pub async fn dispatch_status_event(
             owner_actor_id,
             delta,
         } => {
+            tracing::debug!(owner = owner_actor_id, delta, "status: hp tick");
             if apply_hp_delta(registry, *owner_actor_id, *delta).await {
                 sync_pools_after_tick(registry, world, *owner_actor_id).await;
             }
@@ -176,13 +179,37 @@ pub async fn dispatch_status_event(
             owner_actor_id,
             status_effect_id,
             function_name,
+            effect,
         } => {
-            tracing::debug!(
-                owner = owner_actor_id,
-                effect = status_effect_id,
-                fn_name = function_name,
-                "status: LuaCall (TODO)"
-            );
+            // pmeteor `combo.lua` onLose: the Combo status wearing off
+            // ends the combo (unless a new link just put it back).
+            if *status_effect_id == STATUS_COMBO
+                && *function_name == "onLose"
+                && let Some(h) = registry.get(*owner_actor_id).await
+            {
+                let ended = {
+                    let mut c = h.character.write().await;
+                    let ended = c.combo_next != [0, 0] && !c.status_effects.has(STATUS_COMBO);
+                    if ended {
+                        c.combo_next = [0, 0];
+                    }
+                    ended
+                };
+                if ended {
+                    send_combo_property(*owner_actor_id, [0, 0], registry, world).await;
+                }
+            }
+            apply_status_script(
+                registry,
+                world,
+                db,
+                catalogs,
+                *owner_actor_id,
+                *status_effect_id,
+                function_name,
+                *effect,
+            )
+            .await;
         }
         StatusEvent::WorldMasterText {
             owner_actor_id,
@@ -429,6 +456,26 @@ pub async fn dispatch_battle_event(
             let sub = tx::actor_battle::build_command_result_x00(*owner_actor_id, *animation, 0);
             broadcast_around_actor(world, registry, zone, *owner_actor_id, sub.to_bytes()).await;
         }
+        BattleEvent::SkillReady {
+            owner_actor_id,
+            target_actor_id,
+            command_id,
+        } => {
+            // Client text 30126 (English: "<name> readies <command>.",
+            // the line beside 30128 "begins casting"). No animation:
+            // which 0x0139 animation 1.0 played here is unknown, so only
+            // the battle-log line is sent.
+            let row = tx::actor_battle::CommandResult {
+                target_id: *target_actor_id,
+                worldmaster_text_id: MONSTER_READIES_TEXT_ID,
+                param: 1,
+                hit_num: 1,
+                ..Default::default()
+            };
+            let ready =
+                tx::actor_battle::build_command_result_x01(*owner_actor_id, 0, *command_id, &row);
+            broadcast_around_actor(world, registry, zone, *owner_actor_id, ready.to_bytes()).await;
+        }
         BattleEvent::CastStart {
             owner_actor_id,
             target_actor_id,
@@ -556,6 +603,22 @@ pub async fn dispatch_battle_event(
     }
 }
 
+/// Client hit-effect bits for knockback level 1-5 (0 = none).
+pub(crate) fn knockback_hit_effect(level: u8) -> u32 {
+    use crate::battle::effects::HitEffect as H;
+    match level {
+        0 => 0,
+        1 => H::KNOCKBACK_LV1.0,
+        2 => H::KNOCKBACK_LV2.0,
+        3 => H::KNOCKBACK_LV3.0,
+        4 => H::KNOCKBACK_LV4.0,
+        _ => H::KNOCKBACK_LV5.0,
+    }
+}
+
+/// Client battle text "<name> readies <command>." (sheet 03/A2/00/BC).
+pub(crate) const MONSTER_READIES_TEXT_ID: u16 = 30126;
+
 // ---------------------------------------------------------------------------
 // Auto-attack + cast-complete resolution.
 //
@@ -573,6 +636,39 @@ pub async fn dispatch_battle_event(
 //      existing `DoBattleAction` event uses.
 // ---------------------------------------------------------------------------
 
+/// Sleep breaks on damage (pmeteor `sleep.lua` `onDamageTaken`). Removes it
+/// from a defender that just took damage, into `outbox` for the caller to
+/// flush once the actor lock is released.
+fn wake_on_damage(c: &mut crate::actor::Character, outbox: &mut crate::status::StatusOutbox) {
+    if c.status_effects.has(crate::status::ids::STATUS_SLEEP) {
+        c.status_effects.remove_status_effect(
+            crate::status::ids::STATUS_SLEEP,
+            crate::status::DEFAULT_LOSS_TEXT_ID,
+            true,
+            outbox,
+        );
+    }
+}
+
+async fn flush_wake_outbox(
+    mut outbox: crate::status::StatusOutbox,
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    lua: Option<&Arc<crate::lua::LuaEngine>>,
+    db: Option<&Arc<crate::database::Database>>,
+) {
+    if let (Some(db), Some(l)) = (db, lua) {
+        for e in outbox.drain() {
+            dispatch_status_event(&e, registry, world, db, l.catalogs()).await;
+        }
+    }
+}
+
+/// How far past its attack range an auto-attack still lands, by the two
+/// actors' own positions (each side moves between the swing gate and
+/// here).
+const AUTO_ATTACK_REACH_SLACK: f32 = 1.0;
+
 async fn resolve_auto_attack(
     attacker_actor_id: u32,
     defender_actor_id: u32,
@@ -585,21 +681,77 @@ async fn resolve_auto_attack(
     if attacker_actor_id == defender_actor_id {
         return;
     }
+    // A sealed boss room keeps its fight and the rest of the copy apart.
+    if !crate::runtime::dungeon_fight::may_interact(attacker_actor_id, defender_actor_id) {
+        return;
+    }
     let Some(attacker_handle) = registry.get(attacker_actor_id).await else {
         return;
     };
     let Some(defender_handle) = registry.get(defender_actor_id).await else {
         return;
     };
+    // The last word on reach: both sides' own positions. The swing gate
+    // reads the target from the zone grid, which can lag behind; a
+    // monster once landed 46 swings from 32 yalms while the client still
+    // drew it at its spawn.
+    {
+        let (reach, apos) = {
+            let a = attacker_handle.character.read().await;
+            (a.get_attack_range(), a.base.position())
+        };
+        let dpos = defender_handle.character.read().await.base.position();
+        let (dx, dz) = (dpos.x - apos.x, dpos.z - apos.z);
+        let dist = (dx * dx + dz * dz).sqrt();
+        if dist > reach + AUTO_ATTACK_REACH_SLACK {
+            tracing::debug!(
+                attacker = format!("0x{attacker_actor_id:08X}"),
+                defender = format!("0x{defender_actor_id:08X}"),
+                distance = dist,
+                reach,
+                attacker_at = ?apos,
+                defender_at = ?dpos,
+                "battle: auto-attack out of reach, dropped",
+            );
+            return;
+        }
+    }
+    // Cover: a melee swing at a Covered actor lands on their paladin.
+    let ranged = attacker_handle
+        .character
+        .read()
+        .await
+        .chara
+        .mods
+        .get(crate::actor::modifier::Modifier::AttackRange)
+        > f64::from(COVER_RANGE_YALMS);
+    let (defender_actor_id, defender_handle) =
+        match covering_actor(registry, &defender_handle).await {
+            Some((id, h)) if !ranged && id != attacker_actor_id => (id, h),
+            _ => (defender_actor_id, defender_handle),
+        };
 
     // Attacker snapshot — released before we lock the defender.
-    let (atk_level, atk_max_hp, atk_mods) = {
+    let root = script_root(lua);
+    let (atk_level, atk_max_hp, atk_mods, atk_status, atk_pos, attacker_side) = {
         let a = attacker_handle.character.read().await;
         if !a.is_alive() {
             return;
         }
-        (a.chara.level, a.chara.max_hp, a.chara.mods.clone())
+        (
+            a.chara.level,
+            a.chara.max_hp,
+            a.chara.mods.clone(),
+            a.bonus_mod_totals(),
+            common::Vector3::new(a.base.position_x, a.base.position_y, a.base.position_z),
+            root.as_ref()
+                .map(|_| crate::status::hooks::HookSide::of(&a)),
+        )
     };
+    let hook_now_ms = (common::utils::unix_timestamp() as u64).saturating_mul(1000);
+    let mut hook_outbox = crate::status::StatusOutbox::new();
+    let mut hook_rows: Vec<crate::status::script::HookRow> = Vec::new();
+    let mut hook_queue = AttackerHookQueue::default();
 
     let mut rng = ThreadRng;
     // Compute base damage off an attacker-only CombatView — the defender
@@ -610,12 +762,20 @@ async fn resolve_auto_attack(
         level: atk_level,
         max_hp: atk_max_hp,
         mods: &atk_mods,
+        status: &atk_status,
         has_aegis_boon: false,
         has_protect: false,
         has_shell: false,
         has_stoneskin: false,
     };
     let base = battle_utils::attack_calculate_base_damage(&atk_view_for_base, &mut rng);
+    // Extra hits from statuses (Spinning Heel) grow the swing; the
+    // weapon's own hit count is what the swing is balanced for.
+    let hit_mult = battle_utils::auto_attack_hit_multiplier(
+        atk_mods.get(crate::actor::modifier::Modifier::HitCount),
+        atk_status.get(crate::actor::modifier::Modifier::HitCount),
+    );
+    let base = (f64::from(base) * hit_mult).round() as i32;
 
     let mut result = CommandResult::for_target(defender_actor_id, 0, 0);
     result.amount = base.max(0) as u16;
@@ -625,7 +785,9 @@ async fn resolve_auto_attack(
     result.enmity = result.amount;
 
     let mut container = CommandResultContainer::new();
-    let dmg_request;
+    let mut dmg_request;
+    let procs;
+    let mut wake_outbox = crate::status::StatusOutbox::new();
     {
         let mut d = defender_handle.character.write().await;
         if !d.is_alive() {
@@ -634,12 +796,14 @@ async fn resolve_auto_attack(
         let def_level = d.chara.level;
         let def_max_hp = d.chara.max_hp;
         let def_mods_snapshot = d.chara.mods.clone();
+        let def_status = d.bonus_mod_totals();
 
         let atk_view = battle_utils::CombatView {
             actor_id: attacker_actor_id,
             level: atk_level,
             max_hp: atk_max_hp,
             mods: &atk_mods,
+            status: &atk_status,
             has_aegis_boon: false,
             has_protect: false,
             has_shell: false,
@@ -650,13 +814,65 @@ async fn resolve_auto_attack(
             level: def_level,
             max_hp: def_max_hp,
             mods: &def_mods_snapshot,
-            has_aegis_boon: false,
-            has_protect: false,
-            has_shell: false,
-            has_stoneskin: false,
+            status: &def_status,
+            has_aegis_boon: d.status_effects.has(crate::status::ids::STATUS_AEGIS_BOON),
+            has_protect: has_any(&d, &PROTECT_IDS),
+            has_shell: has_any(&d, &SHELL_IDS),
+            has_stoneskin: has_any(&d, &STONESKIN_IDS),
         };
 
+        let direction = crate::status::hooks::hit_direction(
+            common::Vector3::new(d.base.position_x, d.base.position_y, d.base.position_z),
+            d.base.rotation,
+            atk_pos,
+        );
+        // The side the swing comes from (no parry or block from behind).
+        result.param = direction;
         battle_utils::calc_rates(&atk_view, &def_view, None, &mut result);
+        if let (Some(root), Some(atk)) = (&root, &attacker_side) {
+            use crate::status::StatusEffectFlags as F;
+            use crate::status::hooks::{HookSide, run};
+            let def = HookSide::of(&d);
+            if atk.has(F::ACTIVATE_ON_PREACTION_CASTER) || def.has(F::ACTIVATE_ON_PREACTION_TARGET)
+            {
+                let mut hs = crate::status::script::HookSkill::auto_attack();
+                let mut act = Some(crate::status::script::HookAction::from_result(
+                    &result, direction,
+                ));
+                let r = run(
+                    root,
+                    "onPreAction",
+                    F::ACTIVATE_ON_PREACTION_CASTER,
+                    atk,
+                    Some(&def.actor),
+                    true,
+                    &mut hs,
+                    &mut act,
+                );
+                hook_queue.attacker_ran(r, &mut d, &mut hook_rows, &mut hook_outbox);
+                let r = run(
+                    root,
+                    "onPreAction",
+                    F::ACTIVATE_ON_PREACTION_TARGET,
+                    &def,
+                    Some(&atk.actor),
+                    false,
+                    &mut hs,
+                    &mut act,
+                );
+                hook_queue.defender_ran(
+                    r,
+                    &mut d,
+                    &mut hook_rows,
+                    lua,
+                    hook_now_ms,
+                    &mut hook_outbox,
+                );
+                if let Some(a) = act {
+                    a.apply_to(&mut result);
+                }
+            }
+        }
         dmg_request = battle_utils::finish_action_physical(
             &atk_view,
             &def_view,
@@ -666,12 +882,46 @@ async fn resolve_auto_attack(
             &mut container,
             &mut rng,
         );
+        procs = procs_for(result.hit_type, attacker_actor_id, defender_actor_id);
+
+        if let (Some(root), Some(atk)) = (&root, &attacker_side) {
+            let (amount, enmity) = dmg_request.map_or((0, 0), |dr| (dr.amount, dr.enmity));
+            let (new_amount, new_enmity) = run_after_roll_hooks(
+                root,
+                atk,
+                &mut d,
+                crate::status::script::HookSkill::auto_attack(),
+                &result,
+                amount,
+                enmity,
+                direction,
+                &mut hook_queue,
+                &mut hook_rows,
+                lua,
+                hook_now_ms,
+                &mut hook_outbox,
+            );
+            if let Some(dr) = dmg_request.as_mut()
+                && (dr.amount, dr.enmity) != (new_amount, new_enmity)
+            {
+                dr.amount = new_amount;
+                dr.enmity = new_enmity;
+                if let Some(row) = container.main_results.last_mut() {
+                    row.amount = new_amount;
+                    row.enmity = new_enmity;
+                }
+            }
+            for row in hook_rows.drain(..) {
+                container.add_action(row.to_result(defender_actor_id));
+            }
+        }
 
         if let Some(dr) = dmg_request
             && dr.amount > 0
         {
             d.add_hp(-(dr.amount as i32));
             d.hate.update_hate(attacker_actor_id, dr.enmity as i32);
+            wake_on_damage(&mut d, &mut wake_outbox);
             // #28 S3.3 — defender TP on damage taken (pmeteor
             // `Character.OnDamageTaken`, Character.cs:905-908):
             // ceil(5 · e^(−0.0667 · level) · damage). The dead bank
@@ -681,8 +931,24 @@ async fn resolve_auto_attack(
                     .ceil() as i32;
                 d.add_tp(gain);
             }
+        } else if d.is_alive() && attacker_actor_id != defender_actor_id {
+            // A miss still pulls the monster (skills add their hate either
+            // way): without this a target the attacker can't hit, such as
+            // one far above their level, never fights back.
+            d.hate.add_base_hate(attacker_actor_id);
         }
     }
+
+    let mut attacker_pools_moved = false;
+    let party_statuses = std::mem::take(&mut hook_queue.party_status);
+    if !hook_queue.is_empty() {
+        let mut a = attacker_handle.character.write().await;
+        attacker_pools_moved = hook_queue.apply(&mut a, lua, hook_now_ms, &mut hook_outbox);
+    }
+    flush_wake_outbox(wake_outbox, registry, world, lua, db).await;
+    flush_wake_outbox(hook_outbox, registry, world, lua, db).await;
+    apply_party_statuses(party_statuses, registry, world, lua, db).await;
+    Box::pin(set_procs(&procs, registry, world, lua, db)).await;
 
     // #28 S3.3 — attacker TP per landed swing (pmeteor
     // `Character.OnAttack`, Character.cs:886-895): delay-seconds × 100.
@@ -758,7 +1024,7 @@ async fn resolve_auto_attack(
     // and the attacker's TP gauge only move when a fresh
     // `charaWork/stateAtQuicklyForAll` lands; without it the init
     // bundle's values go stale on the first hit.
-    if landed > 0 {
+    if landed > 0 || attacker_pools_moved {
         broadcast_state_quickly(registry, world, zone, defender_actor_id).await;
         broadcast_state_quickly(registry, world, zone, attacker_actor_id).await;
     }
@@ -775,6 +1041,1311 @@ async fn resolve_auto_attack(
     .await;
 }
 
+/// One target's share of a resolved command, gathered before any packet
+/// goes out so the whole command rides one CommandResult container.
+struct ActionHit {
+    target_actor_id: u32,
+    /// HP actually taken off the target (0 on a miss or for non-damage).
+    damage: u16,
+    /// HP restored (heals).
+    healed: bool,
+    /// The heal's size before the target's max HP caps it.
+    heal_amount: u16,
+    /// The row connected (hit / crit / block / parry / status landed).
+    landed: bool,
+    /// Rolled the row's status rider / status effect.
+    status_roll: bool,
+}
+
+/// Every actor a command lands on: the main target plus, for AoE rows,
+/// everything the row's shape covers (pmeteor `TargetFind.FindWithinArea`).
+/// Views come from the live characters (position + facing) of the actors
+/// the zone grid says are in the same area. Parties aren't modelled in
+/// battle views, so the party-only bits are dropped: friendly AoE covers
+/// the caster and nearby players/allies.
+async fn action_targets(
+    attacker_actor_id: u32,
+    primary_actor_id: u32,
+    command: &BattleCommand,
+    registry: &ActorRegistry,
+    zone: &Arc<RwLock<Zone>>,
+) -> Vec<u32> {
+    use crate::battle::target_find::{ActorView, TargetFind, TargetFindAOEType, ValidTarget};
+    use crate::runtime::actor_registry::ActorKindTag as K;
+
+    if command.aoe_type == TargetFindAOEType::None || command.aoe_range <= 0.0 {
+        return vec![primary_actor_id];
+    }
+    let radius = command.aoe_range + command.range.max(0.0) + 5.0;
+    let candidates: Vec<u32> = {
+        let z = zone.read().await;
+        let mut ids: Vec<u32> = z
+            .core
+            .actors_around(attacker_actor_id, radius)
+            .into_iter()
+            .map(|a| a.actor_id)
+            .collect();
+        ids.push(attacker_actor_id);
+        ids.push(primary_actor_id);
+        ids.sort_unstable();
+        ids.dedup();
+        ids
+    };
+    let mut arena: std::collections::HashMap<u32, ActorView> = std::collections::HashMap::new();
+    for id in candidates {
+        let Some(h) = registry.get(id).await else {
+            continue;
+        };
+        let c = h.character.read().await;
+        arena.insert(
+            id,
+            ActorView {
+                actor_id: id,
+                position: common::Vector3::new(
+                    c.base.position_x,
+                    c.base.position_y,
+                    c.base.position_z,
+                ),
+                rotation: c.base.rotation,
+                is_alive: c.is_alive(),
+                is_static: h.kind == K::Npc,
+                allegiance: match h.kind {
+                    K::Player | K::Ally | K::Pet => 1,
+                    K::BattleNpc => 2,
+                    K::Npc => 0,
+                },
+                party_id: 0,
+                zone_id: h.zone_id,
+                is_updates_locked: false,
+                is_player: h.kind == K::Player,
+                is_battle_npc: h.kind == K::BattleNpc,
+            },
+        );
+    }
+    let (Some(owner), Some(main)) = (
+        arena.get(&attacker_actor_id).copied(),
+        arena.get(&primary_actor_id).copied(),
+    ) else {
+        return vec![primary_actor_id];
+    };
+    let flags = ValidTarget(
+        command.valid_target.bits()
+            & !(ValidTarget::PARTY_ONLY.bits() | ValidTarget::MAIN_TARGET_PARTY_ONLY.bits()),
+    );
+    let mut find = TargetFind::new(owner, Some(main));
+    if command.aoe_type == TargetFindAOEType::Box {
+        find.set_aoe_box(
+            flags,
+            command.aoe_target,
+            command.aoe_range,
+            command.range_width.max(1.0),
+            command.aoe_rotate_angle,
+        );
+        find.height = command.range_height.max(1.0);
+        find.min_distance = command.aoe_min_range;
+    } else {
+        // Seed cone angles are in units of pi (0.5 = a 90-degree cone),
+        // the same unit `find_within_area` applies to `aoeRotateAngle`.
+        find.set_aoe_type(
+            flags,
+            command.aoe_type,
+            command.aoe_target,
+            command.aoe_range,
+            command.aoe_min_range,
+            command.range_height.max(1.0),
+            command.aoe_rotate_angle,
+            command.aoe_cone_angle * std::f32::consts::PI,
+        );
+    }
+    find.find_within_area(main, flags, command.aoe_target, &arena);
+    let mut out: Vec<u32> = find.targets().iter().map(|v| v.actor_id).collect();
+    if out.is_empty() {
+        tracing::debug!(
+            command = command.id,
+            owner = ?owner.position,
+            owner_rot = owner.rotation,
+            main = ?main.position,
+            aoe = ?command.aoe_type,
+            range = command.aoe_range,
+            height = command.range_height,
+            candidates = ?arena.keys().collect::<Vec<_>>(),
+            "battle: area action found no targets",
+        );
+    }
+    // The finder has no party ids, so party-only AoEs (Enhanced Rampart)
+    // keep to the party here: other players are left out, duty allies
+    // (who fight beside the party without joining it) stay in.
+    let npc_ally = |id: &u32| {
+        arena
+            .get(id)
+            .is_some_and(|v| !v.is_player && v.allegiance == 1)
+    };
+    if command.valid_target.intersects(ValidTarget::PARTY_ONLY) {
+        let party = crate::parties::members_of(attacker_actor_id);
+        out.retain(|id| party.contains(id) || npc_ally(id));
+    }
+    if command
+        .valid_target
+        .intersects(ValidTarget::MAIN_TARGET_PARTY_ONLY)
+    {
+        let party = crate::parties::members_of(primary_actor_id);
+        out.retain(|id| party.contains(id) || npc_ally(id));
+    }
+    // Main target first (it carries the result row the client keys the
+    // animation on); an AoE centred on the caster may leave it out.
+    if let Some(pos) = out.iter().position(|id| *id == primary_actor_id) {
+        out.swap(0, pos);
+    }
+    out
+}
+
+/// The status effect a command applies, built from the
+/// `server_statuseffects` template when the catalog has one (flags such
+/// as Stance and the overwrite rule come from there) and from the row's
+/// own duration / magnitude / tier.
+/// Tests: one auto-attack swing from `attacker` at `defender`.
+#[cfg(test)]
+pub(crate) async fn test_auto_attack(
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    lua: Option<&Arc<crate::lua::LuaEngine>>,
+    db: Option<&Arc<crate::database::Database>>,
+    zone_id: u32,
+    attacker: u32,
+    defender: u32,
+) {
+    let zone = world.zone(zone_id).await.expect("zone");
+    resolve_auto_attack(attacker, defender, registry, world, &zone, lua, db).await;
+}
+
+/// Tests: resolve `command` from `attacker` on `defender` as a landed
+/// command does (no hotbar gate, no costs).
+#[cfg(test)]
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn test_resolve(
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    lua: Option<&Arc<crate::lua::LuaEngine>>,
+    db: Option<&Arc<crate::database::Database>>,
+    zone_id: u32,
+    attacker: u32,
+    defender: u32,
+    command: &BattleCommand,
+) {
+    let zone = world.zone(zone_id).await.expect("zone");
+    resolve_action(attacker, defender, command, registry, world, &zone, lua, db).await;
+}
+
+/// Tests: put `command`'s status on `actor_id` the way a landed command
+/// does (catalog rules, onGain stat changes, icons).
+#[cfg(test)]
+pub(crate) async fn test_add_status(
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    lua: Option<&Arc<crate::lua::LuaEngine>>,
+    db: Option<&Arc<crate::database::Database>>,
+    actor_id: u32,
+    command: &BattleCommand,
+) {
+    let Some(h) = registry.get(actor_id).await else {
+        return;
+    };
+    let now_ms = (common::utils::unix_timestamp() as u64).saturating_mul(1000);
+    let mut outbox = crate::status::StatusOutbox::new();
+    {
+        let mut c = h.character.write().await;
+        let effect = command_status_effect(command, actor_id, lua, now_ms);
+        c.status_effects
+            .add_status_effect(effect, actor_id, now_ms, 0, &mut outbox);
+    }
+    flush_wake_outbox(outbox, registry, world, lua, db).await;
+}
+
+fn command_status_effect(
+    command: &BattleCommand,
+    target_actor_id: u32,
+    lua: Option<&Arc<crate::lua::LuaEngine>>,
+    now_ms: u64,
+) -> crate::status::StatusEffect {
+    catalog_status_effect(
+        command,
+        target_actor_id,
+        lua.map(|l| l.catalogs().as_ref()),
+        now_ms,
+    )
+}
+
+/// [`command_status_effect`] from the catalogs alone (status-event paths
+/// have no Lua engine handle).
+fn catalog_status_effect(
+    command: &BattleCommand,
+    target_actor_id: u32,
+    catalogs: Option<&crate::lua::Catalogs>,
+    now_ms: u64,
+) -> crate::status::StatusEffect {
+    let template = catalogs.and_then(|c| {
+        c.status_effects
+            .read()
+            .ok()
+            .and_then(|m| m.get(&command.status_id).cloned())
+    });
+    let mut effect = match template {
+        Some(t) => {
+            let mut e = crate::status::StatusEffect::from_template(
+                t.id,
+                t.name,
+                t.flags,
+                t.overwrite,
+                t.tick_ms,
+                t.hidden,
+                t.silent_on_gain,
+                t.silent_on_loss,
+                t.status_gain_text_id,
+                t.status_loss_text_id,
+            );
+            e.owner_actor_id = target_actor_id;
+            e.last_tick_ms = now_ms;
+            e
+        }
+        None => crate::status::StatusEffect::new(
+            target_actor_id,
+            command.status_id,
+            0.0,
+            0,
+            0,
+            1,
+            now_ms,
+        ),
+    };
+    effect.duration = command.status_duration;
+    effect.magnitude = command.status_magnitude;
+    effect.tier = command.status_tier.max(1);
+    effect
+}
+
+/// Fists of Fire, Earth and Wind.
+const PUGILIST_FISTS: [u32; 3] = [223209, 223210, 223211];
+
+/// The Lua script root, when scripts are loaded.
+fn script_root(lua: Option<&Arc<crate::lua::LuaEngine>>) -> Option<std::path::PathBuf> {
+    lua.and_then(|l| l.catalogs().script_root.read().ok().map(|r| r.clone()))
+        .filter(|r| !r.as_os_str().is_empty())
+}
+
+/// `owner.statusEffects.ReplaceEffect` from a combat hook (Power Surge
+/// stepping up a tier): the new effect comes from the status catalog.
+fn replace_status_from_hook(
+    c: &mut crate::actor::Character,
+    old_id: u32,
+    rep: crate::status::script::HookReplace,
+    lua: Option<&Arc<crate::lua::LuaEngine>>,
+    now_ms: u64,
+    outbox: &mut crate::status::StatusOutbox,
+) {
+    let mut cmd = BattleCommand::new(0, "");
+    cmd.status_id = rep.status_id;
+    cmd.status_duration = rep.duration;
+    cmd.status_magnitude = rep.magnitude;
+    cmd.status_tier = rep.tier;
+    let effect = command_status_effect(&cmd, c.base.actor_id, lua, now_ms);
+    c.status_effects
+        .replace_effect(old_id, effect, now_ms, outbox);
+}
+
+const STATUS_BLISSFUL_MIND: u32 = 223228;
+const STATUS_BERSERK2: u32 = 223207;
+/// "You recover [amount] HP." (pmeteor `holy_succor.lua`).
+const HOLY_SUCCOR_RECOVER_TEXT: u16 = 33012;
+/// The Combo status (pmeteor `StatusEffectId.Combo`): up for 13 s while a
+/// combo can continue.
+pub(crate) const STATUS_COMBO: u32 = 223205;
+
+/// Defender statuses that change how a hit lands or looks: Aegis Boon
+/// blocks it whole, Protect / Shell / Stoneskin add their shimmer.
+const PROTECT_IDS: [u32; 2] = [223129, 223239];
+const SHELL_IDS: [u32; 1] = [223130];
+const STONESKIN_IDS: [u32; 1] = [223133];
+
+fn has_any(c: &crate::actor::Character, ids: &[u32]) -> bool {
+    ids.iter().any(|id| c.status_effects.has(*id))
+}
+
+/// The hidden proc statuses, by `procRequirement - 1` (Miss, Evade, Parry,
+/// Block) — the index of `charaWork.battleTemp.timingCommandFlag` too.
+pub(crate) const PROC_STATUSES: [u32; 4] = [
+    crate::status::ids::STATUS_MISS_PROC,
+    crate::status::ids::STATUS_EVADE_PROC,
+    crate::status::ids::STATUS_PARRY_PROC,
+    crate::status::ids::STATUS_BLOCK_PROC,
+];
+/// How long an evade, parry, block or miss keeps its weaponskill open
+/// (pmeteor `SetProc`: 5 s).
+const PROC_SECONDS: u32 = 5;
+
+/// The procs a physical swing's outcome hands out (pmeteor `OnEvade` /
+/// `OnParry` / `OnBlock` / `OnMiss` → `SetProc`): a miss opens the
+/// attacker's Feint and the defender's Haymaker, a parry Fracture, a block
+/// Phalanx. `(actor, proc index)`.
+fn procs_for(
+    hit: crate::battle::effects::HitType,
+    attacker: u32,
+    defender: u32,
+) -> Vec<(u32, usize)> {
+    use crate::battle::effects::HitType as H;
+    match hit {
+        H::Miss | H::Evade => vec![(attacker, 0), (defender, 1)],
+        H::Parry => vec![(defender, 2)],
+        H::Block => vec![(defender, 3)],
+        _ => Vec::new(),
+    }
+}
+
+/// Open the procs on the players among them for [`PROC_SECONDS`].
+async fn set_procs(
+    procs: &[(u32, usize)],
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    lua: Option<&Arc<crate::lua::LuaEngine>>,
+    db: Option<&Arc<crate::database::Database>>,
+) {
+    for &(actor_id, idx) in procs {
+        let Some(h) = registry.get(actor_id).await else {
+            continue;
+        };
+        if !h.is_player() {
+            continue;
+        }
+        let now_ms = (common::utils::unix_timestamp() as u64).saturating_mul(1000);
+        let mut outbox = crate::status::StatusOutbox::new();
+        {
+            let mut c = h.character.write().await;
+            if !c.is_alive() {
+                continue;
+            }
+            let mut cmd = BattleCommand::new(0, "");
+            cmd.status_id = PROC_STATUSES[idx];
+            cmd.status_duration = PROC_SECONDS;
+            let mut effect = command_status_effect(&cmd, actor_id, lua, now_ms);
+            effect.overwrite = crate::status::StatusEffectOverwrite::Always;
+            effect.silent_on_gain = true;
+            effect.silent_on_loss = true;
+            c.status_effects
+                .add_status_effect(effect, actor_id, now_ms, 0, &mut outbox);
+        }
+        flush_wake_outbox(outbox, registry, world, lua, db).await;
+        send_timing_flags(actor_id, registry, world).await;
+    }
+}
+
+/// Test hook: open the proc a `procRequirement` (1-4) asks for.
+#[cfg(test)]
+pub(crate) async fn test_open_proc(
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    lua: Option<&Arc<crate::lua::LuaEngine>>,
+    db: Option<&Arc<crate::database::Database>>,
+    actor_id: u32,
+    requirement: u8,
+) {
+    if let Some(i) = usize::from(requirement).checked_sub(1) {
+        Box::pin(set_procs(&[(actor_id, i)], registry, world, lua, db)).await;
+    }
+}
+
+/// Whether the player holds the proc a `procRequirement` (1 Miss, 2 Evade,
+/// 3 Parry, 4 Block) asks for. No requirement is always met.
+pub(crate) fn has_proc(c: &crate::actor::Character, requirement: u8) -> bool {
+    match requirement {
+        0 => true,
+        r => PROC_STATUSES
+            .get(usize::from(r) - 1)
+            .is_some_and(|s| c.status_effects.has(*s)),
+    }
+}
+
+/// Use up the proc a weaponskill needed (one Haymaker per evade).
+pub(crate) async fn spend_proc(
+    actor_id: u32,
+    requirement: u8,
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    lua: Option<&Arc<crate::lua::LuaEngine>>,
+    db: Option<&Arc<crate::database::Database>>,
+) {
+    let Some(&status) = usize::from(requirement)
+        .checked_sub(1)
+        .and_then(|i| PROC_STATUSES.get(i))
+    else {
+        return;
+    };
+    let Some(h) = registry.get(actor_id).await else {
+        return;
+    };
+    let mut outbox = crate::status::StatusOutbox::new();
+    {
+        let mut c = h.character.write().await;
+        if c.status_effects.has(status) {
+            c.status_effects.remove_status_effect(
+                status,
+                crate::status::DEFAULT_LOSS_TEXT_ID,
+                false,
+                &mut outbox,
+            );
+        }
+    }
+    flush_wake_outbox(outbox, registry, world, lua, db).await;
+    send_timing_flags(actor_id, registry, world).await;
+}
+
+/// pmeteor `SetProc`'s `charaWork/timingCommand` property: which proc
+/// weaponskills the client lights up on the hotbar.
+async fn send_timing_flags(actor_id: u32, registry: &ActorRegistry, world: &WorldManager) {
+    let Some(h) = registry.get(actor_id).await else {
+        return;
+    };
+    if !h.is_player() {
+        return;
+    }
+    let flags = {
+        let c = h.character.read().await;
+        PROC_STATUSES.map(|s| c.status_effects.has(s))
+    };
+    let mut b = tx::actor::ActorPropertyPacketBuilder::new(actor_id, "charaWork/timingCommand");
+    for (i, on) in flags.iter().enumerate() {
+        b.add_byte(
+            &format!("charaWork.battleTemp.timingCommandFlag[{i}]"),
+            u8::from(*on),
+        );
+    }
+    for sub in b.done() {
+        send_to_self_if_player(registry, world, actor_id, sub.to_bytes()).await;
+    }
+}
+const COMBO_SECONDS: u32 = 13;
+/// Heavy Shot and Piercing Arrow open a combo only from at least this
+/// far (both descriptions: "at least 8 yalms ... for use in a combo";
+/// 1.20 patch notes, JP wiki "コンボ成立射程：8m以上").
+const ARCHER_COMBO_MIN_YALMS: f32 = 8.0;
+const ARCHER_RANGED_OPENERS: [&str; 2] = ["heavy_shot", "piercing_arrow"];
+
+/// How far each knockback level pushes (ours, no 1.0 source: STUCK.md
+/// 2026-11-06). Level 1 = 2 yalms, 3 = 6.
+pub(crate) const KNOCKBACK_YALMS_PER_LEVEL: f32 = 2.0;
+/// The push walks the path in steps this long and stops where the
+/// ground drops or rises too much (a wall or a cliff).
+const KNOCKBACK_STEP_YALMS: f32 = 0.5;
+/// Most a step may climb, and drop, onto the next floor.
+const KNOCKBACK_MAX_CLIMB: f32 = 0.75;
+const KNOCKBACK_MAX_DROP: f32 = 2.0;
+/// The in-zone quick move a player's client accepts (the GM warp's
+/// SetActorPosition: spawn type 0x11, embedded id 0xC0000000).
+const KNOCKBACK_SPAWN_TYPE: u16 = 0x11;
+const KNOCKBACK_EMBEDDED_ID: i32 = 0xC000_0000_u32 as i32;
+/// The 0x00CF move state others see a knockback with (2 = running).
+const KNOCKBACK_MOVE_STATE: u16 = 2;
+
+/// Where a knockback of `level` from `from` leaves an actor at `at`:
+/// straight away from the attacker (along `facing` if they stand on the
+/// same spot), walked in short steps over `ground` (the floor under a
+/// point nearest a height, `None` off the mesh, `Err` when unknown), and
+/// stopped at the last step a wall or cliff doesn't block.
+pub(crate) fn knockback_destination(
+    from: common::Vector3,
+    at: common::Vector3,
+    facing: f32,
+    level: u8,
+    mut ground: impl FnMut(f32, f32, f32) -> Result<Option<f32>, ()>,
+) -> common::Vector3 {
+    let (mut dx, mut dz) = (at.x - from.x, at.z - from.z);
+    let len = (dx * dx + dz * dz).sqrt();
+    if len < 0.01 {
+        // 1.0 rotation: 0 faces +z, π/2 faces +x (`look_at_rotation`).
+        (dx, dz) = (facing.sin(), facing.cos());
+    } else {
+        (dx, dz) = (dx / len, dz / len);
+    }
+    let distance = KNOCKBACK_YALMS_PER_LEVEL * f32::from(level.max(1));
+    let steps = (distance / KNOCKBACK_STEP_YALMS).ceil() as u32;
+    let mut pos = at;
+    for k in 1..=steps {
+        let d = (KNOCKBACK_STEP_YALMS * k as f32).min(distance);
+        let (x, z) = (at.x + dx * d, at.z + dz * d);
+        match ground(x, z, pos.y) {
+            // No terrain for this zone: keep the height.
+            Err(()) => pos = common::Vector3::new(x, pos.y, z),
+            Ok(Some(y)) if y - pos.y <= KNOCKBACK_MAX_CLIMB && pos.y - y <= KNOCKBACK_MAX_DROP => {
+                pos = common::Vector3::new(x, y, z);
+            }
+            // A wall, a cliff or the edge of the mesh: stop here.
+            _ => break,
+        }
+    }
+    pos
+}
+
+/// Push `target_id` away from `attacker_id` (a landed knockback hit).
+async fn apply_knockback(
+    attacker_id: u32,
+    target_id: u32,
+    level: u8,
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    zone: &Arc<RwLock<Zone>>,
+) {
+    let (Some(a), Some(t)) = (
+        registry.get(attacker_id).await,
+        registry.get(target_id).await,
+    ) else {
+        return;
+    };
+    let (from, facing) = {
+        let c = a.character.read().await;
+        (c.base.position(), c.base.rotation)
+    };
+    let (at, rotation, alive) = {
+        let c = t.character.read().await;
+        (c.base.position(), c.base.rotation, c.is_alive())
+    };
+    if !alive {
+        return;
+    }
+    let zone_name = zone.read().await.core.zone_name.clone();
+    let to =
+        knockback_destination(
+            from,
+            at,
+            facing,
+            level,
+            |x, z, near| match crate::terrain::floors(&zone_name, x, z) {
+                crate::terrain::Floors::Known(f) => Ok(f
+                    .into_iter()
+                    .min_by(|a, b| (a - near).abs().total_cmp(&(b - near).abs()))),
+                crate::terrain::Floors::Unknown => Err(()),
+            },
+        );
+    if (to.x - at.x).abs() < 1e-3 && (to.z - at.z).abs() < 1e-3 {
+        return;
+    }
+    let (dx, dz) = (to.x - at.x, to.z - at.z);
+    let distance = (dx * dx + dz * dz).sqrt();
+    let (dir_x, dir_z) = if distance > 1e-4 {
+        (dx / distance, dz / distance)
+    } else {
+        (0.0, 0.0)
+    };
+    // Face the attacker: back along the push (rotation = atan2(dx, dz)
+    // toward what you face, as `summon.rs` and `gm_spawn.rs` turn actors).
+    let face = if distance > 1e-4 {
+        (-dir_x).atan2(-dir_z)
+    } else {
+        rotation
+    };
+    let duration_ms = knockback_slide_ms(distance);
+    tracing::debug!(
+        target = target_id,
+        level,
+        from = ?at,
+        to = ?to,
+        duration_ms,
+        "knockback"
+    );
+    // Everyone around: a quick run back to the spot, still facing the
+    // attacker. The run speed goes up for the slide and back after it.
+    let multiplier = knockback_speed_multiplier(distance, duration_ms);
+    {
+        let mut c = t.character.write().await;
+        c.knockback_speed_until_ms =
+            crate::runtime::clock::server_now_ms() + u64::from(duration_ms);
+    }
+    broadcast_to_neighbours(
+        world,
+        registry,
+        target_id,
+        tx::actor::build_set_actor_speed_scaled(target_id, multiplier).to_bytes(),
+    )
+    .await;
+    // Stored position, zone grid and the 0x00CF move for everyone around.
+    crate::runtime::quest_apply::apply_move_actor_to_position(
+        target_id,
+        to.x,
+        to.y,
+        to.z,
+        face,
+        KNOCKBACK_MOVE_STATE,
+        registry,
+        world,
+    )
+    .await;
+    if t.is_player() {
+        if let Some(mut session) = world.session(t.session_id).await {
+            session.destination_x = to.x;
+            session.destination_y = to.y;
+            session.destination_z = to.z;
+            session.destination_rot = face;
+            world.upsert_session(session).await;
+        }
+        // The player's own client ignores 0x00CF for itself: it gets the
+        // in-zone warp (a fade, for a client without our knockback hook)
+        // with a note a patched client slides on instead.
+        let note = tx::actor::KnockbackNote {
+            dir_x,
+            dir_z,
+            distance,
+            duration_ms,
+            start: [at.x, at.y, at.z],
+        };
+        let pkt = tx::actor::build_knockback_warp(
+            target_id,
+            KNOCKBACK_EMBEDDED_ID,
+            to.x,
+            to.y,
+            to.z,
+            face,
+            KNOCKBACK_SPAWN_TYPE,
+            &note,
+        );
+        send_to_self_if_player(registry, world, target_id, pkt.to_bytes()).await;
+    }
+}
+
+/// How long a knockback slide of `distance` yalms takes: fast, a bit
+/// longer for a longer push (2 yalms 0.33 s, 6 yalms 0.49 s).
+pub(crate) fn knockback_slide_ms(distance: f32) -> u16 {
+    (250.0 + 40.0 * distance.max(0.0)).min(500.0) as u16
+}
+
+/// The run-speed multiplier that covers `distance` in `duration_ms`
+/// (never slower than the usual run).
+pub(crate) fn knockback_speed_multiplier(distance: f32, duration_ms: u16) -> f32 {
+    let speed = distance / (f32::from(duration_ms.max(1)) / 1000.0);
+    (speed / tx::actor::SPEED_DEFAULT_RUN).max(1.0)
+}
+
+/// Weaponskill damage bonus per 1000 TP above its cost (ours: no 1.0 source;
+/// STUCK.md 2026-11-06). 3000 TP on a 1000-TP weaponskill: ×1.10.
+pub(crate) const WS_BONUS_PER_1000_TP_OVER_COST: f64 = 0.05;
+
+/// The damage factor for `surplus` TP above a weaponskill's cost.
+pub(crate) fn ws_tp_bonus(surplus: i32) -> f64 {
+    1.0 + WS_BONUS_PER_1000_TP_OVER_COST * f64::from(surplus.max(0)) / 1000.0
+}
+/// pmeteor `SetCombos`: `playerWork.comboCostBonusRate = 1`, so a link
+/// that continues a combo costs no MP or TP.
+const COMBO_COST_BONUS_RATE: f32 = 1.0;
+
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+struct ComboUse {
+    /// The command starts or continues a combo: its hit carries the step.
+    is_combo: bool,
+    /// It is the next link of the player's combo (free, runs `onCombo`).
+    continues: bool,
+    run_on_combo: bool,
+}
+
+/// What a command does to a combo (pmeteor `WeaponSkillState` and
+/// `MagicState`): it has to be the player's class's or job's. A
+/// weaponskill runs `onCombo` only as a continuing link; a spell runs it
+/// when it starts a combo too.
+fn combo_use(command: &BattleCommand, class: u8, job: u8, continues: bool) -> ComboUse {
+    let ws = command.command_type == CommandType::WEAPON_SKILL;
+    let spell = command.command_type == CommandType::SPELL;
+    if !(ws || spell) || command.job == 0 || (command.job != class && command.job != job) {
+        return ComboUse::default();
+    }
+    let starts = command.combo_step == 1;
+    ComboUse {
+        is_combo: starts || continues,
+        continues,
+        run_on_combo: continues || (spell && starts),
+    }
+}
+
+fn character_combo(c: &crate::actor::Character, command: &BattleCommand) -> ComboUse {
+    let class = c.chara.class.max(0) as u8;
+    let job = if c.chara.current_job != 0 {
+        c.chara.current_job as u8
+    } else {
+        class
+    };
+    let id = i32::from(command.id);
+    let continues = c.combo_next.contains(&id) && c.status_effects.has(STATUS_COMBO);
+    combo_use(command, class, job, continues)
+}
+
+async fn player_combo(
+    h: &crate::runtime::actor_registry::ActorHandle,
+    command: &BattleCommand,
+) -> ComboUse {
+    if !h.is_player() {
+        return ComboUse::default();
+    }
+    character_combo(&*h.character.read().await, command)
+}
+
+/// A spell that starts or continues a combo casts for as long as its
+/// `onCombo` says (Fira and Firaga halve the cast). Called when the cast
+/// starts; the rest of `onCombo` applies when it lands.
+pub(crate) fn apply_combo_cast_time(
+    lua: Option<&Arc<crate::lua::LuaEngine>>,
+    c: &mut BattleCommand,
+    caster: &crate::actor::Character,
+) {
+    let Some(root) = script_root(lua) else {
+        return;
+    };
+    if c.command_type != CommandType::SPELL || !character_combo(caster, c).run_on_combo {
+        return;
+    }
+    let mut probe = c.clone();
+    let view = crate::status::script::OwnerView {
+        mods: caster.chara.mods.clone(),
+        level: caster.chara.level,
+        max_hp: i32::from(caster.chara.max_hp),
+        max_mp: 0,
+        status_ids: caster.status_effects.iter().map(|e| e.id).collect(),
+        traits: caster.traits.clone(),
+    };
+    apply_skill_hook(&root, "onCombo", &mut probe, &view);
+    c.cast_time_ms = probe.cast_time_ms;
+}
+
+/// Put what the command's `onCombo` / `onPositional` changed on the
+/// command. Power comes from `magicPotency` / `damageMultiplier` here, so
+/// a script's `basePotency` change scales those.
+/// Swiftsong, Ballad of Magi, Paeon of War, Minuet of Rigor: a bard's
+/// songs on one target replace each other (pmeteor's song scripts take
+/// the caster's old song off the target before the new one lands).
+const BARD_SONGS: [u32; 4] = [223224, 223254, 223255, 223256];
+
+/// Take `bard`'s other songs off `target` before `song` lands. Another
+/// bard's songs stay.
+#[allow(clippy::too_many_arguments)]
+async fn drop_other_songs(
+    bard: u32,
+    target: u32,
+    song: u32,
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    db: &Database,
+    lua: Option<&Arc<crate::lua::LuaEngine>>,
+) {
+    let Some(h) = registry.get(target).await else {
+        return;
+    };
+    let mut outbox = crate::status::StatusOutbox::new();
+    {
+        let mut c = h.character.write().await;
+        let old: Vec<u32> = c
+            .status_effects
+            .iter()
+            .filter(|e| e.id != song && BARD_SONGS.contains(&e.id) && e.source_actor_id == bard)
+            .map(|e| e.id)
+            .collect();
+        for id in old {
+            c.status_effects.remove_status_effect(
+                id,
+                crate::status::DEFAULT_LOSS_TEXT_ID,
+                true,
+                &mut outbox,
+            );
+        }
+    }
+    if let Some(l) = lua {
+        for e in outbox.drain() {
+            dispatch_status_event(&e, registry, world, db, l.catalogs()).await;
+        }
+    }
+}
+
+/// A script's `aoeType` number as the command's AoE shape.
+fn aoe_from(n: f64) -> crate::battle::target_find::TargetFindAOEType {
+    use crate::battle::target_find::TargetFindAOEType;
+    match n as u8 {
+        1 => TargetFindAOEType::Circle,
+        2 => TargetFindAOEType::Cone,
+        3 => TargetFindAOEType::Box,
+        _ => TargetFindAOEType::None,
+    }
+}
+
+fn apply_skill_hook(
+    root: &std::path::Path,
+    hook: &str,
+    c: &mut BattleCommand,
+    caster: &crate::status::script::OwnerView,
+) {
+    let start = crate::status::script::ComboSkill {
+        base_potency: f64::from(c.base_potency.max(1)),
+        cast_time_ms: f64::from(c.cast_time_ms),
+        recast_time_ms: f64::from(c.recast_time_ms),
+        aoe_type: c.aoe_type as u8 as f64,
+        status_id: f64::from(c.status_id),
+        status_chance: f64::from(c.status_chance),
+        status_duration: f64::from(c.status_duration),
+        status_magnitude: c.status_magnitude,
+        num_hits: f64::from(c.num_hits),
+        accuracy_modifier: f64::from(c.accuracy_modifier),
+        bonus_crit_rate: f64::from(c.bonus_crit_rate),
+        enmity_modifier: f64::from(c.enmity_modifier),
+    };
+    let set =
+        match crate::status::script::run_command_skill_hook(root, &c.name, hook, caster, start) {
+            Ok(Some(set)) => set,
+            Ok(None) => return,
+            Err(e) => {
+                tracing::debug!(command = %c.name, hook, error = %e, "skill hook failed");
+                return;
+            }
+        };
+    let ratio = set.base_potency / start.base_potency;
+    if (ratio - 1.0).abs() > 1e-9 {
+        c.base_potency = (f64::from(c.base_potency) * ratio)
+            .round()
+            .clamp(0.0, 65535.0) as u16;
+        c.magic_potency = (f64::from(c.magic_potency) * ratio)
+            .round()
+            .clamp(0.0, 65535.0) as u16;
+        if c.action_type == ActionType::Physical {
+            let m = if c.damage_multiplier > 0.0 {
+                f64::from(c.damage_multiplier)
+            } else {
+                battle_utils::DEFAULT_PHYSICAL_SKILL_MULTIPLIER
+            };
+            c.damage_multiplier = (m * ratio) as f32;
+        }
+    }
+    c.cast_time_ms = set.cast_time_ms.max(0.0) as u32;
+    let recast = set.recast_time_ms.max(0.0) as u32;
+    if recast != c.recast_time_ms {
+        c.recast_time_ms = recast;
+        c.max_recast_time_seconds = recast.div_ceil(1000);
+    }
+    c.aoe_type = aoe_from(set.aoe_type);
+    c.status_id = set.status_id.max(0.0) as u32;
+    c.status_chance = set.status_chance as f32;
+    c.status_duration = set.status_duration.max(0.0) as u32;
+    c.status_magnitude = set.status_magnitude;
+    c.num_hits = set.num_hits.clamp(0.0, 255.0) as u8;
+    c.accuracy_modifier = set.accuracy_modifier as f32;
+    c.bonus_crit_rate = set.bonus_crit_rate as f32;
+    c.enmity_modifier = set.enmity_modifier as f32;
+    tracing::debug!(command = %c.name, hook, ?set, "skill hook applied");
+}
+
+/// Which side of `target` an attacker at `attacker` stands on (pmeteor
+/// `ConvertHitDirToPosition`): front, rear, or flank for either side.
+async fn side_of_target(
+    registry: &ActorRegistry,
+    target: u32,
+    attacker: common::Vector3,
+) -> Option<crate::battle::command::BattleCommandPositionBonus> {
+    use crate::battle::command::BattleCommandPositionBonus as P;
+    let h = registry.get(target).await?;
+    let c = h.character.read().await;
+    let dir = crate::status::hooks::hit_direction(
+        common::Vector3::new(c.base.position_x, c.base.position_y, c.base.position_z),
+        c.base.rotation,
+        attacker,
+    );
+    tracing::debug!(
+        target_x = c.base.position_x,
+        target_z = c.base.position_z,
+        target_rot = c.base.rotation,
+        attacker_x = attacker.x,
+        attacker_z = attacker.z,
+        dir,
+        "battle: positional side",
+    );
+    Some(match dir {
+        1 => P::Front,
+        4 => P::Rear,
+        _ => P::Flank,
+    })
+}
+
+/// pmeteor `Player.SetCombos`: the commands that continue the combo, the
+/// Combo status while one can (13 s), and `playerWork/combo` for the
+/// client's hotbar. `[0, 0]` ends it.
+pub(crate) async fn set_combos(
+    actor_id: u32,
+    next: [i32; 2],
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    lua: Option<&Arc<crate::lua::LuaEngine>>,
+    db: Option<&Arc<crate::database::Database>>,
+) {
+    let Some(h) = registry.get(actor_id).await else {
+        return;
+    };
+    let now_ms = (common::utils::unix_timestamp() as u64).saturating_mul(1000);
+    let mut outbox = crate::status::StatusOutbox::new();
+    let changed = {
+        let mut c = h.character.write().await;
+        let was = c.combo_next;
+        c.combo_next = next;
+        if next[0] != 0 {
+            let mut cmd = BattleCommand::new(0, "");
+            cmd.status_id = STATUS_COMBO;
+            cmd.status_duration = COMBO_SECONDS;
+            let mut effect = command_status_effect(&cmd, actor_id, lua, now_ms);
+            effect.overwrite = crate::status::StatusEffectOverwrite::Always;
+            effect.silent_on_gain = true;
+            c.status_effects
+                .add_status_effect(effect, actor_id, now_ms, 0, &mut outbox);
+        } else if c.status_effects.has(STATUS_COMBO) {
+            c.status_effects.remove_status_effect(
+                STATUS_COMBO,
+                crate::status::DEFAULT_LOSS_TEXT_ID,
+                false,
+                &mut outbox,
+            );
+        }
+        was != next
+    };
+    flush_wake_outbox(outbox, registry, world, lua, db).await;
+    if changed || next[0] != 0 {
+        send_combo_property(actor_id, next, registry, world).await;
+    }
+}
+
+async fn send_combo_property(
+    actor_id: u32,
+    next: [i32; 2],
+    registry: &ActorRegistry,
+    world: &WorldManager,
+) {
+    let mut b = tx::actor::ActorPropertyPacketBuilder::new(actor_id, "playerWork/combo");
+    b.add_float(
+        "playerWork.comboCostBonusRate",
+        if next[0] != 0 {
+            COMBO_COST_BONUS_RATE
+        } else {
+            0.0
+        },
+    );
+    b.add_int("playerWork.comboNextCommandId[0]", next[0].max(0) as u32);
+    b.add_int("playerWork.comboNextCommandId[1]", next[1].max(0) as u32);
+    for sub in b.done() {
+        send_to_self_if_player(registry, world, actor_id, sub.to_bytes()).await;
+    }
+}
+const STATUS_COVERED: u32 = 223173;
+/// Covered only redirects while its paladin stands this close (pmeteor
+/// `covered.lua`), and only melee: attacks from farther out are ranged.
+const COVER_RANGE_YALMS: f32 = 8.0;
+
+/// The paladin covering `defender` (pmeteor `covered.lua` onPreAction,
+/// which only reassigned a local there): the Covered effect's source,
+/// alive, in the same zone and within [`COVER_RANGE_YALMS`].
+async fn covering_actor(
+    registry: &ActorRegistry,
+    defender: &crate::runtime::actor_registry::ActorHandle,
+) -> Option<(u32, crate::runtime::actor_registry::ActorHandle)> {
+    let (source, zone, pos) = {
+        let d = defender.character.read().await;
+        let e = d.status_effects.get(STATUS_COVERED)?;
+        (
+            e.source_actor_id,
+            d.base.zone_id,
+            common::Vector3::new(d.base.position_x, d.base.position_y, d.base.position_z),
+        )
+    };
+    if source == 0 || source == defender.actor_id {
+        return None;
+    }
+    let h = registry.get(source).await?;
+    let near = {
+        let c = h.character.read().await;
+        c.is_alive()
+            && c.base.zone_id == zone
+            && common::utils::distance(
+                pos,
+                common::Vector3::new(c.base.position_x, c.base.position_y, c.base.position_z),
+            ) <= COVER_RANGE_YALMS
+    };
+    near.then_some((source, h))
+}
+
+/// Hand out the party statuses the hooks asked for
+/// (`AddPartyStatusEffect`): every living party member of the owner, in
+/// the owner's zone and within range of them, the owner included.
+async fn apply_party_statuses(
+    list: Vec<crate::status::script::HookPartyStatus>,
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    lua: Option<&Arc<crate::lua::LuaEngine>>,
+    db: Option<&Arc<crate::database::Database>>,
+) {
+    let Some(db) = db else {
+        return;
+    };
+    let now_ms = (common::utils::unix_timestamp() as u64).saturating_mul(1000);
+    for p in list {
+        let Some(owner) = registry.get(p.owner).await else {
+            continue;
+        };
+        let (zone, pos) = {
+            let c = owner.character.read().await;
+            (
+                c.base.zone_id,
+                common::Vector3::new(c.base.position_x, c.base.position_y, c.base.position_z),
+            )
+        };
+        for member in crate::parties::members_of(p.owner) {
+            let Some(h) = registry.get(member).await else {
+                continue;
+            };
+            let near = {
+                let c = h.character.read().await;
+                c.is_alive()
+                    && c.base.zone_id == zone
+                    && common::utils::distance(
+                        pos,
+                        common::Vector3::new(
+                            c.base.position_x,
+                            c.base.position_y,
+                            c.base.position_z,
+                        ),
+                    ) <= p.range
+            };
+            if !near {
+                continue;
+            }
+            let mut cmd = BattleCommand::new(0, "");
+            cmd.status_id = p.status_id;
+            cmd.status_duration = p.duration;
+            cmd.status_magnitude = p.magnitude;
+            cmd.status_tier = p.tier;
+            let effect = command_status_effect(&cmd, member, lua, now_ms);
+            let gain_text = effect.status_gain_text_id;
+            crate::runtime::quest_apply::install_status_effect(
+                p.owner, member, effect, gain_text, registry, db, world, lua,
+            )
+            .await;
+        }
+    }
+}
+const STATUS_FULLY_BLISSFUL_MIND: u32 = 223242;
+
+/// Combat-hook work for the attacker, held until no defender is locked.
+#[derive(Default)]
+struct AttackerHookQueue {
+    owner: Vec<crate::status::hooks::EffectResult>,
+    other: Vec<crate::status::script::HookActorChange>,
+    /// Statuses for a party (Divine Veil's Divine Regen), handed out by
+    /// [`apply_party_statuses`] once no actor is locked.
+    party_status: Vec<crate::status::script::HookPartyStatus>,
+}
+
+impl AttackerHookQueue {
+    /// The attacker's own effects ran: their share for the attacker
+    /// waits, the defender's lands now.
+    fn attacker_ran(
+        &mut self,
+        run: crate::status::hooks::HookRun,
+        d: &mut crate::actor::Character,
+        rows: &mut Vec<crate::status::script::HookRow>,
+        outbox: &mut crate::status::StatusOutbox,
+    ) {
+        crate::status::hooks::apply_other(d, &run.other, outbox);
+        self.party_status
+            .extend(crate::status::hooks::party_statuses(&run));
+        self.owner.extend(run.owner);
+        rows.extend(run.rows);
+    }
+
+    /// The defender's effects ran: their share for the defender lands
+    /// now, the attacker's waits.
+    fn defender_ran(
+        &mut self,
+        run: crate::status::hooks::HookRun,
+        d: &mut crate::actor::Character,
+        rows: &mut Vec<crate::status::script::HookRow>,
+        lua: Option<&Arc<crate::lua::LuaEngine>>,
+        now_ms: u64,
+        outbox: &mut crate::status::StatusOutbox,
+    ) {
+        self.party_status
+            .extend(crate::status::hooks::party_statuses(&run));
+        for r in &run.owner {
+            if let Some((old, rep)) = crate::status::hooks::apply_owner(d, r, outbox) {
+                replace_status_from_hook(d, old, rep, lua, now_ms, outbox);
+            }
+        }
+        if !run.other.is_empty() {
+            self.other.push(run.other);
+        }
+        rows.extend(run.rows);
+    }
+
+    fn is_empty(&self) -> bool {
+        self.owner.is_empty() && self.other.is_empty()
+    }
+
+    /// Apply what waited. True when the attacker's HP, MP or TP moved.
+    fn apply(
+        self,
+        a: &mut crate::actor::Character,
+        lua: Option<&Arc<crate::lua::LuaEngine>>,
+        now_ms: u64,
+        outbox: &mut crate::status::StatusOutbox,
+    ) -> bool {
+        let mut pools = false;
+        for r in &self.owner {
+            pools |= r.owner.hp != 0 || r.owner.mp != 0 || r.owner.tp != 0;
+            if let Some((old, rep)) = crate::status::hooks::apply_owner(a, r, outbox) {
+                replace_status_from_hook(a, old, rep, lua, now_ms, outbox);
+            }
+        }
+        for o in &self.other {
+            pools |= o.hp != 0 || o.mp != 0 || o.tp != 0;
+            crate::status::hooks::apply_other(a, o, outbox);
+        }
+        pools
+    }
+}
+
+/// Run the after-the-roll hooks of one attacker → defender exchange
+/// (pmeteor `BattleUtils.HandleHitType` / `Character.OnDamageTaken`):
+/// onHit / onCrit / onMiss on the attacker's effects, onBlock / onParry /
+/// onEvade / onDamageTaken on the defender's. `amount` is the damage about
+/// to be taken; returns it and the enmity after the hooks (Dread Spike
+/// soaks the hit, Sentinel adds enmity).
+#[allow(clippy::too_many_arguments)]
+fn run_after_roll_hooks(
+    root: &std::path::Path,
+    attacker: &crate::status::hooks::HookSide,
+    d: &mut crate::actor::Character,
+    skill: crate::status::script::HookSkill,
+    result: &CommandResult,
+    amount: u16,
+    enmity: u16,
+    direction: u8,
+    queue: &mut AttackerHookQueue,
+    rows: &mut Vec<crate::status::script::HookRow>,
+    lua: Option<&Arc<crate::lua::LuaEngine>>,
+    now_ms: u64,
+    outbox: &mut crate::status::StatusOutbox,
+) -> (u16, u16) {
+    use crate::battle::effects::HitType;
+    use crate::status::StatusEffectFlags as F;
+    use crate::status::hooks::{HookSide, run};
+    let defender = HookSide::of(d);
+    let wanted = F::ACTIVATE_ON_HIT | F::ACTIVATE_ON_CRIT | F::ACTIVATE_ON_MISS;
+    let wanted_def = F::ACTIVATE_ON_BLOCK
+        | F::ACTIVATE_ON_PARRY
+        | F::ACTIVATE_ON_EVADE
+        | F::ACTIVATE_ON_DAMAGE_TAKEN;
+    if !attacker.has(wanted) && !defender.has(wanted_def) {
+        return (amount, enmity);
+    }
+    let mut skill = skill;
+    let mut action = crate::status::script::HookAction::from_result(result, direction);
+    action.amount = f64::from(amount);
+    action.enmity = f64::from(enmity);
+    let mut action = Some(action);
+    let other = Some(&defender.actor);
+    let me = Some(&attacker.actor);
+    let mut attacker_hook = |hook: &str,
+                             flag,
+                             skill: &mut _,
+                             action: &mut _,
+                             d: &mut _,
+                             rows: &mut _,
+                             outbox: &mut _| {
+        let r = run(root, hook, flag, attacker, other, true, skill, action);
+        queue.attacker_ran(r, d, rows, outbox);
+    };
+    if result.action_landed() {
+        attacker_hook(
+            "onHit",
+            F::ACTIVATE_ON_HIT,
+            &mut skill,
+            &mut action,
+            d,
+            rows,
+            outbox,
+        );
+        if result.hit_type == HitType::Crit {
+            attacker_hook(
+                "onCrit",
+                F::ACTIVATE_ON_CRIT,
+                &mut skill,
+                &mut action,
+                d,
+                rows,
+                outbox,
+            );
+        }
+    } else {
+        attacker_hook(
+            "onMiss",
+            F::ACTIVATE_ON_MISS,
+            &mut skill,
+            &mut action,
+            d,
+            rows,
+            outbox,
+        );
+    }
+    let mut defender_hook = |hook: &str,
+                             flag,
+                             skill: &mut _,
+                             action: &mut _,
+                             d: &mut _,
+                             rows: &mut _,
+                             outbox: &mut _| {
+        let r = run(root, hook, flag, &defender, me, false, skill, action);
+        queue.defender_ran(r, d, rows, lua, now_ms, outbox);
+    };
+    match result.hit_type {
+        HitType::Block => defender_hook(
+            "onBlock",
+            F::ACTIVATE_ON_BLOCK,
+            &mut skill,
+            &mut action,
+            d,
+            rows,
+            outbox,
+        ),
+        HitType::Parry => defender_hook(
+            "onParry",
+            F::ACTIVATE_ON_PARRY,
+            &mut skill,
+            &mut action,
+            d,
+            rows,
+            outbox,
+        ),
+        HitType::Miss | HitType::Evade => defender_hook(
+            "onEvade",
+            F::ACTIVATE_ON_EVADE,
+            &mut skill,
+            &mut action,
+            d,
+            rows,
+            outbox,
+        ),
+        _ => {}
+    }
+    if action.is_some_and(|a| a.amount > 0.0) {
+        defender_hook(
+            "onDamageTaken",
+            F::ACTIVATE_ON_DAMAGE_TAKEN,
+            &mut skill,
+            &mut action,
+            d,
+            rows,
+            outbox,
+        );
+    }
+    let a = action.unwrap_or_default();
+    (
+        a.amount.floor().clamp(0.0, f64::from(u16::MAX)) as u16,
+        a.enmity.floor().clamp(0.0, f64::from(u16::MAX)) as u16,
+    )
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn resolve_action(
     attacker_actor_id: u32,
@@ -789,73 +2360,521 @@ async fn resolve_action(
     let Some(attacker_handle) = registry.get(attacker_actor_id).await else {
         return;
     };
-    let Some(defender_handle) = registry.get(defender_actor_id).await else {
+    if registry.get(defender_actor_id).await.is_none() {
         return;
-    };
+    }
 
-    let (atk_level, atk_max_hp, atk_mods) = {
+    let (
+        atk_level,
+        atk_max_hp,
+        atk_mods,
+        atk_status,
+        atk_effects,
+        atk_pos,
+        atk_status_ids,
+        atk_traits,
+    ) = {
         let a = attacker_handle.character.read().await;
         if !a.is_alive() {
             return;
         }
-        (a.chara.level, a.chara.max_hp, a.chara.mods.clone())
+        (
+            a.chara.level,
+            a.chara.max_hp,
+            a.chara.mods.clone(),
+            a.bonus_mod_totals(),
+            a.status_mod_totals(),
+            common::Vector3::new(a.base.position_x, a.base.position_y, a.base.position_z),
+            a.status_effects.iter().map(|e| e.id).collect::<Vec<u32>>(),
+            a.traits.clone(),
+        )
     };
+
+    // Combos (pmeteor `WeaponSkillState` / `MagicState`): a command that
+    // starts or continues the player's combo carries the combo step on
+    // its hit, a link that continues one runs its script's `onCombo`
+    // (Thundara's potency, Bloodletter's status…) and costs nothing.
+    let mut combo = player_combo(&attacker_handle, command).await;
+    // Heavy Shot and Piercing Arrow count toward a combo only from at
+    // least 8 yalms (their command descriptions).
+    if combo.is_combo && ARCHER_RANGED_OPENERS.contains(&command.name.as_str()) {
+        let near = match registry.get(defender_actor_id).await {
+            Some(d) => {
+                let d = d.character.read().await;
+                let (dx, dz) = (d.base.position_x - atk_pos.x, d.base.position_z - atk_pos.z);
+                dx * dx + dz * dz < ARCHER_COMBO_MIN_YALMS * ARCHER_COMBO_MIN_YALMS
+            }
+            None => false,
+        };
+        if near {
+            combo = ComboUse::default();
+        }
+    }
+    // Whirlwind in combo spends the warrior's Berserk stacks for ×1.5
+    // power (its script looks for an old Berserk id; the stacks' Attack
+    // and Defense live with the effect here).
+    let spend_berserk = combo.continues
+        && command.name == "whirlwind"
+        && attacker_handle
+            .character
+            .read()
+            .await
+            .status_effects
+            .get(STATUS_BERSERK2)
+            .is_some_and(|e| e.extra > 0.0);
+    let comboed;
+    let command = if combo.is_combo {
+        let mut c = command.clone();
+        c.is_combo = true;
+        if combo.run_on_combo
+            && let Some(root) = script_root(lua)
+        {
+            let caster = crate::status::script::OwnerView {
+                mods: atk_mods.clone(),
+                level: atk_level,
+                max_hp: atk_max_hp as i32,
+                max_mp: 0,
+                status_ids: atk_status_ids.clone(),
+                traits: atk_traits.clone(),
+            };
+            apply_skill_hook(&root, "onCombo", &mut c, &caster);
+        }
+        if spend_berserk {
+            let m = if c.damage_multiplier > 0.0 {
+                f64::from(c.damage_multiplier)
+            } else {
+                battle_utils::DEFAULT_PHYSICAL_SKILL_MULTIPLIER
+            };
+            c.damage_multiplier = (m * 1.5) as f32;
+        }
+        comboed = c;
+        &comboed
+    } else {
+        command
+    };
+
+    // TP above the cost (ours, no 1.0 source): a weaponskill used with
+    // more TP than it spends hits a little harder. 1.0 spends only the
+    // fixed cost, so the surplus stays and the bonus is kept small.
+    let tp_scaled;
+    let command = if command.command_type == CommandType::WEAPON_SKILL
+        && command.action_type == ActionType::Physical
+        && command.tp_cost > 0
+    {
+        let tp = i32::from(attacker_handle.character.read().await.chara.tp);
+        let surplus = (tp - i32::from(command.tp_cost)).max(0);
+        if surplus > 0 {
+            let mut c = command.clone();
+            let m = if c.damage_multiplier > 0.0 {
+                f64::from(c.damage_multiplier)
+            } else {
+                battle_utils::DEFAULT_PHYSICAL_SKILL_MULTIPLIER
+            };
+            c.damage_multiplier = (m * ws_tp_bonus(surplus)) as f32;
+            tp_scaled = c;
+            &tp_scaled
+        } else {
+            command
+        }
+    } else {
+        command
+    };
+
+    // Positionals (pmeteor `WeaponSkillState.OnStart`): a weaponskill used
+    // from the side its row names (front, rear or flank of the target)
+    // runs its script's `onPositional` (Fast Blade's power, Goring
+    // Blade's status chance…).
+    let positioned;
+    let command = if command.command_type == CommandType::WEAPON_SKILL
+        && command.position_bonus != crate::battle::command::BattleCommandPositionBonus::None
+        && let Some(root) = script_root(lua)
+        && let Some(side) = side_of_target(registry, defender_actor_id, atk_pos).await
+        && side == command.position_bonus
+    {
+        let mut c = command.clone();
+        let caster = crate::status::script::OwnerView {
+            mods: atk_mods.clone(),
+            level: atk_level,
+            max_hp: atk_max_hp as i32,
+            max_mp: 0,
+            status_ids: atk_status_ids.clone(),
+            traits: atk_traits.clone(),
+        };
+        apply_skill_hook(&root, "onPositional", &mut c, &caster);
+        tracing::debug!(
+            command = command.id,
+            side = ?side,
+            "battle: positional bonus (onPositional ran)",
+        );
+        positioned = c;
+        &positioned
+    } else {
+        command
+    };
+
+    // The command's script settles the status it applies (Protect's size
+    // comes from the caster's enhancing potency, Invigorate's from gear…).
+    let scripted;
+    let mut setup_removed: Vec<(u32, u16)> = Vec::new();
+    let mut setup_added: Vec<crate::status::script::SetupAddedStatus> = Vec::new();
+    let mut setup_toggled_off = false;
+    let mut setup_enmity: Option<f64> = None;
+    let command = match (command.status_id, lua) {
+        (status_id, Some(l)) if status_id != 0 => {
+            let root = l
+                .catalogs()
+                .script_root
+                .read()
+                .map(|r| r.clone())
+                .unwrap_or_default();
+            let caster = crate::status::script::OwnerView {
+                mods: atk_mods.clone(),
+                level: atk_level,
+                max_hp: atk_max_hp as i32,
+                max_mp: 0,
+                status_ids: atk_status_ids.clone(),
+                traits: atk_traits.clone(),
+            };
+            let start = crate::status::script::CommandStatus {
+                status_id: command.status_id,
+                duration: command.status_duration,
+                magnitude: command.status_magnitude,
+                tier: command.status_tier,
+                chance: f64::from(command.status_chance),
+                aoe_type: f64::from(command.aoe_type as u8),
+                recast_ms: f64::from(command.max_recast_time_seconds) * 1000.0,
+                ..Default::default()
+            };
+            match crate::status::script::run_command_setup(&root, &command.name, &caster, start) {
+                Ok(Some(set)) => {
+                    let mut c = command.clone();
+                    c.status_id = set.status_id;
+                    c.status_duration = set.duration;
+                    // Formulas tuned for endgame potency go negative at low
+                    // level (Regen: 0.625 × potency − 109); no effect then,
+                    // rather than a buff that drains.
+                    c.status_magnitude = set.magnitude.max(0.0);
+                    c.status_tier = set.tier;
+                    c.status_chance = set.chance as f32;
+                    c.aoe_type = aoe_from(set.aoe_type);
+                    c.max_recast_time_seconds = (set.recast_ms / 1000.0).round() as u32;
+                    tracing::debug!(
+                        command = %command.name,
+                        held = ?atk_status_ids,
+                        removed = ?set.removed,
+                        toggled_off = set.toggled_off,
+                        "command setup"
+                    );
+                    setup_removed = set.removed;
+                    setup_added = set.added;
+                    setup_toggled_off = set.toggled_off;
+                    setup_enmity = set.enmity;
+                    scripted = c;
+                    &scripted
+                }
+                Ok(None) => command,
+                Err(e) => {
+                    tracing::debug!(command = %command.name, error = %e, "command setup failed");
+                    command
+                }
+            }
+        }
+        _ => command,
+    };
+
+    // Status effects' combat hooks (pmeteor `CallLuaFunctionByFlag`):
+    // onCommandStart / onMagicCast change the command before it rolls
+    // (Barrage's extra hits, Parsimony's MP), the rest run per target.
+    let root = script_root(lua);
+    let hook_now_ms = (common::utils::unix_timestamp() as u64).saturating_mul(1000);
+    let mut hook_outbox = crate::status::StatusOutbox::new();
+    let mut hook_rows: Vec<crate::status::script::HookRow> = Vec::new();
+    let mut hook_queue = AttackerHookQueue::default();
+    let mut attacker_side = None;
+    let hooked;
+    let command = match &root {
+        Some(root) => {
+            use crate::status::StatusEffectFlags as F;
+            use crate::status::hooks::{HookSide, apply_owner, run};
+            let mut a = attacker_handle.character.write().await;
+            let mut side = HookSide::of(&a);
+            let before = crate::status::script::HookSkill::from_command(command);
+            let mut skill = before;
+            if side.has(F::ACTIVATE_ON_COMMAND_START | F::ACTIVATE_ON_CAST_START) {
+                let mut none = None;
+                let mut runs = vec![run(
+                    root,
+                    "onCommandStart",
+                    F::ACTIVATE_ON_COMMAND_START,
+                    &side,
+                    None,
+                    true,
+                    &mut skill,
+                    &mut none,
+                )];
+                if command.command_type == CommandType::SPELL {
+                    runs.push(run(
+                        root,
+                        "onMagicCast",
+                        F::ACTIVATE_ON_CAST_START,
+                        &side,
+                        None,
+                        true,
+                        &mut skill,
+                        &mut none,
+                    ));
+                }
+                for r in runs {
+                    for e in &r.owner {
+                        if let Some((old, rep)) = apply_owner(&mut a, e, &mut hook_outbox) {
+                            replace_status_from_hook(
+                                &mut a,
+                                old,
+                                rep,
+                                lua,
+                                hook_now_ms,
+                                &mut hook_outbox,
+                            );
+                        }
+                    }
+                    hook_rows.extend(r.rows);
+                }
+                side = HookSide::of(&a);
+            }
+            attacker_side = Some(side);
+            drop(a);
+            if skill != before {
+                let mut c = command.clone();
+                skill.apply_to(&mut c);
+                hooked = c;
+                &hooked
+            } else {
+                command
+            }
+        }
+        None => command,
+    };
+
+    // A boss's summoning move hits nobody: only its adds fight.
+    let summoning;
+    let command = match crate::runtime::summon::harmless_row(command) {
+        Some(c) if !attacker_handle.is_player() => {
+            summoning = c;
+            &summoning
+        }
+        _ => command,
+    };
+
+    let is_heal = command.action_type == ActionType::Heal;
+    let is_status_row = matches!(command.action_type, ActionType::Status | ActionType::None);
+    // Raise-style rows (mainTarget CorpseOnly) act on a KO'd target.
+    let revives = command
+        .main_target
+        .intersects(crate::battle::target_find::ValidTarget::CORPSE_ONLY);
+
+    let mut targets = action_targets(
+        attacker_actor_id,
+        defender_actor_id,
+        command,
+        registry,
+        zone,
+    )
+    .await;
+    // A sealed boss room keeps its fight and the rest of the copy apart:
+    // no attacks, heals, buffs or raises across the gate.
+    targets.retain(|t| crate::runtime::dungeon_fight::may_interact(attacker_actor_id, *t));
+    // Cover: a single-target melee attack on a Covered actor lands on
+    // their paladin.
+    if targets.len() == 1
+        && command.action_type == ActionType::Physical
+        && !command.is_ranged
+        && let Some(h) = registry.get(targets[0]).await
+        && let Some((id, _)) = covering_actor(registry, &h).await
+        && id != attacker_actor_id
+    {
+        targets[0] = id;
+    }
 
     let mut rng = ThreadRng;
-    let mut result = CommandResult::from_command(defender_actor_id, command, 1);
-    // Lua scripts normally drop the base potency into `action.amount`
-    // before calling `DoAction`. Until those bindings land, use the
-    // command's `base_potency` directly; zero falls back to a conservative
-    // placeholder so casts still produce a visible hit number.
-    // The old flat-100 placeholder one-shot the SEQ_005 tutorial wolves
-    // (100 HP fallback) on every Papalymo Thunder — each wolf died to a
-    // single cast ~8 s apart and the whole fight was over in 18 s. Scale
-    // the placeholder by attacker level so a lvl-1 tutorial caster lands
-    // ~20 while higher-level content still produces a visible number.
-    result.amount = if command.base_potency > 0 {
-        command.base_potency
-    } else {
-        (15 + 5 * i32::from(atk_level.max(1))).min(9999) as u16
-    };
-    result.enmity = result.amount;
-
     let mut container = CommandResultContainer::new();
-    let dmg_request;
-    let is_heal = command.action_type == ActionType::Heal;
+    let mut hits: Vec<ActionHit> = Vec::new();
+    let mut all_procs: Vec<(u32, usize)> = Vec::new();
+    let mut wake_outbox = crate::status::StatusOutbox::new();
+    let mut knockbacks: Vec<(u32, u8)> = Vec::new();
+    for target_id in targets {
+        let Some(defender_handle) = registry.get(target_id).await else {
+            continue;
+        };
+        let mut result = CommandResult::from_command(target_id, command, 1);
 
-    {
         let mut d_write = defender_handle.character.write().await;
-        if !d_write.is_alive() && !is_heal {
-            return;
+        let alive = d_write.is_alive();
+        if !alive && !revives {
+            continue;
         }
         let def_level = d_write.chara.level;
         let def_max_hp = d_write.chara.max_hp;
         let def_mods_snapshot = d_write.chara.mods.clone();
-
+        let def_status = d_write.bonus_mod_totals();
         let atk_view = battle_utils::CombatView {
             actor_id: attacker_actor_id,
             level: atk_level,
             max_hp: atk_max_hp,
             mods: &atk_mods,
+            status: &atk_status,
             has_aegis_boon: false,
             has_protect: false,
             has_shell: false,
             has_stoneskin: false,
         };
         let def_view = battle_utils::CombatView {
-            actor_id: defender_actor_id,
+            actor_id: target_id,
             level: def_level,
             max_hp: def_max_hp,
             mods: &def_mods_snapshot,
-            has_aegis_boon: false,
-            has_protect: false,
-            has_shell: false,
-            has_stoneskin: false,
+            status: &def_status,
+            has_aegis_boon: d_write
+                .status_effects
+                .has(crate::status::ids::STATUS_AEGIS_BOON),
+            has_protect: has_any(&d_write, &PROTECT_IDS),
+            has_shell: has_any(&d_write, &SHELL_IDS),
+            has_stoneskin: has_any(&d_write, &STONESKIN_IDS),
         };
 
+        // Skill power from seed 291 (`battle_utils::skill_amount`). A row
+        // with no power data keeps its `base_potency`; zero falls back to
+        // a conservative level-scaled placeholder so casts still produce
+        // a visible hit number.
+        result.amount = battle_utils::skill_amount(&atk_view, command, &mut rng).unwrap_or(
+            if command.base_potency > 0 {
+                command.base_potency
+            } else {
+                (15 + 5 * i32::from(atk_level.max(1))).min(9999) as u16
+            },
+        );
+        // Benediction (WHM 50) restores all of each target's HP; it has no
+        // power data or script of its own.
+        if command.name == "benediction" {
+            result.amount = def_max_hp.max(0) as u16;
+        }
+        // Cleric Stance and other potency statuses scale spells and heals.
+        result.amount = battle_utils::apply_magic_potency(
+            &atk_view,
+            command.action_type,
+            result.amount,
+            &atk_effects,
+        );
+        result.enmity = result.amount;
+
         let mut skill = command.clone();
+        let direction = crate::status::hooks::hit_direction(
+            common::Vector3::new(
+                d_write.base.position_x,
+                d_write.base.position_y,
+                d_write.base.position_z,
+            ),
+            d_write.base.rotation,
+            atk_pos,
+        );
+        result.param = direction;
         battle_utils::calc_rates(&atk_view, &def_view, Some(&skill), &mut result);
-        dmg_request = match command.action_type {
+        if let (Some(root), Some(atk)) = (&root, &attacker_side)
+            && target_id != attacker_actor_id
+        {
+            use crate::status::StatusEffectFlags as F;
+            use crate::status::hooks::{HookSide, run};
+            let def = HookSide::of(&d_write);
+            if atk.has(F::ACTIVATE_ON_PREACTION_CASTER) || def.has(F::ACTIVATE_ON_PREACTION_TARGET)
+            {
+                let mut hs = crate::status::script::HookSkill::from_command(&skill);
+                let mut act = Some(crate::status::script::HookAction::from_result(
+                    &result, direction,
+                ));
+                let r = run(
+                    root,
+                    "onPreAction",
+                    F::ACTIVATE_ON_PREACTION_CASTER,
+                    atk,
+                    Some(&def.actor),
+                    true,
+                    &mut hs,
+                    &mut act,
+                );
+                hook_queue.attacker_ran(r, &mut d_write, &mut hook_rows, &mut hook_outbox);
+                let r = run(
+                    root,
+                    "onPreAction",
+                    F::ACTIVATE_ON_PREACTION_TARGET,
+                    &def,
+                    Some(&atk.actor),
+                    false,
+                    &mut hs,
+                    &mut act,
+                );
+                hook_queue.defender_ran(
+                    r,
+                    &mut d_write,
+                    &mut hook_rows,
+                    lua,
+                    hook_now_ms,
+                    &mut hook_outbox,
+                );
+                if let Some(a) = act {
+                    a.apply_to(&mut result);
+                }
+                hs.apply_to(&mut skill);
+            }
+        }
+        let mut hit = ActionHit {
+            target_actor_id: target_id,
+            damage: 0,
+            healed: false,
+            heal_amount: 0,
+            landed: false,
+            status_roll: false,
+        };
+        let dmg_request = match command.action_type {
+            // Multi-hit weaponskills (Rage of Halone, Simian Thrash...): the
+            // skill's power is split across its hits, and each hit rolls
+            // miss, crit, block and parry on its own row.
+            ActionType::Physical if command.num_hits > 1 => {
+                let n = command.num_hits;
+                let total = result.amount;
+                let mut sum: Option<battle_utils::DamageRequest> = None;
+                let mut last_landed: Option<CommandResult> = None;
+                let mut last = result.clone();
+                for h in 1..=n {
+                    let mut part = CommandResult::from_command(target_id, command, h);
+                    part.param = direction;
+                    part.amount =
+                        total / u16::from(n) + if h == 1 { total % u16::from(n) } else { 0 };
+                    part.enmity = part.amount;
+                    battle_utils::calc_rates(&atk_view, &def_view, Some(&skill), &mut part);
+                    if let Some(dr) = battle_utils::finish_action_physical(
+                        &atk_view,
+                        &def_view,
+                        &mut d_write.chara.mods,
+                        Some(&mut skill),
+                        &mut part,
+                        &mut container,
+                        &mut rng,
+                    ) {
+                        let s = sum.get_or_insert(battle_utils::DamageRequest {
+                            target_actor_id: dr.target_actor_id,
+                            amount: 0,
+                            enmity: 0,
+                        });
+                        s.amount = s.amount.saturating_add(dr.amount);
+                        s.enmity = s.enmity.saturating_add(dr.enmity);
+                    }
+                    if part.action_landed() {
+                        last_landed = Some(part.clone());
+                    }
+                    last = part;
+                }
+                result = last_landed.unwrap_or(last);
+                sum
+            }
             ActionType::Physical => battle_utils::finish_action_physical(
                 &atk_view,
                 &def_view,
@@ -882,13 +2901,150 @@ async fn resolve_action(
                     &mut container,
                 );
                 d_write.add_hp(heal.amount as i32);
+                hit.healed = heal.amount > 0;
+                hit.heal_amount = heal.amount;
                 None
             }
             ActionType::Status | ActionType::None => {
-                battle_utils::finish_action_status(&skill, &mut result, &mut container);
+                // The row itself announces the status ("Your X grants you
+                // the effect of Y"), so roll first: a failed roll reads as
+                // a resist instead of claiming an effect that never lands.
+                result.amount = 0;
+                // A status with no chance is one a trait unlocks (Flash's
+                // Blind, Provoke's Attack Down): without it the command is
+                // plain enmity and lands, rather than reading as a resist.
+                let has_status = command.status_id != 0 && skill.status_chance > 0.0;
+                let rolled = has_status
+                    && battle_utils::try_status(&atk_view, &def_view, &result, &skill, &mut rng);
+                if !has_status || rolled {
+                    battle_utils::finish_action_status(&skill, &mut result, &mut container);
+                    if !has_status {
+                        // No status: never point the text at status 0.
+                        container.main_results.last_mut().unwrap().effect_id = 0;
+                    }
+                } else {
+                    result.hit_type = crate::battle::effects::HitType::FullResist;
+                    result.world_master_text_id =
+                        battle_utils::magical_hit_text_id(result.hit_type);
+                    battle_utils::set_hit_effect_spell(&def_view, None, &mut result);
+                    container.add_action(result.clone());
+                }
+                hit.status_roll = rolled;
+                // Status commands on a monster (Provoke, Flash, Sleep) still
+                // draw its attention. A monster's buff on itself (Stoneskin,
+                // Shock Spikes) doesn't: hating itself, it turned on itself.
+                if defender_handle.kind == crate::runtime::actor_registry::ActorKindTag::BattleNpc
+                    && attacker_actor_id != defender_actor_id
+                {
+                    // The script's flat figure when it sets one (Provoke
+                    // 750, Flash 400), else the row's potency.
+                    let enmity =
+                        setup_enmity.map_or(i32::from(command.base_potency.max(1)), |e| e as i32);
+                    d_write.hate.update_hate(attacker_actor_id, enmity);
+                }
                 None
             }
         };
+        let mut dmg_request = dmg_request;
+        if let (Some(root), Some(atk)) = (&root, &attacker_side)
+            && target_id != attacker_actor_id
+            && matches!(
+                command.action_type,
+                ActionType::Physical | ActionType::Magic
+            )
+        {
+            let (amount, enmity) = dmg_request.map_or((0, 0), |dr| (dr.amount, dr.enmity));
+            let (new_amount, new_enmity) = run_after_roll_hooks(
+                root,
+                atk,
+                &mut d_write,
+                crate::status::script::HookSkill::from_command(&skill),
+                &result,
+                amount,
+                enmity,
+                direction,
+                &mut hook_queue,
+                &mut hook_rows,
+                lua,
+                hook_now_ms,
+                &mut hook_outbox,
+            );
+            if let Some(dr) = dmg_request.as_mut()
+                && (dr.amount, dr.enmity) != (new_amount, new_enmity)
+            {
+                dr.amount = new_amount;
+                dr.enmity = new_enmity;
+                if let Some(row) = container
+                    .main_results
+                    .iter_mut()
+                    .rev()
+                    .find(|r| r.target_actor_id == target_id)
+                {
+                    row.amount = new_amount;
+                    row.enmity = new_enmity;
+                }
+            }
+        }
+        // Knockback: a landed hit from a knockback move pushes the target
+        // (client hit-effect bits; the player's client moves itself).
+        if command.knockback > 0
+            && target_id != attacker_actor_id
+            && dmg_request.is_some_and(|dr| dr.amount > 0)
+            && d_write
+                .chara
+                .mods
+                .get(crate::actor::modifier::Modifier::KnockbackImmune)
+                <= 0.0
+            && let Some(row) = container
+                .main_results
+                .iter_mut()
+                .rev()
+                .find(|r| r.target_actor_id == target_id)
+        {
+            row.effect_id |= knockback_hit_effect(command.knockback);
+            knockbacks.push((target_id, command.knockback));
+        }
+        if is_heal && let (Some(root), Some(atk)) = (&root, &attacker_side) {
+            use crate::status::StatusEffectFlags as F;
+            let def = crate::status::hooks::HookSide::of(&d_write);
+            if def.has(F::ACTIVATE_ON_HEALED) {
+                let mut hs = crate::status::script::HookSkill::from_command(&skill);
+                let mut act = Some(crate::status::script::HookAction::from_result(
+                    &result, direction,
+                ));
+                let r = crate::status::hooks::run(
+                    root,
+                    "onHealed",
+                    F::ACTIVATE_ON_HEALED,
+                    &def,
+                    Some(&atk.actor),
+                    false,
+                    &mut hs,
+                    &mut act,
+                );
+                hook_queue.defender_ran(
+                    r,
+                    &mut d_write,
+                    &mut hook_rows,
+                    lua,
+                    hook_now_ms,
+                    &mut hook_outbox,
+                );
+            }
+        }
+        // Rows the hooks added (Life Surge's drain, Dread Spike's soak)
+        // follow the target's own row.
+        for row in hook_rows.drain(..) {
+            container.add_action(row.to_result(target_id));
+        }
+        hit.landed = result.action_landed();
+        if command.action_type == ActionType::Physical && target_id != attacker_actor_id {
+            all_procs.extend(procs_for(result.hit_type, attacker_actor_id, target_id));
+        }
+        if !is_status_row && command.status_id != 0 {
+            hit.status_roll =
+                battle_utils::try_status(&atk_view, &def_view, &result, &skill, &mut rng);
+        }
 
         if let Some(dr) = dmg_request
             && dr.amount > 0
@@ -897,6 +3053,8 @@ async fn resolve_action(
             d_write
                 .hate
                 .update_hate(attacker_actor_id, dr.enmity as i32);
+            wake_on_damage(&mut d_write, &mut wake_outbox);
+            hit.damage = dr.amount;
             // #28 S3.3 — defender TP on damage taken, same formula as
             // the auto-attack arm (pmeteor `OnDamageTaken` runs for any
             // landed damage, Character.cs:905-908).
@@ -906,6 +3064,336 @@ async fn resolve_action(
                 d_write.add_tp(gain);
             }
         }
+        drop(d_write);
+        hits.push(hit);
+    }
+    let mut attacker_pools_moved = false;
+    let party_statuses = std::mem::take(&mut hook_queue.party_status);
+    if let Some(root) = &root {
+        use crate::status::StatusEffectFlags as F;
+        let mut a = attacker_handle.character.write().await;
+        if !hook_queue.is_empty() {
+            attacker_pools_moved =
+                std::mem::take(&mut hook_queue).apply(&mut a, lua, hook_now_ms, &mut hook_outbox);
+        }
+        let side = crate::status::hooks::HookSide::of(&a);
+        if side.has(F::ACTIVATE_ON_COMMAND_FINISH) {
+            let mut hs = crate::status::script::HookSkill::from_command(command);
+            let r = crate::status::hooks::run(
+                root,
+                "onCommandFinish",
+                F::ACTIVATE_ON_COMMAND_FINISH,
+                &side,
+                None,
+                true,
+                &mut hs,
+                &mut None,
+            );
+            for e in &r.owner {
+                if let Some((old, rep)) =
+                    crate::status::hooks::apply_owner(&mut a, e, &mut hook_outbox)
+                {
+                    replace_status_from_hook(&mut a, old, rep, lua, hook_now_ms, &mut hook_outbox);
+                }
+            }
+        }
+    }
+    for row in hook_rows.drain(..) {
+        container.add_action(row.to_result(attacker_actor_id));
+    }
+    flush_wake_outbox(wake_outbox, registry, world, lua, db).await;
+    flush_wake_outbox(hook_outbox, registry, world, lua, db).await;
+    apply_party_statuses(party_statuses, registry, world, lua, db).await;
+    Box::pin(set_procs(&all_procs, registry, world, lua, db)).await;
+
+    // Pugilist fists (1.23b: "Effect ends upon reuse. Cannot be used
+    // simultaneously with..."): using one ends whichever fists are up, and
+    // using the one that was up only ends it.
+    if PUGILIST_FISTS.contains(&command.status_id) {
+        let mut outbox = crate::status::StatusOutbox::new();
+        let had = {
+            let mut a = attacker_handle.character.write().await;
+            let had = a.status_effects.has(command.status_id);
+            for id in PUGILIST_FISTS {
+                if a.status_effects.has(id) {
+                    a.status_effects.remove_status_effect(
+                        id,
+                        crate::status::DEFAULT_LOSS_TEXT_ID,
+                        true,
+                        &mut outbox,
+                    );
+                }
+            }
+            had
+        };
+        flush_wake_outbox(outbox, registry, world, lua, db).await;
+        if had {
+            for hit in hits.iter_mut() {
+                hit.status_roll = false;
+            }
+        }
+    }
+
+    // What the command's script put on the caster (Cover gives the
+    // paladin Cover, whose Enhanced tier turns damage taken into MP).
+    if !setup_added.is_empty()
+        && let Some(db) = db
+    {
+        let now_ms = (common::utils::unix_timestamp() as u64).saturating_mul(1000);
+        for add in setup_added {
+            let mut cmd = BattleCommand::new(0, "");
+            cmd.status_id = add.status_id;
+            cmd.status_duration = add.duration;
+            cmd.status_magnitude = add.magnitude;
+            cmd.status_tier = add.tier.max(1);
+            let effect = command_status_effect(&cmd, attacker_actor_id, lua, now_ms);
+            let gain_text = effect.status_gain_text_id;
+            crate::runtime::quest_apply::install_status_effect(
+                attacker_actor_id,
+                attacker_actor_id,
+                effect,
+                gain_text,
+                registry,
+                db,
+                world,
+                lua,
+            )
+            .await;
+        }
+    }
+
+    // What the command's script took off the caster (Rampage ends
+    // Berserk, Dread Spike eats a Power Surge), and toggles used with
+    // their buff up (Rampage, Cleric Stance…): they end it and land none.
+    if !setup_removed.is_empty() && command.name != "blissful_mind" {
+        let mut outbox = crate::status::StatusOutbox::new();
+        {
+            let mut a = attacker_handle.character.write().await;
+            for &(id, text) in &setup_removed {
+                let text = if text == 0 {
+                    crate::status::DEFAULT_LOSS_TEXT_ID
+                } else {
+                    text
+                };
+                a.status_effects
+                    .remove_status_effect(id, text, true, &mut outbox);
+            }
+        }
+        flush_wake_outbox(outbox, registry, world, lua, db).await;
+        if setup_toggled_off {
+            for hit in hits.iter_mut() {
+                hit.status_roll = false;
+            }
+        }
+    }
+
+    // Blissful Mind (pmeteor commands/ability/blissful_mind.lua
+    // `onSkillFinish`): used with the buff up, it pays out the MP banked so
+    // far and ends; otherwise it costs a quarter of current HP, and that
+    // amount is the MP the buff banks up to.
+    let blissful;
+    let command = if command.name == "blissful_mind" {
+        let mut a = attacker_handle.character.write().await;
+        let held = [STATUS_BLISSFUL_MIND, STATUS_FULLY_BLISSFUL_MIND]
+            .into_iter()
+            .find_map(|id| {
+                a.status_effects.get(id).map(|e| {
+                    // Fully Blissful Mind is a full bank: its magnitude.
+                    let banked = if id == STATUS_FULLY_BLISSFUL_MIND {
+                        e.magnitude
+                    } else {
+                        e.extra
+                    };
+                    (id, banked.max(0.0).floor() as i32)
+                })
+            });
+        attacker_pools_moved = true;
+        match held {
+            Some((id, banked)) => {
+                a.add_mp(banked);
+                let mut outbox = crate::status::StatusOutbox::new();
+                a.status_effects
+                    .remove_status_effect(id, 30329, true, &mut outbox);
+                drop(a);
+                flush_wake_outbox(outbox, registry, world, lua, db).await;
+                for hit in hits.iter_mut() {
+                    hit.status_roll = false;
+                }
+                container.add_action(
+                    crate::status::script::HookRow {
+                        kind: crate::status::script::HookRowKind::Mp,
+                        target_actor_id: attacker_actor_id,
+                        text_id: 33007,
+                        amount: banked.clamp(0, i32::from(u16::MAX)) as u16,
+                    }
+                    .to_result(attacker_actor_id),
+                );
+                command
+            }
+            None => {
+                let cost = (f64::from(a.chara.hp) * 0.25).floor();
+                a.add_hp(-(cost as i32));
+                let mut c = command.clone();
+                c.status_magnitude = cost;
+                blissful = c;
+                &blissful
+            }
+        }
+    } else {
+        command
+    };
+
+    // Status effects (pmeteor `CommandResult.TryStatus`). The command's
+    // own row (status commands) or an extra row in the same container
+    // (damage riders: stun, heavy, bind…) carries the gain text, so the
+    // effect installs silently instead of sending its own "You are X."
+    if command.status_id != 0
+        && let Some(db) = db
+    {
+        let now_ms = (common::utils::unix_timestamp() as u64).saturating_mul(1000);
+        for hit in hits.iter().filter(|h| h.status_roll) {
+            if BARD_SONGS.contains(&command.status_id) {
+                drop_other_songs(
+                    attacker_actor_id,
+                    hit.target_actor_id,
+                    command.status_id,
+                    registry,
+                    world,
+                    db,
+                    lua,
+                )
+                .await;
+            }
+            let mut effect = command_status_effect(command, hit.target_actor_id, lua, now_ms);
+            effect.silent_on_gain = true;
+            let gain_text = effect.status_gain_text_id;
+            let landed = crate::runtime::quest_apply::install_status_effect(
+                attacker_actor_id,
+                hit.target_actor_id,
+                effect,
+                gain_text,
+                registry,
+                db,
+                world,
+                lua,
+            )
+            .await;
+            if landed && !is_status_row {
+                container.add_action(CommandResult {
+                    target_actor_id: hit.target_actor_id,
+                    world_master_text_id: if gain_text != 0 {
+                        gain_text
+                    } else {
+                        crate::status::DEFAULT_GAIN_TEXT_ID
+                    },
+                    effect_id: STATUS_EFFECT_HIT | command.status_id,
+                    hit_num: 1,
+                    ..Default::default()
+                });
+            }
+        }
+    }
+
+    // Row-specific effects the seed can't express (pmeteor per-skill
+    // scripts): Convert swaps HP and MP, Esuna strips one esuna-able
+    // effect, Chameleon / Elusive Jump shed the caster's enmity.
+    match command.name.as_str() {
+        "convert" => {
+            let mut a = attacker_handle.character.write().await;
+            let (hp, mp) = (i32::from(a.chara.hp), i32::from(a.chara.mp));
+            let (max_hp, max_mp) = (i32::from(a.chara.max_hp), i32::from(a.chara.max_mp));
+            a.set_hp(mp.min(max_hp).max(1));
+            a.set_mp(hp.min(max_mp));
+        }
+        "esuna" => {
+            for hit in &hits {
+                let Some(h) = registry.get(hit.target_actor_id).await else {
+                    continue;
+                };
+                let mut outbox = crate::status::StatusOutbox::new();
+                let removed = {
+                    let mut c = h.character.write().await;
+                    let id = c
+                        .status_effects
+                        .iter()
+                        .find(|e| {
+                            e.flags
+                                .contains(crate::status::StatusEffectFlags::LOSE_ON_ESUNA)
+                        })
+                        .map(|e| e.id);
+                    if let Some(id) = id {
+                        c.status_effects.remove_status_effect(
+                            id,
+                            crate::status::DEFAULT_LOSS_TEXT_ID,
+                            true,
+                            &mut outbox,
+                        );
+                    }
+                    id
+                };
+                if let Some(id) = removed {
+                    if let Some(row) = container
+                        .main_results
+                        .iter_mut()
+                        .find(|r| r.target_actor_id == hit.target_actor_id)
+                    {
+                        row.effect_id = STATUS_EFFECT_HIT | id;
+                    }
+                    if let (Some(db), Some(l)) = (db, lua) {
+                        for e in outbox.drain() {
+                            dispatch_status_event(&e, registry, world, db, l.catalogs()).await;
+                        }
+                    }
+                }
+            }
+        }
+        "whirlwind" if spend_berserk => {
+            let mut a = attacker_handle.character.write().await;
+            a.remove_status_mods(STATUS_BERSERK2);
+            if let Some(e) = a.status_effects.get_mut(STATUS_BERSERK2) {
+                e.extra = 0.0;
+            }
+        }
+        // pmeteor `holy_succor.lua`: cast on someone else, the paladin
+        // recovers half of what it restored ("You recover [n] HP.").
+        "holy_succor" => {
+            let back: u32 = hits
+                .iter()
+                .filter(|h| h.target_actor_id != attacker_actor_id && h.healed)
+                .map(|h| u32::from(h.heal_amount) / 2)
+                .sum();
+            if back > 0 {
+                let back = back.min(u32::from(u16::MAX)) as u16;
+                attacker_handle
+                    .character
+                    .write()
+                    .await
+                    .add_hp(i32::from(back));
+                container.add_action(CommandResult {
+                    target_actor_id: attacker_actor_id,
+                    amount: back,
+                    world_master_text_id: HOLY_SUCCOR_RECOVER_TEXT,
+                    effect_id: (crate::battle::effects::HitEffect::SELF_HEAL_TYPE
+                        | crate::battle::effects::HitEffect::SELF_HEAL
+                        | crate::battle::effects::HitEffect::SELF_HEAL_HP)
+                        .bits(),
+                    hit_num: 1,
+                    ..Default::default()
+                });
+            }
+        }
+        "chameleon" | "elusive_jump" => {
+            for h in registry.actors_in_zone(attacker_handle.zone_id).await {
+                if h.kind != crate::runtime::actor_registry::ActorKindTag::BattleNpc {
+                    continue;
+                }
+                let mut c = h.character.write().await;
+                if c.hate.has_hate_for(attacker_actor_id) {
+                    c.hate.clear_hate(Some(attacker_actor_id));
+                }
+            }
+        }
+        _ => {}
     }
 
     // #28 S3.3 — player completion bookkeeping: costs come off the
@@ -914,18 +3402,26 @@ async fn resolve_action(
     // `charaWork/commandDetailForSelf` pair reaches the owning client.
     // pmeteor splits this across `DoBattleCommand` (DelMP/DelTP,
     // Character.cs:1159-1160) and `Player.OnWeaponSkill/OnAbility/
-    // OnCast` (`UpdateHotbarTimer`, Player.cs:2901-2928).
-    let landed = dmg_request.map_or(0, |dr| dr.amount);
+    // OnCast` (`UpdateHotbarTimer`, Player.cs:2901-2928). MP costs are
+    // per-mille of the level curve (`CalculateMpCost`).
+    let landed: u32 = hits.iter().map(|h| u32::from(h.damage)).sum();
     if attacker_handle.is_player() {
         let now_unix = common::utils::unix_timestamp() as u32;
         let recast_end = now_unix.saturating_add(command.max_recast_time_seconds);
         let (class_id, slot0) = {
             let mut a = attacker_handle.character.write().await;
-            if command.mp_cost != 0 {
-                a.add_mp(-i32::from(command.mp_cost));
+            let bonus = if combo.continues {
+                COMBO_COST_BONUS_RATE
+            } else {
+                0.0
+            };
+            let mp_cost = command.calculate_mp_cost(a.chara.level, bonus);
+            if mp_cost != 0 {
+                a.add_mp(-i32::from(mp_cost));
             }
-            if command.tp_cost != 0 {
-                a.add_tp(-i32::from(command.tp_cost));
+            let tp_cost = command.calculate_tp_cost(bonus);
+            if tp_cost != 0 {
+                a.add_tp(-i32::from(tp_cost));
             }
             // Abilities accrue TP like swings (pmeteor `OnAttack` gate:
             // AutoAttack | Ability, non-miss); WS/spells gain none.
@@ -976,18 +3472,88 @@ async fn resolve_action(
         }
     }
 
-    // Combat-resolution log (companion to the auto-attack line).
+    // A monster's TP move spends all its TP (1.0 and pmeteor
+    // `BattleNpc` TP moves fire at 1000 and reset the gauge; the move
+    // rows carry no tpCost).
+    if !attacker_handle.is_player() && command.command_type == CommandType::WEAPON_SKILL {
+        attacker_handle.character.write().await.chara.tp = 0;
+    }
+
+    // pmeteor `Character.DoBattleCommand`: a combo link that hit moves
+    // the combo on; any other spell or weaponskill ends it (abilities can
+    // go between links).
+    if attacker_handle.is_player() {
+        let is_link = command.command_type == CommandType::WEAPON_SKILL
+            || command.command_type == CommandType::SPELL;
+        if command.is_combo && hits.iter().any(|h| h.landed) {
+            set_combos(
+                attacker_actor_id,
+                command.combo_next_command_id,
+                registry,
+                world,
+                lua,
+                db,
+            )
+            .await;
+        } else if is_link {
+            set_combos(attacker_actor_id, [0, 0], registry, world, lua, db).await;
+        }
+    }
+
+    // Monster Mode: every move a transformed player uses goes to
+    // `log_monster_mode`, one row per target.
+    if attacker_handle.is_player()
+        && crate::runtime::monster_mode::is_transformed(attacker_actor_id)
     {
-        let (def_hp, def_max) = {
-            let d = defender_handle.character.read().await;
-            (d.chara.hp, d.chara.max_hp)
+        let mut logged = Vec::with_capacity(hits.len());
+        for hit in &hits {
+            let target_class_id = match registry.get(hit.target_actor_id).await {
+                Some(t) => t.character.read().await.chara.actor_class_id,
+                None => 0,
+            };
+            logged.push(crate::runtime::monster_mode::MoveHit {
+                target_class_id,
+                landed: hit.landed,
+                damage: u32::from(hit.damage),
+                heal: if hit.healed {
+                    u32::from(hit.heal_amount)
+                } else {
+                    0
+                },
+                status_id: if hit.status_roll {
+                    command.status_id
+                } else {
+                    0
+                },
+            });
+        }
+        crate::runtime::monster_mode::log_move(
+            attacker_actor_id,
+            command.id,
+            command.battle_animation,
+            attacker_handle.zone_id,
+            &logged,
+        );
+    }
+
+    // Combat-resolution log (companion to the auto-attack line).
+    for hit in &hits {
+        let (def_hp, def_max) = match registry.get(hit.target_actor_id).await {
+            Some(d) => {
+                let d = d.character.read().await;
+                (d.chara.hp, d.chara.max_hp)
+            }
+            None => (0, 0),
         };
         tracing::debug!(
             attacker = format!("0x{attacker_actor_id:08X}"),
-            defender = format!("0x{defender_actor_id:08X}"),
+            defender = format!("0x{:08X}", hit.target_actor_id),
             command = command.id,
-            amount = landed,
+            amount = hit.damage,
             heal = is_heal,
+            heal_amount = hit.heal_amount,
+            landed = hit.landed,
+            status = hit.status_roll,
             defender_hp = format!("{def_hp}/{def_max}"),
             "battle: action resolved",
         );
@@ -1018,25 +3584,93 @@ async fn resolve_action(
     )
     .await;
 
+    // Knockback: push each target the hit knocked back, after the hit
+    // shows (the server owns positions; a player's client is sent there).
+    for (target_id, level) in knockbacks {
+        apply_knockback(attacker_actor_id, target_id, level, registry, world, zone).await;
+    }
+
+    // A boss's summoning move calls its adds once it lands.
+    if !attacker_handle.is_player()
+        && let Some(db) = db
+    {
+        // whoever the boss is fighting: its target, else its most hated, else
+        // the move's target unless that's the boss itself (a self-cast move)
+        let target = {
+            let a = attacker_handle.character.read().await;
+            [
+                a.chara.current_target,
+                a.hate.most_hated().unwrap_or(0),
+                defender_actor_id,
+            ]
+            .into_iter()
+            .find(|&t| t != 0 && t != attacker_actor_id)
+            .unwrap_or(0)
+        };
+        crate::runtime::summon::on_move(
+            attacker_actor_id,
+            command.id,
+            target,
+            registry,
+            world,
+            zone,
+            db,
+            lua,
+        )
+        .await;
+    }
+
+    // Raise: back on their feet after the row lands.
+    if revives {
+        for hit in &hits {
+            apply_revive(hit.target_actor_id, registry, world, zone).await;
+        }
+    }
+
     // #28 S3.3 — HP/TP wire sync (see the auto-attack arm). The attacker
     // re-sync is unconditional for players: costs drain even on a miss.
-    if landed > 0 || is_heal {
-        broadcast_state_quickly(registry, world, zone, defender_actor_id).await;
+    for hit in &hits {
+        if hit.target_actor_id != attacker_actor_id && (hit.damage > 0 || hit.healed) {
+            broadcast_state_quickly(registry, world, zone, hit.target_actor_id).await;
+        }
     }
-    if attacker_handle.is_player() {
+    if attacker_handle.is_player()
+        || attacker_pools_moved
+        || hits
+            .iter()
+            .any(|h| h.target_actor_id == attacker_actor_id && h.healed)
+    {
         broadcast_state_quickly(registry, world, zone, attacker_actor_id).await;
     }
 
-    die_if_defender_fell(
-        defender_actor_id,
-        Some(attacker_actor_id),
-        registry,
-        world,
-        zone,
-        lua,
-        db,
-    )
-    .await;
+    for hit in &hits {
+        if hit.target_actor_id == attacker_actor_id {
+            continue;
+        }
+        die_if_defender_fell(
+            hit.target_actor_id,
+            Some(attacker_actor_id),
+            registry,
+            world,
+            zone,
+            lua,
+            db,
+        )
+        .await;
+    }
+
+    // Self-destruct spends the monster that uses it: once the blast lands,
+    // the bomb falls. Nobody gets the kill.
+    if !attacker_handle.is_player() && self_destructs(command) {
+        attacker_handle.character.write().await.chara.hp = 0;
+        die_if_defender_fell(attacker_actor_id, None, registry, world, zone, lua, db).await;
+    }
+}
+
+/// A move that KOs its own user when it lands (the bomb's Self-destruct,
+/// both of its command rows).
+pub(crate) fn self_destructs(command: &BattleCommand) -> bool {
+    command.name == "self_destruct"
 }
 
 /// pmeteor `CommandResultX01PacketCommand.Attack` — the synthetic
@@ -1762,6 +4396,265 @@ pub(crate) async fn sync_pools_after_tick(
 /// nameplate HP bars and the self-HUD stay in sync with the new gear
 /// pool. Unchanged recalcs (status-effect tick routed through
 /// `StatusEvent::RecalcStats`, for example) produce no wire traffic.
+/// A status effect's script hook. `onGain` runs the effect's Lua and puts
+/// the modifier changes it makes on the owner; `onLose` takes them back off
+/// (the scripts' own `onLose` only mirrors `onGain`). The `RecalcStats` the
+/// container queues next refreshes the derived numbers. `onTick` scripts
+/// aren't run yet; Regen/Refresh/Regain/DoT ticks come from the modifiers.
+#[allow(clippy::too_many_arguments)]
+async fn apply_status_script(
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    db: &Database,
+    catalogs: &std::sync::Arc<crate::lua::Catalogs>,
+    owner_actor_id: u32,
+    status_effect_id: u32,
+    function_name: &str,
+    effect: crate::status::script::EffectView,
+) {
+    let Some(handle) = registry.get(owner_actor_id).await else {
+        return;
+    };
+    // A player's saved effects follow every gain and loss (the container
+    // already has the change when its Lua call goes out), so a crash or a
+    // dropped connection doesn't lose them or bring back ended ones.
+    if handle.is_player() && matches!(function_name, "onGain" | "onLose") {
+        let entries = handle.character.read().await.status_effects.to_db_entries();
+        if let Err(e) = db
+            .save_player_status_effects(owner_actor_id, &entries)
+            .await
+        {
+            tracing::warn!(owner = owner_actor_id, err = %e, "status: save_player_status_effects failed");
+        }
+    }
+    match function_name {
+        // "onRestore": an effect brought back at login runs its onGain for
+        // the stat changes, before the client is in to hear about speed.
+        "onGain" | "onRestore" => {
+            let Some(name) = catalogs
+                .status_effects
+                .read()
+                .ok()
+                .and_then(|m| m.get(&status_effect_id).map(|d| d.name.clone()))
+            else {
+                return;
+            };
+            let root = catalogs
+                .script_root
+                .read()
+                .map(|r| r.clone())
+                .unwrap_or_default();
+            let owner = {
+                let mut c = handle.character.write().await;
+                // Speed effects multiply MovementSpeed (Heavy 0.8x, Quick
+                // 1.25x); an unset mod means the default run speed, so give
+                // them that to multiply.
+                if c.chara
+                    .mods
+                    .get(crate::actor::modifier::Modifier::MovementSpeed)
+                    <= 0.0
+                {
+                    c.chara.mods.set(
+                        crate::actor::modifier::Modifier::MovementSpeed,
+                        f64::from(tx::actor::SPEED_DEFAULT_RUN),
+                    );
+                }
+                crate::status::script::OwnerView {
+                    mods: c.chara.mods.clone(),
+                    level: c.chara.level,
+                    max_hp: c.chara.max_hp as i32,
+                    max_mp: c.chara.max_mp as i32,
+                    status_ids: Vec::new(),
+                    traits: c.traits.clone(),
+                }
+            };
+            let outcome = match crate::status::script::run_on_gain(&root, &name, &owner, effect) {
+                Ok(o) => o,
+                Err(e) => {
+                    tracing::warn!(owner = owner_actor_id, effect = %name, error = %e, "status onGain failed");
+                    return;
+                }
+            };
+            tracing::debug!(
+                owner = owner_actor_id,
+                effect = %name,
+                mods = ?outcome.mod_deltas,
+                hp = outcome.hp,
+                "status onGain"
+            );
+            handle
+                .character
+                .write()
+                .await
+                .apply_status_mods(status_effect_id, outcome.mod_deltas);
+            if function_name == "onRestore" {
+                // Zone-in sends the bands from the live MovementSpeed mod.
+                let mut c = handle.character.write().await;
+                c.speed_sent = c.get_speed() / tx::actor::SPEED_DEFAULT_RUN;
+                return;
+            }
+            sync_status_speed(registry, world, owner_actor_id).await;
+            if outcome.hp != 0 {
+                // A raised max HP has to land before the heal or the heal
+                // clamps to the old max.
+                apply_recalc_stats(registry, world, catalogs, db, owner_actor_id).await;
+                if apply_hp_delta(registry, owner_actor_id, outcome.hp).await {
+                    sync_pools_after_tick(registry, world, owner_actor_id).await;
+                }
+            }
+        }
+        "onTick" => {
+            run_status_tick(
+                registry,
+                world,
+                db,
+                catalogs,
+                owner_actor_id,
+                status_effect_id,
+            )
+            .await;
+        }
+        "onLose" => {
+            let mut c = handle.character.write().await;
+            if c.status_mods.contains_key(&status_effect_id) {
+                tracing::debug!(
+                    owner = owner_actor_id,
+                    effect = status_effect_id,
+                    "status onLose: mods off"
+                );
+            }
+            c.remove_status_mods(status_effect_id);
+            drop(c);
+            sync_status_speed(registry, world, owner_actor_id).await;
+            if PROC_STATUSES.contains(&status_effect_id) {
+                Box::pin(send_timing_flags(owner_actor_id, registry, world)).await;
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Tell the client how fast its actor may move: 0 while Bind, Sleep, Stun
+/// or Petrification hold it (pmeteor gates movement on PREVENT_MOVEMENT;
+/// the player's own client drives its movement, so the bands have to say
+/// so), else the MovementSpeed mod against the default run speed. Sent
+/// only when it changes.
+async fn sync_status_speed(registry: &ActorRegistry, world: &WorldManager, actor_id: u32) {
+    let Some(handle) = registry.get(actor_id).await else {
+        return;
+    };
+    let multiplier = {
+        let mut c = handle.character.write().await;
+        let m = if c
+            .status_effects
+            .has_by_flag(crate::status::StatusEffectFlags::PREVENT_MOVEMENT)
+        {
+            0.0
+        } else {
+            c.get_speed() / tx::actor::SPEED_DEFAULT_RUN
+        };
+        if (m - c.speed_sent).abs() < 1e-4 {
+            return;
+        }
+        c.speed_sent = m;
+        m
+    };
+    tracing::debug!(actor = actor_id, multiplier, "status: movement speed");
+    let bytes = tx::actor::build_set_actor_speed_scaled(actor_id, multiplier).to_bytes();
+    send_to_self_if_player(registry, world, actor_id, bytes.clone()).await;
+    broadcast_to_neighbours(world, registry, actor_id, bytes).await;
+}
+
+/// An effect's `onTick` (pmeteor `StatusEffect.Update` → `CallLuaFunction
+/// (owner, this, "onTick")`): Blissful Mind banking MP, Excruciate's crit
+/// rate climbing, Rampage's stacks wearing off. Pool and modifier changes
+/// land on the owner and stay with the effect; a `ReplaceEffect` swaps it.
+async fn run_status_tick(
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    db: &Database,
+    catalogs: &std::sync::Arc<crate::lua::Catalogs>,
+    owner_actor_id: u32,
+    status_effect_id: u32,
+) {
+    let Some(handle) = registry.get(owner_actor_id).await else {
+        return;
+    };
+    let root = catalogs
+        .script_root
+        .read()
+        .map(|r| r.clone())
+        .unwrap_or_default();
+    let now_ms = (common::utils::unix_timestamp() as u64).saturating_mul(1000);
+    let mut outbox = crate::status::StatusOutbox::new();
+    let pools_moved = {
+        let mut c = handle.character.write().await;
+        if !c.is_alive() {
+            return;
+        }
+        let side = crate::status::hooks::HookSide::of(&c);
+        let Some(e) = side.effects.iter().find(|e| e.id == status_effect_id) else {
+            return;
+        };
+        let call = crate::status::script::HookCall {
+            hook: "onTick",
+            effect_name: &e.name,
+            effect: e.view,
+            owner: &side.actor,
+            other: None,
+            owner_acts: true,
+            skill: crate::status::script::HookSkill::default(),
+            action: None,
+        };
+        let o = match crate::status::script::run_hook(&root, &call) {
+            Ok(Some(o)) => o,
+            Ok(None) => return,
+            Err(err) => {
+                tracing::debug!(owner = owner_actor_id, effect = %e.name, error = %err, "status onTick failed");
+                return;
+            }
+        };
+        tracing::debug!(
+            owner = owner_actor_id,
+            effect = %e.name,
+            mods = ?o.owner.mod_deltas,
+            hp = o.owner.hp,
+            mp = o.owner.mp,
+            magnitude = o.effect.magnitude,
+            extra = o.effect.extra,
+            replace = ?o.replace.map(|r| r.status_id),
+            "status onTick"
+        );
+        let r = crate::status::hooks::EffectResult {
+            effect_id: status_effect_id,
+            owner: o.owner,
+            effect: o.effect,
+            remove_self: o.remove_self,
+            replace: o.replace,
+        };
+        let pools = r.owner.hp != 0 || r.owner.mp != 0 || r.owner.tp != 0;
+        if let Some((old, rep)) = crate::status::hooks::apply_owner(&mut c, &r, &mut outbox) {
+            let mut cmd = BattleCommand::new(0, "");
+            cmd.status_id = rep.status_id;
+            cmd.status_duration = rep.duration;
+            cmd.status_magnitude = rep.magnitude;
+            cmd.status_tier = rep.tier;
+            let effect =
+                catalog_status_effect(&cmd, owner_actor_id, Some(catalogs.as_ref()), now_ms);
+            c.status_effects
+                .replace_effect(old, effect, now_ms, &mut outbox);
+            outbox.push(crate::status::StatusEvent::RecalcStats { owner_actor_id });
+        }
+        pools
+    };
+    if pools_moved {
+        sync_pools_after_tick(registry, world, owner_actor_id).await;
+    }
+    for e in outbox.drain() {
+        Box::pin(dispatch_status_event(&e, registry, world, db, catalogs)).await;
+    }
+}
+
 async fn apply_recalc_stats(
     registry: &ActorRegistry,
     world: &WorldManager,
@@ -1769,10 +4662,53 @@ async fn apply_recalc_stats(
     db: &crate::database::Database,
     actor_id: u32,
 ) {
+    recalc_stats(registry, world, catalogs, db, actor_id, true).await;
+}
+
+/// The rebuild for a player in the world, outside the status/equip events
+/// (a GM changing a class's level): pools and level go out when they change.
+pub(crate) async fn recalc_stats_now(
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    catalogs: &std::sync::Arc<crate::lua::Catalogs>,
+    db: &crate::database::Database,
+    actor_id: u32,
+) {
+    recalc_stats(registry, world, catalogs, db, actor_id, true).await;
+}
+
+/// The same rebuild for a player still logging in: the client isn't in the
+/// world yet, so nothing is sent (the zone-in bundle carries the pools).
+/// Login used to seed max HP/MP from the saved row and skip gear, so the
+/// first status or equip change moved them.
+pub(crate) async fn recalc_stats_at_login(
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    catalogs: &std::sync::Arc<crate::lua::Catalogs>,
+    db: &crate::database::Database,
+    actor_id: u32,
+) {
+    recalc_stats(registry, world, catalogs, db, actor_id, false).await;
+}
+
+async fn recalc_stats(
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    catalogs: &std::sync::Arc<crate::lua::Catalogs>,
+    db: &crate::database::Database,
+    actor_id: u32,
+    broadcast: bool,
+) {
     let Some(handle) = registry.get(actor_id).await else {
         return;
     };
     let is_player = handle.is_player();
+    // Monster Mode: the player wears the monster's stats; the class,
+    // gear and level pipeline would overwrite them. The player's own
+    // stats come back from the snapshot when they turn back.
+    if is_player && crate::runtime::monster_mode::is_transformed(actor_id) {
+        return;
+    }
 
     // Resolve the active class *before* taking the write lock — the
     // lookup itself reads the character, so holding a write lock for
@@ -1794,7 +4730,15 @@ async fn apply_recalc_stats(
     } else {
         std::collections::HashMap::new()
     };
+    let hq_slots: std::collections::HashSet<u16> = if is_player {
+        db.load_equipped_hq_slots(actor_id, class_id)
+            .await
+            .unwrap_or_default()
+    } else {
+        std::collections::HashSet::new()
+    };
 
+    let mut param_changes: Vec<(usize, i16)> = Vec::new();
     let (pre_pools, post_pools, class_slot, main_skill_level) = {
         let mut c = handle.character.write().await;
         let pre = if is_player {
@@ -1820,15 +4764,21 @@ async fn apply_recalc_stats(
             //   7. recalculate_stats — project Hp/Mp mods onto the
             //      character's HP/MP pools and plant the HitCount=1
             //      h2h fallback if the weapon stage didn't set one.
+            c.remove_trait_mods();
             c.reset_player_bonus_stats();
             c.apply_player_stat_baseline();
             if let Ok(items) = catalogs.items.read() {
                 c.apply_player_gear_stats(&items, &equipped);
+                c.apply_player_hq_gear_stats(&items, &equipped, &hq_slots);
                 c.apply_player_weapon_stats(&items, &equipped);
                 c.apply_player_weapon_damage_power(&items, &equipped);
             }
             c.apply_player_stat_derivation();
+            if let Ok(traits) = catalogs.battle_traits.read() {
+                c.apply_traits(&traits);
+            }
             c.apply_food_bonuses();
+            c.apply_status_pipeline_mods();
         }
         c.recalculate_stats();
         let post = if is_player {
@@ -1842,13 +4792,36 @@ async fn apply_recalc_stats(
         // nameplate expect.
         let main_skill = c.chara.class.max(0) as u8;
         let main_skill_level = c.chara.level.max(1) as u16;
+        // The character window's stats (generalParameter): keep the
+        // copy the client has, and collect the slots that moved.
+        if is_player {
+            let new_params = c.player_general_parameter();
+            let old_params = c.battle_temp.general_parameter;
+            if broadcast {
+                param_changes = (0..new_params.len())
+                    .filter(|&i| new_params[i] != old_params[i])
+                    .map(|i| (i, new_params[i]))
+                    .collect();
+            }
+            c.battle_temp.general_parameter = new_params;
+        }
         (pre, post, main_skill, main_skill_level)
     };
+
+    // Stats go to the player only: other clients never show them.
+    if !param_changes.is_empty() {
+        for sub in
+            crate::packets::send::actor::build_battle_parameter_changes(actor_id, &param_changes)
+        {
+            send_to_self_if_player(registry, world, actor_id, sub.to_bytes()).await;
+        }
+    }
 
     // Broadcast HP/MP if any of the four pool values changed. Gating
     // keeps no-op recalcs (e.g. status-effect tick reroute) quiet — a
     // Player standing still with no equip events fires ~0 bundles/sec.
     if let (Some(pre), Some(post)) = (pre_pools, post_pools)
+        && broadcast
         && pre != post
     {
         let hp = post.0.max(0) as u16;
@@ -2018,7 +4991,50 @@ pub(crate) async fn die_if_defender_fell(
 
     apply_die(defender_actor_id, registry, world, zone, lua, db).await;
 
+    // log_combat: a player's death, and what killed them (a monster by
+    // class id, a player by id).
+    if let Some(db) = db
+        && matches!(
+            handle.kind,
+            crate::runtime::actor_registry::ActorKindTag::Player
+        )
+    {
+        let killer = match attacker_actor_id {
+            Some(id) => match registry.get(id).await {
+                Some(a) if a.kind == crate::runtime::actor_registry::ActorKindTag::BattleNpc => {
+                    a.character.read().await.chara.actor_class_id
+                }
+                Some(_) => id,
+                None => 0,
+            },
+            None => 0,
+        };
+        if let Err(e) = db
+            .log_combat(defender_actor_id, "death", killer, 0, handle.zone_id)
+            .await
+        {
+            tracing::debug!(error = %e, "log_combat death");
+        }
+    }
+
     if !is_bnpc {
+        return;
+    }
+    // Monster Mode: a transformed player's kills earn nothing — no leve,
+    // seal, EXP or quest credit — and neither does finishing, after
+    // letting go, a monster they fought as one.
+    let no_rewards = attacker_actor_id
+        .is_some_and(|a| crate::runtime::monster_mode::no_rewards(a, defender_actor_id));
+    if no_rewards {
+        crate::runtime::monster_mode::forget_fights(defender_actor_id);
+        // The one reward of a monster's kill: Monster Points.
+        if let (Some(killer), Some(db)) = (attacker_actor_id, db) {
+            let now = common::utils::unix_timestamp() as u32;
+            let points =
+                crate::runtime::monster_mode::kill_reward(killer, bnpc_class_id, mob_level, now);
+            crate::runtime::monster_points::award(killer, points, "kill", registry, world, db)
+                .await;
+        }
         return;
     }
     // A battle leve's target counts whoever landed the blow.
@@ -2056,6 +5072,19 @@ pub(crate) async fn die_if_defender_fell(
         // hook rather than emitting packets without persistence.
         return;
     };
+    // log_combat: the kill, by the monster's class id and level.
+    if let Err(e) = db_arc
+        .log_combat(
+            attacker_id,
+            "kill",
+            bnpc_class_id,
+            i64::from(mob_level),
+            handle.zone_id,
+        )
+        .await
+    {
+        tracing::debug!(error = %e, "log_combat kill");
+    }
 
     // Grand Company seal reward — port of Meteor's "kill grants
     // seals" payout. Hook fires before the quest-hook chain so a
@@ -2066,37 +5095,102 @@ pub(crate) async fn die_if_defender_fell(
     // through the rank-cap table eventually reduces returns once
     // the player exceeds the mob level. The richer curve from
     // `BattleUtils.cs:GetEXPReward` is the follow-up.
-    award_grand_company_seals(&attacker_handle, mob_level, db_arc).await;
+    // The killer's party shares the kill: members close by get the
+    // seals, the EXP (with the party modifier) and the quest kill credit,
+    // as the killer does.
+    let sharers = kill_sharers(&attacker_handle, defender_actor_id, registry, zone).await;
+    crate::runtime::monster_mode::forget_fights(defender_actor_id);
+    let party_size = sharers.len() as u32;
+    for h in &sharers {
+        award_grand_company_seals(h, mob_level, db_arc).await;
+    }
 
     // Kill EXP — pmeteor pays it in the same death batch
     // (`BattleNpc.cs:376` → `BattleUtils.AddBattleBonusEXP`), and it
     // likewise fires before the quest-hook chain so `onKillBNpc` sees
     // the post-award EXP state. Tutorial-content kills are gated off
     // inside (their Lua already self-pays a fixed grant).
-    award_battle_exp(
-        &attacker_handle,
-        defender_actor_id,
-        mob_level,
-        registry,
-        world,
-        zone,
-        db_arc,
-        lua,
-    )
-    .await;
+    for h in &sharers {
+        award_battle_exp(
+            h,
+            defender_actor_id,
+            mob_level,
+            party_size,
+            h.actor_id == attacker_id,
+            registry,
+            world,
+            zone,
+            db_arc,
+            lua,
+        )
+        .await;
+    }
 
     let Some(lua) = lua else {
         return;
     };
-    crate::runtime::quest_hook::fire_on_kill_bnpc(
-        &attacker_handle,
-        lua,
-        bnpc_class_id,
-        registry,
-        db_arc,
-        world,
-    )
-    .await;
+    for h in &sharers {
+        crate::runtime::quest_hook::fire_on_kill_bnpc(
+            h,
+            lua,
+            bnpc_class_id,
+            registry,
+            db_arc,
+            world,
+        )
+        .await;
+    }
+}
+
+/// How close (yalms) to a defeated monster a party member must be to
+/// share the kill.
+const KILL_SHARE_RANGE: f32 = 50.0;
+
+/// Who shares a kill: the killer, then the members of their party who are
+/// online, alive, in the same zone and content copy as the killer, and
+/// within [`KILL_SHARE_RANGE`] of the monster. (Two copies of a duty stand
+/// at the same coordinates, so the copy check matters; the killer's copy
+/// is used because the dead monster may already have left the area.)
+async fn kill_sharers(
+    killer: &crate::runtime::actor_registry::ActorHandle,
+    victim_id: u32,
+    registry: &ActorRegistry,
+    zone: &Arc<RwLock<Zone>>,
+) -> Vec<crate::runtime::actor_registry::ActorHandle> {
+    let mut out = vec![killer.clone()];
+    let copy_of = |id: u32| async move { zone.read().await.core.instance_of(id) };
+    let killer_copy = copy_of(killer.actor_id).await;
+    let at = match registry.get(victim_id).await {
+        Some(v) => {
+            let c = v.character.read().await;
+            (c.base.zone_id, c.base.position_x, c.base.position_z)
+        }
+        None => return out,
+    };
+    for m in crate::parties::others(killer.actor_id) {
+        let Some(h) = registry.get(m).await else {
+            continue;
+        };
+        if !h.is_player() || h.session_id == 0 || copy_of(m).await != killer_copy {
+            continue;
+        }
+        // A party member in Monster Mode, or who fought this monster as
+        // one, shares nothing.
+        if crate::runtime::monster_mode::no_rewards(m, victim_id) {
+            continue;
+        }
+        let near = {
+            let c = h.character.read().await;
+            c.is_alive()
+                && c.base.zone_id == at.0
+                && ((c.base.position_x - at.1).powi(2) + (c.base.position_z - at.2).powi(2)).sqrt()
+                    <= KILL_SHARE_RANGE
+        };
+        if near {
+            out.push(h);
+        }
+    }
+    out
 }
 
 /// #28 S4.1 — the all-hostiles-dead gate for scripted content (the
@@ -2346,14 +5440,17 @@ const SELF_PAYING_CONTENT_SCRIPTS: [&str; 3] = [
 /// kills; the refresh stores `tier + 1` with the *previous* tier's
 /// window as duration (BattleUtils.cs:995-1005). EXP goes to the
 /// killer's CURRENT class — pmeteor `attacker.GetClass()`. Link bonus
-/// stays 0 until LinkCount mob-mod plumbing lands; party distribution
-/// (0.667 modifier paid to every member) is deferred with real parties
-/// — the killer is paid solo.
+/// stays 0 until LinkCount mob-mod plumbing lands. In a party every
+/// member sharing the kill ([`kill_sharers`]) is paid with the flat 0.667
+/// party modifier (`party_size` > 1); only the `killer` gets the
+/// "defeats" line.
 #[allow(clippy::too_many_arguments)]
 async fn award_battle_exp(
     attacker_handle: &crate::runtime::actor_registry::ActorHandle,
     defender_actor_id: u32,
     mob_level: i16,
+    party_size: u32,
+    killer: bool,
     registry: &ActorRegistry,
     world: &WorldManager,
     zone: &Arc<RwLock<Zone>>,
@@ -2376,7 +5473,7 @@ async fn award_battle_exp(
         let c = attacker_handle.character.read().await;
         (c.chara.level, c.chara.class.clamp(0, u8::MAX as i16) as u8)
     };
-    let base = crate::battle::exp::base_kill_exp(player_level, mob_level, 1) as i32;
+    let base = crate::battle::exp::base_kill_exp(player_level, mob_level, party_size) as i32;
     if base == 0 {
         // dlvl <= -20: no EXP and no message (BattleUtils.cs:876).
         return;
@@ -2438,12 +5535,17 @@ async fn award_battle_exp(
     // (`CommandResultContainer.CombineLists`); garlemald resolves the
     // death after the attack batch has shipped, so they ride their own
     // X01/X10 container right behind it.
-    let mut rows = vec![tx::actor_battle::CommandResult {
-        target_id: defender_actor_id,
-        worldmaster_text_id: 30108, // "<attacker> defeats <target>."
-        hit_num: 1,
-        ..Default::default()
-    }];
+    // The "defeats" line is the killer's; a party member sharing the
+    // kill only gets their own chain line.
+    let mut rows = Vec::new();
+    if killer {
+        rows.push(tx::actor_battle::CommandResult {
+            target_id: defender_actor_id,
+            worldmaster_text_id: 30108, // "<attacker> defeats <target>."
+            hit_num: 1,
+            ..Default::default()
+        });
+    }
     if chain_tier > 0 {
         rows.push(tx::actor_battle::CommandResult {
             target_id: attacker_handle.actor_id,
@@ -2699,6 +5801,14 @@ pub(crate) async fn apply_die(
         }
     }
 
+    // Monster Mode: a defeated monster body hands the player back their
+    // own, standing, with the HP they had before. Every death path (a
+    // blow, GM `!die`, a script) comes through here.
+    if handle.is_player() && crate::runtime::monster_mode::is_transformed(owner_actor_id) {
+        crate::runtime::monster_mode::on_defeat(owner_actor_id, registry, world, zone).await;
+        return;
+    }
+
     // #28 S4.1 — second gate call site: scripted deaths (`BattleEvent::
     // Die`, GM `!die`) reach `apply_die` without transiting
     // `die_if_defender_fell`, so the content kill gate fires here too —
@@ -2745,6 +5855,37 @@ pub(crate) async fn apply_revive(
     let bytes = sub.to_bytes();
     send_to_self_if_player(registry, world, owner_actor_id, bytes.clone()).await;
     broadcast_around_actor(world, registry, zone, owner_actor_id, bytes).await;
+    if handle.is_player() {
+        // The state change alone leaves the client lying in the
+        // knocked-out pose, unable to move: it stands up on the
+        // getting-up animation (the one TeleportCommand's knocked-out
+        // Return plays).
+        let bytes = crate::packets::send::actor::build_play_animation_on_actor(
+            owner_actor_id,
+            GET_UP_ANIMATION,
+        )
+        .to_bytes();
+        send_to_self_if_player(registry, world, owner_actor_id, bytes.clone()).await;
+        broadcast_around_actor(world, registry, zone, owner_actor_id, bytes).await;
+    }
+}
+
+/// Animation a revived player plays to get back on their feet.
+pub const GET_UP_ANIMATION: u32 = 0x0100_0066;
+
+/// GM `settp`: set the actor's TP and push the pool bundle so the client's
+/// gauge (and its weaponskill icons) follow at once.
+pub(crate) async fn apply_set_tp(
+    actor_id: u32,
+    tp: u16,
+    registry: &ActorRegistry,
+    world: &WorldManager,
+) {
+    let Some(handle) = registry.get(actor_id).await else {
+        return;
+    };
+    handle.character.write().await.chara.tp = tp;
+    sync_pools_after_tick(registry, world, actor_id).await;
 }
 
 /// Outcome of [`apply_home_point_revive`] — surfaced for callers that
@@ -2883,6 +6024,7 @@ pub(crate) async fn apply_movement_speed(
             crate::actor::modifier::Modifier::MovementSpeed,
             (tx::actor::SPEED_DEFAULT_RUN * multiplier) as f64,
         );
+        c.speed_sent = multiplier;
     }
     let bytes = tx::actor::build_set_actor_speed_scaled(player_id, multiplier).to_bytes();
     send_to_self_if_player(registry, world, player_id, bytes.clone()).await;
@@ -2916,6 +6058,119 @@ pub(crate) async fn send_to_self_if_player(
         let mut bytes = bytes;
         common::subpacket::SubPacket::stamp_target_id_if_zero(&mut bytes, handle.session_id);
         client.send_bytes(bytes).await;
+    }
+}
+
+#[cfg(test)]
+mod self_destruct_tests {
+    use super::*;
+
+    #[test]
+    fn only_self_destruct_spends_its_user() {
+        assert!(self_destructs(&BattleCommand::new(23033, "self_destruct")));
+        assert!(self_destructs(&BattleCommand::new(23628, "self_destruct")));
+        assert!(!self_destructs(&BattleCommand::new(23034, "bomb_toss")));
+    }
+}
+
+#[cfg(test)]
+mod knockback_tests {
+    use super::*;
+    use common::Vector3;
+
+    #[test]
+    fn pushes_straight_away_from_the_attacker() {
+        let to = knockback_destination(
+            Vector3::new(0.0, 0.0, 0.0),
+            Vector3::new(1.0, 0.0, 0.0),
+            0.0,
+            2,
+            |_, _, y| Ok(Some(y)),
+        );
+        assert!((to.x - (1.0 + 2.0 * KNOCKBACK_YALMS_PER_LEVEL)).abs() < 1e-4 && to.z.abs() < 1e-4);
+    }
+
+    #[test]
+    fn same_spot_uses_the_attackers_facing() {
+        let p = Vector3::new(5.0, 0.0, 5.0);
+        let to = knockback_destination(p, p, std::f32::consts::FRAC_PI_2, 1, |_, _, y| Ok(Some(y)));
+        assert!(
+            (to.x - (5.0 + KNOCKBACK_YALMS_PER_LEVEL)).abs() < 1e-4,
+            "{to:?}"
+        );
+    }
+
+    #[test]
+    fn slide_is_quick_and_others_run_fast_enough_to_keep_up() {
+        assert_eq!(knockback_slide_ms(2.0), 330);
+        assert_eq!(knockback_slide_ms(6.0), 490);
+        assert_eq!(knockback_slide_ms(20.0), 500);
+        for d in [2.0_f32, 4.0, 6.0] {
+            let ms = knockback_slide_ms(d);
+            let m = knockback_speed_multiplier(d, ms);
+            let covered = tx::actor::SPEED_DEFAULT_RUN * m * f32::from(ms) / 1000.0;
+            assert!((covered - d).abs() < 1e-3, "{d}: {covered}");
+        }
+        // A short push never slows the run down.
+        assert_eq!(knockback_speed_multiplier(0.5, 330), 1.0);
+    }
+
+    #[test]
+    fn walls_cliffs_and_slopes() {
+        let (from, at) = (Vector3::new(0.0, 10.0, 0.0), Vector3::new(0.0, 10.0, 1.0));
+        // A wall 1 yalm behind: the ground jumps up 3.
+        let to = knockback_destination(from, at, 0.0, 3, |_, z, _| {
+            Ok(Some(if z > 2.0 { 13.0 } else { 10.0 }))
+        });
+        assert!((to.z - 2.0).abs() < 1e-4, "stops at the wall: {to:?}");
+        // A gentle slope down: follows it.
+        let to = knockback_destination(from, at, 0.0, 1, |_, z, _| Ok(Some(10.0 - 0.2 * z)));
+        assert!(
+            (to.y - (10.0 - 0.2 * to.z)).abs() < 1e-4 && to.z > 2.9,
+            "{to:?}"
+        );
+        // Off the mesh: stops at the edge.
+        let to = knockback_destination(from, at, 0.0, 2, |_, z, _| Ok((z <= 2.5).then_some(10.0)));
+        assert!((to.z - 2.5).abs() < 1e-4, "{to:?}");
+        // No terrain for the zone: full push, same height.
+        let to = knockback_destination(from, at, 0.0, 1, |_, _, _| Err(()));
+        assert!((to.z - 3.0).abs() < 1e-4 && to.y == 10.0, "{to:?}");
+    }
+}
+
+#[cfg(test)]
+mod combo_tests {
+    use super::*;
+
+    fn cmd(job: u8, kind: CommandType, step: i16) -> BattleCommand {
+        let mut c = BattleCommand::new(27150, "fast_blade");
+        c.job = job;
+        c.command_type = kind;
+        c.combo_step = step;
+        c
+    }
+
+    #[test]
+    fn combo_rules_follow_pmeteor() {
+        let ws = CommandType::WEAPON_SKILL;
+        // A first link starts a combo; onCombo waits for a continuing one.
+        let u = combo_use(&cmd(3, ws, 1), 3, 3, false);
+        assert!(u.is_combo && !u.continues && !u.run_on_combo);
+        let u = combo_use(&cmd(3, ws, 2), 3, 3, true);
+        assert!(u.is_combo && u.continues && u.run_on_combo);
+        // A second link out of order is no combo.
+        assert_eq!(combo_use(&cmd(3, ws, 2), 3, 3, false), ComboUse::default());
+        // Another class's skill is no combo; the job's is.
+        assert_eq!(combo_use(&cmd(4, ws, 1), 3, 3, false), ComboUse::default());
+        assert!(combo_use(&cmd(16, ws, 2), 3, 16, true).is_combo);
+        // A spell runs onCombo when it starts the combo too.
+        let u = combo_use(&cmd(22, CommandType::SPELL, 1), 22, 22, false);
+        assert!(u.is_combo && u.run_on_combo);
+        // Abilities don't take part.
+        assert_eq!(
+            combo_use(&cmd(3, CommandType::ABILITY, 1), 3, 3, false),
+            ComboUse::default()
+        );
     }
 }
 
@@ -3388,15 +6643,8 @@ mod battle_exp_award_tests {
     const ZONE_ID: u32 = 100;
     const GLADIATOR: i16 = 3;
 
-    fn tempdb() -> std::path::PathBuf {
-        use std::sync::atomic::{AtomicU64, Ordering};
-        static SEQ: AtomicU64 = AtomicU64::new(0);
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-        common::test_tmp::dir().join(format!("garlemald-exp-award-{nanos}-{seq}.db"))
+    fn tempdb() -> String {
+        common::test_db::fresh_blocking()
     }
 
     fn make_zone(zone_id: u32) -> Zone {
@@ -3719,15 +6967,8 @@ mod pool_tick_sync_tests {
     const SESSION_ID: u32 = 88;
     const ZONE_ID: u32 = 100;
 
-    fn tempdb() -> std::path::PathBuf {
-        use std::sync::atomic::{AtomicU64, Ordering};
-        static SEQ: AtomicU64 = AtomicU64::new(0);
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-        common::test_tmp::dir().join(format!("garlemald-pool-tick-{nanos}-{seq}.db"))
+    fn tempdb() -> String {
+        common::test_db::fresh_blocking()
     }
 
     /// Zone 100 with one Player (session + client channel attached),
@@ -3904,5 +7145,80 @@ mod pool_tick_sync_tests {
             !received_state_bundle(&mut rx),
             "empty-TP decay must not emit a state bundle",
         );
+    }
+}
+
+#[cfg(test)]
+mod kill_share_tests {
+    use super::*;
+    use crate::actor::Character;
+    use crate::runtime::actor_registry::{ActorHandle, ActorKindTag};
+    use crate::zone::navmesh::StubNavmeshLoader;
+
+    /// Who shares a kill: the killer and the party members close to the
+    /// monster; not a member far off, in another zone or content copy, dead
+    /// or offline,
+    /// and never a stranger standing next to it.
+    #[tokio::test]
+    async fn party_members_close_by_share_the_kill() {
+        // Own ids: the party table is process-wide.
+        let (killer, near, far, away, dead, offline, stranger, mob, copy2) =
+            (9631u32, 9632, 9633, 9634, 9635, 9636, 9637, 9638, 9639);
+        for m in [near, far, away, dead, offline, copy2] {
+            crate::parties::join_for_test(killer, m).expect("party");
+        }
+        let registry = ActorRegistry::new();
+        // (id, kind, zone, x, hp, session)
+        let actors = [
+            (killer, ActorKindTag::Player, 100, 2.0, 100, 1),
+            (near, ActorKindTag::Player, 100, 30.0, 100, 2),
+            (far, ActorKindTag::Player, 100, 80.0, 100, 3),
+            (away, ActorKindTag::Player, 101, 1.0, 100, 4),
+            (dead, ActorKindTag::Player, 100, 5.0, 0, 5),
+            (offline, ActorKindTag::Player, 100, 5.0, 100, 0),
+            (stranger, ActorKindTag::Player, 100, 1.0, 100, 7),
+            (mob, ActorKindTag::BattleNpc, 100, 0.0, 0, 0),
+            (copy2, ActorKindTag::Player, 100, 3.0, 100, 8),
+        ];
+        for (id, kind, zone, x, hp, session) in actors {
+            let mut c = Character::new(id);
+            c.base.zone_id = zone;
+            c.base.position_x = x;
+            c.chara.hp = hp;
+            c.chara.max_hp = 100;
+            registry
+                .insert(ActorHandle::new(id, kind, zone, session, c))
+                .await;
+        }
+        let zone = Arc::new(RwLock::new(Zone::new(
+            100,
+            "test",
+            1,
+            "/Area/Zone/Test",
+            0,
+            0,
+            0,
+            false,
+            false,
+            false,
+            false,
+            false,
+            Some(&StubNavmeshLoader),
+        )));
+        {
+            // the killer's party is in copy 1; copy2 stands in copy 2
+            let mut z = zone.write().await;
+            for id in [killer, near, far, dead, offline, stranger, mob] {
+                z.core.set_instance(id, 1);
+            }
+            z.core.set_instance(copy2, 2);
+        }
+        let killer_handle = registry.get(killer).await.unwrap();
+        let ids: Vec<u32> = kill_sharers(&killer_handle, mob, &registry, &zone)
+            .await
+            .iter()
+            .map(|h| h.actor_id)
+            .collect();
+        assert_eq!(ids, vec![killer, near]);
     }
 }

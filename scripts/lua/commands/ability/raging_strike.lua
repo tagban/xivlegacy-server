@@ -8,7 +8,7 @@ end;
 function onAbilityStart(caster, target, ability)
     ability.statusMagnitude = 100;
     --27243: Enhanced Raging Strike: Increases effect of Raging Strike by 50%
-    if caster.HasTrait(27241) then
+    if caster.HasTrait(27243) then
         ability.statusMagnitude = ability.statusMagnitude * 1.5;
     end
     return 0;

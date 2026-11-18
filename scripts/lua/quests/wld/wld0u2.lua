@@ -12,6 +12,9 @@ Prereq: Level 27, Any Class
 
 ]]
 
+-- Rewards (items/gil: ZAM and the client's reward table; the EXP is an estimate)
+REWARD_EXP			= 1500;
+
 -- Sequence Numbers
 SEQ_000	= 0;  -- Kill Amal'jaa Grunts
 SEQ_001	= 1;  -- Talk to Papala.
@@ -70,7 +73,9 @@ function onTalk(player, quest, npc, eventName)
 	elseif (seq == SEQ_001) then
 		if (npcClassId == ENPC_PAPALA) then
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent010");
-			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 200, 1, 1, 9);
+			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
+			player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
+			player:GetItemPackage(INVENTORY_NORMAL):AddItem(3010304, 12, 1); -- Blood Currant Tart
             player:CompleteQuest(quest);
 		end
 	end

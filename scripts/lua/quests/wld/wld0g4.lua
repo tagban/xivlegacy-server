@@ -12,6 +12,10 @@ Prereq: Level 11, Any Class, Requires "In the Name of Science"
 
 ]]
 
+-- Rewards (the client's reward table; EXP from its row, or the level-band estimate)
+REWARD_EXP			= 500;
+REWARD_GIL			= 5000;
+
 -- Sequence Numbers
 SEQ_000	= 0;  -- Kill Mature Funguars.
 SEQ_001	= 1;  -- Talk to Marcette.
@@ -21,8 +25,9 @@ ENPC_MARCETTE 		= 1001583;
 BNPC_MATURE_FUNGUAR	= 2105916;
 
 -- Quest Markers
-MRKR_MARCETTE		= 11120302;
-MRKR_FUNGUAR_AREA	= 11120301;
+-- The client's marker sheet has one marker for this quest, 11120301, on
+-- Marcette's spot; none for the funguars' East Shroud haunt.
+MRKR_MARCETTE		= 11120301;
 
 -- Counters
 COUNTER_QUESTITEM	= 0;
@@ -70,7 +75,10 @@ function onTalk(player, quest, npc, eventName)
 	elseif (seq == SEQ_001) then
 		if (npcClassId == ENPC_MARCETTE) then
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent010");
-			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 200, 1, 1, 9);
+			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
+			player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
+			player:AddGil(REWARD_GIL);
+			player:GetItemPackage(INVENTORY_NORMAL):AddItem(8011815, 1, 1); -- Cotton Scarf
             player:CompleteQuest(quest);
 		end
 	end
@@ -97,9 +105,7 @@ end
 function getJournalMapMarkerList(player, quest)
     local sequence = quest:getSequence();
     
-    if (sequence == SEQ_000) then
-		return MRKR_FUNGUAR_AREA;
-    elseif (sequence == SEQ_001) then
+    if (sequence == SEQ_001) then
         return MRKR_MARCETTE;
     end
 end

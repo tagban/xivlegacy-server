@@ -96,6 +96,14 @@ pub async fn apply_runtime_lua_command(
             crate::runtime::gc_apply::apply_promote_gc(registry, db, world, player_id, gc).await;
             true
         }
+        LC::SetPool {
+            actor_id,
+            kind,
+            value,
+        } => {
+            apply_set_pool(registry, world, actor_id, kind, value).await;
+            true
+        }
         LC::AddQuest {
             player_id,
             quest_id,
@@ -286,6 +294,23 @@ pub async fn apply_runtime_lua_command(
             text,
         } => {
             apply_send_message(actor_id, message_type, &sender, &text, registry, world).await;
+            true
+        }
+        LC::OpenDungeonChest {
+            player_id,
+            chest_actor_id,
+            loot,
+        } => {
+            crate::runtime::dungeon_chest::open(
+                player_id,
+                chest_actor_id,
+                &loot,
+                registry,
+                db,
+                world,
+                lua,
+            )
+            .await;
             true
         }
         // `player:UnlockAetheryteNode(id)` — first-touch aetheryte
@@ -498,12 +523,14 @@ pub async fn apply_runtime_lua_command(
             item_package,
             item_id,
             quantity,
+            quality,
         } => {
-            apply_add_item(
+            apply_add_item_quality(
                 actor_id,
                 item_package,
                 item_id,
                 quantity,
+                quality,
                 registry,
                 Some(world),
                 db,
@@ -583,6 +610,21 @@ pub async fn apply_runtime_lua_command(
             guildleve_id,
         } => {
             crate::leve::battle::add(player_id, guildleve_id, registry, world, db).await;
+            true
+        }
+        LC::AcceptFactionLeve {
+            player_id,
+            guildleve_id,
+        } => {
+            crate::leve::faction::accept(player_id, guildleve_id, registry, world, db, lua).await;
+            true
+        }
+        LC::AddFactionCredits {
+            player_id,
+            faction,
+            amount,
+        } => {
+            crate::leve::faction::add_credits(player_id, faction, amount, registry, db).await;
             true
         }
         LC::StartBattleleve {
@@ -797,6 +839,14 @@ pub async fn apply_runtime_lua_command(
             apply_set_actor_mod(actor_id, modifier_key, value, registry).await;
             true
         }
+        LC::MonsterMove {
+            actor_id,
+            command_id,
+            learn,
+        } => {
+            apply_monster_move(actor_id, command_id, learn, registry, lua).await;
+            true
+        }
         LC::ActorEngage {
             actor_id,
             target_actor_id,
@@ -808,7 +858,19 @@ pub async fn apply_runtime_lua_command(
             actor_id,
             main_state,
         } => {
-            apply_change_state(actor_id, main_state, registry, world).await;
+            apply_change_state(actor_id, main_state, registry, world, lua).await;
+            true
+        }
+        // `player:Revive()` from a command or event script (Return inside
+        // a dungeon copy); the login hooks have their own arm.
+        LC::Revive { actor_id } => {
+            let zone_id = match registry.get(actor_id).await {
+                Some(h) => h.zone_id,
+                None => return true,
+            };
+            if let Some(zone) = world.zone(zone_id).await {
+                crate::runtime::dispatcher::apply_revive(actor_id, registry, world, &zone).await;
+            }
             true
         }
         LC::DirectorAddMember {
@@ -855,6 +917,50 @@ pub async fn apply_runtime_lua_command(
         }
         LC::DespawnActor { zone_id, actor_id } => {
             apply_despawn_actor(zone_id, actor_id, registry, world).await;
+            true
+        }
+        LC::HideActor {
+            player_id,
+            actor_id,
+        } => {
+            apply_hide_actor(player_id, actor_id, registry, world).await;
+            true
+        }
+        LC::RestGatherNode {
+            zone_id,
+            unique_id,
+            seconds,
+        } => {
+            match world.gather_node_actor_id(zone_id, &unique_id).await {
+                Some(actor_id) => world.rest_gather_node(actor_id, seconds).await,
+                None => tracing::debug!(zone_id, %unique_id, "RestGatherNode: no live gather node"),
+            }
+            true
+        }
+        LC::RestGatherNodeForPlayer {
+            player_id,
+            zone_id,
+            unique_id,
+            seconds,
+        } => {
+            let Some(node) = world.gather_node_actor_id(zone_id, &unique_id).await else {
+                tracing::debug!(zone_id, %unique_id, "RestGatherNodeForMe: no live gather node");
+                return true;
+            };
+            let session_id = match registry.get(player_id).await {
+                Some(h) => h.session_id,
+                None => 0,
+            };
+            let removed = world
+                .rest_gather_node_for_player(node, player_id, session_id, seconds)
+                .await;
+            tracing::info!(
+                player = player_id,
+                node = format!("0x{node:08X}"),
+                seconds,
+                removed,
+                "gather point rests for one player",
+            );
             true
         }
         LC::HateContainerAddBaseHate {
@@ -1018,6 +1124,17 @@ pub async fn apply_runtime_lua_command(
                     world,
                 ))
                 .await;
+                // a /poke can show a battle leve's disguised target
+                Box::pin(crate::leve::battle::on_emote(
+                    actor_id,
+                    target_actor_id,
+                    emote_id,
+                    registry,
+                    world,
+                    db,
+                    lua,
+                ))
+                .await;
             }
             true
         }
@@ -1112,7 +1229,7 @@ async fn warp_origin(
 /// engaged — re-engaging the same target would clobber the existing
 /// state's swing clock, restarting the swing window. The C# engage
 /// path has the same gate (`if (IsEngaged) return false`).
-async fn apply_actor_engage(
+pub(crate) async fn apply_actor_engage(
     actor_id: u32,
     target_actor_id: u32,
     registry: &ActorRegistry,
@@ -1240,6 +1357,7 @@ async fn apply_change_state(
     main_state: u16,
     registry: &ActorRegistry,
     world: &WorldManager,
+    lua: Option<&Arc<LuaEngine>>,
 ) {
     let Some(handle) = registry.get(actor_id).await else {
         tracing::debug!(
@@ -1257,6 +1375,40 @@ async fn apply_change_state(
         );
         return;
     };
+    // A passive flip on an actor that is mid-fight is a disengage: flush its
+    // battle states the way a player's sheathe does
+    // (`Processor::flush_battle_states_on_sheathe`). Content scripts call
+    // `mob:ChangeState(0)` from onUpdate to end a fight (the Man0u1
+    // Coliseum loss), and without this the gladiator's AttackState kept
+    // swinging for ~25 s after "You are defeated." and undid the HP
+    // restore. The Disengage arm emits the passive trio itself.
+    if main_state == crate::actor::MAIN_STATE_PASSIVE {
+        let mut battle_outbox = crate::battle::outbox::BattleOutbox::new();
+        let engaged = {
+            let mut c = handle.character.write().await;
+            if c.ai_container.state_stack().is_empty() {
+                false
+            } else {
+                c.ai_container.internal_disengage(&mut battle_outbox);
+                c.chara.current_target = crate::actor::INVALID_ACTORID;
+                true
+            }
+        };
+        if engaged {
+            tracing::debug!(
+                actor = format!("0x{actor_id:08X}"),
+                "ChangeState passive flushed engaged battle states (InternalDisengage)",
+            );
+            for ev in battle_outbox.drain() {
+                // Boxed: the dispatcher can run Lua, which drains back here.
+                Box::pin(crate::runtime::dispatcher::dispatch_battle_event(
+                    &ev, registry, world, &zone_arc, lua, None,
+                ))
+                .await;
+            }
+            return;
+        }
+    }
     // pmeteor's State-flag flush (Character.cs PostUpdate:411-419) ships a
     // TRIO, not just the 0x0134: SetActorState + CommandResultX00 (anim
     // 0x72000062) + CommandResultX01 (anim 0x7C000062, command 21001
@@ -1297,6 +1449,7 @@ async fn apply_director_add_member(
     for snap in sessions {
         if let Some(active) = snap.active_content_script.as_ref()
             && active.director_actor_id == director_actor_id
+            && !active.party_member
         {
             target = Some(snap);
             break;
@@ -1712,6 +1865,35 @@ async fn apply_send_data_packet(
     );
 }
 
+/// `player:HideActor(actor_id)` — `0x00CB RemoveActor` to the one player,
+/// leaving the actor in the registry and the zone for everyone else.
+pub(crate) async fn apply_hide_actor(
+    player_id: u32,
+    actor_id: u32,
+    registry: &ActorRegistry,
+    world: &WorldManager,
+) {
+    let Some(handle) = registry.get(player_id).await else {
+        return;
+    };
+    let session_id = handle.session_id;
+    if session_id == 0 {
+        return;
+    }
+    let Some(client) = world.client(session_id).await else {
+        return;
+    };
+    world.hide_actor_for_session(session_id, actor_id).await;
+    let mut sub = crate::packets::send::actor::build_remove_actor(actor_id);
+    sub.set_target_id(session_id);
+    client.send_bytes(sub.to_bytes()).await;
+    tracing::debug!(
+        player = player_id,
+        actor = format!("0x{actor_id:08X}"),
+        "HideActor applied (RemoveActor to one player)",
+    );
+}
+
 /// `zone:DespawnActor(actor_id)` — port of C# `Zone::DespawnActor`.
 /// Broadcasts `0x00CB RemoveActor` to nearby players and removes the
 /// actor from the registry. Used by cinematics and content cleanup.
@@ -1819,7 +2001,7 @@ async fn apply_hate_container_add_base_hate(
 /// the registry or has no zone we just log and drop, matching the C#
 /// implicit silent-skip when CurrentArea is null.
 #[allow(clippy::too_many_arguments)]
-async fn apply_move_actor_to_position(
+pub(crate) async fn apply_move_actor_to_position(
     actor_id: u32,
     x: f32,
     y: f32,
@@ -2056,7 +2238,7 @@ async fn apply_kick_event(
         player_id,
         actor_id,
         trigger,
-        5,
+        crate::packets::send::events::script_kick_event_type(actor_id),
         &lua_params,
     );
     sub.set_target_id(session_id);
@@ -2165,6 +2347,10 @@ pub(crate) async fn apply_content_finished(
     // Its players keep their tag until they warp out (the zone change
     // clears it).
     crate::content_instance::release(active.instance_id);
+    crate::dungeon_gates::release_instance(active.instance_id);
+    crate::runtime::dungeon_fight::release_instance(active.instance_id);
+    crate::runtime::aurum_hazards::release_instance(active.instance_id);
+    crate::runtime::dungeon_chest::release_instance(active.instance_id);
     if active.instance_id != 0 {
         for mut member in world.all_sessions().await {
             if member.id != session_id
@@ -2175,6 +2361,10 @@ pub(crate) async fn apply_content_finished(
             {
                 member.active_content_script = None;
                 member.pending_content_kick_event = None;
+                if let Some(h) = registry.by_session(member.id).await {
+                    h.character.write().await.chara.content_area_name.clear();
+                    close_raid_ui_on_client(h.actor_id, &active, registry, world).await;
+                }
                 world.upsert_session(member).await;
             }
         }
@@ -2220,6 +2410,7 @@ pub(crate) async fn apply_content_finished(
             {
                 let mut c = player.character.write().await;
                 c.chara.mods.set(crate::actor::Modifier::MinimumHpLock, 0.0);
+                c.chara.content_area_name.clear();
                 if c.chara.login_director_actor_id == director_id {
                     c.chara.login_director_actor_id = 0;
                 }
@@ -2229,7 +2420,14 @@ pub(crate) async fn apply_content_finished(
         None => 0,
     };
 
-    // 6. Scheduler purge.
+    // 6. The duty's countdown, if a script opened one (contenttimer.lua):
+    //    closed on every way out, the clock having run out or not.
+    if player_id != 0 {
+        close_content_timer(player_id, registry, world).await;
+        close_raid_ui_on_client(player_id, &active, registry, world).await;
+    }
+
+    // 7. Scheduler purge.
     let purged = match (player_id, lua) {
         (0, _) | (_, None) => 0,
         (pid, Some(engine)) => engine
@@ -2248,6 +2446,241 @@ pub(crate) async fn apply_content_finished(
         purged_coroutines = purged,
         "ContentFinished applied (full teardown)",
     );
+}
+
+/// Closes the countdown `ShowContentTimer` (scripts/lua/contenttimer.lua)
+/// opened: GenericData `'xlContentTimer', 0, 0`. Only the XIVLegacy client
+/// acts on it (its player script learns that data type); the stock client
+/// ignores string data types it doesn't know.
+async fn close_content_timer(player_id: u32, registry: &ActorRegistry, world: &WorldManager) {
+    use crate::lua::command::LuaCommandArg;
+    apply_send_data_packet(
+        player_id,
+        &[
+            LuaCommandArg::String("xlContentTimer".to_string()),
+            LuaCommandArg::Int(0),
+            LuaCommandArg::Int(0),
+        ],
+        registry,
+        world,
+    )
+    .await;
+}
+
+/// Party members entering their leader's content copy
+/// (`DoZoneChangeContentParty`), before their warps: each member's session
+/// gets a member's view of the owner's content state (`party_member`), so
+/// the copy's actors stream to them while its hooks (`onUpdate`, the kill
+/// gate, the teardown) keep running once, on the owner's session, which
+/// alone holds the director's roster. `members` holds (actor id, session
+/// id) pairs.
+///
+/// `kick` is the owner's opening kick of the copy's director (dungeon.lua's
+/// `noticeEvent`): each member gets its own, so the director's
+/// `onEventStarted` runs for them too. The Grand Company duties' directors
+/// open the duty timer there and, on the win, advance the player's quest,
+/// play the closing scene and take them out; without it a member had no
+/// timer, no quest step and no way out. The owner's content mods (the
+/// `MinimumHpLock` the duties set in `onCreate`) carry over likewise.
+pub(crate) async fn join_party_to_copy(
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    owner_id: u32,
+    owner_active: &crate::data::ActiveContentScript,
+    kick: Option<&crate::data::PendingKickEvent>,
+    members: &[(u32, u32)],
+) {
+    let hp_lock = match registry.get(owner_id).await {
+        Some(h) => h
+            .character
+            .read()
+            .await
+            .chara
+            .mods
+            .get(crate::actor::Modifier::MinimumHpLock),
+        None => 0.0,
+    };
+    for &(member_id, session_id) in members {
+        if let Some(mut snap) = world.session(session_id).await {
+            snap.active_content_script = Some(crate::data::ActiveContentScript {
+                spawned_actor_ids: Vec::new(),
+                party_member: true,
+                ..owner_active.clone()
+            });
+            snap.content_warp_acked = false;
+            if let Some(k) = kick.filter(|k| k.owner_actor_id == owner_active.director_actor_id) {
+                snap.pending_kick_event = Some(crate::data::PendingKickEvent {
+                    trigger_actor_id: member_id,
+                    ..k.clone()
+                });
+            }
+            world.upsert_session(snap).await;
+        }
+        if let Some(h) = registry.get(member_id).await {
+            let mut c = h.character.write().await;
+            c.chara.content_area_name = owner_active.area_name.clone();
+            if hp_lock != 0.0 {
+                c.chara
+                    .mods
+                    .set(crate::actor::Modifier::MinimumHpLock, hp_lock);
+            }
+        }
+    }
+}
+
+/// The content group a session's client is sent for its copy: the
+/// director's roster where the session holds it (the owner), else, for a
+/// party member, the owner's roster with the member in it. Only the
+/// owner's session stores the roster: the kill gate fires `battleComplete`
+/// through whichever session holds one.
+pub(crate) async fn content_group_roster(
+    world: &WorldManager,
+    session: &crate::data::Session,
+    player_id: u32,
+) -> Vec<u32> {
+    let Some(active) = session.active_content_script.as_ref() else {
+        return Vec::new();
+    };
+    if let Some(r) = session
+        .transient_director_members
+        .get(&active.director_actor_id)
+        .filter(|r| !r.is_empty())
+    {
+        return r.clone();
+    }
+    if !active.party_member || active.instance_id == 0 {
+        return Vec::new();
+    }
+    let mut roster = world
+        .all_sessions()
+        .await
+        .into_iter()
+        .find(|s| {
+            s.active_content_script
+                .as_ref()
+                .is_some_and(|a| a.instance_id == active.instance_id && !a.party_member)
+        })
+        .and_then(|s| {
+            s.transient_director_members
+                .get(&active.director_actor_id)
+                .cloned()
+        })
+        .unwrap_or_default();
+    if !roster.is_empty() && !roster.contains(&player_id) {
+        roster.push(player_id);
+    }
+    roster
+}
+
+/// Whether leaving this copy must close the client's raid UI first: a
+/// dungeon copy (`dungeon.lua`, content `SimpleContentDungeon*`) run by an
+/// instance-raid director (Aurum Vale, Cutter's Cry). In such a copy the
+/// client switches its desktop to the raid layout, and only the director's
+/// own exits put it back (`clearEvent`, `failedEvent`, `exitCutScene` in
+/// the client's InstanceRaidBaseClass: `orderDesktopWidgetMode(126)`). The
+/// Grand Company raids run `exitCutScene` from their director scripts;
+/// the dungeons have no ending yet, so nothing did, and the client kept
+/// the raid layout after the warp out: no NPC would talk to the player,
+/// in any zone, until a relog.
+pub(crate) fn closes_raid_ui_on_leave(active: &crate::data::ActiveContentScript) -> bool {
+    active.director_name.starts_with("InstanceRaid/")
+        && active.content_script.starts_with("SimpleContentDungeon")
+}
+
+/// The `(player, director)` notice events [`close_raid_ui_on_client`] has
+/// kicked and the client hasn't answered yet. When the copy is gone by the
+/// time the client's EventStart for it arrives (a quest's own way out, such
+/// as Etc200's tomb, tears the copy down in the same tick), no director is
+/// left to end the event, and the client would stay inside it and start no
+/// NPC talk until a relog. [`take_raid_ui_close_kick`] lets the EventStart
+/// router end it instead.
+fn raid_ui_close_kicks() -> &'static std::sync::Mutex<std::collections::HashSet<(u32, u32)>> {
+    static KICKS: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<(u32, u32)>>> =
+        std::sync::OnceLock::new();
+    KICKS.get_or_init(Default::default)
+}
+
+/// Whether `director`'s raid-UI notice event for `player` is still open
+/// (see [`raid_ui_close_kicks`]); forgets it either way.
+pub(crate) fn take_raid_ui_close_kick(player_id: u32, director: u32) -> bool {
+    raid_ui_close_kicks()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(&(player_id, director))
+}
+
+/// Runs the copy director's `clearEvent` on one player's client inside a
+/// notice event of its own (kick, function, end; the same order the Grand
+/// Company raid directors use for `exitCutScene`), for a copy where
+/// [`closes_raid_ui_on_leave`] holds. Sent before the warp out.
+async fn close_raid_ui_on_client(
+    player_id: u32,
+    active: &crate::data::ActiveContentScript,
+    registry: &ActorRegistry,
+    world: &WorldManager,
+) {
+    if !closes_raid_ui_on_leave(active) {
+        return;
+    }
+    let Some(handle) = registry.get(player_id).await else {
+        return;
+    };
+    let Some(client) = world.client(handle.session_id).await else {
+        return;
+    };
+    use crate::packets::send::events;
+    let director = active.director_actor_id;
+    raid_ui_close_kicks()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert((player_id, director));
+    for mut sub in [
+        events::build_kick_event(player_id, director, "noticeEvent", 5, &[]),
+        events::build_run_event_function(player_id, director, "noticeEvent", 5, "clearEvent", &[]),
+        events::build_end_event(player_id, director, "noticeEvent", 5),
+    ] {
+        sub.set_target_id(handle.session_id);
+        client.send_bytes(sub.to_bytes()).await;
+    }
+    tracing::info!(
+        player = format!("0x{player_id:08X}"),
+        director = format!("0x{director:08X}"),
+        director_name = %active.director_name,
+        "raid UI closed on the client before leaving the copy (director clearEvent)",
+    );
+}
+
+/// A player's own side of leaving a copy that goes on without them: the
+/// duty timer closed, the content's `MinimumHpLock` off, and their
+/// director coroutine (parked on `battleComplete`) dropped, so a later
+/// win can't resume it and take them out of wherever they are by then.
+async fn leave_copy_player_cleanup(
+    player_id: u32,
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    lua: Option<&Arc<LuaEngine>>,
+) {
+    if let Some(h) = registry.get(player_id).await {
+        let mut c = h.character.write().await;
+        c.chara.mods.set(crate::actor::Modifier::MinimumHpLock, 0.0);
+        c.chara.content_area_name.clear();
+    }
+    close_content_timer(player_id, registry, world).await;
+    if let Some(engine) = lua
+        && let Ok(mut s) = engine.scheduler().lock()
+    {
+        s.purge_owner(player_id);
+    }
+}
+
+/// Whether a zone change to `dest_zone` takes a player out of their
+/// content copy for good: any zone other than the copy's. Warps inside the
+/// copy's zone stay in it. Quest duties included: their scripts finish
+/// the content before warping out, so this only catches the other ways
+/// out (a GM `!zone`, Return, a teleport), which left the duty, its
+/// monsters and its timer up for good.
+pub(crate) fn leaves_copy(active: &crate::data::ActiveContentScript, dest_zone: u32) -> bool {
+    dest_zone != active.parent_zone_id
 }
 
 /// A player leaving a content copy (walking out, warping away, logging
@@ -2286,6 +2719,8 @@ pub(crate) async fn apply_leave_content(
         snap.active_content_script = None;
         snap.pending_content_kick_event = None;
         world.upsert_session(snap).await;
+        close_raid_ui_on_client(player_id, &active, registry, world).await;
+        leave_copy_player_cleanup(player_id, registry, world, lua).await;
         return;
     }
     let heir = world.all_sessions().await.into_iter().find(|m| {
@@ -2300,6 +2735,15 @@ pub(crate) async fn apply_leave_content(
                 a.party_member = false;
                 a.spawned_actor_ids = active.spawned_actor_ids.clone();
             }
+            // The heir runs the copy from here, the director's roster with
+            // it (the kill gate reads it): the owner's, less the owner.
+            let mut roster = snap
+                .transient_director_members
+                .remove(&active.director_actor_id)
+                .unwrap_or_default();
+            roster.retain(|&id| id != player_id);
+            heir.transient_director_members
+                .insert(active.director_actor_id, roster);
             let heir_id = heir.id;
             world.upsert_session(heir).await;
             snap.active_content_script = None;
@@ -2311,6 +2755,8 @@ pub(crate) async fn apply_leave_content(
                 to = heir_id,
                 "content copy handed to a party member still inside",
             );
+            close_raid_ui_on_client(player_id, &active, registry, world).await;
+            leave_copy_player_cleanup(player_id, registry, world, lua).await;
         }
         None => {
             apply_content_finished(
@@ -2356,6 +2802,48 @@ async fn apply_set_actor_mod(
         modifier_key,
         value,
         "SetActorMod applied",
+    );
+}
+
+/// `bnpc:LearnMonsterMove(id)` / `bnpc:UseMonsterMove(id)`: add a monster
+/// move to the battle NPC's list, or queue it for its next combat tick
+/// (the `!usemove` path: no TP needed, and an idle monster waits for a foe).
+async fn apply_monster_move(
+    actor_id: u32,
+    command_id: u16,
+    learn: bool,
+    registry: &ActorRegistry,
+    lua: Option<&Arc<LuaEngine>>,
+) {
+    let Some(cmd) = lua.and_then(|l| {
+        l.catalogs()
+            .battle_commands
+            .read()
+            .ok()
+            .and_then(|c| c.get(&command_id).map(|gd| gd.to_battle_command()))
+    }) else {
+        tracing::debug!(command_id, "MonsterMove skipped — no such battle command");
+        return;
+    };
+    let Some(handle) = registry.get(actor_id).await else {
+        return;
+    };
+    let mut c = handle.character.write().await;
+    let Some(ctrl) = c.ai_container.controller.as_mut() else {
+        return;
+    };
+    if learn {
+        if !ctrl.battle.skills.iter().any(|s| s.id == command_id) {
+            ctrl.battle.skills.push(cmd);
+        }
+    } else {
+        ctrl.battle.forced_skill = Some(cmd);
+    }
+    tracing::debug!(
+        actor = format!("0x{actor_id:08X}"),
+        command_id,
+        learn,
+        "MonsterMove applied",
     );
 }
 
@@ -2513,6 +3001,18 @@ pub(crate) async fn apply_do_zone_change(
             }
             _ => (zone_id, private_area, private_area_type, x, y, z),
         };
+    // A zone this map server never loaded (a server_zones row with no map
+    // name, or a typo'd id): going on would latch the client's zone change
+    // and then replay the old zone's bundle, and the client waits on "Now
+    // Loading" for good. Refuse it and leave the player where they are.
+    if world.zone(zone_id).await.is_none() {
+        tracing::warn!(
+            player = player_id,
+            zone = zone_id,
+            "DoZoneChange refused: zone not loaded on this map server"
+        );
+        return;
+    }
     let Some(handle) = registry.get(player_id).await else {
         tracing::warn!(player = player_id, "DoZoneChange: actor missing");
         return;
@@ -2522,6 +3022,26 @@ pub(crate) async fn apply_do_zone_change(
     if session_id == 0 {
         tracing::debug!(player = player_id, "DoZoneChange: no session (NPC?)");
         return;
+    }
+    // Out of a content copy by any other way than its exit (a GM warp,
+    // Return, a teleport, a home point after a fall): leave it like the
+    // exit does, so it goes on with the party or ends. Without this the
+    // copy, its monsters and its timer stayed up for good, and the player
+    // carried its content group into the field.
+    if let Some(active) = world
+        .session(session_id)
+        .await
+        .and_then(|s| s.active_content_script)
+        && leaves_copy(&active, zone_id)
+    {
+        tracing::info!(
+            player = player_id,
+            instance = active.instance_id,
+            from_zone = active.parent_zone_id,
+            to_zone = zone_id,
+            "zone change out of a content copy: leaving it",
+        );
+        apply_leave_content(player_id, registry, world, lua).await;
     }
 
     // LOGIN-WINDOW deferral — a warp drained while the client is still
@@ -3730,6 +4250,10 @@ pub async fn apply_add_exp(
     if exp == 0 {
         return;
     }
+    // No EXP in Monster Mode (the level on show is the monster's).
+    if crate::runtime::monster_mode::is_transformed(actor_id) {
+        return;
+    }
     let Some(handle) = registry.get(actor_id).await else {
         return;
     };
@@ -3754,6 +4278,9 @@ pub async fn apply_add_exp(
             let rested_before = c.chara.rest_bonus_exp_rate;
             let (effective_gain, rested_after) = consume_rested_xp(exp, rested_before);
             c.chara.rest_bonus_exp_rate = rested_after;
+            // Food's EXP bonus and the company-issue manuals.
+            let effective_gain =
+                crate::processor::items::item_exp_bonus(&mut c, class_id, effective_gain);
             let prior_sp = c.battle_save.skill_point[class_slot];
             let combined = prior_sp.saturating_add(effective_gain).max(0);
             let prior_level = c
@@ -4519,7 +5046,76 @@ pub async fn apply_add_item(
     world: Option<&WorldManager>,
     db: &Database,
 ) {
+    apply_add_item_quality(
+        actor_id,
+        item_package,
+        item_id,
+        quantity,
+        1,
+        registry,
+        world,
+        db,
+    )
+    .await;
+}
+
+/// [`apply_add_item`] with an item quality: 1 normal, 2-4 high quality
+/// +1 to +3. Quality only applies to the NORMAL bag; the other bags
+/// ignore it.
+#[allow(clippy::too_many_arguments)]
+pub async fn apply_add_item_quality(
+    actor_id: u32,
+    item_package: u16,
+    item_id: u32,
+    quantity: i32,
+    quality: u8,
+    registry: &ActorRegistry,
+    world: Option<&WorldManager>,
+    db: &Database,
+) {
     if quantity <= 0 || item_id == 0 {
+        return;
+    }
+    // Shards, crystals and clusters always go to the currency bag, from
+    // any caller: a GM `!giveitem`, a synthesis result (Alchemist makes
+    // them), a reward. Synthesis takes its crystals from that bag.
+    if crate::inventory::is_crystal(item_id)
+        && (item_package == crate::inventory::PKG_NORMAL
+            || item_package == crate::inventory::PKG_CURRENCY_CRYSTALS)
+    {
+        match db.add_currency_item(actor_id, item_id, quantity).await {
+            Ok(total) => {
+                tracing::info!(
+                    actor = actor_id,
+                    item = item_id,
+                    delta = quantity,
+                    total,
+                    package = crate::inventory::PKG_CURRENCY_CRYSTALS,
+                    "AddItem applied",
+                );
+                if let Some(world) = world {
+                    send_inventory_package_update(
+                        actor_id,
+                        crate::inventory::PKG_CURRENCY_CRYSTALS,
+                        crate::inventory::CAP_CURRENCY,
+                        Some(item_id),
+                        registry,
+                        world,
+                        db,
+                    )
+                    .await;
+                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    actor = actor_id,
+                    item = item_id,
+                    delta = quantity,
+                    err = %e,
+                    "AddItem: crystal DB persist failed",
+                );
+            }
+        }
         return;
     }
     // Route currency stacks through add_gil so the 1_000_001 gil row
@@ -4534,8 +5130,10 @@ pub async fn apply_add_item(
     // Key items live in their own KEYITEMS bag (package 100). They are
     // unique / non-stacking, so the grant is idempotent: `add_key_item`
     // inserts at most one row and reports whether it was newly added.
+    // Soul crystals are key items too.
     if item_package == crate::inventory::PKG_KEYITEMS {
-        match db.add_key_item(actor_id, item_id).await {
+        let capacity = crate::inventory::default_capacity(item_package);
+        match db.add_unique_item(actor_id, item_id, item_package).await {
             Ok(true) => {
                 tracing::info!(actor = actor_id, item = item_id, "AddKeyItem applied",);
                 // Live no-wipe refresh of the KEYITEMS bag, same shape as
@@ -4544,8 +5142,8 @@ pub async fn apply_add_item(
                 if let Some(world) = world {
                     send_inventory_package_update(
                         actor_id,
-                        crate::inventory::PKG_KEYITEMS,
-                        crate::inventory::CAP_KEYITEMS,
+                        item_package,
+                        capacity,
                         Some(item_id),
                         registry,
                         world,
@@ -4585,7 +5183,10 @@ pub async fn apply_add_item(
         );
         return;
     }
-    match db.add_harvest_item(actor_id, item_id, quantity, 1).await {
+    match db
+        .add_harvest_item(actor_id, item_id, quantity, quality.clamp(1, 4))
+        .await
+    {
         Ok(total) => {
             tracing::info!(
                 actor = actor_id,
@@ -5108,6 +5709,56 @@ pub async fn apply_try_status(
     world: &WorldManager,
     lua: Option<&Arc<LuaEngine>>,
 ) -> bool {
+    // Status effects use ms-precision for tick accounting. Convert
+    // the seconds-precision `unix_timestamp()` helper into ms; this
+    // drifts by at most 999 ms vs a true ms clock, which is well
+    // below the finest granularity any ticking effect uses
+    // (typically 3 s).
+    let now_ms = (common::utils::unix_timestamp() as u64).saturating_mul(1000);
+    let mut effect = crate::status::StatusEffect::new(
+        target_actor_id,
+        status_id,
+        magnitude,
+        tick_ms,
+        duration_s,
+        tier,
+        now_ms,
+    );
+    if let Some(m) = lua.and_then(|l| l.catalogs().status_effects.read().ok()) {
+        effect.apply_catalog(&m);
+    }
+    install_status_effect(
+        source_actor_id,
+        target_actor_id,
+        effect,
+        crate::status::DEFAULT_GAIN_TEXT_ID,
+        registry,
+        db,
+        world,
+        lua,
+    )
+    .await
+}
+
+/// Insert a built [`crate::status::StatusEffect`] on the target and drain
+/// the resulting status events (gain text, icon slot, DB save, recalc)
+/// through the shared dispatcher. Shared by `TryStatus` (Lua, items) and
+/// the battle-command status riders in `dispatcher::resolve_action`.
+/// Returns `true` when the effect landed.
+#[allow(clippy::too_many_arguments)]
+pub async fn install_status_effect(
+    source_actor_id: u32,
+    target_actor_id: u32,
+    effect: crate::status::StatusEffect,
+    gain_text_id: u16,
+    registry: &ActorRegistry,
+    db: &Database,
+    world: &WorldManager,
+    lua: Option<&Arc<LuaEngine>>,
+) -> bool {
+    let status_id = effect.id;
+    let duration_s = effect.duration;
+    let magnitude = effect.magnitude;
     let Some(target) = registry.get(target_actor_id).await else {
         tracing::debug!(
             target = target_actor_id,
@@ -5116,29 +5767,15 @@ pub async fn apply_try_status(
         );
         return false;
     };
-    // Status effects use ms-precision for tick accounting. Convert
-    // the seconds-precision `unix_timestamp()` helper into ms; this
-    // drifts by at most 999 ms vs a true ms clock, which is well
-    // below the finest granularity any ticking effect uses
-    // (typically 3 s).
     let now_ms = (common::utils::unix_timestamp() as u64).saturating_mul(1000);
     let mut outbox = crate::status::StatusOutbox::new();
     let landed = {
         let mut c = target.character.write().await;
-        let effect = crate::status::StatusEffect::new(
-            target_actor_id,
-            status_id,
-            magnitude,
-            tick_ms,
-            duration_s,
-            tier,
-            now_ms,
-        );
         c.status_effects.add_status_effect(
             effect,
             source_actor_id,
             now_ms,
-            crate::status::DEFAULT_GAIN_TEXT_ID,
+            gain_text_id,
             &mut outbox,
         )
     };
@@ -5789,10 +6426,12 @@ pub(crate) async fn send_inventory_package_update(
 /// `quantity` of `catalog_id` from `item_package`, walking the matching
 /// stacks back-to-front (highest slot first, mirroring
 /// `ItemPackage::remove`): a stack larger than the remaining count is
-/// decremented in place (`db.set_quantity`, emits an updated `ListX01`); a
-/// stack that fully drains frees its slot (`db.remove_item`, emits a
-/// `RemoveX01` for the freed slot). The updates + removes ship in one
-/// no-wipe bracket stamped to the owning client.
+/// decremented in place (`db.set_quantity`); a stack that fully drains is
+/// deleted (`db.remove_item`). The stacks after an emptied one then move
+/// down to close the hole (`realign_after_remove`, saved with
+/// `db.update_item_positions`), as the bag itself does. The client gets a
+/// `ListX01` for each stack with a new count or slot and a `RemoveX01` for
+/// each slot past the new end, in one no-wipe bracket.
 ///
 /// `world: None` keeps the DB-only behaviour for callers without a live
 /// zone (integration tests, batch tooling).
@@ -5824,6 +6463,7 @@ pub async fn apply_remove_item(
     let mut remaining = quantity;
     let mut updated: Vec<crate::data::InventoryItem> = Vec::new();
     let mut freed_slots: Vec<u16> = Vec::new();
+    let mut removed_ids: Vec<u64> = Vec::new();
     // Back-to-front: drain the tail stacks before the head so the head
     // (lowest slot) stack is the last to shrink/disappear.
     for row in rows.iter().rev() {
@@ -5859,6 +6499,7 @@ pub async fn apply_remove_item(
                 return;
             }
             freed_slots.push(row.slot);
+            removed_ids.push(row.unique_id);
             remaining -= row.quantity;
         }
     }
@@ -5878,19 +6519,83 @@ pub async fn apply_remove_item(
         removed = quantity - remaining.max(0),
         "RemoveItem applied",
     );
+    let packed = realign_after_remove(&rows, &updated, &removed_ids);
+    if !packed.moved.is_empty()
+        && let Err(e) = db.update_item_positions(&packed.moved).await
+    {
+        tracing::warn!(
+            actor = actor_id,
+            item = catalog_id,
+            err = %e,
+            "RemoveItem: update_item_positions failed",
+        );
+    }
     if let Some(world) = world {
         use crate::packets::send::actor_inventory as inv;
         let mut middle: Vec<common::subpacket::SubPacket> =
-            Vec::with_capacity(updated.len() + freed_slots.len());
-        for r in &updated {
+            Vec::with_capacity(packed.changed.len() + packed.tail_slots.len());
+        for r in &packed.changed {
             middle.push(inv::build_inventory_list_x01(actor_id, r));
         }
-        for slot in &freed_slots {
+        for slot in &packed.tail_slots {
             middle.push(inv::build_inventory_remove_x01(actor_id, *slot));
         }
         let cap = crate::inventory::default_capacity(item_package);
         send_inventory_bracket(actor_id, cap, item_package, middle, registry, world).await;
     }
+}
+
+/// What `apply_remove_item` has to tell the DB and the client once the
+/// emptied stacks are gone.
+#[derive(Debug, Default)]
+pub(crate) struct PackedAfterRemove {
+    /// Stacks that changed slot: their new positions for the DB.
+    pub moved: Vec<crate::data::InventoryItem>,
+    /// Stacks the client must hear about again (a new slot or a new
+    /// quantity), at their final slot and quantity.
+    pub changed: Vec<crate::data::InventoryItem>,
+    /// Slots past the end of the packed list that held a stack before.
+    pub tail_slots: Vec<u16>,
+}
+
+/// Close the holes emptied stacks leave, as the bag itself does
+/// (`ItemPackage::realign`, the C# `DoRealign`). The client keeps its list
+/// packed: a hole hides the last stacks of the bag from it (a trade window
+/// shows them as 0) even after a zone change. Old holes are closed too.
+pub(crate) fn realign_after_remove(
+    rows: &[crate::data::InventoryItem],
+    updated: &[crate::data::InventoryItem],
+    removed_ids: &[u64],
+) -> PackedAfterRemove {
+    let mut live: Vec<crate::data::InventoryItem> = rows
+        .iter()
+        .filter(|r| !removed_ids.contains(&r.unique_id))
+        .map(|r| {
+            updated
+                .iter()
+                .find(|u| u.unique_id == r.unique_id)
+                .cloned()
+                .unwrap_or_else(|| r.clone())
+        })
+        .collect();
+    live.sort_by_key(|r| r.slot);
+    let mut out = PackedAfterRemove::default();
+    for (i, r) in live.iter_mut().enumerate() {
+        let quantity_changed = updated.iter().any(|u| u.unique_id == r.unique_id);
+        if r.slot != i as u16 {
+            r.slot = i as u16;
+            out.moved.push(r.clone());
+            out.changed.push(r.clone());
+        } else if quantity_changed {
+            out.changed.push(r.clone());
+        }
+    }
+    let end = live.len() as u16;
+    let mut tail: Vec<u16> = rows.iter().map(|r| r.slot).filter(|s| *s >= end).collect();
+    tail.sort_unstable();
+    tail.dedup();
+    out.tail_slots = tail;
+    out
 }
 
 // ---------------------------------------------------------------------------
@@ -5934,6 +6639,7 @@ pub(crate) async fn broadcast_quest_enpc_update(
         zone_id,
         enpc.actor_class_id,
         requester_area.as_ref(),
+        Some(player_xz(&player_handle).await),
     )
     .await
     else {
@@ -5983,6 +6689,17 @@ pub(crate) async fn broadcast_quest_enpc_update(
 /// the text owner) to the player's client, target-stamped for the
 /// world relay. Mirrors `Player.SendGameMessage(sourceActor,
 /// textIdOwner, textId, log)`.
+/// Actor references among `SendGameMessage` params travel in the `i64`
+/// param list as `ACTOR_PARAM_TAG - actor_id` (far below any real
+/// integer param) and go on the wire as a LuaParam actor, so text such as
+/// "<player> botches the synthesis!" can name its subject.
+pub(crate) const ACTOR_PARAM_TAG: i64 = -(1 << 40);
+
+/// Encode an actor id for a `SendGameMessage` param list.
+pub(crate) fn actor_param(actor_id: u32) -> i64 {
+    ACTOR_PARAM_TAG - actor_id as i64
+}
+
 pub(crate) async fn apply_send_game_message(
     actor_id: u32,
     text_owner_id: u32,
@@ -6021,7 +6738,9 @@ pub(crate) async fn apply_send_game_message(
         let lua_params: Vec<common::luaparam::LuaParam> = params
             .iter()
             .map(|&v| {
-                if (0..=u32::MAX as i64).contains(&v) && v > i32::MAX as i64 {
+                if v <= ACTOR_PARAM_TAG {
+                    common::luaparam::LuaParam::Actor((ACTOR_PARAM_TAG - v) as u32)
+                } else if (0..=u32::MAX as i64).contains(&v) && v > i32::MAX as i64 {
                     common::luaparam::LuaParam::UInt32(v as u32)
                 } else {
                     common::luaparam::LuaParam::Int32(v as i32)
@@ -6540,6 +7259,7 @@ async fn broadcast_quest_enpc_graphic(
         zone_id,
         enpc.actor_class_id,
         requester_area.as_ref(),
+        Some(player_xz(&player_handle).await),
     )
     .await
     else {
@@ -6587,6 +7307,7 @@ async fn broadcast_quest_enpc_clear(
         zone_id,
         enpc.actor_class_id,
         requester_area.as_ref(),
+        Some(player_xz(&player_handle).await),
     )
     .await
     else {
@@ -6624,12 +7345,13 @@ async fn broadcast_quest_enpc_clear(
 /// the copy the client never spawned is silently dropped. Falls back to
 /// a zone-root copy when the player's area has none (private-area player
 /// whose quest NPC only exists at the root). (Garlemald-Server #28.)
-async fn find_npc_by_class_id(
+pub(crate) async fn find_npc_by_class_id(
     registry: &ActorRegistry,
     world: &WorldManager,
     zone_id: u32,
     class_id: u32,
     requester_area: Option<&(String, u32)>,
+    near: Option<(f32, f32)>,
 ) -> Option<ActorHandle> {
     // Search the session zone first, then its seamless partner zones. Split
     // towns (Gridania 155/206, Limsa 133/230) seed each half's NPCs in its
@@ -6639,31 +7361,55 @@ async fn find_npc_by_class_id(
     // player stands at the (206) guild, and a mid-scene marker move (SEQ_080
     // Willelda → SEQ_085 Burchard) re-broadcasts with no re-stream to ride the
     // spawn overlay. Mirrors `partner_zone_actors_around`. (Garlemald-Server #41.)
+    //
+    // One area can hold several copies of a class: zone 209's
+    // PrivateAreaMasterPast 5 seats Niellefresne in both Man0u1's
+    // Coliseum echo and Man2u0's sickroom. With `near` (the player's x/z)
+    // the closest copy wins, so the marker lands on the one in front of
+    // the player.
     let mut zones = vec![zone_id];
     if let Some(z) = world.zone(zone_id).await {
         let region_id = z.read().await.core.region_id as u32;
         zones.extend(world.seamless_partner_zones(region_id, zone_id).await);
     }
-    let mut root_match: Option<ActorHandle> = None;
+    let mut area_match: Option<(f32, ActorHandle)> = None;
+    let mut root_match: Option<(f32, ActorHandle)> = None;
     for zid in zones {
         for h in registry.actors_in_zone(zid).await {
-            let matches = {
+            let (matches, x, z) = {
                 let c = h.character.read().await;
-                c.chara.actor_class_id == class_id
+                (
+                    c.chara.actor_class_id == class_id,
+                    c.base.position_x,
+                    c.base.position_z,
+                )
             };
             if !matches {
                 continue;
             }
-            match (&h.private_area, requester_area) {
-                (Some(npc_area), Some(req)) if npc_area.as_ref() == req => return Some(h),
-                (None, None) => return Some(h),
+            let dist = near.map_or(0.0, |(px, pz)| (x - px).powi(2) + (z - pz).powi(2));
+            let slot = match (&h.private_area, requester_area) {
+                (Some(npc_area), Some(req)) if npc_area.as_ref() == req => &mut area_match,
+                (None, None) => &mut area_match,
                 // Root copy — keep as fallback for a private-area player.
-                (None, Some(_)) if root_match.is_none() => root_match = Some(h),
-                _ => {}
+                (None, Some(_)) => &mut root_match,
+                _ => continue,
+            };
+            if slot.as_ref().is_none_or(|(best, _)| dist < *best) {
+                *slot = Some((dist, h));
+            }
+            if near.is_none() && area_match.is_some() {
+                return area_match.map(|(_, h)| h);
             }
         }
     }
-    root_match
+    area_match.or(root_match).map(|(_, h)| h)
+}
+
+/// The player's x/z, for picking the nearest of several same-class NPCs.
+pub(crate) async fn player_xz(handle: &ActorHandle) -> (f32, f32) {
+    let c = handle.character.read().await;
+    (c.base.position_x, c.base.position_z)
 }
 
 // ---------------------------------------------------------------------------
@@ -6778,6 +7524,7 @@ pub async fn apply_quest_on_notice(
             current_level: c.chara.level,
             current_job: c.chara.current_job as u8,
             gc_current: c.chara.gc_current,
+            faction_credits: c.chara.faction_credits,
             gc_rank_limsa: c.chara.gc_rank_limsa,
             gc_rank_gridania: c.chara.gc_rank_gridania,
             gc_rank_uldah: c.chara.gc_rank_uldah,
@@ -7359,6 +8106,7 @@ async fn fire_quest_npc_hook_via_command(
             current_level: c.chara.level,
             current_job: c.chara.current_job as u8,
             gc_current: c.chara.gc_current,
+            faction_credits: c.chara.faction_credits,
             gc_rank_limsa: c.chara.gc_rank_limsa,
             gc_rank_gridania: c.chara.gc_rank_gridania,
             gc_rank_uldah: c.chara.gc_rank_uldah,
@@ -7589,6 +8337,7 @@ pub async fn fire_quest_on_talk_via_command(
             current_level: c.chara.level,
             current_job: c.chara.current_job as u8,
             gc_current: c.chara.gc_current,
+            faction_credits: c.chara.faction_credits,
             gc_rank_limsa: c.chara.gc_rank_limsa,
             gc_rank_gridania: c.chara.gc_rank_gridania,
             gc_rank_uldah: c.chara.gc_rank_uldah,
@@ -7795,6 +8544,7 @@ async fn fire_quest_hook(
             current_level: c.chara.level,
             current_job: c.chara.current_job as u8,
             gc_current: c.chara.gc_current,
+            faction_credits: c.chara.faction_credits,
             gc_rank_limsa: c.chara.gc_rank_limsa,
             gc_rank_gridania: c.chara.gc_rank_gridania,
             gc_rank_uldah: c.chara.gc_rank_uldah,
@@ -7953,15 +8703,8 @@ mod tests {
         dir
     }
 
-    pub(crate) fn tempdb() -> std::path::PathBuf {
-        use std::sync::atomic::{AtomicU64, Ordering};
-        static SEQ: AtomicU64 = AtomicU64::new(0);
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-        common::test_tmp::dir().join(format!("garlemald-onnotice-{nanos}-{seq}.db"))
+    pub(crate) fn tempdb() -> String {
+        common::test_db::fresh_blocking()
     }
 
     /// `apply_quest_on_notice` resolves the script, fires
@@ -8111,6 +8854,47 @@ mod tests {
     /// B3: `apply_set_actor_mod` writes the value through to the
     /// target character's `ModifierMap`. Tests both registered actors
     /// (success) and unknown actors (quiet skip).
+    /// Two copies of one class in the same private area (Niellefresne in
+    /// zone 209's PrivateAreaMasterPast 5, for Man0u1 and Man2u0): the
+    /// quest marker goes to the copy nearest the player.
+    #[tokio::test]
+    async fn find_npc_by_class_id_prefers_nearest_copy() {
+        let registry = ActorRegistry::new();
+        let world = WorldManager::new();
+        let area = ("PrivateAreaMasterPast".to_string(), 5u32);
+        for (id, x, z) in [(1u32, -187.0f32, 195.0f32), (2, -219.5, 311.5)] {
+            let mut c = Character::new(id);
+            c.chara.actor_class_id = 1000037;
+            c.base.position_x = x;
+            c.base.position_z = z;
+            registry
+                .insert(
+                    ActorHandle::new(id, ActorKindTag::Npc, 209, 0, c)
+                        .with_private_area(area.0.clone(), area.1),
+                )
+                .await;
+        }
+        let pick = |near: Option<(f32, f32)>| {
+            find_npc_by_class_id(&registry, &world, 209, 1000037, Some(&area), near)
+        };
+        assert_eq!(
+            pick(Some((-218.0, 306.0))).await.map(|h| h.actor_id),
+            Some(2)
+        );
+        assert_eq!(
+            pick(Some((-186.0, 194.0))).await.map(|h| h.actor_id),
+            Some(1)
+        );
+        assert!(pick(None).await.is_some());
+        // Another area's copy is never picked.
+        let other = ("PrivateAreaMasterPast".to_string(), 3u32);
+        assert!(
+            find_npc_by_class_id(&registry, &world, 209, 1000037, Some(&other), None)
+                .await
+                .is_none()
+        );
+    }
+
     #[tokio::test]
     async fn apply_set_actor_mod_writes_modifier_map() {
         let registry = ActorRegistry::new();
@@ -8331,6 +9115,70 @@ mod change_state_self_send_tests {
     /// excludes the source, so without the explicit self-send the weapon
     /// never draws on the acting client (`recipients=0` in the SEQ_005
     /// live test). (Garlemald-Server #28.)
+    /// Content-area scripts drain through the runtime path, not the packet
+    /// processor; `owner:SetHP(...)` there used to be dropped (Man0u1
+    /// Coliseum: the post-match heal never landed). The shared handler
+    /// writes the pool and tells the owning client.
+    #[tokio::test]
+    async fn set_pool_from_runtime_drain_heals_and_notifies() {
+        let world = WorldManager::new();
+        let registry = ActorRegistry::new();
+        let mut zone = Zone::new(
+            166,
+            "test",
+            1,
+            "/Area/Zone/Test",
+            0,
+            0,
+            0,
+            false,
+            false,
+            false,
+            false,
+            false,
+            Some(&StubNavmeshLoader),
+        );
+        let mut ob = crate::zone::outbox::AreaOutbox::new();
+        zone.core.add_actor(
+            StoredActor {
+                actor_id: 1,
+                kind: ActorKind::Player,
+                position: Vector3::ZERO,
+                grid: (0, 0),
+                is_alive: true,
+            },
+            &mut ob,
+        );
+        world.register_zone(zone).await;
+        let handle = crate::runtime::actor_registry::ActorHandle::new(
+            1,
+            ActorKindTag::Player,
+            166,
+            7,
+            Character::new(1),
+        );
+        {
+            let mut c = handle.character.write().await;
+            c.chara.max_hp = 137;
+            c.chara.hp = 1;
+        }
+        registry.insert(handle.clone()).await;
+        let (tx, mut rx) = mpsc::channel::<Vec<u8>>(8);
+        world.register_client(7, ClientHandle::new(7, tx)).await;
+
+        apply_set_pool(
+            &registry,
+            &world,
+            1,
+            crate::lua::command::SetPoolKind::Hp,
+            137,
+        )
+        .await;
+
+        assert_eq!(handle.character.read().await.chara.hp, 137);
+        assert!(rx.try_recv().is_ok(), "owner should get the pool update");
+    }
+
     #[tokio::test]
     async fn change_state_reaches_the_acting_player() {
         let world = WorldManager::new();
@@ -8376,7 +9224,7 @@ mod change_state_self_send_tests {
         let (tx, mut rx) = mpsc::channel::<Vec<u8>>(4);
         world.register_client(7, ClientHandle::new(7, tx)).await;
 
-        apply_change_state(1, 2, &registry, &world).await;
+        apply_change_state(1, 2, &registry, &world, None).await;
 
         let got = rx.try_recv().expect("player should receive own state trio");
         let mut off = 0usize;
@@ -8773,6 +9621,63 @@ mod complete_quest_turn_in_tests {
     use crate::actor::quest::{Quest, quest_actor_id};
     use crate::runtime::actor_registry::ActorKindTag;
 
+    /// wld0l4.lua (and nine other side quests) ask `player:HasQuest(quest)`
+    /// in the offer arm; the old `u32`-typed binding raised, so the offer
+    /// never opened. Both forms must answer.
+    #[tokio::test]
+    async fn has_quest_binding_accepts_userdata_and_integer() {
+        use crate::lua::command::{CommandQueue, LuaCommand};
+        use crate::lua::userdata::{LuaQuestHandle, PlayerSnapshot};
+
+        let root = tmpdir();
+        let script = root.join("quests/wld/wld0l4.lua");
+        std::fs::create_dir_all(script.parent().unwrap()).unwrap();
+        std::fs::write(
+            &script,
+            r#"
+                function onTalk(player, quest, npc)
+                    if player:HasQuest(quest) then player:CompleteQuest(110010) end
+                    if player:HasQuest(110003) then player:CompleteQuest(110011) end
+                    if not player:HasQuest(110004) then player:CompleteQuest(110012) end
+                    if player:IsQuestCompleted(quest) then player:CompleteQuest(110013) end
+                    if player:IsQuestCompleted(110005) then player:CompleteQuest(110014) end
+                end
+            "#,
+        )
+        .unwrap();
+        let lua = LuaEngine::new(&root);
+
+        const PLAYER_ID: u32 = 0x0246_0001;
+        let snapshot = PlayerSnapshot {
+            actor_id: PLAYER_ID,
+            active_quests: vec![110_774, 110_003],
+            completed_quests: vec![110_005],
+            ..Default::default()
+        };
+        let quest_handle = LuaQuestHandle {
+            player_id: PLAYER_ID,
+            quest_id: 110_774,
+            has_quest: true,
+            sequence: 0,
+            flags: 0,
+            counters: [0; 4],
+            npc_ls_from: 0,
+            npc_ls_msg_step: 0,
+            queue: CommandQueue::new(),
+        };
+        let result = lua.call_quest_hook(&script, "onTalk", snapshot, quest_handle, Vec::new());
+        assert!(result.error.is_none(), "onTalk errored: {:?}", result.error);
+        let completed: Vec<u32> = result
+            .commands
+            .iter()
+            .filter_map(|c| match c {
+                LuaCommand::CompleteQuest { quest_id, .. } => Some(*quest_id),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(completed, vec![110_010, 110_011, 110_012, 110_014]);
+    }
+
     /// RED case on the old binding: the userdata form raised a runtime
     /// error and `LuaCommand::CompleteQuest` was never enqueued.
     #[tokio::test]
@@ -9051,5 +9956,180 @@ mod complete_quest_turn_in_tests {
         assert!(db.is_quest_completed(PLAYER_ID, QUEST_ID).await.unwrap());
 
         let _ = std::fs::remove_dir_all(root);
+    }
+}
+
+/// Writes one HP/MP/TP pool on an actor and broadcasts the
+/// `stateAtQuicklyForAll` bundle. Shared by the packet processor and the
+/// runtime drain (content-area ticks, e.g. the Man0u1 Coliseum heal).
+pub(crate) async fn apply_set_pool(
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    actor_id: u32,
+    kind: crate::lua::command::SetPoolKind,
+    value: i32,
+) {
+    use crate::lua::command::SetPoolKind;
+    let Some(handle) = registry.get(actor_id).await else {
+        tracing::debug!(actor = actor_id, "SetPool: actor not in registry");
+        return;
+    };
+    let value_i16 = value.clamp(0, i16::MAX as i32) as i16;
+    let value_u16 = value.clamp(0, u16::MAX as i32) as u16;
+    let post_pools = {
+        let mut c = handle.character.write().await;
+        match kind {
+            SetPoolKind::Hp => {
+                c.chara.hp = value_i16.min(c.chara.max_hp);
+            }
+            SetPoolKind::MaxHp => {
+                let old_max = c.chara.max_hp;
+                c.chara.max_hp = value_i16;
+                // Heal-to-full when the player was at/under the
+                // old cap — Meteor's setmaxhp behaviour.
+                if c.chara.hp >= old_max || c.chara.hp == 0 {
+                    c.chara.hp = value_i16;
+                } else {
+                    c.chara.hp = c.chara.hp.min(value_i16);
+                }
+            }
+            SetPoolKind::Mp => {
+                c.chara.mp = value_i16.min(c.chara.max_mp);
+            }
+            SetPoolKind::MaxMp => {
+                let old_max = c.chara.max_mp;
+                c.chara.max_mp = value_i16;
+                if c.chara.mp >= old_max || c.chara.mp == 0 {
+                    c.chara.mp = value_i16;
+                } else {
+                    c.chara.mp = c.chara.mp.min(value_i16);
+                }
+            }
+            SetPoolKind::Tp => {
+                c.chara.tp = value_u16;
+            }
+        }
+        (
+            c.chara.hp.max(0) as u16,
+            c.chara.max_hp.max(0) as u16,
+            c.chara.mp.max(0) as u16,
+            c.chara.max_mp.max(0) as u16,
+            c.chara.tp,
+        )
+    };
+    let (hp, hp_max, mp, mp_max, tp) = post_pools;
+    let mut subs = crate::packets::send::actor::build_chara_state_at_quickly_for_all(
+        actor_id, hp, hp_max, mp, mp_max, tp,
+    );
+    // Players also get the player-variant bundle (extra fields:
+    // class slot + main-skill level). Bnpcs don't need it; the
+    // chara variant alone updates their nameplate HP bar.
+    if handle.is_player() {
+        let (class_slot, main_skill_level) = {
+            let c = handle.character.read().await;
+            (c.chara.class.max(0) as u8, c.chara.level.max(1) as u16)
+        };
+        subs.extend(
+            crate::packets::send::actor::build_player_state_at_quickly_for_all(
+                actor_id,
+                hp,
+                hp_max,
+                class_slot,
+                main_skill_level,
+            ),
+        );
+    }
+    for sub in subs {
+        let bytes = sub.to_bytes();
+        crate::runtime::dispatcher::send_to_self_if_player(
+            registry,
+            world,
+            actor_id,
+            bytes.clone(),
+        )
+        .await;
+        crate::runtime::dispatcher::broadcast_to_neighbours(world, registry, actor_id, bytes).await;
+    }
+    tracing::info!(
+        actor = actor_id,
+        ?kind,
+        value,
+        hp,
+        hp_max,
+        mp,
+        mp_max,
+        tp,
+        "SetPool applied + broadcast"
+    );
+}
+
+#[cfg(test)]
+mod realign_after_remove_tests {
+    use super::realign_after_remove;
+    use crate::data::InventoryItem;
+
+    fn stack(unique_id: u64, item_id: u32, quantity: i32, slot: u16) -> InventoryItem {
+        InventoryItem {
+            unique_id,
+            item_id,
+            quantity,
+            slot,
+            ..Default::default()
+        }
+    }
+
+    fn slots(items: &[InventoryItem]) -> Vec<(u64, u16, i32)> {
+        items
+            .iter()
+            .map(|i| (i.unique_id, i.slot, i.quantity))
+            .collect()
+    }
+
+    // Two stacks emptied in the middle of the bag (an egg set handed in):
+    // the stacks after them move down and the two last slots are cleared.
+    #[test]
+    fn emptied_stacks_close_up() {
+        let rows = vec![
+            stack(1, 10, 2, 0),
+            stack(2, 11, 3, 1),
+            stack(3, 12, 1, 2),
+            stack(4, 13, 1, 3),
+            stack(5, 14, 3, 4),
+        ];
+        let updated = vec![stack(5, 14, 2, 4)];
+        let packed = realign_after_remove(&rows, &updated, &[2, 4]);
+        assert_eq!(slots(&packed.moved), vec![(3, 1, 1), (5, 2, 2)]);
+        assert_eq!(slots(&packed.changed), vec![(3, 1, 1), (5, 2, 2)]);
+        assert_eq!(packed.tail_slots, vec![3, 4]);
+    }
+
+    // A stack only shrinks: nothing moves, the client hears the new count.
+    #[test]
+    fn a_shrunk_stack_stays_put() {
+        let rows = vec![stack(1, 10, 4, 0), stack(2, 11, 3, 1)];
+        let updated = vec![stack(1, 10, 2, 0)];
+        let packed = realign_after_remove(&rows, &updated, &[]);
+        assert!(packed.moved.is_empty());
+        assert_eq!(slots(&packed.changed), vec![(1, 0, 2)]);
+        assert!(packed.tail_slots.is_empty());
+    }
+
+    // The last stack emptied: no move, only its slot cleared.
+    #[test]
+    fn the_last_stack_emptied() {
+        let rows = vec![stack(1, 10, 4, 0), stack(2, 11, 3, 1)];
+        let packed = realign_after_remove(&rows, &[], &[2]);
+        assert!(packed.moved.is_empty());
+        assert!(packed.changed.is_empty());
+        assert_eq!(packed.tail_slots, vec![1]);
+    }
+
+    // A bag that already has holes (left by the old code) is packed too.
+    #[test]
+    fn old_holes_close_as_well() {
+        let rows = vec![stack(1, 10, 1, 0), stack(2, 11, 1, 2), stack(3, 12, 2, 5)];
+        let packed = realign_after_remove(&rows, &[], &[1]);
+        assert_eq!(slots(&packed.moved), vec![(2, 0, 1), (3, 1, 2)]);
+        assert_eq!(packed.tail_slots, vec![2, 5]);
     }
 }

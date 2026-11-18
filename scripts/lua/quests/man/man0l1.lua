@@ -163,7 +163,11 @@ FLAG_ESCORT_HANDOFF		= 1;
 -- escort entry (OCR'd playthroughs + Mirke transcripts): journal
 -- update → 34108 → "Protect Sisipu from harm." → "You are now bound by
 -- duty." → "There are 30 minutes remaining.".
-TEXT_PROTECT_SISIPU		= 51005;	-- "Protect ~<displayName>/<displayName>'s group~ from harm." (param: Sisipu's actor id)
+TEXT_PROTECT_SISIPU		= 51005;	-- "Protect ~<displayName>/<displayName>'s group~ from harm."
+-- 51005 takes the escortee's display-name id (not an actor id: the client
+-- text macro cannot expand that and raises a Lua error), then 1 for "Protect
+-- <name>", 0 for "Protect <name>'s group".
+SISIPU_NAME_ID			= 1500024;
 TEXT_BOUND_BY_DUTY		= 50011;	-- "You are now bound by duty."
 TEXT_UNBOUND_FROM_DUTY	= 50012;	-- "You are no longer bound by duty."
 TEXT_TIME_REMAINING		= 25018;	-- "There ~is/are~ <N> ~minute/minutes~ remaining." (param: minutes; 25019 = seconds variant)

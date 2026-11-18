@@ -10,6 +10,7 @@ Inputs for `tools/world_spawns/generate.py`, which writes
 | `xivl_ge_mob_locations.csv` | Gamer Escape 1.x monster pages: zone, map coordinates, level, behavior | xivl-captures `studies/gamerescape-tables/derived/mob-locations.csv` |
 | `xivl_ge_mob_client_crosscheck.csv` | Gamer Escape monster names joined to client actor class ids | xivl-captures `studies/gamerescape-tables/derived/mob-client-crosscheck.csv` |
 | `xivl_mob_level_hp.csv` | Monster level and max HP from retail captures | xivl-captures `studies/battle-result-actor-join/derived/mob-level-hp.csv` |
+| `ground_heights.csv` | Ground height (zone, x, z, y) under each map-derived spawn point, from the 1.23b client's collision meshes; `moved_x`/`moved_z` move a point that has no ground under it | `tools/terrain/spawn_heights.py`, see below |
 | `height_samples_player.csv` | Ground positions (zone, x, y, z) taken from player movement in local packet logs | this repository's `logs/packet-logs/map-packets.log` |
 
 The `xivl_*` files are copied unchanged from
@@ -33,8 +34,15 @@ Mooglebox and Gamer Escape material is credited to those sites as recorded upstr
   | Thanalan | -2640 | -3044 |
 
 - Each camp spreads its recorded number of monsters (at most 16) around the camp point.
-- Ground height is blended from the nearest known positions in the same zone, so monsters far
-  from any sample can float or sink until real terrain heights are available.
+- Ground height comes from `ground_heights.csv` where the spawn point has one. Otherwise it is
+  blended from the nearest known positions in the same zone, which can leave a monster floating
+  or under the terrain.
+- `ground_heights.csv` is the highest floor under the point in the client's own collision data
+  (`tools/terrain`, read from the local 1.23b install; tree trunks and crates ignored).
+- A spawn point with no ground under it (a cliff face, or off the map, from the map-coordinate
+  error) is moved to the nearest ground within 40 yalms, toward its camp's center; failing
+  that, 1.5 yalms from the nearest placed spawn of the same camp. Points with neither keep the
+  blended height.
 - HP follows the retail level curve in `xivl_mob_level_hp.csv` (80 at level 1).
 
 Run with the database the seed has not been applied to, so the classPath repairs are kept:
@@ -42,3 +50,16 @@ Run with the database the seed has not been applied to, so the classPath repairs
 ```sh
 python3 tools/world_spawns/generate.py --db <clean garlemald.db> --client "<FINAL FANTASY XIV 1.23b install>"
 ```
+
+To refresh the ground heights (needs the 1.23b install; see `tools/terrain/README.md`):
+
+```sh
+python3 tools/world_spawns/generate.py --db <clean garlemald.db> --client "<install>" --points /tmp/planned.csv
+python3 tools/terrain/spawn_heights.py /tmp/planned.csv --client "<install>"
+python3 tools/world_spawns/generate.py --db <clean garlemald.db> --client "<install>"
+python3 tools/terrain/height_update.py
+```
+
+Databases record seeds by file name, so one that already applied 101 never re-runs it.
+`height_update.py` writes `292_world_monster_spawn_heights.sql`: UPDATEs that move those
+spawns to the positions in the current 101 (a no-op on a fresh database).

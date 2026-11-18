@@ -8,6 +8,8 @@ function onGain(owner, effect, actionContainer)
     end
 
     owner.MultiplyMod(modifiersGlobal.MovementSpeed, speedModifier);
+    -- Immune to knockback while it lasts, like Tempered Will.
+    owner.AddMod(modifiersGlobal.KnockbackImmune, 1);
 end;
 
 function onLose(owner, effect, actionContainer)    
@@ -17,4 +19,5 @@ function onLose(owner, effect, actionContainer)
     end
 
     owner.DivideMod(modifiersGlobal.MovementSpeed, speedModifier);
+    owner.SubtractMod(modifiersGlobal.KnockbackImmune, 1);
 end;

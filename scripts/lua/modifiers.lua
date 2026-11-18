@@ -152,6 +152,15 @@ modifiersGlobal =
         Stoneskin                   = 129,   --Nullifies damage
         KnockbackImmune             = 130,   --Immune to knockback effects when above 0
         Stealth                     = 131,
+
+        -- Server-only (not on the wire), like WeaponDamagePower = 200.
+        Aspect                      = 201,   --The element this actor's damage takes (ActionProperty: 7 wind, 8 earth, 10 water...), 0 = its moves' own
+        FireWard                    = 202,   --Absorbs damage of one element until spent (destroyed), like Stoneskin
+        IceWard                     = 203,
+        WindWard                    = 204,
+        EarthWard                   = 205,
+        LightningWard               = 206,
+        WaterWard                   = 207,
 }
 
 mobModifiersGlobal = 

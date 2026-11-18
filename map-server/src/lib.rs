@@ -48,6 +48,7 @@ mod crafting;
 mod data;
 mod database;
 mod director;
+mod dungeon_gates;
 mod event;
 mod gamedata;
 mod gathering;
@@ -66,9 +67,11 @@ mod npc;
 mod packets;
 mod processor;
 mod runtime;
+mod seasonal;
 mod server;
 mod social;
 mod status;
+mod terrain;
 // Opt-in headless test-harness facade for the `content-test` runner, gated
 // behind the `testkit` cargo feature so it never ships in the server build.
 #[cfg(feature = "testkit")]
@@ -122,7 +125,7 @@ pub async fn run() -> Result<()> {
         bind_ip = %config.bind_ip(),
         port = config.port(),
         world_id = config.world_id(),
-        db_path = %config.db_path().display(),
+        database = %common::sql::redact(&config.db_url()),
         script_root = %config.script_root().display(),
         load_from_database = config.load_from_database(),
         "config resolved"
@@ -131,6 +134,7 @@ pub async fn run() -> Result<()> {
     match common::modules::enabled().and_then(|m| {
         modules::init(&m);
         command_permissions::init()?;
+        seasonal::init()?;
         jail::init()
     }) {
         Ok(()) => {}
@@ -147,8 +151,8 @@ pub async fn run() -> Result<()> {
         }
     }
 
-    tracing::info!(db_path = %config.db_path().display(), "opening sqlite database");
-    let db = match Database::open(config.db_path()).await {
+    tracing::info!(database = %common::sql::redact(&config.db_url()), "opening sqlite database");
+    let db = match Database::open(&config.db_url()).await {
         Ok(db) => Arc::new(db),
         Err(e) => {
             if smoke {
@@ -162,6 +166,8 @@ pub async fn run() -> Result<()> {
             return Err(e);
         }
     };
+    runtime::monster_mode::set_log_db(db.clone());
+    seasonal::set_overrides(db.load_event_overrides().await.unwrap_or_default());
     command_actors::init(
         db.command_static_actors().await.unwrap_or_default(),
         config.script_root(),
@@ -280,6 +286,49 @@ pub async fn run() -> Result<()> {
                 error = %e,
                 "server_battle_commands load failed: ability-unlock notifications disabled",
             );
+        }
+    }
+
+    // Traits (`server_battle_traits`): the stat recalc gives a player
+    // their class's traits up to their level, and command scripts ask
+    // `HasTrait`. Non-fatal: without them nobody has a trait.
+    match db.load_global_battle_trait_list().await {
+        Ok((traits, _)) => {
+            let trait_count = traits.len();
+            lua.catalogs().install_battle_traits(traits);
+            tracing::info!(trait_count, "server_battle_traits catalog loaded");
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "server_battle_traits load failed");
+        }
+    }
+
+    // Monster move and spell lists (`server_battlenpc_skill_list`): a
+    // spawning BattleNpc takes the moves its level allows. Non-fatal:
+    // without them monsters only swing.
+    match db.load_monster_skill_lists().await {
+        Ok(lists) => {
+            let list_count = lists.len();
+            lua.catalogs().install_monster_skill_lists(lists);
+            tracing::info!(list_count, "server_battlenpc_skill_list catalog loaded");
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "server_battlenpc_skill_list load failed");
+        }
+    }
+
+    // Status-effect templates (`server_statuseffects`): battle commands
+    // build the effects they apply from these, so flags such as Stance
+    // and each status's overwrite rule come along. Non-fatal: without
+    // the catalog the effects fall back to bare defaults.
+    match db.load_global_status_effect_list().await {
+        Ok(effects) => {
+            let effect_count = effects.len();
+            lua.catalogs().install_status_effects(effects);
+            tracing::info!(effect_count, "server_statuseffects catalog loaded");
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "server_statuseffects load failed");
         }
     }
 

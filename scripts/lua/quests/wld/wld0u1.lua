@@ -12,6 +12,9 @@ Prereq: Level 10, Any Class
 
 ]]
 
+-- Rewards (the client's reward table; EXP from its row, or the level-band estimate)
+REWARD_EXP			= 300;
+
 -- Sequence Numbers
 SEQ_000	= 0;  -- Talk to Lyngwaek.
 SEQ_001	= 1;  -- Talk to Tyago Moui.
@@ -71,7 +74,9 @@ function onTalk(player, quest, npc, eventName)
 		--Quest Complete
 		if (npcClassId == TYAGO_MOUI) then
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent020");
-			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 200, 1, 1, 9);
+			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
+			player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
+			player:GetItemPackage(INVENTORY_NORMAL):AddItem(8071015, 1, 1); -- Dodoskin Wristguards
             player:CompleteQuest(quest);
 		elseif (npcClassId == LYNGWAEK) then
 			callClientFunction(player, "delegateEvent", player, quest, "followEvent015");

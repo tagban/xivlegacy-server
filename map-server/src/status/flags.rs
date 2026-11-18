@@ -66,6 +66,11 @@ impl StatusEffectFlags {
     /// client icon doesn't blink.
     pub const STANCE: StatusEffectFlags = StatusEffectFlags(1 << 29);
 
+    /// The effect's clock keeps running while its owner is logged out
+    /// (LandSandBoat `OfflineTick`). Without it a saved effect pauses at
+    /// logout and resumes with the time it had left. Not in pmeteor.
+    pub const TICK_OFFLINE: StatusEffectFlags = StatusEffectFlags(1 << 30);
+
     pub const fn bits(self) -> u32 {
         self.0
     }

@@ -3,7 +3,8 @@ require("battleutils")
 require("utils")
 
 parryPerDT = 20;
-delayMsPerDT = 100;
+-- The server keeps Delay in seconds.
+delaySecPerDT = 0.1;
 
 function onGain(owner, effect, actionContainer)
 end
@@ -16,7 +17,7 @@ function onDamageTaken(effect, attacker, defender, skill, action, actionContaine
         effect.SetExtra(effect.GetExtra() + 1);
 
         defender.AddMod(modifiersGlobal.Parry, parryPerDT);
-        defender.SubtractMod(modifiersGlobal.Delay, delayMsPerDT);
+        defender.SubtractMod(modifiersGlobal.Delay, delaySecPerDT);
     end
 end
 
@@ -36,12 +37,12 @@ function onTick(owner, effect, actionContainer)
     --Enduring march prevents fading of rampage effect
     if not owner.statusEffects.HasStatusEffect(223078) and (effect.GetExtra() > 0) then
         owner.SubtractMod(modifiersGlobal.Parry, parryPerDT);
-        owner.AddMod(modifiersGlobal.Delay, delayMsPerDT);
+        owner.AddMod(modifiersGlobal.Delay, delaySecPerDT);
         effect.SetExtra(effect.GetExtra() - 1);
     end
 end
 
 function onLose(owner, effect, actionContainer)
     owner.SubtractMod(modifiersGlobal.Parry, effect.GetExtra() * parryPerDT);
-    owner.AddMod(modifiersGlobal.Delay, effect.GetExtra() * delayMsPerDT);
+    owner.AddMod(modifiersGlobal.Delay, effect.GetExtra() * delaySecPerDT);
 end

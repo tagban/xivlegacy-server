@@ -36,7 +36,9 @@ use crate::lua::LuaEngine;
 use crate::runtime::actor_registry::ActorRegistry;
 use crate::world_manager::WorldManager;
 
+mod events;
 mod gm_tools;
+mod monster_mode;
 pub(crate) mod world_end;
 
 pub struct CommandProcessor {
@@ -48,6 +50,107 @@ pub struct CommandProcessor {
     /// those commands don't exist.
     pub final_days: bool,
 }
+
+/// Every command with how to type it (`!help`, `!gmhelp`). The first word
+/// is the name `settings/commands.toml` gives a level to.
+const COMMAND_SYNTAX: &[&str] = &[
+    "help",
+    "gmhelp [word]",
+    "who",
+    "version",
+    "mp [list | buy <number>]",
+    "bug <what happened>",
+    "pos [name]",
+    "endevent [name]",
+    "goto [name | npc name | class id]",
+    "side <front|rear|left|right> [yalms]",
+    "bring [name | npc name | class id]",
+    "bringall",
+    "send <name> to <name>",
+    "return [name]",
+    "up [yalms] [name]",
+    "down [yalms] [name]",
+    "posfix <name>",
+    "jail <name> [cell] [reason]",
+    "pardon <name>",
+    "togglegm [name]",
+    "logoff <name>",
+    "announce <message>",
+    "getid",
+    "setpos",
+    "gmgear [name]",
+    "additem (or giveitem) <item id> [qty] [hq|+1|+2|+3] [name]",
+    "delitem <item id> [qty] [name]",
+    "addkeyitem <id> [name]",
+    "delkeyitem <id> [name]",
+    "hasitem <item id> [name]",
+    "finditem <part of an item name>",
+    "haskeyitem <id> [name]",
+    "setgil <amount> [name]",
+    "takegil <amount> [name]",
+    "addquest <quest id> [name]",
+    "completequest <quest id> [name]",
+    "delquest <quest id> [name]",
+    "addtitle <title id> [name]",
+    "addeffect <status id> [seconds] [magnitude] [name | 0x<actor id>]",
+    "resetrecast <name>",
+    "addallaetherytes [name]",
+    "setmusic <music id> [name]",
+    "setweather <weather id>",
+    "worldend",
+    "event [name] [on|off|auto] | event auto",
+    "starlight",
+    "moonfire",
+    "halloween",
+    "allsaints",
+    "easter",
+    "hatchingtide",
+    "zone <zone id or name> [name]",
+    "camp [camp name] [name]",
+    "warp <x> <y> <z> [name] | warp <zone> <x> <y> <z> [name]",
+    "home [name]",
+    "revive [name]",
+    "speed <multiplier> [name]",
+    "dismount [name]",
+    "wake [name]",
+    "givegil <qty> [name]",
+    "giveexp <qty> <class_id> [name]",
+    "setclass <class> [name]",
+    "setlevel <class or job> <level 1-50> [name]",
+    "maxall [level 1-50] [name]",
+    "setjob <pld|war|mnk|drg|brd|whm|blm|none> [name]",
+    "gearset <class or job> [level 1-50] [name]",
+    "sethome <aetheryte_id> [name]",
+    "joingc <gc> [name]",
+    "setgcrank <gc> <rank> [name]",
+    "addgcseals <gc> <amount> [name]",
+    "accruerest <minutes> [name]",
+    "issuechocobo <appearance> <chocobo_name> [name]",
+    "rentchocobo <minutes> [name]",
+    "hireretainer <retainer_id> [name]",
+    "dismissretainer <retainer_id> [name]",
+    "listretainers [name]",
+    "setsleeping [name]",
+    "dream <id> [name]",
+    "die [name]",
+    "spawn <actor class id> [level] [count]",
+    "despawn",
+    "sethp <hp>",
+    "dungeon <name> | dungeon leave",
+    "settp <tp 0-3000> [name]",
+    "usemove <command id> (target, else nearest monster)",
+    "monstermode [class id | ok [move] | bad [move] [note]] (become your target monster; again to let go; mark a move)",
+    "leve <guildleve id> [stars 1-5] | leve abandon",
+    "factioncredit <faction 1-3> <amount>",
+    "setgm <level 0-4> <name>",
+    "reload",
+    "talkto <actor_class_id> [name]",
+    "pushtrigger <actor_class_id> [name]",
+    "setseq <quest_id> <sequence> [name]",
+];
+
+/// How far `!usemove` looks for a monster when nothing is targeted.
+const USEMOVE_RANGE: f32 = 30.0;
 
 impl CommandProcessor {
     pub fn new(
@@ -135,6 +238,9 @@ impl CommandProcessor {
             return Ok(format!("unknown command: !{cmd} (!help lists yours)"));
         }
         let mut rest: Vec<&str> = tokens.collect();
+        if let Err(e) = self.db.log_gm_command(invoker, &cmd, &rest.join(" ")).await {
+            tracing::warn!(error = %e, "logging a GM command");
+        }
         if typed == "fixspeed" {
             rest.insert(0, "1"); // back to normal speed
         }
@@ -143,6 +249,8 @@ impl CommandProcessor {
 
         let response = match cmd.as_str() {
             "help" => Self::help(level, self.final_days),
+            "gmhelp" => self.handle_gmhelp(&args, level).await,
+            "finditem" => self.handle_finditem(&args).await,
             "version" => format!("map-server {}", env!("CARGO_PKG_VERSION")),
             "who" => format!("{} zone(s) loaded", self.world.zone_count().await),
             "reload" => {
@@ -155,6 +263,7 @@ impl CommandProcessor {
             "pos" => self.handle_pos(&args).await,
             "endevent" => self.handle_endevent(&args).await,
             "goto" => self.handle_goto(&args).await,
+            "side" => self.handle_side(&args).await,
             "bring" => self.handle_bring(&args).await,
             "bringall" => self.handle_bringall(&args).await,
             "send" => self.handle_send(&args).await,
@@ -168,6 +277,7 @@ impl CommandProcessor {
             "logoff" => self.handle_logoff(&args).await,
             "announce" => self.handle_announce(&args).await,
             "getid" => self.handle_getid(&args).await,
+            "setpos" => self.handle_setpos(&args).await,
             "gmgear" => self.handle_gmgear(&args).await,
             "additem" => self.handle_additem(&args, false).await,
             "addkeyitem" => self.handle_additem(&args, true).await,
@@ -186,9 +296,15 @@ impl CommandProcessor {
             "setmusic" => self.handle_setmusic(&args).await,
             "setweather" => self.handle_setweather(&args).await,
             "revive" => self.handle_revive(&args).await,
+            "resetrecast" => self.handle_resetrecast(&args).await,
             "home" => self.handle_home(&args).await,
             "sethome" => self.handle_set_home(&args).await,
             "die" => self.handle_die(&args).await,
+            "settp" => self.handle_settp(&args).await,
+            "usemove" => self.handle_usemove(&args).await,
+            "monstermode" => self.handle_monstermode(&args).await,
+            "leve" => self.handle_leve(&args).await,
+            "factioncredit" => self.handle_faction_credit(&args).await,
             "givegil" => self.handle_givegil(&args).await,
             "giveexp" => self.handle_giveexp(&args).await,
             "hireretainer" => self.handle_hire_retainer(&args).await,
@@ -210,6 +326,10 @@ impl CommandProcessor {
             "setseq" => self.handle_setseq(&args).await,
             "speed" => self.handle_speed(&args).await,
             "worldend" => self.handle_worldend(&args).await,
+            "event" => self.handle_event(&args).await,
+            "starlight" | "moonfire" | "allsaints" | "halloween" | "hatchingtide" | "easter" => {
+                self.handle_event_switch(&cmd).await
+            }
             other => format!("unknown command: {other} (args={:?})", args.rest()),
         };
         if args.was_refused() {
@@ -219,83 +339,17 @@ impl CommandProcessor {
     }
 
     /// The commands `level` may use (all of them on the console), leaving
-    /// out the finaldays module's while it's off.
+    /// out the commands of modules that are off.
     fn help(level: Option<u8>, final_days: bool) -> String {
-        const ALL: &[&str] = &[
-            "help",
-            "who",
-            "version",
-            "bug <what happened>",
-            "pos [name]",
-            "endevent [name]",
-            "goto <name>",
-            "bring <name>",
-            "bringall",
-            "send <name> to <name>",
-            "return [name]",
-            "up [yalms] [name]",
-            "down [yalms] [name]",
-            "posfix <name>",
-            "jail <name> [cell] [reason]",
-            "pardon <name>",
-            "togglegm [name]",
-            "logoff <name>",
-            "announce <message>",
-            "getid",
-            "gmgear [name]",
-            "additem <item id> [qty] [name]",
-            "delitem <item id> [qty] [name]",
-            "addkeyitem <id> [name]",
-            "delkeyitem <id> [name]",
-            "hasitem <item id> [name]",
-            "haskeyitem <id> [name]",
-            "setgil <amount> [name]",
-            "takegil <amount> [name]",
-            "addquest <quest id> [name]",
-            "completequest <quest id> [name]",
-            "delquest <quest id> [name]",
-            "addtitle <title id> [name]",
-            "addeffect <status id> [seconds] [name]",
-            "addallaetherytes [name]",
-            "setmusic <music id> [name]",
-            "setweather <weather id>",
-            "worldend",
-            "zone <zone id or name> [name]",
-            "camp [camp name] [name]",
-            "warp <x> <y> <z> [name] | warp <zone> <x> <y> <z> [name]",
-            "home [name]",
-            "revive [name]",
-            "speed <multiplier> [name]",
-            "dismount [name]",
-            "wake [name]",
-            "givegil <qty> [name]",
-            "giveexp <qty> <class_id> [name]",
-            "sethome <aetheryte_id> [name]",
-            "joingc <gc> [name]",
-            "setgcrank <gc> <rank> [name]",
-            "addgcseals <gc> <amount> [name]",
-            "accruerest <minutes> [name]",
-            "issuechocobo <appearance> <chocobo_name> [name]",
-            "rentchocobo <minutes> [name]",
-            "hireretainer <retainer_id> [name]",
-            "dismissretainer <retainer_id> [name]",
-            "listretainers [name]",
-            "setsleeping [name]",
-            "dream <id> [name]",
-            "die [name]",
-            "setgm <level 0-4> <name>",
-            "reload",
-            "talkto <actor_class_id> [name]",
-            "pushtrigger <actor_class_id> [name]",
-            "setseq <quest_id> <sequence> [name]",
-        ];
         let perms = crate::command_permissions::get();
-        let mine: Vec<&str> = ALL
+        let mine: Vec<&str> = COMMAND_SYNTAX
             .iter()
             .filter(|c| {
                 let name = c.split_whitespace().next().unwrap_or("");
                 (final_days || !world_end::COMMANDS.contains(&name))
                     && (name != "bug" || crate::modules::is_enabled(common::bug_reports::MODULE))
+                    && (!matches!(name, "monstermode" | "mp")
+                        || crate::runtime::monster_mode::enabled())
                     && level.is_none_or(|l| l >= perms.required(name))
             })
             .copied()
@@ -327,6 +381,122 @@ impl CommandProcessor {
             }
             TargetLookup::Err(e) => e,
         }
+    }
+
+    /// `resetrecast <name>` — make every item ready to use again for a
+    /// player (item recast groups), for testing items back to back.
+    async fn handle_resetrecast(&self, args: &Args<'_>) -> String {
+        let Some(name) = args.rest_joined(0) else {
+            return "usage: resetrecast <name>".into();
+        };
+        match self.resolve_live_target(&name).await {
+            TargetLookup::Ok { actor_id, .. } => {
+                crate::processor::items::reset_recasts(actor_id);
+                format!("item recasts reset for {name}")
+            }
+            TargetLookup::Err(e) => e,
+        }
+    }
+
+    /// `settp <tp> [name]` — set a player's TP (0-3000) and refresh their
+    /// gauge, so weaponskills can be tried without fighting for TP first.
+    async fn handle_settp(&self, args: &Args<'_>) -> String {
+        let usage = "usage: settp <tp 0-3000> <name>";
+        let Some(tp) = args.rest().first().and_then(|t| t.parse::<u16>().ok()) else {
+            return usage.into();
+        };
+        let tp = tp.min(3000);
+        let Some(name) = args.rest_joined(1) else {
+            return usage.into();
+        };
+        match self.resolve_live_target(&name).await {
+            TargetLookup::Ok { actor_id, .. } => {
+                crate::runtime::dispatcher::apply_set_tp(actor_id, tp, &self.registry, &self.world)
+                    .await;
+                format!("set {name}'s TP to {tp}")
+            }
+            TargetLookup::Err(e) => e,
+        }
+    }
+
+    /// `usemove <command id>` — your targeted monster uses that move once
+    /// on its next combat tick, whatever its TP (for checking moves one by
+    /// one in the client).
+    async fn handle_usemove(&self, args: &Args<'_>) -> String {
+        let usage = "usage: usemove <command id> (your target, else the nearest monster)";
+        let Some(id) = args.rest().first().and_then(|t| t.parse::<u16>().ok()) else {
+            return usage.into();
+        };
+        let me = match self.invoker_id(args).await {
+            Ok(id) => id,
+            Err(e) => return e,
+        };
+        let target = match self.my_target(me).await {
+            Ok(t) => t,
+            Err(_) => match self.nearest_monster(me).await {
+                Some(t) => t,
+                None => {
+                    return format!(
+                        "no monster targeted or within {USEMOVE_RANGE} yalms ({usage})"
+                    );
+                }
+            },
+        };
+        let cmd = {
+            let Ok(cmds) = self.lua.catalogs().battle_commands.read() else {
+                return "the command catalog is busy, try again".into();
+            };
+            match cmds.get(&id) {
+                Some(gd) => gd.to_battle_command(),
+                None => return format!("no battle command {id}"),
+            }
+        };
+        let name = cmd.name.clone();
+        let label = self.actor_label(target).await;
+        let Some(handle) = self.registry.get(target).await else {
+            return "that actor is gone".into();
+        };
+        let mut c = handle.character.write().await;
+        let Some(ctrl) = c.ai_container.controller.as_mut() else {
+            return "your target has no battle AI".into();
+        };
+        ctrl.battle.forced_skill = Some(cmd);
+        // An idle monster only acts once it has a foe: point it at the GM.
+        if !c.hate.has_hate_for(me) {
+            c.hate.add_base_hate(me);
+        }
+        format!("{label} will use {name} ({id}) next")
+    }
+
+    /// The nearest living monster (not an ally) within [`USEMOVE_RANGE`] of `me`.
+    async fn nearest_monster(&self, me: u32) -> Option<u32> {
+        let handle = self.registry.get(me).await?;
+        let pos = handle.character.read().await.base.position();
+        let zone_arc = self.world.zone(handle.zone_id).await?;
+        let mut near: Vec<(f32, u32)> = {
+            let zone = zone_arc.read().await;
+            zone.core
+                .actors_around(me, USEMOVE_RANGE)
+                .into_iter()
+                .filter(|a| a.is_alive && a.kind == crate::zone::area::ActorKind::BattleNpc)
+                .map(|a| {
+                    let (dx, dz) = (a.position.x - pos.x, a.position.z - pos.z);
+                    (dx * dx + dz * dz, a.actor_id)
+                })
+                .collect()
+        };
+        near.sort_by(|a, b| a.0.total_cmp(&b.0));
+        for (_, id) in near {
+            let ally = self
+                .registry
+                .get(id)
+                .await
+                .is_some_and(|h| h.kind == crate::runtime::actor_registry::ActorKindTag::Ally);
+            if !ally {
+                return Some(id);
+            }
+        }
+        None
     }
 
     /// `home <name>` — server-driven home-point revive. Restores HP/MP
@@ -447,9 +617,113 @@ impl CommandProcessor {
         let Some(chara_id) = self.lookup_character_id(&name).await else {
             return format!("unknown character: {name}");
         };
+        // Online: through the AddGil applier, which updates the client's
+        // gil too (the database alone left the old amount on screen).
+        if self.registry.get(chara_id).await.is_some() {
+            crate::runtime::quest_apply::apply_add_gil(
+                chara_id,
+                qty,
+                &self.registry,
+                Some(&self.world),
+                &self.db,
+            )
+            .await;
+            return match self.db.get_gil(chara_id).await {
+                Ok(total) => format!("gave {qty} gil to {name} (total now {total})"),
+                Err(e) => format!("givegil failed: {e}"),
+            };
+        }
         match self.db.add_gil(chara_id, qty).await {
             Ok(total) => format!("gave {qty} gil to {name} (total now {total})"),
             Err(e) => format!("givegil failed: {e}"),
+        }
+    }
+
+    /// `gmhelp [word]`: every command the invoker may use with how to type
+    /// it, one per line in their chat log, grouped by the GM level each
+    /// needs. A word shows only the commands it's part of. (One chat line
+    /// holds 512 bytes, too few for `help`'s list with all the syntax.)
+    async fn handle_gmhelp(&self, args: &Args<'_>, level: Option<u8>) -> String {
+        let perms = crate::command_permissions::get();
+        let word = args.tokens.first().map(|w| w.to_ascii_lowercase());
+        let mut mine: Vec<(u8, &str)> = COMMAND_SYNTAX
+            .iter()
+            .filter_map(|c| {
+                let name = c.split_whitespace().next().unwrap_or("");
+                let needed = perms.required(name);
+                let shown = (self.final_days || !world_end::COMMANDS.contains(&name))
+                    && (name != "bug" || crate::modules::is_enabled(common::bug_reports::MODULE))
+                    && (!matches!(name, "monstermode" | "mp")
+                        || crate::runtime::monster_mode::enabled())
+                    && level.is_none_or(|l| l >= needed)
+                    && word
+                        .as_ref()
+                        .is_none_or(|w| c.to_ascii_lowercase().contains(w.as_str()));
+                shown.then_some((needed, *c))
+            })
+            .collect();
+        mine.sort_by_key(|(needed, _)| *needed);
+        if mine.is_empty() {
+            return match word {
+                Some(w) => format!("no command of yours has \"{w}\" in it"),
+                None => "no commands".into(),
+            };
+        }
+        let mut lines = Vec::new();
+        let mut group = None;
+        for (needed, syntax) in &mine {
+            if group != Some(*needed) {
+                group = Some(*needed);
+                lines.push(format!(
+                    "-- {} ({needed}) --",
+                    crate::command_permissions::level_name(*needed)
+                ));
+            }
+            lines.push(format!("!{syntax}"));
+        }
+        let me = match args.invoker {
+            Some(name) => self.lookup_character_id(name).await,
+            None => None,
+        };
+        match me {
+            Some(actor_id) if self.registry.get(actor_id).await.is_some() => {
+                for line in lines {
+                    self.tell_player(actor_id, line).await;
+                }
+                format!(
+                    "{} commands. [name] is optional: without it a command is for you (or your target, where it says so). !gmhelp <word> narrows the list.",
+                    mine.len()
+                )
+            }
+            _ => lines.join("\n"),
+        }
+    }
+
+    /// `finditem <part of a name>`: item ids by name, lowest level first.
+    async fn handle_finditem(&self, args: &Args<'_>) -> String {
+        let text = args.tokens.join(" ");
+        if text.trim().len() < 3 {
+            return "usage: finditem <at least 3 letters of an item name>".into();
+        }
+        match self.db.find_items_by_name(&text, 10).await {
+            Ok(found) if found.is_empty() => format!("no item called *{text}*"),
+            Ok(found) => {
+                let list: Vec<String> = found
+                    .iter()
+                    .map(|(id, name, lv)| format!("{id} {name} (lv {lv})"))
+                    .collect();
+                let mut out = list.join(", ");
+                if out.len() > 480 {
+                    let mut cut = 480;
+                    while !out.is_char_boundary(cut) {
+                        cut -= 1;
+                    }
+                    out.truncate(cut);
+                    out.push_str(" ...");
+                }
+                out
+            }
+            Err(e) => format!("finditem failed: {e}"),
         }
     }
 
@@ -468,9 +742,32 @@ impl CommandProcessor {
         let Some(chara_id) = self.lookup_character_id(&name).await else {
             return format!("unknown character: {name}");
         };
-        // Read current exp + delta, then persist. The per-class column
-        // is derived inside `Database::set_exp`; we don't expose the
-        // column mapping here.
+        // Online: go through the shared AddExp applier so the exp rolls
+        // over into levels (and the client sees the level up), the same
+        // path quest rewards and kills use. Writing the DB total alone
+        // left the live character at its old level.
+        if let Some(handle) = self.registry.by_session(chara_id).await {
+            crate::runtime::quest_apply::apply_add_exp(
+                handle.actor_id,
+                class_id,
+                qty,
+                &self.registry,
+                &self.db,
+                Some(&self.world),
+                Some(&self.lua),
+            )
+            .await;
+            let c = handle.character.read().await;
+            let slot = class_id as usize;
+            let level = c.battle_save.skill_level.get(slot).copied().unwrap_or(0);
+            let exp = c.battle_save.skill_point.get(slot).copied().unwrap_or(0);
+            return format!(
+                "gave {qty} exp to {name} (class {class_id}; level {level}, exp {exp})"
+            );
+        }
+        // Offline: read current exp + delta, then persist. The per-class
+        // column is derived inside `Database::set_exp`; we don't expose
+        // the column mapping here.
         let current = self
             .db
             .load_class_levels_and_exp(chara_id)
@@ -827,9 +1124,7 @@ impl CommandProcessor {
             explicit_zone,
             private_area,
             private_area_type,
-            x,
-            y,
-            z,
+            (x, y, z),
         )
         .await
     }
@@ -857,9 +1152,7 @@ impl CommandProcessor {
         explicit_zone: Option<u32>,
         private_area: Option<String>,
         private_area_type: u32,
-        x: f32,
-        y: f32,
-        z: f32,
+        (x, y, z): (f32, f32, f32),
     ) -> String {
         let Some(chara_id) = self.lookup_character_id(name).await else {
             return format!("unknown character: {name}");
@@ -882,6 +1175,13 @@ impl CommandProcessor {
         let Some(handle) = self.registry.get(chara_id).await else {
             return format!("{name} is not online");
         };
+        if let Some(z) = explicit_zone
+            && self.world.zone(z).await.is_none()
+        {
+            return format!(
+                "zone {z} is not loaded on this map server (no map name in server_zones), so there is nothing to warp to"
+            );
+        }
         // Persist destination + base position on CharaState so the
         // next zone-in bundle reads them.
         let rotation;
@@ -899,6 +1199,14 @@ impl CommandProcessor {
             c.base.position_y = y;
             c.base.position_z = z;
         }
+        // A quick warp keeps the player where the client has them loaded:
+        // only for the same zone *and* the same private area (or none).
+        // Into or out of an area is a zone change, even within one zone id.
+        let wanted_area = private_area.clone().filter(|n| !n.is_empty());
+        let same_area = match self.world.session(session_id).await {
+            Some(s) => s.current_private_area_name.filter(|n| !n.is_empty()) == wanted_area,
+            None => wanted_area.is_none(),
+        };
         if let Some(mut session) = self.world.session(session_id).await {
             session.destination_zone_id = zone_id;
             session.destination_x = x;
@@ -913,7 +1221,7 @@ impl CommandProcessor {
         // as Kodama's `!pos` sends it. Meteor's `DoPlayerMoveInZone` sent a
         // 0xE2 (0x10) signal first, then type 0x00 with id 0xFFFFFFFF: the
         // scene reloaded and the camera looked at the ceiling for ~5 s.
-        if current_zone_id == zone_id {
+        if current_zone_id == zone_id && same_area {
             if let Some(client) = self.world.client(session_id).await {
                 // The world-server relay drops subpackets whose target_id
                 // is 0 (`world-server/src/server.rs`, zone-reply fan-out),
@@ -1028,7 +1336,9 @@ impl CommandProcessor {
             };
             return match self.db.zone_landing(zone_id).await {
                 Ok(Some((x, y, z))) => {
-                    let r = self.teleport(&name, Some(zone_id), None, 0, x, y, z).await;
+                    let r = self
+                        .teleport(&name, Some(zone_id), None, 0, (x, y, z))
+                        .await;
                     if r.starts_with("warped") {
                         format!("{name} → {place} (zone {zone_id})")
                     } else {
@@ -1089,7 +1399,7 @@ impl CommandProcessor {
             };
             let (a, camp) = hits[0];
             let r = self
-                .teleport(&name, Some(a.zone_id), None, 0, a.x, a.y, a.z)
+                .teleport(&name, Some(a.zone_id), None, 0, (a.x, a.y, a.z))
                 .await;
             return if r.starts_with("warped") {
                 format!("{name} → {camp}")
@@ -1826,17 +2136,10 @@ impl<'a> Args<'a> {
 mod tests {
     use super::*;
     use common::db::ConnCallExt;
-    use rusqlite::named_params;
+    use common::sql::named_params;
 
-    fn tempdb() -> std::path::PathBuf {
-        use std::sync::atomic::{AtomicU64, Ordering};
-        static SEQ: AtomicU64 = AtomicU64::new(0);
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-        common::test_tmp::dir().join(format!("garlemald-cmd-{nanos}-{seq}.db"))
+    fn tempdb() -> String {
+        common::test_db::fresh_blocking()
     }
 
     async fn fixture() -> (CommandProcessor, Arc<Database>) {
@@ -1923,6 +2226,27 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn settp_checks_its_arguments() {
+        let (cmd, _db) = fixture().await;
+        assert_eq!(
+            cmd.run("settp").await.unwrap(),
+            "usage: settp <tp 0-3000> <name>"
+        );
+        assert_eq!(
+            cmd.run("settp lots Somebody").await.unwrap(),
+            "usage: settp <tp 0-3000> <name>"
+        );
+        assert_eq!(
+            cmd.run("settp 3000").await.unwrap(),
+            "usage: settp <tp 0-3000> <name>"
+        );
+        assert_eq!(
+            cmd.run("settp 3000 Nobody").await.unwrap(),
+            "unknown character: Nobody"
+        );
+    }
+
+    #[tokio::test]
     async fn revive_unknown_name_reports_unknown() {
         let (cmd, _db) = fixture().await;
         let out = cmd.run("revive Nobody").await.unwrap();
@@ -1988,6 +2312,39 @@ mod tests {
         // Console path (no invoker) keeps <name> mandatory.
         let args = Args::new(vec!["100"], None);
         assert_eq!(args.rest_joined(1), None);
+    }
+
+    #[tokio::test]
+    async fn giveexp_levels_up_an_online_character() {
+        use crate::runtime::actor_registry::{ActorHandle, ActorKindTag};
+        let (cmd, db) = fixture().await;
+        db.conn_for_test()
+            .call_db(|c| {
+                c.execute(
+                    r"INSERT INTO characters (id, userId, slot, serverId, name)
+                      VALUES (44, 0, 0, 0, 'Level Seeker')",
+                    [],
+                )?;
+                Ok(())
+            })
+            .await
+            .unwrap();
+        let mut character = crate::actor::Character::new(44);
+        character.battle_save.skill_level[29] = 7;
+        character.chara.class = 29;
+        let handle = ActorHandle::new(44, ActorKindTag::Player, 100, 44, character);
+        cmd.registry.insert(handle.clone()).await;
+
+        // Exactly enough for level 7 -> 15.
+        let need: i32 = crate::battle::save::LEVEL_THRESHOLDS[6..14].iter().sum();
+        let out = cmd
+            .run(&format!("giveexp {need} 29 Level Seeker"))
+            .await
+            .unwrap();
+        assert!(out.contains("level 15, exp 0"), "got {out}");
+        let c = handle.character.read().await;
+        assert_eq!(c.battle_save.skill_level[29], 15);
+        assert_eq!(c.chara.level, 15, "active class level follows");
     }
 
     #[tokio::test]
@@ -2074,6 +2431,35 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(out, "Warp Target is not online");
+    }
+
+    #[tokio::test]
+    async fn warp_to_an_unloaded_zone_is_refused() {
+        use crate::runtime::actor_registry::{ActorHandle, ActorKindTag};
+        let (cmd, db) = fixture().await;
+        db.conn_for_test()
+            .call_db(|c| {
+                c.execute(
+                    r"INSERT INTO characters (id, userId, slot, serverId, name)
+                      VALUES (46, 0, 0, 0, 'Lost Traveler')",
+                    [],
+                )?;
+                Ok(())
+            })
+            .await
+            .unwrap();
+        let mut character = crate::actor::Character::new(46);
+        character.base.zone_id = 155;
+        character.base.position_y = 4.0;
+        let handle = ActorHandle::new(46, ActorKindTag::Player, 100, 46, character);
+        cmd.registry.insert(handle.clone()).await;
+
+        // 138 (La Noscea) is a server_zones row with no map name: never loaded.
+        let out = cmd.run("warp 138 0 0 0 Lost Traveler").await.unwrap();
+        assert!(out.starts_with("zone 138 is not loaded"), "got {out}");
+        let c = handle.character.read().await;
+        assert_eq!(c.base.zone_id, 155, "the player stays where they were");
+        assert_eq!(c.base.position_y, 4.0);
     }
 
     #[tokio::test]

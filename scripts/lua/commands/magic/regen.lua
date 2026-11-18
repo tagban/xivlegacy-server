@@ -26,8 +26,11 @@ function onSkillFinish(caster, target, skill, action, actionContainer)
     end
 
     local regenTick = (slope * caster.GetMod(modifiersGlobal.EnhancementMagicPotency)) + intercept + 1;
+    --The guide's numbers are for endgame gear. Without that much potency the
+    --line goes below 0 and Regen healed nothing; keep a level-scaled floor.
+    regenTick = math.max(regenTick, 1 + math.floor(caster.GetLevel() / 5));
 
-    spell.statusMagnitude = regenTick;
+    skill.statusMagnitude = regenTick;
 
     --DoAction handles rates, buffs, dealing damage
     action.DoAction(caster, target, skill, actionContainer);

@@ -99,7 +99,7 @@ function onTalk(player, quest, npc)
 	elseif (sequence == SEQ_020 and classId == FULKE) then
 		callClientFunction(player, "delegateEvent", player, quest, "processEventClear");
 		player:GetItemPackage(INVENTORY_KEYITEMS):RemoveItem(MAGITEK_DESIGNS, 1);
-		callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1, 2);
+		callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1, 5);
 		player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
 		player:AddSeals(COMPANY, REWARD_SEALS);
 		player:EndEvent();

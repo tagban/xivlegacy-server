@@ -12,6 +12,9 @@ Prereq: Level 5, Any Class
 
 ]]
 
+-- Rewards (the client's reward table; EXP from its row, or the level-band estimate)
+REWARD_EXP			= 200;
+
 -- Sequence Numbers
 SEQ_000	= 0;  -- Talk to all the citizens.
 SEQ_001	= 1;  -- Return to Ginnade.
@@ -146,7 +149,9 @@ function onTalk(player, quest, npc, eventName)
 		--Quest Complete
 		if (npcClassId == GINNADE) then
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent060");
-			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 200, 1, 1, 9);
+			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
+			player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
+			player:GetItemPackage(INVENTORY_NORMAL):AddItem(8011515, 1, 1); -- Dodoskin Pot Helm
             player:CompleteQuest(quest);
 		end
 	end

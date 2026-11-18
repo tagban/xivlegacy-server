@@ -39,6 +39,7 @@ use super::outbox::{BattleEvent, BattleOutbox};
 use super::path_find::PathFind;
 use super::state::{BattleState, BattleStateKind, MAX_STATE_STACK, StateTickResult};
 use super::target_find::ActorArena;
+use crate::status::StatusEffectFlags;
 
 /// One tick's worth of movement intent, produced by `apply_decision` from
 /// the controller's `MoveTo` / `FaceTarget` decisions and consumed by the
@@ -104,6 +105,9 @@ impl ActionQueue {
 // AIContainer
 // ---------------------------------------------------------------------------
 
+/// Close enough (yalms) to the spawn point to stop walking home.
+const HOME_ARRIVED: f32 = 0.1;
+
 #[derive(Debug, Clone, Default)]
 pub struct AIContainer {
     pub owner_actor_id: u32,
@@ -116,6 +120,9 @@ pub struct AIContainer {
     /// Steps taken since the current pursuit started — drives the
     /// ticker's every-3rd-step 0x00CF throttle.
     pub movement_step_count: u32,
+    /// A monster that left combat walks back to its spawn point; it
+    /// ignores players until it gets there.
+    pub home: Option<Vector3>,
 
     states: Vec<BattleState>,
     last_action_time_ms: u64,
@@ -136,6 +143,7 @@ impl AIContainer {
             action_queue: ActionQueue::new(),
             pending_movement: None,
             movement_step_count: 0,
+            home: None,
             states: Vec::new(),
             last_action_time_ms: 0,
             latest_update_ms: 0,
@@ -247,6 +255,12 @@ impl AIContainer {
     /// `ClearStates()` — pop everything.
     pub fn clear_states(&mut self) {
         self.states.clear();
+    }
+
+    /// Stop auto-attacking: drop the Attack states and leave a cast,
+    /// ability or weaponskill in progress to finish.
+    pub fn stop_attacking(&mut self) {
+        self.states.retain(|s| s.kind != BattleStateKind::Attack);
     }
 
     pub fn reset(&mut self) {
@@ -375,6 +389,19 @@ impl AIContainer {
             // actor and calls `follow_path` directly when needed.
         }
 
+        // Walking home after a fight: no aggro, no controller, just the
+        // next step toward the spawn point.
+        if let Some(home) = self.home {
+            let pos = owner_view.actor.position;
+            let (dx, dz) = (home.x - pos.x, home.z - pos.z);
+            if self.is_engaged() || dx * dx + dz * dz <= HOME_ARRIVED * HOME_ARRIVED {
+                self.home = None;
+            } else {
+                self.pending_movement = Some(MovementStep::MoveTo { destination: home });
+                return;
+            }
+        }
+
         // Run the controller, then apply its decision. We pull the decision out
         // of the `&mut self.controller` borrow before calling `apply_decision`
         // (which needs `&mut self` to push an AttackState on Engage).
@@ -386,7 +413,13 @@ impl AIContainer {
             None
         };
         if let Some(decision) = controller_decision {
-            self.apply_decision(decision, now_ms, owner_view.attack_delay_ms, outbox);
+            self.apply_decision(
+                decision,
+                now_ms,
+                owner_view.attack_delay_ms,
+                owner_view.spawn_position,
+                outbox,
+            );
         }
 
         // Process the state stack. Auto-attack swings (Attack state, ready)
@@ -409,7 +442,22 @@ impl AIContainer {
         while let Some(top) = self.states.last_mut() {
             let kind = top.kind;
             let target_actor_id = top.target_actor_id;
-            let tick_result = top.update(now_ms);
+            // pmeteor `MagicState/AbilityState/WeaponSkillState.TryInterrupt`:
+            // Silence, Stun, Sleep or Pacification landing mid-command
+            // stops it.
+            let prevent = match kind {
+                BattleStateKind::Magic => StatusEffectFlags::PREVENT_SPELL,
+                BattleStateKind::Ability => StatusEffectFlags::PREVENT_ABILITY,
+                BattleStateKind::WeaponSkill => StatusEffectFlags::PREVENT_WEAPON_SKILL,
+                _ => StatusEffectFlags::NONE,
+            };
+            let tick_result = if prevent != StatusEffectFlags::NONE
+                && StatusEffectFlags::from(owner_view.status_flags).intersects(prevent)
+            {
+                StateTickResult::Interrupted
+            } else {
+                top.update(now_ms)
+            };
             match tick_result {
                 StateTickResult::Continue => {
                     if kind == BattleStateKind::Attack && top.is_attack_ready(now_ms) {
@@ -422,7 +470,10 @@ impl AIContainer {
                         });
                         let in_range =
                             distance_sq.is_some_and(|d2| d2 <= attack_range * attack_range);
-                        if target_actor_id != 0 && auto_attack_enabled && in_range {
+                        if owner_view.has_prevent_attack {
+                            // Asleep, stunned or petrified: the swing
+                            // window passes without an attack.
+                        } else if target_actor_id != 0 && auto_attack_enabled && in_range {
                             outbox.push(BattleEvent::ResolveAutoAttack {
                                 attacker_actor_id: owner_id,
                                 defender_actor_id: target_actor_id,
@@ -514,6 +565,7 @@ impl AIContainer {
         decision: ControllerDecision,
         now_ms: u64,
         attack_delay_ms: u32,
+        spawn_position: Option<Vector3>,
         outbox: &mut BattleOutbox,
     ) {
         let owner_id = self.owner_actor_id;
@@ -530,9 +582,13 @@ impl AIContainer {
                 });
             }
             ControllerDecision::Disengage => {
-                outbox.push(BattleEvent::Disengage {
-                    owner_actor_id: owner_id,
-                });
+                // Leave combat for good: drop the attack state (else the
+                // controller stays in its combat branch and disengages
+                // again every tick), then walk back to the spawn point.
+                self.internal_disengage(outbox);
+                if let Some(spawn) = spawn_position {
+                    self.home = Some(spawn);
+                }
             }
             ControllerDecision::MoveTo { position } => {
                 // Handed to the ticker (#28 S2.2) — it steps the actor
@@ -575,6 +631,60 @@ impl AIContainer {
                         command_id: cmd_id,
                         cast_time_ms: cast_ms,
                         cast_type,
+                    });
+                }
+            }
+            ControllerDecision::UseSkill {
+                target_actor_id,
+                skill_index,
+            } => {
+                // A cast or move already in flight wins; the controller
+                // tries again after its gap.
+                if self.is_current(BattleStateKind::Magic)
+                    || self.is_current(BattleStateKind::WeaponSkill)
+                    || self.is_current(BattleStateKind::Ability)
+                {
+                    return;
+                }
+                let Some(cmd) = self
+                    .controller
+                    .as_ref()
+                    .and_then(|c| c.battle.skills.get(skill_index).cloned())
+                else {
+                    return;
+                };
+                // A `usemove` queued move is used now: clear it, and take it
+                // back off the list if it only went on to be used.
+                if let Some(ctrl) = self.controller.as_mut()
+                    && ctrl
+                        .battle
+                        .forced_skill
+                        .as_ref()
+                        .is_some_and(|f| f.id == cmd.id)
+                {
+                    ctrl.battle.forced_skill = None;
+                    if std::mem::take(&mut ctrl.battle.forced_added)
+                        && ctrl
+                            .battle
+                            .skills
+                            .get(skill_index)
+                            .is_some_and(|s| s.id == cmd.id)
+                    {
+                        ctrl.battle.skills.remove(skill_index);
+                    }
+                }
+                tracing::debug!(
+                    owner = format!("0x{owner_id:08X}"),
+                    target = format!("0x{target_actor_id:08X}"),
+                    command = cmd.id,
+                    "battle: monster readies a TP move",
+                );
+                let command_id = cmd.id;
+                if self.internal_weapon_skill(target_actor_id, cmd, now_ms) {
+                    outbox.push(BattleEvent::SkillReady {
+                        owner_actor_id: owner_id,
+                        target_actor_id,
+                        command_id,
                     });
                 }
             }
@@ -650,14 +760,18 @@ mod tests {
             most_hated_actor_id: None,
             current_target_actor_id: None,
             has_prevent_movement: false,
+            has_prevent_attack: false,
+            status_flags: 0,
             max_hp: 1000,
             current_hp: 1000,
             target_hpp: None,
             target_has_stealth: false,
             is_close_to_spawn: true,
+            spawn_position: None,
             target_is_locked: false,
             attack_delay_ms: 2500,
             attack_range: 3.0,
+            tp: 0,
         }
     }
 
@@ -702,6 +816,39 @@ mod tests {
         let mut ob = BattleOutbox::new();
         ai.update(1500, owner_view(), &arena, &mut ob);
         assert!(ai.state_stack().is_empty());
+    }
+
+    /// Silence landing mid-cast stops the spell (pmeteor
+    /// `MagicState.TryInterrupt`); a weaponskill under Silence goes on.
+    #[test]
+    fn silence_interrupts_a_cast_in_progress() {
+        let mut ai = AIContainer::new(1, None, None);
+        let mut cmd = BattleCommand::new(100, "stone");
+        cmd.cast_time_ms = 3000;
+        ai.internal_cast(2, cmd, 0);
+        let arena: HashMap<u32, ActorView> = HashMap::new();
+        let mut view = owner_view();
+        view.status_flags = StatusEffectFlags::PREVENT_SPELL.bits();
+        let mut ob = BattleOutbox::new();
+        ai.update(500, view, &arena, &mut ob);
+        assert!(ai.state_stack().is_empty());
+        assert!(
+            ob.events
+                .iter()
+                .any(|e| matches!(e, BattleEvent::CastInterrupted { .. }))
+        );
+        assert!(
+            !ob.events
+                .iter()
+                .any(|e| matches!(e, BattleEvent::ResolveAction { .. }))
+        );
+
+        let mut ws = BattleCommand::new(101, "fast_blade");
+        ws.cast_time_ms = 1000;
+        ai.internal_weapon_skill(2, ws, 0);
+        let mut ob = BattleOutbox::new();
+        ai.update(500, view, &arena, &mut ob);
+        assert_eq!(ai.state_stack().len(), 1, "Silence leaves weaponskills be");
     }
 
     #[test]
@@ -831,6 +978,41 @@ mod tests {
         );
     }
 
+    /// Asleep, stunned or petrified (PREVENT_ATTACK + PREVENT_MOVEMENT):
+    /// point-blank and engaged, the monster neither swings nor moves.
+    #[test]
+    fn incapacitated_owner_never_swings_or_moves() {
+        use crate::battle::controller::BattleNpcController;
+        let mut ai = AIContainer::new(1, Some(BattleNpcController::new_for(1)), None);
+        ai.internal_engage(2, 0, 2000);
+        let arena: HashMap<u32, ActorView> =
+            [(1, arena_view(1, 0.0, 2)), (2, arena_view(2, 1.0, 1))]
+                .into_iter()
+                .collect();
+        let mut view = engaged_owner_view(2);
+        view.has_prevent_attack = true;
+        view.has_prevent_movement = true;
+        let mut ob = BattleOutbox::new();
+        for now in [2_000u64, 4_500, 7_000] {
+            ai.update(now, view, &arena, &mut ob);
+        }
+        assert!(
+            !ob.events
+                .iter()
+                .any(|e| matches!(e, BattleEvent::ResolveAutoAttack { .. })),
+            "a sleeping monster must not swing",
+        );
+        // Awake again: the next window swings.
+        let mut ob2 = BattleOutbox::new();
+        ai.update(9_500, engaged_owner_view(2), &arena, &mut ob2);
+        assert!(
+            ob2.events
+                .iter()
+                .any(|e| matches!(e, BattleEvent::ResolveAutoAttack { .. })),
+            "the swing resumes once the status is gone",
+        );
+    }
+
     /// #28 S2.3 — `auto_attack_enabled = false` (the Papalymo shape)
     /// never swings, even point-blank.
     #[test]
@@ -940,6 +1122,69 @@ mod tests {
             "chant teardown ahead of damage, no re-cast inside the recast window",
         );
         assert!(!ai.is_current(BattleStateKind::Magic));
+    }
+
+    /// A `usemove` queued while the monster is mid-move waits for that
+    /// move instead of being dropped (client: the Myrmidon Princess kept
+    /// using her own moves and every queued one was lost).
+    #[test]
+    fn forced_move_waits_for_a_move_in_flight() {
+        use crate::battle::controller::BattleNpcController;
+        use crate::battle::target_find::ValidTarget as V;
+        let mut ai = AIContainer::new(1, Some(BattleNpcController::new_for(1)), None);
+        ai.internal_engage(2, 0, 2000);
+        assert!(ai.internal_weapon_skill(2, BattleCommand::new(23229, "own"), 100));
+        let mut forced = BattleCommand::new(23226, "forced");
+        forced.main_target = V(768);
+        forced.valid_target = V(17152);
+        forced.range = 10.0;
+        ai.controller.as_mut().unwrap().battle.forced_skill = Some(forced);
+        let arena: HashMap<u32, ActorView> =
+            [(1, arena_view(1, 0.0, 2)), (2, arena_view(2, 2.0, 1))]
+                .into_iter()
+                .collect();
+        let readied = |ob: &BattleOutbox| {
+            ob.events.iter().any(|e| {
+                matches!(
+                    e,
+                    BattleEvent::SkillReady {
+                        command_id: 23226,
+                        ..
+                    }
+                )
+            })
+        };
+
+        let mut ob = BattleOutbox::new();
+        ai.update(150, engaged_owner_view(2), &arena, &mut ob);
+        assert!(!readied(&ob), "the move in flight wins: {:?}", ob.events);
+        assert!(
+            ai.controller
+                .as_ref()
+                .unwrap()
+                .battle
+                .forced_skill
+                .is_some(),
+            "still queued"
+        );
+
+        // Once the own move is done, the queued one readies and clears.
+        let mut seen = false;
+        for t in (1_000..20_000).step_by(500) {
+            let mut ob = BattleOutbox::new();
+            ai.update(t, engaged_owner_view(2), &arena, &mut ob);
+            if readied(&ob) {
+                seen = true;
+                break;
+            }
+        }
+        assert!(seen, "queued move never readied");
+        let battle = &ai.controller.as_ref().unwrap().battle;
+        assert!(battle.forced_skill.is_none());
+        assert!(
+            !battle.skills.iter().any(|s| s.id == 23226),
+            "a forced move the monster didn't have is used once, not kept"
+        );
     }
 
     /// #28 S2.2 — MoveTo/FaceTarget decisions land on `pending_movement`

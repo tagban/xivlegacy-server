@@ -27,7 +27,7 @@ use std::sync::{Arc, RwLock};
 
 use crate::crafting::{PassiveGuildleveData, RecipeResolver};
 use crate::data::ItemData;
-use crate::gamedata::{BattleCommand, GuildleveGamedata, QuestMeta, StatusEffectDef};
+use crate::gamedata::{BattleCommand, BattleTrait, GuildleveGamedata, QuestMeta, StatusEffectDef};
 use crate::gathering::GatherResolver;
 use crate::leve::RegionalLeveResolver;
 use crate::world_manager::GatherNodeMetadata;
@@ -38,6 +38,8 @@ pub struct Catalogs {
     pub guildleves: RwLock<HashMap<u32, GuildleveGamedata>>,
     pub status_effects: RwLock<HashMap<u32, StatusEffectDef>>,
     pub battle_commands: RwLock<HashMap<u16, BattleCommand>>,
+    /// `server_battle_traits`: what each class or job gains by level.
+    pub battle_traits: RwLock<HashMap<u16, BattleTrait>>,
     /// Side-index of `battle_commands` grouped by `(class_id, level)`.
     /// Lets the level-up path look up "which abilities unlock on the
     /// transition 1→2 for Gladiator?" in constant time. Populated
@@ -73,6 +75,12 @@ pub struct Catalogs {
     /// installs the same rows the world manager loads from
     /// `server_gather_node_spawns`.
     pub gather_node_metadata: RwLock<HashMap<(u32, String), GatherNodeMetadata>>,
+    /// `scripts/lua`, for code that runs one script on its own (status
+    /// effect `onGain`, `status/script.rs`) without a full LuaEngine.
+    pub script_root: RwLock<std::path::PathBuf>,
+    /// `server_battlenpc_skill_list`: monster move and spell lists by
+    /// list id, each entry with the level a monster needs to use it.
+    pub monster_skill_lists: RwLock<HashMap<u32, Vec<crate::database::MonsterSkill>>>,
 }
 
 impl Catalogs {
@@ -96,6 +104,40 @@ impl Catalogs {
         if let Ok(mut w) = self.status_effects.write() {
             *w = effects;
         }
+    }
+
+    pub fn install_battle_traits(&self, traits: HashMap<u16, BattleTrait>) {
+        if let Ok(mut w) = self.battle_traits.write() {
+            *w = traits;
+        }
+    }
+
+    pub fn install_monster_skill_lists(
+        &self,
+        lists: HashMap<u32, Vec<crate::database::MonsterSkill>>,
+    ) {
+        if let Ok(mut w) = self.monster_skill_lists.write() {
+            *w = lists;
+        }
+    }
+
+    /// The battle commands of list `list_id` that a level-`level`
+    /// monster may use, in list order. Empty for list 0, an unknown
+    /// list, or ids missing from the command catalog.
+    pub fn monster_commands(&self, list_id: u32, level: i16) -> Vec<crate::battle::BattleCommand> {
+        if list_id == 0 {
+            return Vec::new();
+        }
+        let (Ok(lists), Ok(cmds)) = (self.monster_skill_lists.read(), self.battle_commands.read())
+        else {
+            return Vec::new();
+        };
+        let Some(list) = lists.get(&list_id) else {
+            return Vec::new();
+        };
+        crate::database::usable_monster_skills(list, level)
+            .filter_map(|id| cmds.get(&id).map(|gd| gd.to_battle_command()))
+            .collect()
     }
 
     pub fn install_battle_commands(&self, commands: HashMap<u16, BattleCommand>) {

@@ -13,8 +13,10 @@ Directors are the client's own for each dungeon (director/instanceraid and
 director/occupancy in the client scripts). Entry points are inside each
 dungeon by its first door or barrier; exits put you at the nearest camp's
 aetherial gate. Retail queued you through NPCs by each entrance (Toto-Rak's
-Bloisirant in the South Shroud, for one); until those are scripted, GMs use
-!dungeon.
+Bloisirant in the South Shroud, for one) during the Grand Company quests;
+Sir Tristechambel at Teriggan's Stand and an Immortal Flames sentry at
+Cutter's Pass also take anyone who meets the 1.21 rules into the Aurum
+Vale and Cutter's Cry (OPEN_RAIDS). GMs use !dungeon.
 
 ]]
 
@@ -40,15 +42,101 @@ DUNGEONS = {
 	cutters = {
 		zone = 246, name = "CuttersCry", content = "SimpleContentDungeonCuttersCry",
 		director = "InstanceRaid/InstanceRaidCuttersCry",
-		entry = {-1402.0, 252.2, -1455.0, 0.0},	-- the first chamber
+		entry = {-911.0, 250.8, -1532.5, -1.57},	-- the east mouth (layout marker in1)
 		exit = {173, -710.0, 280.4, -2208.0, 0.0},	-- Cutter's Pass, Northern Thanalan
+	},
+	-- Not a dungeon: Ifrit's battle for the Grand Companies' It Kills with
+	-- Fire (Gc?101), entered through Louisoix's aetherial gate at Apkallus
+	-- Falls, where his magicks bring you back after.
+	embers = {
+		zone = 240, name = "BowlOfEmbers", content = "SimpleContentBowlOfEmbers",
+		director = "InstanceRaid/InstanceRaidLesserIfrit",
+		entry = {2483.0, 248.3, 2194.0, 0.0},		-- the west edge of the Bowl, from cut scene GC010110
+		exit = {206, 14.0, 22.2, -1552.0, 0.0},		-- Apkallus Falls, Gridania
+	},
+	-- Ifrit grown stronger, for Louisoix's Ifrit Bleeds, We Can Kill It
+	-- (Sum6a0): the Bowl of Embers (Hard), the client's raid list entry 3.
+	-- Same map and zone as the GC battle; entered through the Amalj'aa's
+	-- beastman aetheryte in the cave under Camp Broken Water, where you
+	-- return after. A second battle on a zone sets "second", so the zone's
+	-- own lookup (Return, the GC directors' leaveDungeon) keeps its first.
+	embers_hard = {
+		zone = 240, name = "BowlOfEmbers", content = "SimpleContentBowlOfEmbersHard",
+		director = "InstanceRaid/InstanceRaidNormalIfrit", second = true,
+		entry = {2483.0, 248.3, 2194.0, 0.0},		-- the west edge of the Bowl, as the GC battle
+		exit = {174, 1650.0, 251.9, 1070.0, 1.57},	-- the beastman aetheryte's cave, Southern Thanalan
+	},
+	-- Garuda's battle for the Grand Companies' In for Garuda Wakening
+	-- (Gc?104), entered through the beastman aetheryte at the north-east tip
+	-- of Feathergorge, where you return after.
+	howling = {
+		zone = 239, name = "HowlingEye", content = "SimpleContentHowlingEye",
+		director = "InstanceRaid/InstanceRaidLesserGaruda",
+		entry = {1508.0, 302.0, -274.0, -1.16},	-- the bowl's east rim
+		exit = {143, 1027.0, 290.8, -137.0, 0.0},	-- Feathergorge, Coerthas Central Highlands
+	},
+	-- Garuda grown stronger, for Louisoix's Taming the Tempest (Sum6g0): the
+	-- Howling Eye (Hard), the client's raid list entry 11. Same map and zone
+	-- as the GC battle ("second"); entered through the Ixal's beastman
+	-- aetheryte in the cave north-east of Natalan, where you return after.
+	howling_hard = {
+		zone = 239, name = "HowlingEye", content = "SimpleContentHowlingEyeHard",
+		director = "InstanceRaid/InstanceRaidNormalGaruda", second = true,
+		entry = {1508.0, 302.0, -274.0, -1.16},	-- the bowl's east rim, as the GC battle
+		exit = {143, 1196.0, 297.7, -130.0, 3.14},	-- the beastman aetheryte's cave, Coerthas Central Highlands
+	},
+	-- Good King Moggle Mog XII's court, for Louisoix's A Feast of Fools
+	-- (Sum6m0): Thornmarch, the client's raid list entry 5, on the West
+	-- Shroud map. Pukwa Pika opens the ward south of Turning Leaf, where
+	-- you return after.
+	thornmarch = {
+		zone = 238, name = "Thornmarch", content = "SimpleContentThornmarch",
+		director = "InstanceRaid/InstanceRaidDarkMoogle",
+		entry = {-2368.0, -23.2, -860.0, 3.14},	-- the moogle ring's north side (layout isgrp_mog_ring)
+		exit = {153, -1342.0, -16.0, 350.0, 3.14},	-- before Pukwa Pika, south of Turning Leaf
+	},
+	-- The Grand Companies' assault on Castrum Novum's lunar transmitter
+	-- (United We Stand, Gc?106), entered through the aetherial gate in Jagged
+	-- Crest Cave, where you return after.
+	castrum = {
+		zone = 251, name = "CastrumNovum", content = "SimpleContentCastrumNovum",
+		director = "InstanceRaid/InstanceRaidBeaconBattle",
+		entry = {0.0, 2.0, 1.5, 0.0},				-- the tower's south approach
+		exit = {190, -360.0, -15.5, -38.0, -1.57},	-- Jagged Crest Cave, Mor Dhona
+	},
+	-- Nael van Darnus's battle for the Grand Companies' To Kill a Raven
+	-- (Gc?107), reached aboard the Enterprise from the clearing before the
+	-- Lotus Stand, where it sets you down after.
+	rivenroad = {
+		zone = 257, name = "Rivenroad", content = "SimpleContentRivenroad",
+		director = "InstanceRaid/InstanceRaidLesserWhiteGeneral",
+		entry = {0.0, 0.0, -8.0, 0.0},				-- the Allagan dais's south side
+		exit = {206, -202.0, 22.4, -1608.5, 1.57},	-- the clearing before the Lotus Stand, Gridania
+	},
+	-- Nael van Darnus again, for The Raven, Nevermore (Sum6w0): Rivenroad
+	-- (Hard), the client's raid list entry 16. Same map and zone as the GC
+	-- battle ("second"); Serpent Private Dauremant puts you aboard the
+	-- Enterprise in Gridania, where it sets you down after.
+	rivenroad_hard = {
+		zone = 257, name = "Rivenroad", content = "SimpleContentRivenroadHard",
+		director = "InstanceRaid/InstanceRaidNormalWhiteGeneral", second = true,
+		entry = {0.0, 0.0, -8.0, 0.0},				-- the Allagan dais's south side, as the GC battle
+		exit = {155, 61.5, -7.0, -1212.0, 0.0},		-- between Serpent Privates Hodder and Dauremant, Adventurers' Guild, Gridania
 	},
 }
 
 local function byZone(zoneId)
 	for _, d in pairs(DUNGEONS) do
-		if d.zone == zoneId then return d end
+		if d.zone == zoneId and not d.second then return d end
 	end
+end
+
+-- The entrance of the instanced dungeon in this zone ({x, y, z, rot}), or
+-- nil. Return (TeleportCommand) lands here inside a copy.
+function dungeonEntrance(zoneId)
+	local d = byZone(zoneId);
+	if d == nil or DUNGEON_SPAWNS[zoneId] == nil then return nil end
+	return d.entry;
 end
 
 function enterDungeon(player, key)
@@ -71,8 +159,61 @@ function enterDungeon(player, key)
 		d.entry[1], d.entry[2], d.entry[3], d.entry[4], 15);
 end
 
-function leaveDungeon(player)
-	local d = byZone(player:GetZoneID());
+-- Patch 1.21 opened the Aurum Vale and Cutter's Cry to anyone as instanced
+-- raids: Disciples of War or Magic of level 45 and up, and for the Vale,
+-- one of the three "Into the Dark" Grand Company quests (Com5l1/g1/u1)
+-- done. Toto-Rak and Dzemael Darkhold stayed quest dungeons, entered only
+-- through the Grand Company quests. raid is the client's raid list entry
+-- for askEnterInstanceRaid, which only an InstanceRaidGuide actor can ask,
+-- and only from a talk: asked from a push circle, the client answers no at
+-- once without showing it. Each entrance has its guide: Sir Tristechambel
+-- at Teriggan's Stand (Aurum Vale) and an Immortal Flames sentry at
+-- Cutter's Pass (Cutter's Cry, the client's InstanceRaidGuideCuttersCry).
+-- The whole party is checked: everyone standing in the zone comes along
+-- (DoZoneChangeContentParty), so everyone must meet the rule.
+OPEN_RAIDS = {
+	aurum	= { raid = 6, level = 45, quests = {111411, 111611, 111811} },
+	cutters	= { raid = 7, level = 45 },
+};
+
+local function mayEnterOpenRaid(player, rule)
+	if not (player:IsDiscipleOfWar() or player:IsDiscipleOfMagic()) then return false end
+	if player:GetHighestLevel() < rule.level then return false end
+	if rule.quests == nil then return true end
+	for _, id in ipairs(rule.quests) do
+		if player:IsQuestCompleted(id) then return true end
+	end
+	return false
+end
+
+-- An entrance's guide (an InstanceRaidGuide NPC, by talk) for players
+-- no quest sends in: the client's own entry prompt, then the 1.21 rules
+-- for the talker and every party member who would come along.
+function enterOpenRaid(player, key)
+	local rule = OPEN_RAIDS[key];
+	if rule ~= nil and callClientFunction(player, "askEnterInstanceRaid", rule.raid) then
+		local short = {};
+		if not mayEnterOpenRaid(player, rule) then table.insert(short, "you") end
+		for _, member in ipairs(player:GetPartyMembersInZone()) do
+			if not mayEnterOpenRaid(member, rule) then table.insert(short, member:GetName()) end
+		end
+		if #short == 0 then
+			player:EndEvent();
+			enterDungeon(player, key);
+			return;
+		end
+		local need = string.format("Only Disciples of War or Magic of level %d or higher", rule.level);
+		if rule.quests ~= nil then
+			need = need .. " who have completed \"Into the Dark\"";
+		end
+		player:SendMessage(MESSAGE_TYPE_SYSTEM, "", need .. " may enter. Not yet: " .. table.concat(short, ", ") .. ".");
+	end
+	player:EndEvent();
+end
+
+-- key names the battle when its zone holds more than one (a "second").
+function leaveDungeon(player, key)
+	local d = (key ~= nil and DUNGEONS[key]) or byZone(player:GetZoneID());
 	player:LeaveContent();
 	if d ~= nil then
 		GetWorldManager():DoZoneChange(player, d.exit[1], nil, 0, 15, d.exit[2], d.exit[3], d.exit[4], d.exit[5]);
@@ -82,9 +223,14 @@ end
 -- A content script's onCreate: the dungeon's monsters, into this copy.
 function spawnDungeon(player, contentArea, director, zoneId)
 	director:AddMember(player);
-	local range = DUNGEON_SPAWNS[zoneId];
-	if range == nil then return end
-	for id = range[1], range[2] do
-		GetWorldManager().SpawnBattleNpcById(id, contentArea);
+	-- The copy's own doors and barriers (DoorServer spawns of the zone),
+	-- opened and closed per copy by the server.
+	contentArea:SpawnMapObjects();
+	local ranges = DUNGEON_SPAWNS[zoneId];
+	if ranges == nil then return end
+	for _, range in ipairs(ranges) do
+		for id = range[1], range[2] do
+			GetWorldManager().SpawnBattleNpcById(id, contentArea);
+		end
 	end
 end

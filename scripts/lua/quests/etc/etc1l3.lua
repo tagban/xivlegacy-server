@@ -12,6 +12,9 @@ Prereq: Level 45, Any DoW/DoM
 
 ]]
 
+-- Rewards (items/gil: ZAM and the client's reward table; the EXP is an estimate)
+REWARD_EXP			= 3500;
+
 -- Sequence Numbers
 SEQ_000	= 0;  -- Kill Reavers.
 SEQ_001	= 1;  -- Talk to Chaunollet.
@@ -74,7 +77,9 @@ function onTalk(player, quest, npc, eventName)
 	elseif (seq == SEQ_001) then
 		if (npcClassId == ENPC_CHAUNOLLET) then
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent010Chaunollet");
-			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 200, 1, 1, 9);
+			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
+			player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
+			player:GetItemPackage(INVENTORY_NORMAL):AddItem(8050130, 1, 1); -- Felt Trousers
             player:CompleteQuest(quest);
 		end
 	end

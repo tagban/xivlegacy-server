@@ -90,9 +90,8 @@ function onEventStarted(player, actor, triggerName)
 	--     duty." 50011 / "There are 30 minutes remaining." 25018 —
 	--     sheet-decoded worldMaster ids, see man0l1.lua TEXT_*) ride
 	--     the CONTENT script's first-sighting latch instead
-	--     (SimpleContentMan0l101.lua onUpdate): 51005 resolves
-	--     "<displayName>" from an actor-id param and only the content
-	--     tick has a handle on Sisipu — this director never does.
+	--     (SimpleContentMan0l101.lua onUpdate), which sees her first
+	--     sighting; 51005 itself takes her display-name id.
 	--     34108 "You have entered an instance." (correct) still rides
 	--     the Rust content-warp path. The round-7 candidates
 	--     34109-34112 were the instance-BOUNDARY family (about-to-

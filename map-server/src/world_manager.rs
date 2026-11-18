@@ -33,7 +33,7 @@
 //! All `RwLock<HashMap>` so independent zones / sessions don't contend.
 #![allow(dead_code)]
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -517,6 +517,23 @@ pub fn build_retainer_spawn_bundle(
 /// [`MONSTER_DESPAWN_RADIUS`], so their number on the client stays bounded.
 pub(crate) const INSTANCE_STREAM_RADIUS: f32 = 100.0;
 
+/// What `send_instance_update` gathers under the zone lock: actors to spawn,
+/// actors gone out of range, the player's position and region, the zone
+/// name, and players who came into or left range.
+/// `(zone_id, unique_id)` of a quest-only gathering point -> the
+/// `(quest_id, sequence)` steps it is open on.
+type GatherQuestGates = HashMap<(u32, String), Vec<(u32, u32)>>;
+
+type StreamScan = (
+    Vec<u32>,
+    Vec<u32>,
+    Option<Vector3>,
+    u32,
+    String,
+    Vec<u32>,
+    Vec<u32>,
+);
+
 /// Radius of `send_zone_in_bundle`'s warp-time neighbour scan: pmeteor's
 /// 50, keeping warp bundles the size the client is known to take. The
 /// instance stream fills in the rest on the first position update.
@@ -766,6 +783,46 @@ pub(crate) fn push_npc_spawn(
     // The old universal populace-shaped tail made every door's
     // `initForEvent` error client-side (40000 dialog → kicked to login)
     // the moment a quest enabled its event condition.
+    // `DoorServer` doors and barriers take their own unique script's
+    // `init`: it carries the background object they move (pmeteor
+    // `CreateScriptBindPacket` resolves the unique script first). A
+    // dungeon copy's gate also carries its current state in the trailing
+    // `isOpen` (`crate::dungeon_gates`). Other map objects keep the base
+    // class tail (`DoorStandard`'s trailing ints are its trigger box).
+    let map_object_init = if class_name == "DoorServer" {
+        lua.and_then(|l| l.call_unique_npc_init(zone_name, &class_name, &character.base.unique_id))
+            .map(|mut tail| {
+                if let Some(open) = crate::dungeon_gates::is_open(actor_id)
+                    && let Some(last) = tail.get_mut(6)
+                {
+                    *last = if open {
+                        common::luaparam::LuaParam::True
+                    } else {
+                        common::luaparam::LuaParam::False
+                    };
+                }
+                tail
+            })
+    } else {
+        None
+    };
+    // `DoorServer` objects without a `server_eventnpc_mapobj` row bind to
+    // the layout and instance ids their `init` returns.
+    let (mapobj_layout_id, mapobj_instance_id) = match (
+        character.base.mapobj_layout_id,
+        character.base.mapobj_instance_id,
+        map_object_init.as_deref(),
+    ) {
+        (0, 0, Some([_, _, _, _, layout, instance, ..])) if class_name == "DoorServer" => {
+            match (layout, instance) {
+                (common::luaparam::LuaParam::Int32(l), common::luaparam::LuaParam::Int32(i)) => {
+                    (*l as u32, *i as u32)
+                }
+                _ => (0, 0),
+            }
+        }
+        (l, i, _) => (l, i),
+    };
     let script_bind_params = {
         let mut p = vec![
             common::luaparam::LuaParam::String(class_path_lower.clone()),
@@ -776,7 +833,10 @@ pub(crate) fn push_npc_spawn(
             common::luaparam::LuaParam::False,
             common::luaparam::LuaParam::Int32(actor_class_id as i32),
         ];
-        match lua.and_then(|l| l.call_npc_init(&class_path_lower)) {
+        match map_object_init
+            .clone()
+            .or_else(|| lua.and_then(|l| l.call_npc_init(&class_path_lower, actor_class_id)))
+        {
             Some(tail) if !tail.is_empty() => p.extend(tail),
             // Monster classes without a base script (most open-world
             // families) take the tail every shipped `*Standard` monster
@@ -852,7 +912,7 @@ pub(crate) fn push_npc_spawn(
         0x0,
         false,
     ));
-    if character.base.mapobj_layout_id != 0 && character.base.mapobj_instance_id != 0 {
+    if mapobj_layout_id != 0 && mapobj_instance_id != 0 {
         // MapObj actor (door/gate) — Meteor's `Npc.GetSpawnPackets` sends
         // `SetActorBGProperties` INSTEAD of an appearance packet, binding
         // the actor to a background layout object whose mesh + collision
@@ -862,8 +922,8 @@ pub(crate) fn push_npc_spawn(
         // second.
         subpackets.push(tx::actor::build_set_actor_bg_properties(
             actor_id,
-            character.base.mapobj_instance_id,
-            character.base.mapobj_layout_id,
+            mapobj_instance_id,
+            mapobj_layout_id,
         ));
     } else {
         subpackets.push(tx::actor::build_set_actor_appearance(
@@ -1013,6 +1073,7 @@ pub(crate) fn push_npc_spawn(
         tp,
         spawn_hate_type,
         character.chara.level.max(1) as u16,
+        character.chara.push_command,
     );
     subpackets.extend(npc_init);
 
@@ -1079,11 +1140,8 @@ pub(crate) fn push_other_player_spawn(
     let actor_id = character.base.actor_id;
     let position = character.base.position();
     let chara = &character.chara;
-    let active = if chara.current_job > 0 {
-        chara.current_job as usize
-    } else {
-        chara.class.max(0) as usize
-    };
+    // A job has its base class's level: levels are kept per class only.
+    let active = chara.class.max(0) as usize;
     let level = character
         .battle_save
         .skill_level
@@ -1240,12 +1298,19 @@ impl Default for WorldSettings {
     }
 }
 
+/// Weather transition when the sky changes in place (as `!worldend`).
+const WEATHER_FADE: u16 = 5;
+/// `SetMusic` mode 0x02, EFFECT_CROSSFADE (pmeteor `SetMusicPacket`).
+const MUSIC_CROSSFADE: u16 = 0x02;
+
 pub struct WorldManager {
     /// Server-global world tunables (Dalamud phase, weather) from config.
     world_settings: WorldSettings,
     /// Weather every zone shows in place of `world_settings.weather_id`
     /// while an event holds it (0 = none), e.g. `!worldend`'s Dalamud sky.
     weather_override: std::sync::atomic::AtomicU16,
+    /// Seasonal events running at the last `refresh_seasonal_looks`.
+    seasonal_running: std::sync::Mutex<Option<Vec<String>>>,
 
     zones: RwLock<HashMap<u32, Arc<RwLock<Zone>>>>,
 
@@ -1278,6 +1343,24 @@ pub struct WorldManager {
     /// this map.
     gather_node_actors: RwLock<HashMap<u32, (u32, String)>>,
 
+    /// Quest-only gathering points (`server_gather_node_quests`), keyed by
+    /// `(zone_id, unique_id)`: the `(quest_id, sequence)` steps a player must
+    /// be on to see and use the point. A point not listed is for everyone.
+    gather_node_quest_gates: RwLock<GatherQuestGates>,
+
+    /// Gathering points that were picked clean, by live actor id, with
+    /// the unix time they come back. A resting point is left out of the
+    /// zone-in bundle and the spawn stream, so clients drop it until the
+    /// time passes and streaming brings it back. A std lock: the spawn
+    /// filters read it while holding a session snapshot.
+    gather_nodes_resting: std::sync::RwLock<HashMap<u32, u64>>,
+
+    /// Gathering points one player used up, keyed by `(point actor id,
+    /// player actor id)`, with the unix time the point comes back for
+    /// that player. Only that player loses the point; everyone else
+    /// still sees it and can gather there.
+    gather_nodes_resting_for: std::sync::RwLock<HashMap<(u32, u32), u64>>,
+
     /// Player state indexed by session id — zone membership, player
     /// position snapshot, etc. Updated by movement handlers.
     sessions: RwLock<HashMap<u32, Session>>,
@@ -1292,11 +1375,15 @@ impl WorldManager {
         Self {
             world_settings: WorldSettings::default(),
             weather_override: std::sync::atomic::AtomicU16::new(0),
+            seasonal_running: std::sync::Mutex::new(None),
             zones: RwLock::new(HashMap::new()),
             zone_entrances: RwLock::new(HashMap::new()),
             seamless_boundaries: RwLock::new(HashMap::new()),
             gather_node_metadata: RwLock::new(HashMap::new()),
             gather_node_actors: RwLock::new(HashMap::new()),
+            gather_node_quest_gates: RwLock::new(HashMap::new()),
+            gather_nodes_resting: std::sync::RwLock::new(HashMap::new()),
+            gather_nodes_resting_for: std::sync::RwLock::new(HashMap::new()),
             sessions: RwLock::new(HashMap::new()),
             clients: RwLock::new(HashMap::new()),
         }
@@ -1316,6 +1403,21 @@ impl WorldManager {
             .load(std::sync::atomic::Ordering::Relaxed)
         {
             0 => self.world_settings.weather_id,
+            w => w,
+        }
+    }
+
+    /// The weather players get in `zone_id`: a held sky (`!worldend`)
+    /// first, then a running seasonal event's weather for the zone
+    /// (`settings/events.toml`), then the configured weather.
+    pub fn zone_weather(&self, zone_id: u32) -> u16 {
+        match self
+            .weather_override
+            .load(std::sync::atomic::Ordering::Relaxed)
+        {
+            0 => crate::seasonal::zone_look(zone_id)
+                .0
+                .unwrap_or(self.world_settings.weather_id),
             w => w,
         }
     }
@@ -1376,6 +1478,142 @@ impl WorldManager {
     /// clicked/targeted" to the per-node harvest template.
     pub async fn gather_node_identity(&self, actor_id: u32) -> Option<(u32, String)> {
         self.gather_node_actors.read().await.get(&actor_id).cloned()
+    }
+
+    /// Live gathering points that are quest-only and closed to a player
+    /// holding these `(quest_id, sequence)` steps: they stay out of that
+    /// player's world, and the harvest commands skip them.
+    pub async fn quest_hidden_gather_nodes(&self, held: &[(u32, u32)]) -> HashSet<u32> {
+        let gates = self.gather_node_quest_gates.read().await;
+        if gates.is_empty() {
+            return HashSet::new();
+        }
+        self.gather_node_actors
+            .read()
+            .await
+            .iter()
+            .filter(|(_, key)| {
+                gates
+                    .get(*key)
+                    .is_some_and(|gate| !crate::gathering::quest_gate_open(gate, held))
+            })
+            .map(|(id, _)| *id)
+            .collect()
+    }
+
+    /// [`Self::quest_hidden_gather_nodes`] for a live player, read from
+    /// their quest journal.
+    pub async fn quest_hidden_gather_nodes_for(
+        &self,
+        registry: &ActorRegistry,
+        player_id: u32,
+    ) -> HashSet<u32> {
+        if self.gather_node_quest_gates.read().await.is_empty() {
+            return HashSet::new();
+        }
+        let held = match registry.get(player_id).await {
+            Some(h) => crate::gathering::held_quest_steps(&h.character.read().await.quest_journal),
+            None => Vec::new(),
+        };
+        self.quest_hidden_gather_nodes(&held).await
+    }
+
+    /// Live actor ids of the gathering points in `zone_id`.
+    pub async fn gather_node_actors_in_zone(&self, zone_id: u32) -> Vec<u32> {
+        self.gather_node_actors
+            .read()
+            .await
+            .iter()
+            .filter(|(_, (z, _))| *z == zone_id)
+            .map(|(id, _)| *id)
+            .collect()
+    }
+
+    /// The live actor id of the gather node seeded as `(zone_id, unique_id)`.
+    pub async fn gather_node_actor_id(&self, zone_id: u32, unique_id: &str) -> Option<u32> {
+        self.gather_node_actors
+            .read()
+            .await
+            .iter()
+            .find(|(_, (z, u))| *z == zone_id && u == unique_id)
+            .map(|(id, _)| *id)
+    }
+
+    /// Take a picked-clean gathering point out of the world for `secs`
+    /// seconds: every client that has it drops it now, and the spawn
+    /// paths skip it until the time is up.
+    pub async fn rest_gather_node(&self, actor_id: u32, secs: u32) {
+        let now = common::utils::unix_timestamp() as u64;
+        let until = now + secs as u64;
+        if let Ok(mut m) = self.gather_nodes_resting.write() {
+            m.retain(|_, t| *t > now);
+            m.insert(actor_id, until);
+        }
+        self.forget_actor_for_all_sessions(actor_id).await;
+    }
+
+    /// Whether a gathering point is resting (picked clean, not back yet).
+    pub fn is_gather_node_resting(&self, actor_id: u32) -> bool {
+        let now = common::utils::unix_timestamp() as u64;
+        self.gather_nodes_resting
+            .read()
+            .map(|m| m.get(&actor_id).is_some_and(|t| *t > now))
+            .unwrap_or(false)
+    }
+
+    /// Take a gathering point out of one player's world for `secs`
+    /// seconds: that player's client drops it now and the spawn paths
+    /// skip it for that player until the time is up. Other players keep
+    /// it. Returns whether the session had the point spawned (and so was
+    /// sent a RemoveActor).
+    pub async fn rest_gather_node_for_player(
+        &self,
+        actor_id: u32,
+        player_id: u32,
+        session_id: u32,
+        secs: u32,
+    ) -> bool {
+        let now = common::utils::unix_timestamp() as u64;
+        self.rest_gather_node_for_player_at(actor_id, player_id, now + secs as u64, now);
+        let had = {
+            let mut sessions = self.sessions.write().await;
+            sessions
+                .get_mut(&session_id)
+                .is_some_and(|s| s.actor_instance_list.remove(&actor_id))
+        };
+        if had && let Some(client) = self.client(session_id).await {
+            let mut sub = crate::packets::send::actor::build_remove_actor(actor_id);
+            sub.set_target_id(session_id);
+            client.send_bytes(sub.to_bytes()).await;
+        }
+        had
+    }
+
+    fn rest_gather_node_for_player_at(&self, actor_id: u32, player_id: u32, until: u64, now: u64) {
+        if let Ok(mut m) = self.gather_nodes_resting_for.write() {
+            m.retain(|_, t| *t > now);
+            m.insert((actor_id, player_id), until);
+        }
+    }
+
+    /// Whether a gathering point is out of `player_id`'s world: picked
+    /// clean for everyone, or used up by this player and not back yet.
+    pub fn is_gather_node_resting_for(&self, actor_id: u32, player_id: u32) -> bool {
+        let now = common::utils::unix_timestamp() as u64;
+        self.is_gather_node_resting(actor_id)
+            || self.is_gather_node_resting_for_player_at(actor_id, player_id, now)
+    }
+
+    fn is_gather_node_resting_for_player_at(
+        &self,
+        actor_id: u32,
+        player_id: u32,
+        now: u64,
+    ) -> bool {
+        self.gather_nodes_resting_for
+            .read()
+            .map(|m| m.get(&(actor_id, player_id)).is_some_and(|t| *t > now))
+            .unwrap_or(false)
     }
 
     // -----------------------------------------------------------------
@@ -1456,6 +1694,8 @@ impl WorldManager {
         {
             let mut meta = self.gather_node_metadata.write().await;
             meta.clear();
+            let mut quest_gates = self.gather_node_quest_gates.write().await;
+            quest_gates.clear();
             for row in gather_rows {
                 if !crate::gathering::is_valid_harvest_type(row.harvest_type) {
                     gather_invalid_type += 1;
@@ -1480,6 +1720,9 @@ impl WorldManager {
                 );
                 let mut z = zone_arc.write().await;
                 if z.add_spawn_location(seed).is_ok() {
+                    if !row.quest_gates.is_empty() {
+                        quest_gates.insert((row.zone_id, row.unique_id.clone()), row.quest_gates);
+                    }
                     meta.insert(
                         (row.zone_id, row.unique_id),
                         GatherNodeMetadata {
@@ -1708,6 +1951,112 @@ impl WorldManager {
         self.sessions.write().await.insert(session.id, session);
     }
 
+    /// Remember that a quest hid `actor_id` from this session's player
+    /// (see `Session::hidden_actors`).
+    pub async fn hide_actor_for_session(&self, session_id: u32, actor_id: u32) {
+        if let Some(s) = self.sessions.write().await.get_mut(&session_id) {
+            s.hidden_actors.insert(actor_id);
+        }
+    }
+
+    /// Take seasonal-event NPCs whose event stopped off every client that
+    /// has them (`seasonal::actor_hidden`). Turning an event on needs
+    /// nothing here: proximity streaming picks its NPCs up.
+    pub async fn remove_inactive_seasonal_actors(&self) -> usize {
+        let gone: Vec<(u32, Vec<u32>)> = {
+            let mut sessions = self.sessions.write().await;
+            sessions
+                .iter_mut()
+                .filter_map(|(sid, s)| {
+                    let ids: Vec<u32> = s
+                        .actor_instance_list
+                        .iter()
+                        .copied()
+                        .filter(|id| crate::seasonal::actor_hidden(*id))
+                        .collect();
+                    for id in &ids {
+                        s.actor_instance_list.remove(id);
+                    }
+                    (!ids.is_empty()).then_some((*sid, ids))
+                })
+                .collect()
+        };
+        let mut n = 0;
+        for (sid, ids) in gone {
+            let Some(client) = self.client(sid).await else {
+                continue;
+            };
+            for id in ids {
+                // A decoration goes back to its layout state first: the
+                // object keeps whatever schedule last ran on it.
+                if crate::seasonal::is_show_hide(id) {
+                    let mut sub = crate::packets::send::actor::build_play_bg_animation(id, "hide");
+                    sub.set_target_id(sid);
+                    client.send_bytes(sub.to_bytes()).await;
+                }
+                let mut sub = crate::packets::send::actor::build_remove_actor(id);
+                sub.set_target_id(sid);
+                client.send_bytes(sub.to_bytes()).await;
+                n += 1;
+            }
+        }
+        n
+    }
+
+    /// When the set of running seasonal events changed since the last
+    /// call, send every player in a zone some event restyles
+    /// (`[[<event>.zone]]`) the weather and music their zone now has
+    /// (an event started or ended by date or by `!event`). Returns the
+    /// number of players updated.
+    pub async fn refresh_seasonal_looks(&self, registry: &ActorRegistry) -> usize {
+        let running = crate::seasonal::running();
+        {
+            let mut last = self
+                .seasonal_running
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            match last.as_ref() {
+                Some(prev) if *prev == running => return 0,
+                // The first look at boot: zone-ins already carry it.
+                None => {
+                    *last = Some(running);
+                    return 0;
+                }
+                _ => *last = Some(running),
+            }
+        }
+        let mut n = 0;
+        for s in self.all_sessions().await {
+            if s.current_private_area_name.is_some()
+                || !crate::seasonal::zone_has_look(s.current_zone_id)
+            {
+                continue;
+            }
+            let (Some(h), Some(client)) =
+                (registry.by_session(s.id).await, self.client(s.id).await)
+            else {
+                continue;
+            };
+            let zone_music = match self.zone(s.current_zone_id).await {
+                Some(z) => z.read().await.core.bgm_day,
+                None => continue,
+            };
+            let music = crate::seasonal::zone_look(s.current_zone_id)
+                .1
+                .unwrap_or(zone_music);
+            let weather = self.zone_weather(s.current_zone_id);
+            for mut sub in [
+                tx::misc::build_set_weather(h.actor_id, weather, WEATHER_FADE),
+                tx::misc::build_set_music(h.actor_id, music, MUSIC_CROSSFADE),
+            ] {
+                sub.set_target_id(s.id);
+                client.send_bytes(sub.to_bytes()).await;
+            }
+            n += 1;
+        }
+        n
+    }
+
     pub async fn session(&self, id: u32) -> Option<Session> {
         self.sessions.read().await.get(&id).cloned()
     }
@@ -1839,6 +2188,9 @@ impl WorldManager {
         spawn: Vector3,
         rotation: f32,
     ) -> Result<()> {
+        // Monster Mode ends at any zone change; the zone-in bundle then
+        // draws the player's own body.
+        crate::runtime::monster_mode::release_for_zone_change(actor_id).await;
         // 1. Look up the destination zone.
         let Some(dest_zone) = self.zone(destination_zone_id).await else {
             tracing::warn!(
@@ -2022,6 +2374,8 @@ impl WorldManager {
         };
 
         let actor_id = actor_handle.actor_id;
+        // The zone-in ends any scene the client had open.
+        crate::event::dispatcher::clear_event_awaiting_client(actor_id);
         let (
             actor_name,
             display_name_id,
@@ -2084,19 +2438,17 @@ impl WorldManager {
                 c.chara.hotbar.clone(),
             )
         };
-        // Active-class progression for the `/_init` dump — job slot when
-        // one is active, class otherwise (state_mainSkill resolve order).
+        // Active-class progression for the `/_init` dump. A job has its
+        // base class's level and EXP (levels are kept per class only; the
+        // job slots of battle_save are never filled), so this always reads
+        // the class slot. Reading the job slot sent level 1 for every job.
         // battle_save is indexed by class id; the wire's `[class-1]`
         // shift happens inside the builder. Previously the bundle
         // hardcoded level 1 / 0 SP, so any EXP earned before a warp
         // rendered as a level-down at the next zone-in.
         let (active_level, active_skill_point) = {
             let c = actor_handle.character.read().await;
-            let active = if c.chara.current_job > 0 {
-                c.chara.current_job as usize
-            } else {
-                c.chara.class.max(0) as usize
-            };
+            let active = c.chara.class.max(0) as usize;
             (
                 c.battle_save
                     .skill_level
@@ -2249,6 +2601,12 @@ impl WorldManager {
             .as_ref()
             .map(|b| b.bgm_day)
             .unwrap_or(bgm_day);
+        // A running seasonal event's music for the public zone.
+        let bgm_day = match crate::seasonal::zone_look(session.current_zone_id).1 {
+            Some(m) if private_area_bind.is_none() => m,
+            _ => bgm_day,
+        };
+        let zone_weather = self.zone_weather(session.current_zone_id);
 
         // SEQ-005 content-warp — ship the UNMODIFIED parent region.
         //
@@ -2385,7 +2743,7 @@ impl WorldManager {
             self.world_settings.dalamud_phase,
             music_id,
             0x01,
-            self.weather_id(),
+            zone_weather,
             self.world_settings.weather_transition,
             region_id,
             zone_actor_id,
@@ -2504,6 +2862,8 @@ impl WorldManager {
             (200u16, 0u16),
             (320, 99),
             (500, 100),
+            // Soul crystals: the gear window's job list.
+            (10, 101),
             (10, 7),
             (4, 5),
             (10, 4),
@@ -2652,17 +3012,23 @@ impl WorldManager {
             class_slot,
             active_level as u16,
         ));
-        // `battleTemp.generalParameter[0..3] = 1` matches C# defaults for
-        // NAMEPLATE_SHOWN (0), TARGETABLE (1), NAMEPLATE_SHOWN2 (2), and
-        // STR (3). Leaving them 0 would still emit an empty
-        // /battleParameter packet (Meteor does that too), but seeding
-        // the nameplate flags lines up with the explicit
-        // `generalParameter[0..3]` setters C# stamps during spawn.
-        let mut general_parameter = [0i16; 35];
-        general_parameter[0] = 1;
-        general_parameter[1] = 1;
-        general_parameter[2] = 1;
-        general_parameter[3] = 1;
+        // `battleTemp.generalParameter[0..3] = 1` are the nameplate flags
+        // NAMEPLATE_SHOWN (0), TARGETABLE (1), NAMEPLATE_SHOWN2 (2) the
+        // client's DepictionJudge reads. Slots 3-34 are the character
+        // window's stats (STR .. Perception), worked out by the login
+        // stat rebuild (gear included). Before that rebuild has run (no
+        // Lua) the old seed goes out: flags and STR 1.
+        let mut general_parameter = {
+            let c = actor_handle.character.read().await;
+            c.battle_temp.general_parameter
+        };
+        if general_parameter[0] == 0 {
+            general_parameter = [0i16; 35];
+            general_parameter[0] = 1;
+            general_parameter[1] = 1;
+            general_parameter[2] = 1;
+            general_parameter[3] = 1;
+        }
         subpackets.extend(tx::actor::build_battle_parameter(
             actor_id,
             &general_parameter,
@@ -2981,6 +3347,28 @@ impl WorldManager {
                     .collect(),
             }
         };
+        // A private area several Echoes share (zone 209
+        // PrivateAreaMasterPast 5) holds every one of their casts. A seeded
+        // NPC tagged with quests (`server_spawn_location_quests`) goes only
+        // to a player holding one of them, so one Echo's scene doesn't
+        // stand in another's.
+        if session.current_private_area_name.is_some() {
+            let mut kept = Vec::with_capacity(neighbours.len());
+            for neighbour in neighbours {
+                let gate = match registry.get(neighbour.0).await {
+                    Some(handle) => handle.character.read().await.base.spawn_quest_ids.clone(),
+                    None => Vec::new(),
+                };
+                if !gate.is_empty() {
+                    let player = actor_handle.character.read().await;
+                    if !gate.iter().any(|&q| player.quest_journal.has(q)) {
+                        continue;
+                    }
+                }
+                kept.push(neighbour);
+            }
+            neighbours = kept;
+        }
         // Seamless-partner-zone neighbours. pmeteor's Player.
         // SendInstanceUpdate scans BOTH `zone` and `zone2` (Player.cs:
         // 2285-2288); a zone-in near the 133/230 Limsa seam must do the
@@ -2998,6 +3386,19 @@ impl WorldManager {
                 neighbours.push((partner_id, kind, Some(partner_zone_name)));
             }
         }
+        // Actors a quest hid from this player stay hidden through the
+        // reload (an Echo's same-zone fade-in warp).
+        neighbours.retain(|(id, _, _)| {
+            !session.hidden_actors.contains(id) && !crate::runtime::monster_mode::is_hidden(*id)
+        });
+        // Picked-clean gathering points stay out until they come back
+        // (for everyone, or for just this player after they used one up).
+        neighbours.retain(|(id, _, _)| !self.is_gather_node_resting_for(*id, actor_id));
+        // Quest-only gathering points only for a player on their step.
+        let quest_hidden = self.quest_hidden_gather_nodes_for(registry, actor_id).await;
+        neighbours.retain(|(id, _, _)| !quest_hidden.contains(id));
+        // Seasonal-event NPCs only while their event runs.
+        neighbours.retain(|(id, _, _)| !crate::seasonal::actor_hidden(*id));
         tracing::info!(
             session = session_id,
             actor = format!("0x{actor_id:08X}"),
@@ -3173,11 +3574,9 @@ impl WorldManager {
         // — pmeteor never party-adds them; the party trio below stays
         // the player's real (solo) party. (Garlemald-Server #46.)
         if let Some(active) = session.active_content_script.as_ref() {
-            let roster: Vec<u32> = session
-                .transient_director_members
-                .get(&active.director_actor_id)
-                .cloned()
-                .unwrap_or_default();
+            // A party member's comes from the owner's.
+            let roster: Vec<u32> =
+                crate::runtime::quest_apply::content_group_roster(self, &session, actor_id).await;
             if roster.is_empty() {
                 // A content script whose director has no members yet
                 // (pre-AddMember). An empty X08 is the malformed shape
@@ -3613,7 +4012,7 @@ impl WorldManager {
                 kick.trigger_actor_id,
                 kick.owner_actor_id,
                 &kick.event_name,
-                5,
+                tx::events::script_kick_event_type(kick.owner_actor_id),
                 &kick.args,
             );
             sub.set_target_id(session_id);
@@ -3761,9 +4160,11 @@ impl WorldManager {
                 &mut subpackets,
                 actor_id,
                 self.world_settings.dalamud_phase,
-                bgm_day,
+                crate::seasonal::zone_look(destination_zone_id)
+                    .1
+                    .unwrap_or(bgm_day),
                 0x04,
-                self.weather_id(),
+                self.zone_weather(destination_zone_id),
                 self.world_settings.weather_transition,
                 region_id,
                 zone_actor_id,
@@ -4042,6 +4443,29 @@ impl WorldManager {
         );
     }
 
+    /// Removes `actor_id` from every client that has it spawned and from
+    /// those sessions' `actor_instance_list`, so the next
+    /// [`Self::send_instance_update`] streams it again with fresh spawn
+    /// packets. Used when a monster respawns: its corpse has faded on the
+    /// client, and the respawn's state change alone leaves it invisible
+    /// (and untargetable) until the player relogs.
+    pub async fn forget_actor_for_all_sessions(&self, actor_id: u32) {
+        let holders: Vec<u32> = {
+            let mut sessions = self.sessions.write().await;
+            sessions
+                .iter_mut()
+                .filter_map(|(id, s)| s.actor_instance_list.remove(&actor_id).then_some(*id))
+                .collect()
+        };
+        for session_id in holders {
+            if let Some(client) = self.client(session_id).await {
+                let mut sub = crate::packets::send::actor::build_remove_actor(actor_id);
+                sub.set_target_id(session_id);
+                client.send_bytes(sub.to_bytes()).await;
+            }
+        }
+    }
+
     /// Continuous actor-instance update — the per-movement spawn stream
     /// (port of C# `Session.UpdateInstance` / `Player.SendInstanceUpdate`,
     /// PacketProcessor.cs:163). garlemald previously emitted populace
@@ -4151,15 +4575,18 @@ impl WorldManager {
         // NOT already have, holding the zone read-lock only for the scan.
         // The player's live grid position + region ride along for the
         // partner-zone point query below.
-        let (new_ids, far_ids, player_position, region_id, zone_name, new_players, gone_players): (
-            Vec<u32>,
-            Vec<u32>,
-            Option<Vector3>,
-            u32,
-            String,
-            Vec<u32>,
-            Vec<u32>,
-        ) = {
+        // Quest-only gathering points closed to this player: not streamed
+        // in, and dropped once their quest step is over.
+        let quest_hidden = self.quest_hidden_gather_nodes_for(registry, actor_id).await;
+        let (
+            new_ids,
+            mut far_ids,
+            player_position,
+            region_id,
+            zone_name,
+            new_players,
+            gone_players,
+        ): StreamScan = {
             let z = zone_arc.read().await;
             let center = z.core.find_actor(actor_id).map(|a| a.position);
             let ids = z
@@ -4196,6 +4623,10 @@ impl WorldManager {
                 .filter(|a| !in_content_instance || (a.actor_id & CONTENT_ACTOR_BAND_BIT) != 0)
                 .map(|a| a.actor_id)
                 .filter(|id| !session.actor_instance_list.contains(id))
+                .filter(|id| !session.hidden_actors.contains(id))
+                .filter(|id| !crate::runtime::monster_mode::is_hidden(*id))
+                .filter(|id| !self.is_gather_node_resting_for(*id, actor_id))
+                .filter(|id| !quest_hidden.contains(id))
                 .collect();
             // Other players in range the client hasn't spawned yet. The
             // range query only pairs actors of one content copy, so inside
@@ -4269,6 +4700,11 @@ impl WorldManager {
         };
         self.sync_known_players(registry, &client, session_id, &new_players, &gone_players)
             .await;
+        for id in session.actor_instance_list.iter() {
+            if quest_hidden.contains(id) && !far_ids.contains(id) {
+                far_ids.push(*id);
+            }
+        }
 
         if !far_ids.is_empty() {
             for id in &far_ids {
@@ -4321,6 +4757,8 @@ impl WorldManager {
                 }
             }
         }
+        // Seasonal-event NPCs only while their event runs.
+        stream_list.retain(|(id, _)| !crate::seasonal::actor_hidden(*id));
         if stream_list.is_empty() {
             return;
         }
@@ -4496,6 +4934,45 @@ mod tests {
         )
     }
 
+    /// A quest-only gathering point is hidden from a player who doesn't
+    /// hold its quest at one of its steps, and open to one who does;
+    /// ordinary points are never hidden.
+    #[tokio::test]
+    async fn quest_gathering_point_shows_only_on_its_quest_step() {
+        let wm = WorldManager::new();
+        for unique in ["fish_quest", "fish_any"] {
+            wm.gather_node_metadata.write().await.insert(
+                (135, unique.to_string()),
+                GatherNodeMetadata {
+                    harvest_node_id: 2001,
+                    harvest_type: crate::gathering::HARVEST_TYPE_FISH,
+                },
+            );
+        }
+        wm.gather_node_quest_gates
+            .write()
+            .await
+            .insert((135, "fish_quest".to_string()), vec![(110500, 10)]);
+        let (quest_point, open_point) = (0x4009_0011, 0x4009_0012);
+        wm.note_gather_node_actor(quest_point, 135, "fish_quest")
+            .await;
+        wm.note_gather_node_actor(open_point, 135, "fish_any").await;
+
+        let hidden = wm.quest_hidden_gather_nodes(&[]).await;
+        assert!(hidden.contains(&quest_point), "no quest: hidden");
+        assert!(
+            !hidden.contains(&open_point),
+            "ordinary point: never hidden"
+        );
+        let hidden = wm.quest_hidden_gather_nodes(&[(110500, 0)]).await;
+        assert!(
+            hidden.contains(&quest_point),
+            "quest held, wrong step: hidden"
+        );
+        let hidden = wm.quest_hidden_gather_nodes(&[(110500, 10)]).await;
+        assert!(hidden.is_empty(), "on the step: shown");
+    }
+
     /// `note_gather_node_actor` only indexes actors whose `(zone_id,
     /// unique_id)` is a known gather node, and `gather_node_identity`
     /// resolves the live actor id back to that key. This is the bridge
@@ -4538,6 +5015,48 @@ mod tests {
             wm.gather_node_identity(0xDEAD_BEEF).await.is_none(),
             "an unknown actor id resolves to None",
         );
+    }
+
+    /// A mining point one player used up leaves only that player's
+    /// world: their session drops it, the spawn filters skip it for them
+    /// alone, nobody else loses it, and it comes back when the time is up.
+    #[tokio::test]
+    async fn gather_node_rest_for_one_player_hides_it_from_that_player_only() {
+        let wm = WorldManager::new();
+        let (node, miner, other) = (0x4009_0001, 7, 8);
+        let mut s = Session::new(70);
+        s.actor_instance_list.insert(node);
+        wm.upsert_session(s).await;
+        let mut s2 = Session::new(80);
+        s2.actor_instance_list.insert(node);
+        wm.upsert_session(s2).await;
+
+        assert!(wm.rest_gather_node_for_player(node, miner, 70, 300).await);
+        assert!(wm.is_gather_node_resting_for(node, miner));
+        assert!(!wm.is_gather_node_resting_for(node, other));
+        assert!(!wm.is_gather_node_resting(node), "no one else loses it");
+        assert!(
+            !wm.session(70)
+                .await
+                .unwrap()
+                .actor_instance_list
+                .contains(&node)
+        );
+        assert!(
+            wm.session(80)
+                .await
+                .unwrap()
+                .actor_instance_list
+                .contains(&node)
+        );
+
+        // It comes back for the miner once the rest is over.
+        let now = common::utils::unix_timestamp() as u64;
+        assert!(wm.is_gather_node_resting_for_player_at(node, miner, now + 299));
+        assert!(!wm.is_gather_node_resting_for_player_at(node, miner, now + 301));
+        // A rest ending in the past is not a rest.
+        wm.rest_gather_node_for_player_at(node, miner, now - 1, now);
+        assert!(!wm.is_gather_node_resting_for(node, miner));
     }
 
     #[tokio::test]

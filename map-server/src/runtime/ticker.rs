@@ -45,7 +45,7 @@ use tokio::time::interval;
 
 use crate::actor::Character;
 use crate::actor::modifier::ModifierMap;
-use crate::battle::controller::ControllerOwnerView;
+use crate::battle::controller::{ControllerOwnerView, LEASH_DISTANCE};
 use crate::battle::outbox::BattleOutbox;
 use crate::battle::target_find::{ActorArena, ActorView};
 use crate::database::Database;
@@ -206,6 +206,20 @@ impl GameTicker {
             let now_ms = crate::runtime::clock::server_now_ms();
             self.tick_once(now_ms).await;
             frames += 1;
+            // Seasonal events start and stop by date, night NPCs come and
+            // go with the Eorzean hour, and a script can make one vanish:
+            // every 10 s, take hidden event NPCs off the clients that have
+            // them.
+            if frames.is_multiple_of(100) {
+                let removed = self.world.remove_inactive_seasonal_actors().await;
+                if removed > 0 {
+                    tracing::info!(removed, "seasonal event NPCs removed");
+                }
+                let looks = self.world.refresh_seasonal_looks(&self.registry).await;
+                if looks > 0 {
+                    tracing::info!(players = looks, "seasonal weather and music sent");
+                }
+            }
             // Liveness heartbeat — a frozen/starved ticker (the SEQ_005
             // wait(1) continuation silently never firing) is otherwise
             // invisible in the logs. Scheduler depths included so a
@@ -246,7 +260,14 @@ impl GameTicker {
             };
             self.tick_zone(now_ms, zone_id, &zone_arc).await;
         }
-        crate::leve::battle::tick(now_ms, &self.registry, &self.world, &self.db).await;
+        crate::leve::battle::tick(
+            now_ms,
+            &self.registry,
+            &self.world,
+            &self.db,
+            self.lua.as_ref(),
+        )
+        .await;
         // Lua coroutine scheduler — resume every parked-on-time
         // coroutine whose deadline passed this frame (director
         // `main` scripts that yielded on `wait(N)`, player-script
@@ -393,6 +414,28 @@ impl GameTicker {
                 if !session.content_warp_acked {
                     continue;
                 }
+                // Boss rooms: gates that close behind the party, and the
+                // way back to the entrance after a lost fight.
+                crate::runtime::dungeon_fight::tick_boss_fights(
+                    now_ms,
+                    &self.registry,
+                    &self.world,
+                    &self.db,
+                    active.parent_zone_id,
+                    active.instance_id,
+                )
+                .await;
+                // The Aurum Vale's gold gas and goldbile pools.
+                crate::runtime::aurum_hazards::tick(
+                    now_ms,
+                    &self.registry,
+                    &self.world,
+                    &self.db,
+                    lua,
+                    active.parent_zone_id,
+                    active.instance_id,
+                )
+                .await;
                 let script_path = lua.resolver().content(&active.content_script);
                 if !script_path.exists() {
                     continue;
@@ -524,6 +567,32 @@ impl GameTicker {
                 apply_npc_movement_step(&self.world, &self.registry, zone, &handle, step).await;
             }
 
+            // A knockback's sped-up run is over: others get the usual
+            // speed again (dispatcher `apply_knockback`).
+            let restore = {
+                let mut chara = handle.character.write().await;
+                if chara.knockback_speed_until_ms != 0 && now_ms >= chara.knockback_speed_until_ms {
+                    chara.knockback_speed_until_ms = 0;
+                    Some(chara.speed_sent)
+                } else {
+                    None
+                }
+            };
+            if let Some(multiplier) = restore {
+                let sub = crate::packets::send::actor::build_set_actor_speed_scaled(
+                    handle.actor_id,
+                    multiplier,
+                );
+                crate::runtime::broadcast::broadcast_around_actor(
+                    &self.world,
+                    &self.registry,
+                    zone,
+                    handle.actor_id,
+                    sub.to_bytes(),
+                )
+                .await;
+            }
+
             // Chocobo rental expiry — port of Meteor commit `8687e431`'s
             // `Player.Update` arm. If the actor has an active rental
             // whose expire timestamp has elapsed, dismount and
@@ -614,6 +683,8 @@ impl GameTicker {
                     } else if !matches!(handle.kind, ActorKindTag::Player)
                         && !chara.chara.respawn_disabled
                         && chara.chara.time_of_death_utc != 0
+                        // Not while a player holds it in Monster Mode.
+                        && crate::runtime::monster_mode::may_respawn(handle.actor_id)
                         // `time_of_death_utc` is wall-clock (apply_die
                         // stamps `unix_timestamp()`), so the comparison
                         // must read wall-clock too — never the ticker's
@@ -630,6 +701,7 @@ impl GameTicker {
                     } else if !matches!(handle.kind, ActorKindTag::Player)
                         && chara.chara.respawn_disabled
                         && chara.chara.time_of_death_utc != 0
+                        && crate::runtime::monster_mode::may_respawn(handle.actor_id)
                         && common::utils::unix_timestamp() as u32
                             >= chara
                                 .chara
@@ -650,6 +722,7 @@ impl GameTicker {
             match action {
                 DeathTickAction::None => {}
                 DeathTickAction::Despawn => {
+                    crate::runtime::monster_mode::on_respawn(handle.actor_id);
                     crate::runtime::quest_apply::apply_despawn_actor(
                         zone_id,
                         handle.actor_id,
@@ -664,12 +737,24 @@ impl GameTicker {
                     // BattleNpc respawn flow which restores to the
                     // initial spawn coords. AutoRevive (raise) just
                     // brings the actor back where they fell.
-                    if matches!(action, DeathTickAction::Respawn) {
-                        let mut c = handle.character.write().await;
-                        let (sx, sy, sz) = (c.chara.spawn_x, c.chara.spawn_y, c.chara.spawn_z);
-                        c.base.position_x = sx;
-                        c.base.position_y = sy;
-                        c.base.position_z = sz;
+                    let respawn = matches!(action, DeathTickAction::Respawn);
+                    if respawn {
+                        let spawn = {
+                            let mut c = handle.character.write().await;
+                            let (sx, sy, sz) = (c.chara.spawn_x, c.chara.spawn_y, c.chara.spawn_z);
+                            c.base.position_x = sx;
+                            c.base.position_y = sy;
+                            c.base.position_z = sz;
+                            common::Vector3::new(sx, sy, sz)
+                        };
+                        // The spatial grid too: instance streaming and
+                        // the AI radius queries read positions from it.
+                        let mut ob = AreaOutbox::new();
+                        zone.write().await.core.update_actor_position(
+                            handle.actor_id,
+                            spawn,
+                            &mut ob,
+                        );
                     }
                     crate::runtime::dispatcher::apply_revive(
                         handle.actor_id,
@@ -678,6 +763,15 @@ impl GameTicker {
                         zone,
                     )
                     .await;
+                    if respawn {
+                        crate::runtime::monster_mode::on_respawn(handle.actor_id);
+                        // Clients faded the corpse; a state flip alone
+                        // never brings it back. Drop it from their actor
+                        // tables so streaming spawns it afresh, alive.
+                        self.world
+                            .forget_actor_for_all_sessions(handle.actor_id)
+                            .await;
+                    }
                 }
             }
 
@@ -780,7 +874,9 @@ pub(crate) async fn build_content_rosters(
                 let actor = crate::lua::userdata::LuaActor {
                     actor_id: mid,
                     name: c.base.actor_name.clone(),
-                    class_name: String::new(),
+                    // The model class (e.g. "MoogleDarkKing"), so content
+                    // scripts can tell monsters apart.
+                    class_name: c.base.class_name.clone(),
                     class_path: String::new(),
                     unique_id: String::new(),
                     zone_id: handle.zone_id,
@@ -904,7 +1000,14 @@ async fn apply_npc_movement_step(
                 } else {
                     (pos.x, pos.y, pos.z)
                 };
-                let rot = look_at_rotation(pos.x, pos.z, destination.x, destination.z);
+                // A step that goes nowhere has no direction: keep facing
+                // (look_at of the same point is 0.0, which turned
+                // monsters away from their target).
+                let rot = if dist > f32::EPSILON {
+                    look_at_rotation(pos.x, pos.z, destination.x, destination.z)
+                } else {
+                    chara.base.rotation
+                };
                 chara.base.position_x = nx;
                 chara.base.position_y = ny;
                 chara.base.position_z = nz;
@@ -959,9 +1062,12 @@ fn tick_status(chara: &mut Character, now_ms: u64, outbox: &mut StatusOutbox) {
     // underlying HashMap is small enough that this is essentially free.
     let mods_snapshot: ModifierMap = chara.chara.mods.clone();
     let passive = compute_passive_regen(chara);
+    // Effects are stamped in wall-clock Unix time; regen paces on the
+    // ticker's clock.
+    let wall_ms = (common::utils::unix_timestamp() as u64).saturating_mul(1000);
     chara
         .status_effects
-        .update(now_ms, &mods_snapshot, passive, outbox);
+        .update_with_clocks(now_ms, wall_ms, &mods_snapshot, passive, outbox);
 }
 
 /// Base out-of-combat pool deltas fed into the 3 s regen tick alongside
@@ -1001,7 +1107,11 @@ fn compute_passive_regen(chara: &Character) -> crate::status::PassiveRegen {
     } else {
         ACTIVE_MODE_HP_REGEN_PERCENT
     };
-    let hp = if (chara.chara.hp as i32) < max_hp {
+    // A poison or other damage-over-time stops natural HP regen, or the
+    // percent regen would wipe out its ticks out of combat (the Aurum
+    // Vale's Gold Lung and goldbile).
+    let poisoned = chara.chara.mods.get(crate::actor::Modifier::RegenDown) > 0.0;
+    let hp = if (chara.chara.hp as i32) < max_hp && !poisoned {
         (max_hp * pct / 100).max(1)
     } else {
         0
@@ -1026,6 +1136,24 @@ pub(crate) fn build_owner_view(
         .map(|s| s.target_actor_id)
         .filter(|id| *id != 0);
     let most_hated = chara.hate.most_hated();
+    // (0, 0, 0) = no spawn point (scripted and test actors).
+    let spawn = common::Vector3::new(
+        chara.chara.spawn_x,
+        chara.chara.spawn_y,
+        chara.chara.spawn_z,
+    );
+    let spawn_position = (spawn.x != 0.0 || spawn.y != 0.0 || spawn.z != 0.0).then_some(spawn);
+    let pos = chara.base.position();
+    // Monsters a duty or quest script spawned (no respawn) aren't
+    // leashed: they follow the fight wherever it goes. Leashed, an escort
+    // monster pulled near the edge of its 50 yalms gave up at once, the
+    // script engaged it again the next tick, and it sat at the line
+    // while the player walked on (Man0u1 chinchillas).
+    let is_close_to_spawn = chara.chara.respawn_disabled
+        || spawn_position.is_none_or(|sp| {
+            let (dx, dz) = (pos.x - sp.x, pos.z - sp.z);
+            dx * dx + dz * dz <= LEASH_DISTANCE * LEASH_DISTANCE
+        });
     ControllerOwnerView {
         actor: ActorView {
             actor_id,
@@ -1054,15 +1182,26 @@ pub(crate) fn build_owner_view(
             .is_none_or(|p| !p.is_following_path()),
         most_hated_actor_id: most_hated,
         current_target_actor_id: current_target,
-        has_prevent_movement: false,
+        has_prevent_movement: chara
+            .status_effects
+            .has_by_flag(crate::status::StatusEffectFlags::PREVENT_MOVEMENT),
+        has_prevent_attack: chara
+            .status_effects
+            .has_by_flag(crate::status::StatusEffectFlags::PREVENT_ATTACK),
+        status_flags: chara
+            .status_effects
+            .iter()
+            .fold(0, |f, e| f | e.flags.bits()),
         max_hp: chara.get_max_hp(),
         current_hp: chara.get_hp(),
         target_hpp: None,
         target_has_stealth: false,
-        is_close_to_spawn: true,
+        is_close_to_spawn,
+        spawn_position,
         target_is_locked: false,
         attack_delay_ms: chara.get_attack_delay_ms(),
         attack_range: chara.get_attack_range(),
+        tp: chara.chara.tp,
     }
 }
 
@@ -1094,15 +1233,8 @@ mod tests {
     use crate::zone::navmesh::StubNavmeshLoader;
     use common::Vector3;
 
-    fn tempdb() -> std::path::PathBuf {
-        use std::sync::atomic::{AtomicU64, Ordering};
-        static SEQ: AtomicU64 = AtomicU64::new(0);
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-        common::test_tmp::dir().join(format!("garlemald-ticker-{nanos}-{seq}.db"))
+    fn tempdb() -> String {
+        common::test_db::fresh_blocking()
     }
 
     async fn setup_one_zone_one_actor() -> (GameTicker, Arc<RwLock<Zone>>) {
@@ -1373,6 +1505,12 @@ mod tests {
         c.chara.hp = 500;
         let p = compute_passive_regen(&c);
         assert_eq!((p.hp, p.mp, p.tp), (20, 0, -90));
+
+        // Poisoned (any damage-over-time): no HP regen, TP still decays.
+        c.chara.mods.set(crate::actor::Modifier::RegenDown, 5.0);
+        let p = compute_passive_regen(&c);
+        assert_eq!((p.hp, p.mp, p.tp), (0, 0, -90));
+        c.chara.mods.set(crate::actor::Modifier::RegenDown, 0.0);
 
         // Engaged: nothing at all.
         c.ai_container.internal_engage(2, 0, 2500);
@@ -1960,6 +2098,655 @@ mod tests {
             chant_ons, 2,
             "exactly two casts in 8 s (recast = cast 2 s + 6 s); got {substates:?}",
         );
+    }
+
+    /// Monster TP moves against the real catalog: at 1000 TP the
+    /// monster uses a move from its list, the move lands damage, and the
+    /// monster's TP goes back to 0. Nutshell (23012) is single-target;
+    /// Bleat (23090) is centered on the monster, so it aims at itself
+    /// and still hits the player inside its 6 y radius.
+    #[tokio::test]
+    async fn monster_tp_moves_land_and_spend_tp() {
+        // Gladiator and archer enemies use player weaponskills (lists
+        // 125 / 126): Fast Blade 27150 and Heavy Shot 27228.
+        for (move_id, expect_self_target) in [
+            (23012u16, false),
+            (23090u16, true),
+            (27150u16, false),
+            (27228u16, false),
+        ] {
+            let (ticker, _zone, _rx) = setup_engaged_npc_vs_player(2.0, |_| {}).await;
+            let (catalog, _) = ticker
+                .db
+                .load_global_battle_command_list()
+                .await
+                .expect("battle command catalog");
+            let skill = catalog
+                .get(&move_id)
+                .expect("monster move seeded")
+                .to_battle_command();
+            assert_eq!(skill.command_type, crate::battle::CommandType::WEAPON_SKILL);
+            assert_eq!(
+                crate::battle::controller::command_target(&skill, 2, 1) == 2,
+                expect_self_target,
+                "move {move_id} target choice",
+            );
+            {
+                let handle = ticker.registry.get(2).await.unwrap();
+                let mut c = handle.character.write().await;
+                c.chara.tp = 1000;
+                let ctrl = c.ai_container.controller.as_mut().unwrap();
+                ctrl.battle.skills = vec![skill];
+                // Swings off, so only the move can hurt the player.
+                ctrl.auto_attack_enabled = false;
+            }
+            {
+                let handle = ticker.registry.get(1).await.unwrap();
+                let mut c = handle.character.write().await;
+                c.ai_container.internal_engage(2, 0, 2500);
+            }
+            // A move can miss, so give the monster up to ten tries.
+            let mut player_hp = 1000;
+            for attempt in 0..10u64 {
+                let base = attempt * 4_000;
+                if attempt > 0 {
+                    let handle = ticker.registry.get(2).await.unwrap();
+                    let mut c = handle.character.write().await;
+                    c.chara.tp = 1000;
+                    c.ai_container
+                        .controller
+                        .as_mut()
+                        .unwrap()
+                        .battle
+                        .next_skill_ms = 0;
+                }
+                for i in 1..=40u64 {
+                    ticker.tick_once(base + i * 100).await;
+                }
+                let handle = ticker.registry.get(2).await.unwrap();
+                let tp = handle.character.read().await.chara.tp;
+                // The player's own swings bank the monster a little TP
+                // back after the reset, so check it fell below 1000.
+                assert!(
+                    tp < 1000,
+                    "move {move_id} must spend the monster's TP, tp {tp}"
+                );
+                let player = ticker.registry.get(1).await.unwrap();
+                player_hp = player.character.read().await.get_hp();
+                if player_hp < 1000 {
+                    break;
+                }
+            }
+            assert!(
+                player_hp < 1000,
+                "move {move_id} must damage the player, hp {player_hp}"
+            );
+        }
+    }
+
+    /// A monster starting a TP move sends the battle-log line
+    /// "<monster> readies <move>." (0x0139, text 30126, the move's id,
+    /// aimed at its target) before the move lands.
+    #[tokio::test]
+    async fn monster_tp_move_sends_readies_line() {
+        let (ticker, _zone, mut rx) = setup_engaged_npc_vs_player(2.0, |_| {}).await;
+        let (catalog, _) = ticker.db.load_global_battle_command_list().await.unwrap();
+        // Nutshell: single target, 2.5 s wind-up.
+        let skill = catalog.get(&23012).unwrap().to_battle_command();
+        {
+            let handle = ticker.registry.get(2).await.unwrap();
+            let mut c = handle.character.write().await;
+            c.chara.tp = 1000;
+            let ctrl = c.ai_container.controller.as_mut().unwrap();
+            ctrl.battle.skills = vec![skill];
+            ctrl.auto_attack_enabled = false;
+        }
+        // Two ticks: the move starts, but its 2.5 s wind-up has not run.
+        ticker.tick_once(100).await;
+        ticker.tick_once(200).await;
+        let lines: Vec<(u32, u16, u32, u16)> = drain_subpackets(&mut rx)
+            .iter()
+            .filter(|s| {
+                s.game_message.opcode == crate::packets::opcodes::OP_COMMAND_RESULT_X01
+                    && s.header.source_id == 2
+            })
+            .map(|s| {
+                let anim = u32::from_le_bytes(s.data[0x04..0x08].try_into().unwrap());
+                let cmd = u16::from_le_bytes(s.data[0x24..0x26].try_into().unwrap());
+                let target = u32::from_le_bytes(s.data[0x28..0x2C].try_into().unwrap());
+                let text = u16::from_le_bytes(s.data[0x2E..0x30].try_into().unwrap());
+                (anim, cmd, target, text)
+            })
+            .collect();
+        assert_eq!(
+            lines,
+            vec![(
+                0,
+                23012,
+                1,
+                crate::runtime::dispatcher::MONSTER_READIES_TEXT_ID
+            )],
+            "exactly one readies line, before any damage"
+        );
+        let player_hp = ticker
+            .registry
+            .get(1)
+            .await
+            .unwrap()
+            .character
+            .read()
+            .await
+            .get_hp();
+        assert_eq!(player_hp, 1000, "the move has not landed yet");
+    }
+
+    /// A monster-centered area move hits the players around it, never
+    /// the monster itself or a second monster standing beside it.
+    #[tokio::test]
+    async fn monster_area_move_spares_monsters() {
+        let (ticker, zone, _rx) = setup_engaged_npc_vs_player(2.0, |_| {}).await;
+        // A second monster 1 y from the user, well inside Bleat's 6 y.
+        {
+            let mut ob = AreaOutbox::new();
+            zone.write().await.core.add_actor(
+                StoredActor {
+                    actor_id: 3,
+                    kind: ActorKind::BattleNpc,
+                    position: Vector3::new(3.0, 0.0, 0.0),
+                    grid: (0, 0),
+                    is_alive: true,
+                },
+                &mut ob,
+            );
+            let mut other = Character::new(3);
+            other.chara.hp = 1000;
+            other.chara.max_hp = 1000;
+            other.chara.level = 10;
+            other.base.position_x = 3.0;
+            ticker
+                .registry
+                .insert(ActorHandle::new(3, ActorKindTag::BattleNpc, 100, 0, other))
+                .await;
+        }
+        let (catalog, _) = ticker.db.load_global_battle_command_list().await.unwrap();
+        let bleat = catalog.get(&23090).unwrap().to_battle_command();
+        let mut player_hp = 1000;
+        for attempt in 0..10u64 {
+            {
+                let handle = ticker.registry.get(2).await.unwrap();
+                let mut c = handle.character.write().await;
+                c.chara.tp = 1000;
+                let ctrl = c.ai_container.controller.as_mut().unwrap();
+                ctrl.battle.skills = vec![bleat.clone()];
+                ctrl.battle.next_skill_ms = 0;
+                ctrl.auto_attack_enabled = false;
+            }
+            for i in 1..=40u64 {
+                ticker.tick_once(attempt * 4_000 + i * 100).await;
+            }
+            player_hp = ticker
+                .registry
+                .get(1)
+                .await
+                .unwrap()
+                .character
+                .read()
+                .await
+                .get_hp();
+            if player_hp < 1000 {
+                break;
+            }
+        }
+        assert!(player_hp < 1000, "Bleat must hit the player");
+        for id in [2u32, 3] {
+            let hp = ticker
+                .registry
+                .get(id)
+                .await
+                .unwrap()
+                .character
+                .read()
+                .await
+                .get_hp();
+            assert_eq!(
+                hp, 1000,
+                "monster {id} must not be hit by a monster's Bleat"
+            );
+        }
+    }
+
+    /// Drop Kick (23074, knockback 1 from its 1.0 page): a landed hit
+    /// carries the client's knockback hit-effect bits; a target with
+    /// KnockbackImmune gets the damage without them.
+    #[tokio::test]
+    async fn knockback_move_sets_hit_effect_unless_immune() {
+        for immune in [false, true] {
+            let (ticker, _zone, mut rx) = setup_engaged_npc_vs_player(2.0, |_| {}).await;
+            let (catalog, _) = ticker.db.load_global_battle_command_list().await.unwrap();
+            let kick = catalog.get(&23074).unwrap().to_battle_command();
+            assert_eq!(
+                kick.knockback, 1,
+                "Drop Kick knockback level from skill_info"
+            );
+            if immune {
+                let handle = ticker.registry.get(1).await.unwrap();
+                handle
+                    .character
+                    .write()
+                    .await
+                    .chara
+                    .mods
+                    .set(crate::actor::modifier::Modifier::KnockbackImmune, 1.0);
+            }
+            let pos_of = |id: u32| {
+                let registry = ticker.registry.clone();
+                async move {
+                    let h = registry.get(id).await.unwrap();
+                    let c = h.character.read().await;
+                    c.base.position()
+                }
+            };
+            let start = pos_of(1).await;
+            let mut landed: Option<u32> = None;
+            let mut pushed_to = start;
+            let mut set_position_sent = false;
+            let mut warp: Option<common::subpacket::SubPacket> = None;
+            for attempt in 0..10u64 {
+                {
+                    let handle = ticker.registry.get(2).await.unwrap();
+                    let mut c = handle.character.write().await;
+                    c.chara.tp = 1000;
+                    let ctrl = c.ai_container.controller.as_mut().unwrap();
+                    ctrl.battle.skills = vec![kick.clone()];
+                    ctrl.battle.next_skill_ms = 0;
+                    ctrl.auto_attack_enabled = false;
+                }
+                for i in 1..=40u64 {
+                    ticker.tick_once(attempt * 4_000 + i * 100).await;
+                }
+                let subs = drain_subpackets(&mut rx);
+                if let Some(w) = subs.iter().find(|s| {
+                    s.game_message.opcode == crate::packets::opcodes::OP_SET_ACTOR_POSITION
+                        && s.header.source_id == 1
+                }) {
+                    set_position_sent = true;
+                    warp = Some(w.clone());
+                }
+                landed = subs
+                    .iter()
+                    .filter(|s| {
+                        s.game_message.opcode == crate::packets::opcodes::OP_COMMAND_RESULT_X01
+                            && s.header.source_id == 2
+                    })
+                    .filter(|s| u16::from_le_bytes(s.data[0x24..0x26].try_into().unwrap()) == 23074)
+                    .filter(|s| u16::from_le_bytes(s.data[0x2C..0x2E].try_into().unwrap()) > 0)
+                    .map(|s| u32::from_le_bytes(s.data[0x30..0x34].try_into().unwrap()))
+                    .next();
+                if landed.is_some() {
+                    pushed_to = pos_of(1).await;
+                    break;
+                }
+            }
+            let effect = landed.expect("Drop Kick must land within ten tries");
+            let mob = pos_of(2).await;
+            let dist = |a: common::Vector3, b: common::Vector3| {
+                ((a.x - b.x).powi(2) + (a.z - b.z).powi(2)).sqrt()
+            };
+            let moved = dist(start, pushed_to);
+            if immune {
+                assert!(moved < 0.01, "immune target stays put, moved {moved}");
+            } else {
+                let want = crate::runtime::dispatcher::KNOCKBACK_YALMS_PER_LEVEL;
+                assert!(
+                    (moved - want).abs() < 0.3 && dist(mob, pushed_to) > dist(mob, start),
+                    "pushed {moved} y away from the monster (want {want})"
+                );
+                assert!(
+                    set_position_sent,
+                    "the player's client is sent the new spot"
+                );
+                // The warp carries the knockback note: push direction,
+                // distance and start, facing the monster.
+                let w = warp.unwrap();
+                let d = &w.data;
+                let f = |o: usize| f32::from_le_bytes(d[o..o + 4].try_into().unwrap());
+                assert_eq!(d.len(), 0x48, "warp body + note");
+                assert_eq!(&d[0x28..0x2C], b"XKB1");
+                assert!(
+                    (f(0x08) - pushed_to.x).abs() < 1e-3 && (f(0x10) - pushed_to.z).abs() < 1e-3
+                );
+                let (dir_x, dir_z) = (f(0x2C), f(0x30));
+                assert!(((pushed_to.x - start.x) - dir_x * f(0x34)).abs() < 1e-3);
+                assert!(((pushed_to.z - start.z) - dir_z * f(0x34)).abs() < 1e-3);
+                assert_eq!(
+                    u16::from_le_bytes([d[0x38], d[0x39]]),
+                    crate::runtime::dispatcher::knockback_slide_ms(f(0x34))
+                );
+                assert!((f(0x3C) - start.x).abs() < 1e-3 && (f(0x44) - start.z).abs() < 1e-3);
+                let face = (mob.x - pushed_to.x).atan2(mob.z - pushed_to.z);
+                assert!(
+                    (f(0x14) - face).abs() < 1e-3,
+                    "faces the monster: {} vs {face}",
+                    f(0x14)
+                );
+                // The sped-up run for onlookers ends on the server clock
+                // (the dispatcher arms it there; this test's ticks run on
+                // their own small clock).
+                ticker
+                    .tick_once(crate::runtime::clock::server_now_ms() + 1000)
+                    .await;
+                let h = ticker.registry.get(1).await.unwrap();
+                assert_eq!(h.character.read().await.knockback_speed_until_ms, 0);
+            }
+            let kb = crate::runtime::dispatcher::knockback_hit_effect(1);
+            if immune {
+                assert_ne!(
+                    effect & kb,
+                    kb,
+                    "immune target: no knockback bits, effect {effect:#x}"
+                );
+            } else {
+                assert_eq!(
+                    effect & kb,
+                    kb,
+                    "knockback bits on the hit, effect {effect:#x}"
+                );
+            }
+        }
+    }
+
+    /// A monster move that inflicts a status lands it on the player:
+    /// Yawn (23208, Sleep 228001) and Stone Gaze (23023, Petrify
+    /// 223004), both single target.
+    #[tokio::test]
+    async fn monster_status_moves_land_on_the_player() {
+        for (move_id, status_id) in [(23208u16, 228001u32), (23023u16, 223004u32)] {
+            let (ticker, _zone, _rx) = setup_engaged_npc_vs_player(2.0, |_| {}).await;
+            let (catalog, _) = ticker.db.load_global_battle_command_list().await.unwrap();
+            let skill = catalog.get(&move_id).unwrap().to_battle_command();
+            assert_eq!(skill.status_id, status_id);
+            let mut has = false;
+            for attempt in 0..10u64 {
+                {
+                    let handle = ticker.registry.get(2).await.unwrap();
+                    let mut c = handle.character.write().await;
+                    c.chara.tp = 1000;
+                    let ctrl = c.ai_container.controller.as_mut().unwrap();
+                    ctrl.battle.skills = vec![skill.clone()];
+                    ctrl.battle.next_skill_ms = 0;
+                    ctrl.auto_attack_enabled = false;
+                }
+                for i in 1..=40u64 {
+                    ticker.tick_once(attempt * 4_000 + i * 100).await;
+                }
+                let player = ticker.registry.get(1).await.unwrap();
+                has = player.character.read().await.status_effects.has(status_id);
+                if has {
+                    break;
+                }
+            }
+            assert!(
+                has,
+                "move {move_id} must put status {status_id} on the player"
+            );
+        }
+    }
+
+    /// A player put to sleep by a monster's Yawn stops swinging: the
+    /// monster takes no auto-attack damage while the player sleeps.
+    #[tokio::test]
+    async fn player_slept_by_a_monster_stops_swinging() {
+        let (mut ticker, _zone, _rx) = setup_engaged_npc_vs_player(2.0, |_| {}).await;
+        // The real status catalog, so Sleep carries its PREVENT_ATTACK flag.
+        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../scripts/lua");
+        let lua = Arc::new(crate::lua::LuaEngine::new(&root));
+        lua.catalogs()
+            .install_status_effects(ticker.db.load_global_status_effect_list().await.unwrap());
+        ticker.lua = Some(lua);
+        let (catalog, _) = ticker.db.load_global_battle_command_list().await.unwrap();
+        let yawn = catalog.get(&23208).unwrap().to_battle_command();
+        {
+            let handle = ticker.registry.get(1).await.unwrap();
+            handle
+                .character
+                .write()
+                .await
+                .ai_container
+                .internal_engage(2, 0, 2500);
+        }
+        let mut now = 0u64;
+        let mut asleep = false;
+        for _ in 0..10 {
+            {
+                let handle = ticker.registry.get(2).await.unwrap();
+                let mut c = handle.character.write().await;
+                c.chara.tp = 1000;
+                let ctrl = c.ai_container.controller.as_mut().unwrap();
+                ctrl.battle.skills = vec![yawn.clone()];
+                ctrl.battle.next_skill_ms = 0;
+                ctrl.auto_attack_enabled = false;
+            }
+            for _ in 0..40 {
+                now += 100;
+                ticker.tick_once(now).await;
+            }
+            let player = ticker.registry.get(1).await.unwrap();
+            asleep = player.character.read().await.status_effects.has(228001);
+            if asleep {
+                break;
+            }
+        }
+        assert!(asleep, "Yawn must put the player to sleep");
+        let hp_before = ticker
+            .registry
+            .get(2)
+            .await
+            .unwrap()
+            .character
+            .read()
+            .await
+            .get_hp();
+        // 8 s of a 15 s sleep: three swing windows pass with no swing.
+        for _ in 0..80 {
+            now += 100;
+            ticker.tick_once(now).await;
+        }
+        let player = ticker.registry.get(1).await.unwrap();
+        assert!(
+            player.character.read().await.status_effects.has(228001),
+            "still asleep"
+        );
+        let hp_after = ticker
+            .registry
+            .get(2)
+            .await
+            .unwrap()
+            .character
+            .read()
+            .await
+            .get_hp();
+        assert_eq!(
+            hp_after, hp_before,
+            "a sleeping player must not hit the monster"
+        );
+    }
+
+    /// Nobody left on its hate list: the monster leaves combat once
+    /// (one hate-gem clear), not every tick.
+    #[tokio::test]
+    async fn monster_with_no_hate_leaves_combat_once() {
+        let (ticker, _zone, mut rx) = setup_engaged_npc_vs_player(2.0, |_| {}).await;
+        {
+            let handle = ticker.registry.get(2).await.unwrap();
+            handle.character.write().await.hate.clear_hate(None);
+        }
+        drain_subpackets(&mut rx);
+        for i in 1..=10u64 {
+            ticker.tick_once(i * 100).await;
+        }
+        let handle = ticker.registry.get(2).await.unwrap();
+        assert!(
+            !handle.character.read().await.ai_container.is_engaged(),
+            "a monster with nobody to fight leaves combat"
+        );
+        let gem_clears = drain_subpackets(&mut rx)
+            .iter()
+            .filter(|s| {
+                s.header.source_id == 2
+                    && s.game_message.opcode == crate::packets::opcodes::OP_SET_ENMITY_INDICATOR
+            })
+            .count();
+        assert!(gem_clears <= 1, "disengage sent {gem_clears} times");
+    }
+
+    /// Led too far from its spawn point, a monster drops the fight and
+    /// walks back home.
+    #[tokio::test]
+    async fn monster_dragged_from_spawn_gives_up_and_walks_home() {
+        let (ticker, _zone, _rx) = setup_engaged_npc_vs_player(2.0, |_| {}).await;
+        {
+            let handle = ticker.registry.get(2).await.unwrap();
+            let mut c = handle.character.write().await;
+            c.chara.spawn_x = 2.0 + LEASH_DISTANCE + 5.0;
+        }
+        for i in 1..=10u64 {
+            ticker.tick_once(i * 100).await;
+        }
+        let handle = ticker.registry.get(2).await.unwrap();
+        let (engaged, hated, x0) = {
+            let c = handle.character.read().await;
+            (
+                c.ai_container.is_engaged(),
+                c.hate.most_hated(),
+                c.base.position_x,
+            )
+        };
+        assert!(!engaged, "too far from spawn: drops the fight");
+        assert_eq!(hated, None);
+        assert!(x0 > 2.0, "heading home, at {x0}");
+        for i in 11..=250u64 {
+            ticker.tick_once(i * 100).await;
+        }
+        let c = handle.character.read().await;
+        assert!(
+            (c.base.position_x - c.chara.spawn_x).abs() < 0.01,
+            "home at {}",
+            c.base.position_x
+        );
+        assert!(!c.ai_container.is_engaged());
+    }
+
+    /// A monster a duty spawned (no respawn) follows the fight past the
+    /// leash: it keeps fighting and closes on the player.
+    #[tokio::test]
+    async fn duty_monster_is_not_leashed() {
+        let (ticker, _zone, _rx) = setup_engaged_npc_vs_player(2.0, |_| {}).await;
+        {
+            let handle = ticker.registry.get(2).await.unwrap();
+            let mut c = handle.character.write().await;
+            c.chara.spawn_x = 2.0 + LEASH_DISTANCE + 5.0;
+            c.chara.respawn_disabled = true;
+        }
+        for i in 1..=10u64 {
+            ticker.tick_once(i * 100).await;
+        }
+        let handle = ticker.registry.get(2).await.unwrap();
+        let c = handle.character.read().await;
+        assert!(c.ai_container.is_engaged(), "a duty monster keeps fighting");
+        assert_eq!(c.hate.most_hated(), Some(1));
+    }
+
+    /// The zone grid still has the player beside the monster, but the
+    /// player is really 40 yalms off: the swing gate passes on the grid,
+    /// the swing itself must not land.
+    #[tokio::test]
+    async fn monster_swing_out_of_real_reach_does_not_land() {
+        let (ticker, _zone, _rx) = setup_engaged_npc_vs_player(2.0, |_| {}).await;
+        // Every swing connects (hit rate clamps at 100%), so the test
+        // doesn't depend on the miss roll. Without this, every swing in the
+        // 10 s "back beside it" phase missed now and then.
+        {
+            let monster = ticker.registry.get(2).await.unwrap();
+            monster
+                .character
+                .write()
+                .await
+                .set_mod(crate::actor::Modifier::RawHitRate, 100.0);
+        }
+        let player = ticker.registry.get(1).await.unwrap();
+        let hp_before = {
+            let mut c = player.character.write().await;
+            c.base.position_x = 40.0;
+            c.get_hp()
+        };
+        // A hit here takes 1 HP and natural regen gives it back a few
+        // ticks later, so watch the lowest HP of each phase, not the end.
+        let mut lowest = hp_before;
+        for i in 1..=100u64 {
+            ticker.tick_once(i * 100).await;
+            lowest = lowest.min(player.character.read().await.get_hp());
+        }
+        assert_eq!(lowest, hp_before, "no hit from 38 yalms");
+        // Back beside it: the swings land again.
+        player.character.write().await.base.position_x = 0.0;
+        for i in 101..=200u64 {
+            ticker.tick_once(i * 100).await;
+            lowest = lowest.min(player.character.read().await.get_hp());
+        }
+        assert!(lowest < hp_before, "hit at 2 yalms");
+    }
+
+    /// Inside the leash a monster keeps fighting.
+    #[tokio::test]
+    async fn monster_near_spawn_keeps_fighting() {
+        let (ticker, _zone, _rx) = setup_engaged_npc_vs_player(2.0, |_| {}).await;
+        {
+            let handle = ticker.registry.get(2).await.unwrap();
+            handle.character.write().await.chara.spawn_x = 2.0 + LEASH_DISTANCE - 5.0;
+        }
+        for i in 1..=10u64 {
+            ticker.tick_once(i * 100).await;
+        }
+        let handle = ticker.registry.get(2).await.unwrap();
+        assert!(handle.character.read().await.ai_container.is_engaged());
+    }
+
+    /// Below 1000 TP a monster never uses a move.
+    #[tokio::test]
+    async fn monster_without_tp_uses_no_move() {
+        let (ticker, _zone, _rx) = setup_engaged_npc_vs_player(2.0, |_| {}).await;
+        let (catalog, _) = ticker.db.load_global_battle_command_list().await.unwrap();
+        let skill = catalog.get(&23012).unwrap().to_battle_command();
+        {
+            let handle = ticker.registry.get(2).await.unwrap();
+            let mut c = handle.character.write().await;
+            c.chara.tp = 999;
+            let ctrl = c.ai_container.controller.as_mut().unwrap();
+            ctrl.battle.skills = vec![skill];
+            ctrl.auto_attack_enabled = false;
+        }
+        {
+            let handle = ticker.registry.get(1).await.unwrap();
+            handle
+                .character
+                .write()
+                .await
+                .ai_container
+                .internal_engage(2, 0, 2500);
+        }
+        for i in 1..=40u64 {
+            ticker.tick_once(i * 100).await;
+        }
+        let player_hp = ticker
+            .registry
+            .get(1)
+            .await
+            .unwrap()
+            .character
+            .read()
+            .await
+            .get_hp();
+        assert_eq!(player_hp, 1000, "no TP, no move");
     }
 
     #[tokio::test]

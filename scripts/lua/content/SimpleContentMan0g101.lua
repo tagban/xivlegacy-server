@@ -1,4 +1,5 @@
 require ("global")
+require ("contenttimer")
 require ("modifiers")
 -- onUpdate drives mob engagement through allyGlobal.EngageTarget;
 -- without this require the global is nil and every tick errors
@@ -35,7 +36,11 @@ require ("quests/man/man0g1")
 -- escort work (direct client text-sheet DAT decode; see
 -- quests/man/man0l1.lua TEXT_*). Global rows, redeclared here because
 -- this VM requires man0g1, not man0l1.
-TEXT_PROTECT_ESCORTEE	= 51005;	-- "Protect <displayName> from harm."
+TEXT_PROTECT_ESCORTEE	= 51005;	-- "Protect ~<displayName>/<displayName>'s group~ from harm."
+-- 51005 takes the escortee's display-name id (not an actor id: the client
+-- text macro cannot expand that and raises a Lua error), then 1 for "Protect
+-- <name>", 0 for "Protect <name>'s group".
+POWLE_NAME_ID			= 1000029;
 TEXT_BOUND_BY_DUTY		= 50011;	-- "You are now bound by duty."
 TEXT_UNBOUND_FROM_DUTY	= 50012;	-- "You are no longer bound by duty."
 TEXT_TIME_REMAINING		= 25018;	-- "There ~is/are~ <N> ~minute/minutes~ remaining."
@@ -356,6 +361,7 @@ function onUpdate(tick, area)
 		state.reminded5 = true;
 		owner:SendGameMessage(GetWorldMaster(), TEXT_TIME_REMAINING, 0x20, 5);
 	end
+	UpdateContentTimer(owner, state, tick, TICKS_PER_SECOND);
 
 	-- ---- Kid roster + death-fail (rosters are live-only, so a dead
 	-- kid simply vanishes from GetAllies) ----
@@ -372,11 +378,12 @@ function onUpdate(tick, area)
 		if not state.sawKids then
 			-- First live sighting = the duty is underway. Retail entry
 			-- order (man0l1 wire shape): protect banner → bound-by-duty
-			-- → timer. 51005 resolves "<displayName>" from the actor-id
-			-- param — Powle fronts the pair on the walk.
-			owner:SendGameMessage(GetWorldMaster(), TEXT_PROTECT_ESCORTEE, 0x20, powle.actorId);
+			-- → timer. Powle fronts the pair on the walk ("Protect
+			-- Powle's group from harm.").
+			owner:SendGameMessage(GetWorldMaster(), TEXT_PROTECT_ESCORTEE, 0x20, POWLE_NAME_ID, 0);
 			owner:SendGameMessage(GetWorldMaster(), TEXT_BOUND_BY_DUTY, 0x20);
 			owner:SendGameMessage(GetWorldMaster(), TEXT_TIME_REMAINING, 0x20, ESCORT_LIMIT_MINUTES);
+			QueueContentTimer(state, tick, state.startTick + ESCORT_LIMIT_TICKS);
 			emitBark(owner, BARKS.dutyStart);
 		end
 		state.sawKids = true;
@@ -428,11 +435,20 @@ function onUpdate(tick, area)
 			local dMob = math.min(
 				dist2d(mob.positionX, mob.positionZ, powle.positionX, powle.positionZ),
 				dist2d(mob.positionX, mob.positionZ, owner.positionX, owner.positionZ))
-			if dMob <= HOLD_RADIUS then
+			-- Contested = a mob that is (or is about to be) in the fight.
+			-- An idle one between ENGAGE_RADIUS and HOLD_RADIUS never
+			-- pulls, so counting it froze the kids for the rest of the duty
+			-- (seen in Man0u1's twin escort, client run 2026-11-08).
+			if dMob <= HOLD_RADIUS and (mob:IsEngaged() or dMob <= ENGAGE_RADIUS) then
 				nearLive = nearLive + 1
 			end
 			if mob:IsEngaged() then
-				anyEngaged = true
+				-- Only an engaged mob still in the fight holds the walk:
+				-- one stuck behind terrain past HOLD_RADIUS would hold it
+				-- until the duty timed out.
+				if dMob <= HOLD_RADIUS then
+					anyEngaged = true
+				end
 				if not state.mobsEngaged[mob.actorId] then
 					state.mobsEngaged[mob.actorId] = true;
 					owner:SendGameMessageLocalizedDisplayName(GetWorldMaster(), TEXT_MOB_ENGAGED, 0x20, ANKLE_BITER_DISPLAY_ID);

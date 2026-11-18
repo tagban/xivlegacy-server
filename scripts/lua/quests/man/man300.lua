@@ -63,6 +63,9 @@ GRIDANIA_MARKET_OUTSIDE	= {206, -180.0, 22.0, -1408.0, 1.5};
 DRYBONE_OUTSIDE			= {171, 1251.7, 264.0, -533.9, 3.14};
 MESA_MOUTH				= {171, 1052.0, 252.4, -278.5, -1.57};
 
+-- Quest Flags
+FLAG_IN_DUTY			= 0;	-- the cave duty is running: Nananoby's talk mustn't start a second copy
+
 -- Quest Markers
 MRKR_GRIDANIA_ENTRANCE	= 11001501;
 MRKR_HEDYN				= 11001502;
@@ -88,6 +91,9 @@ function onStateChange(player, quest, sequence)
 	elseif (sequence == SEQ_020) then
 		quest:SetENpc(DRYBONE_TRIGGER, QFLAG_PUSH, false, true);
 	elseif (sequence == SEQ_030) then
+		-- This re-runs at each zone-in outside the duty (a relog, a crash),
+		-- so a duty that ended without a win can be started again.
+		quest:GetData():ClearFlag(FLAG_IN_DUTY);
 		quest:SetENpc(NANANOBY, QFLAG_TALK);
 	elseif (sequence == SEQ_050) then
 		quest:SetENpc(HEDYN, QFLAG_REWARD);
@@ -151,14 +157,23 @@ function onTalk(player, quest, npc)
 		warpTo(player, CONSORTIUM_DOOR);
 		return;
 	elseif (sequence == SEQ_030 and classId == NANANOBY) then
+		if (quest:GetData():GetFlag(FLAG_IN_DUTY)) then
+			-- Already in the duty (a second Enter on her): no second copy.
+			player:EndEvent();
+			return;
+		end
 		-- the failing negotiation; then the summoning must be stopped
+		quest:GetData():SetFlag(FLAG_IN_DUTY);
 		callClientFunction(player, "delegateEvent", player, quest, "pE40", companionArgs(player));
 		startMan300Content(player, quest);
 		return;
 	elseif (sequence == SEQ_050 and classId == HEDYN) then
 		-- the crystals, the Paragons, and the reward; it fades in after a warp
 		callClientFunction(player, "delegateEvent", player, quest, "pE60", companionArgs(player));
-		callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 300, 1, 1, 2);
+		-- Completion reward from the client's quest reward sheet: 50 EXP + 90,000 gil.
+		callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 50, 1, 1, 2);
+		player:AddExp(50, player.charaWork.parameterSave.state_mainSkill[0], 0);
+		player:AddGil(90000);
 		player:EndEvent();
 		player:CompleteQuest(quest);
 		warpTo(player, GRIDANIA_MARKET_OUTSIDE);

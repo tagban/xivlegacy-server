@@ -27,17 +27,34 @@
 #![allow(unused_imports)]
 
 pub mod actor_registry;
+pub mod aurum_hazards;
+pub mod aurum_pools;
 pub mod bnpc_spawn;
 pub mod broadcast;
+pub mod class_level;
 pub mod clock;
 pub mod dispatcher;
+pub mod dungeon_chest;
+pub mod dungeon_fight;
 pub mod gc_apply;
+pub mod monster_mode;
+pub mod monster_points;
 pub mod quest_apply;
 pub mod quest_hook;
+pub mod summon;
 pub mod ticker;
 
 #[cfg(test)]
+mod gear_stats_tests;
+#[cfg(test)]
 mod integration_tests;
+
+#[cfg(test)]
+mod battle_audit_tests;
+#[cfg(test)]
+mod battle_behavior_tests;
+#[cfg(test)]
+mod item_use_tests;
 
 pub use actor_registry::{ActorHandle, ActorKindTag, ActorRegistry};
 pub use broadcast::broadcast_around_actor;

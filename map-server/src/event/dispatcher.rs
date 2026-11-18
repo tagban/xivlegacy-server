@@ -41,6 +41,32 @@ use crate::world_manager::WorldManager;
 
 use super::outbox::EventEvent;
 
+/// Per player: the owner whose `RunEventFunction` the client is still
+/// playing (set on TX RunEventFunction, cleared on TX EndEvent). The
+/// player's `EventSession` can't answer this: Lua's `player:EndEvent()`
+/// goes out through a session snapshot and never clears the real one.
+static AWAITING_CLIENT: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<u32, u32>>> =
+    std::sync::LazyLock::new(Default::default);
+
+/// True while the client is still inside an event that `owner` started
+/// for `player` (a scene or dialog the server sent and hasn't ended).
+pub(crate) fn event_awaiting_client(player: u32, owner: u32) -> bool {
+    AWAITING_CLIENT
+        .lock()
+        .map(|m| m.get(&player) == Some(&owner))
+        .unwrap_or(false)
+}
+
+/// Forget the event the client was playing for `player`. A zone-in (login,
+/// warp, private-area change) tears down whatever scene or dialog the client
+/// had open without an EndEvent, e.g. a client that crashed or zoned out
+/// mid-dialog. Left set, it would swallow every later quest push.
+pub(crate) fn clear_event_awaiting_client(player: u32) {
+    if let Ok(mut m) = AWAITING_CLIENT.lock() {
+        m.remove(&player);
+    }
+}
+
 /// Dispatch one `EventEvent`. The `lua` argument is optional so callers
 /// that don't (yet) have a Lua engine wired in can still process events
 /// — the Lua-flavoured events degrade gracefully to `tracing::debug!`.
@@ -128,6 +154,9 @@ pub async fn dispatch_event_event(
             function_name,
             lua_params,
         } => {
+            if let Ok(mut m) = AWAITING_CLIENT.lock() {
+                m.insert(*player_actor_id, *owner_actor_id);
+            }
             let mut sub = tx::build_run_event_function(
                 *trigger_actor_id,
                 *owner_actor_id,
@@ -155,6 +184,10 @@ pub async fn dispatch_event_event(
             event_name,
             event_type,
         } => {
+            // The client has one event at a time; EndEvent closes it.
+            if let Ok(mut m) = AWAITING_CLIENT.lock() {
+                m.remove(player_actor_id);
+            }
             let mut sub =
                 tx::build_end_event(*player_actor_id, *owner_actor_id, event_name, *event_type);
             sub.set_target_id(*player_actor_id);
@@ -556,7 +589,7 @@ async fn dispatch_npc_event_started(
         return;
     };
 
-    let snapshot = {
+    let mut snapshot = {
         let c = player_handle.character.read().await;
         crate::lua::userdata::PlayerSnapshot {
             actor_id: c.base.actor_id,
@@ -578,6 +611,7 @@ async fn dispatch_npc_event_started(
             current_job: c.chara.current_job as u8,
             initial_town: c.chara.initial_town,
             gc_current: c.chara.gc_current,
+            faction_credits: c.chara.faction_credits,
             gc_rank_limsa: c.chara.gc_rank_limsa,
             gc_rank_gridania: c.chara.gc_rank_gridania,
             gc_rank_uldah: c.chara.gc_rank_uldah,
@@ -609,9 +643,47 @@ async fn dispatch_npc_event_started(
                 .collect(),
             completed_quests: c.quest_journal.iter_completed().collect(),
             quest_npcs: c.quest_npc_classes(),
+            // The Path companion: Tataru's re-pick (Trl0l3) keeps its name
+            // when the naming is left empty.
+            snpc_nickname: c.chara.snpc_nickname.clone(),
+            snpc_skin: c.chara.snpc_skin,
+            snpc_personality: c.chara.snpc_personality,
+            snpc_coordinate: c.chara.snpc_coordinate,
             ..Default::default()
         }
     };
+    // What the player carries, for NPC scripts that gate on it: the inn bed
+    // starts a Hildibrand quest when the player sleeps with the Wanted
+    // poster (ObjectBed.lua). Without it `HasItem` answered from an empty
+    // inventory.
+    match db.item_totals(snapshot.actor_id).await {
+        Ok(items) => snapshot.inventory = items,
+        Err(e) => {
+            tracing::warn!(player = snapshot.actor_id, err = %e, "NPC event: item totals failed")
+        }
+    }
+    // The party members by the player, for guides that check the whole
+    // party before letting it into a dungeon (dungeon.lua's OPEN_RAIDS).
+    for m in crate::parties::others(snapshot.actor_id) {
+        if let Some(h) = registry.get(m).await
+            && h.is_player()
+        {
+            let c = h.character.read().await;
+            if c.base.zone_id == snapshot.zone_id {
+                snapshot
+                    .party_in_zone
+                    .push(crate::lua::userdata::PlayerSnapshot {
+                        actor_id: m,
+                        name: c.base.actor_name.clone(),
+                        zone_id: c.base.zone_id,
+                        current_class: c.chara.class.max(0) as u8,
+                        current_level: c.chara.level,
+                        completed_quests: c.quest_journal.iter_completed().collect(),
+                        ..Default::default()
+                    });
+            }
+        }
+    }
 
     let lua_clone = Arc::clone(lua);
     let event_name_owned = event_name.to_string();
@@ -1025,6 +1097,7 @@ async fn dispatch_director_event_started(
             current_job: c.chara.current_job as u8,
             initial_town: c.chara.initial_town,
             gc_current: c.chara.gc_current,
+            faction_credits: c.chara.faction_credits,
             gc_rank_limsa: c.chara.gc_rank_limsa,
             gc_rank_gridania: c.chara.gc_rank_gridania,
             gc_rank_uldah: c.chara.gc_rank_uldah,
@@ -1508,15 +1581,8 @@ mod tests {
     /// Per-test SQLite path — one file per test run so WAL files don't
     /// collide. The `AtomicU64` guarantees uniqueness even when two
     /// parallel tests hit `SystemTime::now` within the same nanosecond.
-    fn tempdb() -> std::path::PathBuf {
-        use std::sync::atomic::{AtomicU64, Ordering};
-        static SEQ: AtomicU64 = AtomicU64::new(0);
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-        common::test_tmp::dir().join(format!("garlemald-event-dispatch-{nanos}-{seq}.db"))
+    fn tempdb() -> String {
+        common::test_db::fresh_blocking()
     }
 
     #[tokio::test]
@@ -2279,5 +2345,15 @@ mod tests {
         dispatch_event_event(&event, &registry, &world, &db, Some(&lua)).await;
 
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn zone_in_clears_the_awaiting_client_marker() {
+        // A player id no other test uses: the marker map is process-wide.
+        let player = 0x7FFF_0091;
+        AWAITING_CLIENT.lock().unwrap().insert(player, 0x4428_0003);
+        assert!(event_awaiting_client(player, 0x4428_0003));
+        clear_event_awaiting_client(player);
+        assert!(!event_awaiting_client(player, 0x4428_0003));
     }
 }

@@ -13,6 +13,7 @@ eventConfirm(isReturn, isInBattle, cityReturnNum, 138821, forceAskReturnOnly)
 require ("global")
 require ("aetheryte")
 require ("utils")
+require ("dungeon")
 
 teleportMenuToAetheryte = {
 	[1] = {
@@ -129,6 +130,22 @@ function onEventStarted(player, actor, triggerName, isTeleport)
 		if (choice == 1) then
 			player:PlayAnimation(0x4000FFB);
 			player:SendGameMessage(worldMaster, 34104, 0x20);
+
+			-- Inside a dungeon copy, Return brings you back to the
+			-- dungeon's entrance (in the same copy) with HP and MP whole,
+			-- instead of out to your home point. Revive() stands a
+			-- knocked-out player back up on their client (it does nothing
+			-- for one who isn't down; the script's state and HP snapshots
+			-- can't tell reliably).
+			local entry = dungeonEntrance(player:GetZoneID());
+			if (entry ~= nil) then
+				player:Revive();
+				player:SetHP(player:GetMaxHP());
+				player:SetMP(player:GetMaxMP());
+				player:EndEvent();
+				GetWorldManager():DoPlayerMoveInZone(player, entry[1], entry[2], entry[3], entry[4], 0x11);
+				return;
+			end
 
 			--bandaid fix for returning while dead, missing things like weakness and the heal number
 			if (player:GetHP() == 0) then

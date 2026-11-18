@@ -221,6 +221,32 @@ impl UserData for LuaActor {
             Ok(())
         });
 
+        // `bnpc:LearnMonsterMove(id)` adds a monster move to this battle
+        // NPC's list; `bnpc:UseMonsterMove(id)` makes it use the move on
+        // its next combat tick (see `LuaCommand::MonsterMove`).
+        methods.add_method("LearnMonsterMove", |_, this, command_id: u16| {
+            push(
+                &this.queue,
+                LuaCommand::MonsterMove {
+                    actor_id: this.actor_id,
+                    command_id,
+                    learn: true,
+                },
+            );
+            Ok(())
+        });
+        methods.add_method("UseMonsterMove", |_, this, command_id: u16| {
+            push(
+                &this.queue,
+                LuaCommand::MonsterMove {
+                    actor_id: this.actor_id,
+                    command_id,
+                    learn: false,
+                },
+            );
+            Ok(())
+        });
+
         // Phase C2 — combat-tutorial onUpdate bindings (was a B6 stub
         // pair). Now read from the snapshot fields populated at
         // LuaActor construction; falls back to safe defaults
@@ -468,7 +494,17 @@ impl UserData for LuaNpc {
             Ok(Value::Nil)
         });
         methods.add_method("GetZoneID", |_, this, _: ()| Ok(this.base.zone_id));
-        methods.add_method("SetQuestGraphic", |_, this, graphic: u8| {
+        // Meteor's form is `npc:SetQuestGraphic(player, graphic)` (the
+        // Hildibrand scripts, pfarahr/vkorolon); a bare `(graphic)` is
+        // accepted too. With the player first, the u8 conversion of the
+        // userdata failed and killed the talk mid-event (Etc5u1's offer
+        // at Otopa Pottopa never reached its EndEvent).
+        methods.add_method("SetQuestGraphic", |_, this, args: mlua::Variadic<Value>| {
+            let graphic = match args.last() {
+                Some(Value::Integer(n)) => *n as u8,
+                Some(Value::Number(n)) => *n as u8,
+                _ => 0,
+            };
             push(
                 &this.base.queue,
                 LuaCommand::GraphicChange {
@@ -574,6 +610,8 @@ pub struct PlayerSnapshot {
     /// Grand Company allegiance — 0 = not enlisted, 1 = Maelstrom,
     /// 2 = Twin Adder, 3 = Immortal Flames.
     pub gc_current: u8,
+    /// Faction credits: Broken Blade, Azeyma's Shields, Horn and Hand.
+    pub faction_credits: [u16; 3],
     pub gc_rank_limsa: u8,
     pub gc_rank_gridania: u8,
     pub gc_rank_uldah: u8,
@@ -600,6 +638,11 @@ pub struct PlayerSnapshot {
 
     /// Completed quest ids — keeps `IsQuestCompleted` cheap.
     pub completed_quests: Vec<u32>,
+    /// The player's party members standing in the same zone, as small
+    /// snapshots (id, name, class, level, completed quests), for NPC
+    /// scripts that check the whole party (`GetPartyMembersInZone`): the
+    /// dungeon guides' entry rules. Filled only by the NPC talk dispatch.
+    pub party_in_zone: Vec<PlayerSnapshot>,
     /// Active quest ids.
     pub active_quests: Vec<u32>,
     /// Classes of the NPCs the player's quests answer for: quest offers'
@@ -618,12 +661,19 @@ pub struct PlayerSnapshot {
     pub traits: Vec<u16>,
     /// (item_id, quantity) tuples in inventory.
     pub inventory: Vec<(u32, i32)>,
+    /// (package, slot, item_id) per occupied bag slot. Filled from the DB
+    /// only where a script needs it (quest hooks, CraftCommand) so
+    /// `package:GetItemAtSlot(slot)` can resolve the item references the
+    /// craft start widget returns.
+    pub inventory_slots: Vec<(u16, u16, u32)>,
     /// Set by `player:SetLoginDirector(director)` during `onBeginLogin`
     /// — zero means no director attached. `player:GetDirector()` reads
     /// this to hand the `zone.lua:onZoneIn` hook a real director handle
     /// so its `player:KickEvent(player:GetDirector(), "noticeEvent")`
     /// call lands on the right actor id.
     pub login_director_actor_id: u32,
+    /// `chara.content_area_name`: the duty the player is in, empty outside one.
+    pub content_area_name: String,
     /// Mirror of `Session.spawned_retainer` at the time the snapshot
     /// was built. Lets scripts read `player:HasSpawnedRetainer()` +
     /// `player:GetSpawnedRetainer()` without a round-trip.
@@ -750,6 +800,7 @@ impl From<&crate::actor::Player> for PlayerSnapshot {
             rental_expire_time: p.character.chara.rental_expire_time,
             rental_min_left: p.character.chara.rental_min_left,
             gc_current: p.character.chara.gc_current,
+            faction_credits: p.character.chara.faction_credits,
             gc_rank_limsa: p.character.chara.gc_rank_limsa,
             gc_rank_gridania: p.character.chara.gc_rank_gridania,
             gc_rank_uldah: p.character.chara.gc_rank_uldah,
@@ -776,13 +827,16 @@ impl From<&crate::actor::Player> for PlayerSnapshot {
             current_event_name: p.player.current_event_name.clone(),
             current_event_type: p.player.current_event_type,
             completed_quests,
+            party_in_zone: Vec::new(),
             quest_npcs: p.character.quest_npc_classes(),
             active_quests,
             active_quest_states,
             unlocked_aetherytes,
             traits,
             inventory,
+            inventory_slots: Vec::new(),
             login_director_actor_id: p.character.chara.login_director_actor_id,
+            content_area_name: p.character.chara.content_area_name.clone(),
             // The From<&Player> impl can't reach the session store
             // (Player is in the registry, Session lives on
             // WorldManager). Default to None here and let the
@@ -1311,6 +1365,16 @@ impl UserData for LuaPlayer {
             );
             Ok(())
         });
+        methods.add_method("ChangeJob", |_, this, mode: u8| {
+            push(
+                &this.queue,
+                LuaCommand::ChangeJob {
+                    player_id: this.snapshot.actor_id,
+                    mode,
+                },
+            );
+            Ok(())
+        });
         methods.add_method("SetCurrentJob", |_, this, job_id: u8| {
             push(
                 &this.queue,
@@ -1511,6 +1575,36 @@ impl UserData for LuaPlayer {
                         player_id: this.snapshot.actor_id,
                         guildleve_id: gl_id,
                         difficulty: difficulty.unwrap_or(1),
+                    },
+                );
+                Ok(())
+            },
+        );
+        // Faction credits (crate::leve::faction): the three totals, taking
+        // a faction leve (spends its cost), and granting or removing some.
+        methods.add_method("GetFactionCredits", |_, this, _: ()| {
+            let [a, b, c] = this.snapshot.faction_credits;
+            Ok((a, b, c))
+        });
+        methods.add_method("AcceptFactionLeve", |_, this, gl_id: u32| {
+            push(
+                &this.queue,
+                LuaCommand::AcceptFactionLeve {
+                    player_id: this.snapshot.actor_id,
+                    guildleve_id: gl_id,
+                },
+            );
+            Ok(())
+        });
+        methods.add_method(
+            "AddFactionCredits",
+            |_, this, (faction, amount): (u8, i32)| {
+                push(
+                    &this.queue,
+                    LuaCommand::AddFactionCredits {
+                        player_id: this.snapshot.actor_id,
+                        faction,
+                        amount,
                     },
                 );
                 Ok(())
@@ -2103,11 +2197,27 @@ impl UserData for LuaPlayer {
         );
 
         // --- Quests ----------------------------------------------------------
-        methods.add_method("HasQuest", |_, this, id: u32| {
-            Ok(this.snapshot.active_quests.contains(&id))
+        // Both take a quest id or the quest itself: Meteor had both
+        // overloads and side-quest scripts call `player:HasQuest(quest)`.
+        methods.add_method("HasQuest", |_, this, v: Value| {
+            Ok(quest_arg_to_id(&v).is_some_and(|id| this.snapshot.active_quests.contains(&id)))
         });
-        methods.add_method("IsQuestCompleted", |_, this, id: u32| {
-            Ok(this.snapshot.completed_quests.contains(&id))
+        methods.add_method("IsQuestCompleted", |_, this, v: Value| {
+            Ok(quest_arg_to_id(&v).is_some_and(|id| this.snapshot.completed_quests.contains(&id)))
+        });
+        // `player:GetPartyMembersInZone()`: the party members in the
+        // player's zone (not the player), as players to read from: name,
+        // class, level and completed quests. Only an NPC talk fills it.
+        methods.add_method("GetPartyMembersInZone", |lua, this, _: ()| {
+            let t = lua.create_table()?;
+            for (i, m) in this.snapshot.party_in_zone.iter().enumerate() {
+                let member = LuaPlayer {
+                    snapshot: m.clone(),
+                    queue: this.queue.clone(),
+                };
+                t.set(i + 1, lua.create_userdata(member)?)?;
+            }
+            Ok(t)
         });
         // Whether one of the player's quests answers for an NPC of this
         // class (an offer it gives, or a taken quest's marker on it).
@@ -2281,6 +2391,10 @@ impl UserData for LuaPlayer {
                         .map(|h| h.actor_id)
                         .or_else(|| ud.borrow::<LuaActor>().ok().map(|a| a.actor_id))
                         .unwrap_or(this.snapshot.current_event_owner),
+                    // A bare actor id (PlaceDrivenCommand.lua passes the
+                    // actor the client named in its push-command request).
+                    Value::Integer(id) if *id > 0 => *id as u32,
+                    Value::Number(id) if *id > 0.0 => *id as u32,
                     _ => this.snapshot.current_event_owner,
                 };
                 // Convert the Lua varargs to `LuaCommandArg`s. Scripts
@@ -2409,6 +2523,27 @@ impl UserData for LuaPlayer {
             Ok(())
         });
 
+        // `player:OpenDungeonChest(npc, loot)`: open the dungeon boss chest
+        // `npc` and hand out `loot`, a list of `{ item_id, count = n,
+        // quest = id }` (`dungeon_chests.lua`, `crate::runtime::dungeon_chest`).
+        methods.add_method(
+            "OpenDungeonChest",
+            |_, this, (chest, loot): (mlua::Value, Option<mlua::Table>)| {
+                let loot = loot
+                    .map(|t| crate::runtime::dungeon_chest::loot_from_lua(&t))
+                    .unwrap_or_default();
+                push(
+                    &this.queue,
+                    LuaCommand::OpenDungeonChest {
+                        player_id: this.snapshot.actor_id,
+                        chest_actor_id: lua_target_to_actor_id(&chest),
+                        loot,
+                    },
+                );
+                Ok(())
+            },
+        );
+
         // --- Chat -----------------------------------------------------------
         methods.add_method(
             "SendMessage",
@@ -2474,6 +2609,25 @@ impl UserData for LuaPlayer {
                             text_owner = id;
                         } else if let Ok(id) = ud.borrow_scoped::<LuaNpc, _>(|n| n.base.actor_id) {
                             text_owner = id;
+                        } else if let Ok(id) = ud.borrow_scoped::<LuaStaticActor, _>(|s| s.actor_id)
+                        {
+                            // GetStaticActor("HarvestJudge" / "CraftJudge"
+                            // / "Man0l1" ...). Falling through to the
+                            // WorldMaster default formatted the judge's
+                            // text id against the WorldMaster sheet and
+                            // crashed the client (mining's grade message).
+                            text_owner = id;
+                        }
+                    }
+                    // An actor after the text id is a message param (the
+                    // subject of "<player> creates/botches ...").
+                    Value::UserData(ud) if log_type.is_some() => {
+                        let id = ud
+                            .borrow_scoped::<LuaPlayer, _>(|p| p.snapshot.actor_id)
+                            .or_else(|_| ud.borrow_scoped::<LuaActor, _>(|a| a.actor_id))
+                            .or_else(|_| ud.borrow_scoped::<LuaNpc, _>(|n| n.base.actor_id));
+                        if let Ok(id) = id {
+                            params.push(crate::runtime::quest_apply::actor_param(id));
                         }
                     }
                     Value::Integer(i) => {
@@ -2540,6 +2694,45 @@ impl UserData for LuaPlayer {
                 LuaCommand::SendDataPacket {
                     player_id: this.snapshot.actor_id,
                     params,
+                },
+            );
+            Ok(())
+        });
+        methods.add_method(
+            "RestGatherNode",
+            |_, this, (zone_id, unique_id, seconds): (u32, String, u32)| {
+                push(
+                    &this.queue,
+                    LuaCommand::RestGatherNode {
+                        zone_id,
+                        unique_id,
+                        seconds,
+                    },
+                );
+                Ok(())
+            },
+        );
+        methods.add_method(
+            "RestGatherNodeForMe",
+            |_, this, (zone_id, unique_id, seconds): (u32, String, u32)| {
+                push(
+                    &this.queue,
+                    LuaCommand::RestGatherNodeForPlayer {
+                        player_id: this.snapshot.actor_id,
+                        zone_id,
+                        unique_id,
+                        seconds,
+                    },
+                );
+                Ok(())
+            },
+        );
+        methods.add_method("HideActor", |_, this, actor_id: u32| {
+            push(
+                &this.queue,
+                LuaCommand::HideActor {
+                    player_id: this.snapshot.actor_id,
+                    actor_id,
                 },
             );
             Ok(())
@@ -2618,6 +2811,13 @@ impl UserData for LuaPlayer {
                     package_code: pkg_code,
                     queue: this.queue.clone(),
                     inventory_snapshot: this.snapshot.inventory.clone(),
+                    slot_snapshot: this
+                        .snapshot
+                        .inventory_slots
+                        .iter()
+                        .filter(|(pkg, _, _)| *pkg == pkg_code)
+                        .map(|(_, slot, id)| (*slot, *id))
+                        .collect(),
                     is_retainer: false,
                 };
                 lua.create_userdata(pkg)
@@ -2959,6 +3159,15 @@ impl UserData for LuaPlayer {
             Ok(())
         });
         methods.add_method("RemoveDirector", |_, _this, _director: Value| Ok(()));
+        // `player:GetContentAreaName()` — the duty the player is in (the
+        // area name its quest passed to `CreateContentArea`, e.g.
+        // "Mnk0j601"), or nil outside one. Not a pmeteor binding: the job
+        // quests share client directors, and the director uses this to
+        // credit the win to the quest whose duty it is.
+        methods.add_method("GetContentAreaName", |_, this, ()| {
+            Ok((!this.snapshot.content_area_name.is_empty())
+                .then(|| this.snapshot.content_area_name.clone()))
+        });
         methods.add_method("GetDirector", |lua, this, _id: Option<u32>| {
             // `zone.lua:onZoneIn` calls `player:GetDirector()` to recover
             // the login director attached earlier by `onBeginLogin`'s
@@ -4035,6 +4244,20 @@ impl UserData for LuaContentArea {
                 lua.create_userdata(actor)
             },
         );
+
+        // `contentArea:SpawnMapObjects()` — the parent zone's doors and
+        // barriers (`DoorServer` spawns), one set per copy.
+        methods.add_method("SpawnMapObjects", |_, this, _: ()| {
+            push(
+                &this.queue,
+                LuaCommand::SpawnContentGates {
+                    zone_id: this.parent_zone_id,
+                    instance_id: this.instance_id,
+                    slot: this.slot,
+                },
+            );
+            Ok(())
+        });
 
         // B6: combat-tutorial onUpdate iterators. The script uses:
         //   for player in players do ... end       (stateful iter)
@@ -5143,6 +5366,7 @@ impl UserData for LuaRetainer {
                 // bazaar-side scripts safe until the live pipeline
                 // lands.
                 inventory_snapshot: Vec::new(),
+                slot_snapshot: Vec::new(),
                 is_retainer: true,
             })
         });
@@ -5229,6 +5453,9 @@ pub struct LuaItemPackage {
     /// `HasItem == false` (matches the conservative C# default of
     /// "missing item").
     pub inventory_snapshot: Vec<(u32, i32)>,
+    /// `(slot, item_id)` for this package's occupied slots, when the
+    /// owning snapshot carries slot data (see `PlayerSnapshot::inventory_slots`).
+    pub slot_snapshot: Vec<(u16, u32)>,
     /// `true` when the owning handle is a [`LuaRetainer`], `false`
     /// when it's a [`LuaPlayer`]. Routes `AddItem` through
     /// [`LuaCommand::AddItemToRetainer`] (Tier 4 #14 C) instead of
@@ -5238,22 +5465,36 @@ pub struct LuaItemPackage {
     pub is_retainer: bool,
 }
 
+/// `global.lua`'s `INV_ERROR_*` codes that `ItemPackage.AddItem` answers with.
+const INV_ERROR_SUCCESS: i64 = 0;
+const INV_ERROR_SYSTEM_ERROR: i64 = 3;
+
 impl UserData for LuaItemPackage {
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
-        // `pkg:AddItem(catalogId[, qty[, quality]])`. The optional
-        // third arg (quality) is accepted for signature compat but
-        // ignored — we don't model HQ on the wire yet. Lowercase
+        // `pkg:AddItem(catalogId[, qty[, quality]])`. Quality is 1 for
+        // normal and 2-4 for high quality +1 to +3 (synthesis results);
+        // anything else counts as normal. Lowercase
         // alias `addItem` exists for the etc/etc5* quest scripts
         // that predate the C# UpperCamel sweep (7 call sites).
+        //
+        // Returns `INV_ERROR_SUCCESS` (0) once the add is queued, like the
+        // C# `ItemPackage.AddItem` result the scripts check: `shop.lua`
+        // only takes the price on success, so returning nothing here gave
+        // every shop item away for free. A bad catalog id returns
+        // `INV_ERROR_SYSTEM_ERROR` (3).
         let add_item_handler =
-            |_: &mlua::Lua, this: &LuaItemPackage, args: mlua::MultiValue| -> mlua::Result<()> {
+            |_: &mlua::Lua, this: &LuaItemPackage, args: mlua::MultiValue| -> mlua::Result<i64> {
                 // `AddItem(catalogId)` or `AddItem(catalogId, qty)`.
                 let mut iter = args.into_iter();
                 let Some(Value::Integer(catalog)) = iter.next() else {
-                    return Ok(());
+                    return Ok(INV_ERROR_SYSTEM_ERROR);
                 };
                 let qty = match iter.next() {
                     Some(Value::Integer(q)) => q as i32,
+                    _ => 1,
+                };
+                let quality = match iter.next() {
+                    Some(Value::Integer(q)) if (1..=4).contains(&q) => q as u8,
                     _ => 1,
                 };
                 // Retainer-owned packages emit the dedicated retainer
@@ -5274,10 +5515,11 @@ impl UserData for LuaItemPackage {
                         item_package: this.package_code,
                         item_id: catalog as u32,
                         quantity: qty,
+                        quality,
                     }
                 };
                 push(&this.queue, cmd);
-                Ok(())
+                Ok(INV_ERROR_SUCCESS)
             };
         methods.add_method("AddItem", add_item_handler);
         methods.add_method("addItem", add_item_handler);
@@ -5296,15 +5538,18 @@ impl UserData for LuaItemPackage {
                             item_package: this.package_code,
                             item_id: catalog as u32,
                             quantity: 1,
+                            quality: 1,
                         },
                     );
                 }
             }
             Ok(())
         });
-        methods.add_method(
-            "RemoveItem",
-            |_, this, (catalog, quantity): (u32, Option<i32>)| {
+        // `pkg:RemoveItem(catalogId[, qty])`. Lowercase alias `removeItem`
+        // for the scripts that predate the UpperCamel sweep (`shop.lua`
+        // used it, and an unbound method is a Lua error).
+        let remove_item_handler =
+            |_: &mlua::Lua, this: &LuaItemPackage, (catalog, quantity): (u32, Option<i32>)| {
                 push(
                     &this.queue,
                     LuaCommand::RemoveItem {
@@ -5315,8 +5560,9 @@ impl UserData for LuaItemPackage {
                     },
                 );
                 Ok(())
-            },
-        );
+            };
+        methods.add_method("RemoveItem", remove_item_handler);
+        methods.add_method("removeItem", remove_item_handler);
         // `package:HasItem(catalogId, [minQty])` — answer locally from
         // the inventory snapshot the owning `LuaPlayer` cloned in at
         // `GetItemPackage(...)` time. Mirrors C#
@@ -5340,6 +5586,19 @@ impl UserData for LuaItemPackage {
         // `PopulaceCompanyShop` cost-vs-balance branch) treats the
         // missing-item case as a zero balance and the explicit `-1`
         // would force every caller to special-case it.
+        // `package:GetItemAtSlot(slot)` — `{itemId = id}` for an occupied
+        // slot, nil otherwise. CraftCommand resolves the craft start
+        // widget's placed-material references (itemPackage + slot) with it.
+        methods.add_method("GetItemAtSlot", |lua, this, slot: u16| {
+            match this.slot_snapshot.iter().find(|(s, _)| *s == slot) {
+                Some((_, item_id)) => {
+                    let t = lua.create_table()?;
+                    t.set("itemId", *item_id)?;
+                    Ok(Value::Table(t))
+                }
+                None => Ok(Value::Nil),
+            }
+        });
         methods.add_method("GetItemQuantity", |_, this, catalog_id: u32| {
             let total: i32 = this
                 .inventory_snapshot
@@ -6024,6 +6283,9 @@ impl UserData for LuaRecipe {
             Ok(this.inner.crystal_quantity_2)
         });
         fields.add_field_method_get("tier", |_, this| Ok(this.inner.tier));
+        fields.add_field_method_get("classId", |_, this| Ok(this.inner.class_id));
+        fields.add_field_method_get("level", |_, this| Ok(this.inner.level));
+        fields.add_field_method_get("facility", |_, this| Ok(this.inner.facility));
     }
 
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
@@ -6427,5 +6689,139 @@ fn party_target(v: &mlua::Value) -> Option<String> {
         mlua::Value::Integer(i) => Some(i.to_string()),
         mlua::Value::Number(n) => Some((*n as i64).to_string()),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod send_game_message_tests {
+    use super::*;
+    use crate::lua::command::{CommandQueue, LuaCommand};
+
+    /// `player:SendGameMessage(GetStaticActor("HarvestJudge"), 26, 0x20, 1, 2)`
+    /// must name the static actor as the text owner. It used to fall back to
+    /// the WorldMaster, and the client crashed formatting WorldMaster text 26
+    /// with the mining grade (f_00caf760, opening the mining window).
+    #[test]
+    fn static_actor_is_the_text_owner() {
+        let lua = mlua::Lua::new();
+        let queue = CommandQueue::new();
+        let player = LuaPlayer {
+            snapshot: PlayerSnapshot {
+                actor_id: 9,
+                ..Default::default()
+            },
+            queue: queue.clone(),
+        };
+        lua.globals().set("player", player).unwrap();
+        lua.globals()
+            .set(
+                "judge",
+                LuaStaticActor {
+                    actor_id: 0xA0F4_E204,
+                },
+            )
+            .unwrap();
+        lua.load(
+            "player:SendGameMessage(judge, 26, 0x20, 1, 2)\n\
+             player:SendGameMessage(player, judge, 21, 0x20)\n\
+             player:SendGameMessage(nil, 40339, 0x20)",
+        )
+        .exec()
+        .unwrap();
+        let owners: Vec<(u32, u32, Vec<i64>)> = CommandQueue::drain(&queue)
+            .into_iter()
+            .filter_map(|c| match c {
+                LuaCommand::SendGameMessage {
+                    text_owner_id,
+                    text_id,
+                    params,
+                    ..
+                } => Some((text_owner_id, text_id, params)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            owners,
+            vec![
+                (0xA0F4_E204, 26, vec![1, 2]),
+                (0xA0F4_E204, 21, vec![]),
+                (crate::packets::send::WORLD_MASTER_ACTOR_ID, 40339, vec![]),
+            ]
+        );
+    }
+}
+
+#[cfg(test)]
+mod shop_purchase_tests {
+    use super::*;
+    use crate::lua::command::{CommandQueue, LuaCommand};
+
+    /// Buying from a gil shop runs `shop.lua`'s `purchaseItem`, which only
+    /// takes the price when `AddItem` answers `INV_ERROR_SUCCESS`. `AddItem`
+    /// used to return nothing (and the script called an unbound lowercase
+    /// `removeItem`), so every shop gave its goods away for free.
+    #[test]
+    fn purchase_takes_the_price() {
+        let lua = mlua::Lua::new();
+        let queue = CommandQueue::new();
+        let player = LuaPlayer {
+            snapshot: PlayerSnapshot {
+                actor_id: 9,
+                inventory: vec![(1_000_001, 5_000)],
+                ..Default::default()
+            },
+            queue: queue.clone(),
+        };
+        lua.globals().set("player", player).unwrap();
+        let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../scripts/lua");
+        lua.load(
+            "INVENTORY_NORMAL = 0; INVENTORY_CURRENCY = 99; MESSAGE_TYPE_SYSTEM = 0x20;\n\
+             INV_ERROR_SUCCESS = 0; INV_ERROR_FULL = 1;\n\
+             INV_ERROR_ALREADY_HAS_UNIQUE = 2; INV_ERROR_SYSTEM_ERROR = 3;\n\
+             function GetWorldMaster() return nil end",
+        )
+        .exec()
+        .unwrap();
+        lua.load(std::fs::read_to_string(format!("{root}/shop.lua")).unwrap())
+            .exec()
+            .unwrap();
+        lua.load("purchaseItem(player, INVENTORY_NORMAL, 4030110, 1, 1, 2700, 1000001)")
+            .exec()
+            .unwrap();
+        let cmds = CommandQueue::drain(&queue);
+        assert!(cmds.iter().any(|c| matches!(
+            c,
+            LuaCommand::AddItem {
+                item_id: 4_030_110,
+                quantity: 1,
+                ..
+            }
+        )));
+        assert!(
+            cmds.iter().any(|c| matches!(
+                c,
+                LuaCommand::RemoveItem {
+                    item_package: 99,
+                    catalog_id: 1_000_001,
+                    quantity: 2_700,
+                    ..
+                }
+            )),
+            "the price wasn't taken: {cmds:?}"
+        );
+
+        // A second dagger in the same visit costs 5,400 in all, more than
+        // the 5,000 the visit started with: refused, nothing added or taken.
+        lua.load("purchaseItem(player, INVENTORY_NORMAL, 4030110, 1, 1, 2700, 1000001)")
+            .exec()
+            .unwrap();
+        let cmds = CommandQueue::drain(&queue);
+        assert!(
+            !cmds.iter().any(|c| matches!(
+                c,
+                LuaCommand::AddItem { .. } | LuaCommand::RemoveItem { .. }
+            )),
+            "a second buy spent money the visit already spent: {cmds:?}"
+        );
     }
 }

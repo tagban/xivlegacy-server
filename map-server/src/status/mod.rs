@@ -24,8 +24,10 @@
 //! the pattern used by the inventory runtime.
 
 pub mod flags;
+pub mod hooks;
 pub mod ids;
 pub mod outbox;
+pub mod script;
 
 pub use flags::{StatusEffectFlags, StatusEffectOverwrite};
 pub use ids::status_id_of;
@@ -160,6 +162,29 @@ impl StatusEffect {
         }
     }
 
+    /// Take the catalog row's name, flags, overwrite rule, tick and texts
+    /// (`server_statuseffects`), keeping this effect's own numbers. An
+    /// effect built from just an id would otherwise have no flags (a Bind
+    /// that doesn't bind), no overwrite rule (nothing ever refreshes it)
+    /// and no name (its script never runs). No row: left as it is.
+    pub fn apply_catalog(
+        &mut self,
+        catalog: &std::collections::HashMap<u32, crate::gamedata::StatusEffectDef>,
+    ) {
+        let Some(t) = catalog.get(&self.id) else {
+            return;
+        };
+        self.name = t.name.clone();
+        self.flags = StatusEffectFlags::from(t.flags);
+        self.overwrite = StatusEffectOverwrite::from_u8(t.overwrite);
+        self.tick_ms = t.tick_ms;
+        self.hidden = t.hidden;
+        self.silent_on_gain = t.silent_on_gain;
+        self.silent_on_loss = t.silent_on_loss;
+        self.status_gain_text_id = t.status_gain_text_id;
+        self.status_loss_text_id = t.status_loss_text_id;
+    }
+
     /// Clone a template onto a new owner. Equivalent to the copy-ctor in C#.
     pub fn cloned_for(&self, new_owner: u32) -> Self {
         let mut me = self.clone();
@@ -212,6 +237,17 @@ impl StatusEffect {
         }
     }
 
+    /// The numbers a status script reads.
+    pub fn view(&self) -> script::EffectView {
+        script::EffectView {
+            magnitude: self.magnitude,
+            tier: self.tier,
+            extra: self.extra,
+            duration: self.duration,
+            source: self.source_actor_id,
+        }
+    }
+
     /// Value the client expects in `statusShownTime[i]`. Stances send u32::MAX.
     pub fn wire_end_time(&self) -> u32 {
         if self.is_stance() {
@@ -232,6 +268,7 @@ impl StatusEffect {
                 owner_actor_id: self.owner_actor_id,
                 status_effect_id: self.id,
                 function_name: "onTick",
+                effect: self.view(),
             });
         }
 
@@ -338,10 +375,29 @@ impl StatusEffectContainer {
         passive: PassiveRegen,
         outbox: &mut StatusOutbox,
     ) {
-        if now_ms.saturating_sub(self.last_regen_ms) >= REGEN_TICK_MS {
+        self.update_with_clocks(now_ms, now_ms, mods, passive, outbox);
+    }
+
+    /// [`Self::update`] with the two clocks split: `regen_now_ms` paces
+    /// the 3 s regen tick (the game ticker's battle clock), while
+    /// `effect_now_ms` is wall-clock Unix ms — the domain every effect's
+    /// start/end time is stamped in (`add_status_effect` callers, the DB
+    /// rows, the client's `statusShownTime`). Feeding the ticker's
+    /// server-start-relative clock here meant `now_s >= end_time` never
+    /// held: applied effects never expired and never ticked.
+    pub fn update_with_clocks(
+        &mut self,
+        regen_now_ms: u64,
+        effect_now_ms: u64,
+        mods: &ModifierMap,
+        passive: PassiveRegen,
+        outbox: &mut StatusOutbox,
+    ) {
+        if regen_now_ms.saturating_sub(self.last_regen_ms) >= REGEN_TICK_MS {
             self.regen_tick(mods, passive, outbox);
-            self.last_regen_ms = now_ms;
+            self.last_regen_ms = regen_now_ms;
         }
+        let now_ms = effect_now_ms;
 
         // Collect expiries without holding an immutable borrow during mutation.
         let ids: Vec<u32> = self.effects.keys().copied().collect();
@@ -483,6 +539,7 @@ impl StatusEffectContainer {
             owner_actor_id: self.owner_actor_id,
             status_effect_id: effect_id,
             function_name: "onGain",
+            effect: effect.view(),
         });
 
         if !effect.hidden {
@@ -535,6 +592,7 @@ impl StatusEffectContainer {
 
         let short_id = effect.status_id();
         let hidden = effect.hidden;
+        let view = effect.view();
         if !hidden
             && let Some(idx) = self
                 .status
@@ -551,6 +609,7 @@ impl StatusEffectContainer {
             owner_actor_id: self.owner_actor_id,
             status_effect_id: effect_id,
             function_name: "onLose",
+            effect: view,
         });
         outbox.push(StatusEvent::RecalcStats {
             owner_actor_id: self.owner_actor_id,
@@ -592,11 +651,13 @@ impl StatusEffectContainer {
             owner_actor_id: self.owner_actor_id,
             status_effect_id: old_effect_id,
             function_name: "onLose",
+            effect: old.view(),
         });
         outbox.push(StatusEvent::LuaCall {
             owner_actor_id: self.owner_actor_id,
             status_effect_id: new_effect.id,
             function_name: "onGain",
+            effect: new_effect.view(),
         });
 
         let mut new_effect = new_effect;
@@ -655,6 +716,30 @@ impl StatusEffectContainer {
         }
     }
 
+    /// How long a saved effect still has to run at login: `None` when it ran
+    /// out. Its clock stopped when it was saved (`saved_at`), unless it
+    /// ticks offline, in which case it ran until now. Effects with no start
+    /// time (saved before seed 298), no duration or one that never runs out
+    /// (`u32::MAX`: Rampage, stances) keep their full duration.
+    pub fn time_left_at_login(
+        start_time: u32,
+        duration: u32,
+        saved_at: u32,
+        now_s: u32,
+        ticks_offline: bool,
+    ) -> Option<u32> {
+        if start_time == 0 || duration == 0 || duration == u32::MAX {
+            return Some(duration);
+        }
+        let end = start_time.saturating_add(duration);
+        let stopped = if ticks_offline || saved_at == 0 {
+            now_s
+        } else {
+            saved_at.max(start_time)
+        };
+        (stopped < end).then(|| end - stopped)
+    }
+
     /// Trigger a player-side DB save.
     pub fn save_to_db(&self, outbox: &mut StatusOutbox) {
         outbox.push(StatusEvent::DbSave {
@@ -669,11 +754,15 @@ impl StatusEffectContainer {
     /// reads it back the same way so `StatusEffect::new` recomputes the
     /// 16-bit short id via `status_id_of`. Mirrors the C#
     /// `Database.SavePlayerStatusEffects` row projection.
+    /// Effects that end at logout aren't saved (LandSandBoat skips them too).
     pub fn to_db_entries(&self) -> Vec<crate::gamedata::StatusEffectEntry> {
         self.effects
             .values()
+            .filter(|e| !e.flags.contains(StatusEffectFlags::LOSE_ON_LOGOUT))
             .map(|e| crate::gamedata::StatusEffectEntry {
                 status_id: e.id,
+                start_time: e.start_time,
+                saved_at: 0,
                 duration: e.duration,
                 magnitude: e.magnitude as u64,
                 tick: e.tick_ms,
@@ -681,6 +770,29 @@ impl StatusEffectContainer {
                 extra: e.extra as u64,
             })
             .collect()
+    }
+
+    /// The icon and countdown of every filled slot. A zone-in rebuilds the
+    /// player's actor on the client without them, so effects restored at login
+    /// (or carried through a zone change) showed no icons until they changed.
+    /// Slot and time go out together, slot first: a countdown on an empty slot
+    /// crashes the client.
+    pub fn resend_slots(&self, outbox: &mut StatusOutbox) {
+        for (i, &status_id) in self.status.iter().enumerate() {
+            if status_id == 0 {
+                continue;
+            }
+            outbox.push(StatusEvent::PacketSetStatus {
+                owner_actor_id: self.owner_actor_id,
+                slot_index: i as u16,
+                status_id,
+            });
+            outbox.push(StatusEvent::PacketSetStatusTime {
+                owner_actor_id: self.owner_actor_id,
+                slot_index: i as u16,
+                expires_at: self.status_shown_time[i],
+            });
+        }
     }
 
     // --- charaWork slot helpers -------------------------------------------
@@ -722,6 +834,43 @@ mod tests {
             /* owner */ 0, id, /* mag */ 1.0, /* tick_ms */ 0, duration, 0,
             /* now_ms */ 0,
         )
+    }
+
+    #[test]
+    fn resend_slots_sends_each_filled_slot_icon_then_time() {
+        let mut c = StatusEffectContainer::new(42);
+        let mut ob = StatusOutbox::new();
+        c.add_status_effect(mk(STATUS_POISON, 30), 42, 1_000, 30328, &mut ob);
+        c.add_status_effect(mk(STATUS_RAMPART, 60), 42, 1_000, 30328, &mut ob);
+        let mut again = StatusOutbox::new();
+        c.resend_slots(&mut again);
+        let events = again.drain();
+        assert_eq!(events.len(), 4);
+        for pair in events.chunks(2) {
+            match (&pair[0], &pair[1]) {
+                (
+                    StatusEvent::PacketSetStatus {
+                        owner_actor_id: 42,
+                        slot_index: a,
+                        status_id,
+                    },
+                    StatusEvent::PacketSetStatusTime {
+                        owner_actor_id: 42,
+                        slot_index: b,
+                        expires_at,
+                    },
+                ) => {
+                    assert_eq!(a, b);
+                    assert_eq!(*status_id, c.status[*a as usize]);
+                    assert_eq!(*expires_at, c.status_shown_time[*a as usize]);
+                    assert!(*status_id != 0 && *expires_at != 0);
+                }
+                other => panic!("expected icon then time, got {other:?}"),
+            }
+        }
+        let mut empty = StatusOutbox::new();
+        StatusEffectContainer::new(7).resend_slots(&mut empty);
+        assert!(empty.drain().is_empty());
     }
 
     #[test]
@@ -908,6 +1057,42 @@ mod tests {
     }
 
     #[test]
+    fn catalog_row_gives_an_effect_its_rules() {
+        let mut catalog = std::collections::HashMap::new();
+        catalog.insert(
+            STATUS_POISON,
+            crate::gamedata::StatusEffectDef {
+                id: STATUS_POISON,
+                name: "poison".into(),
+                flags: StatusEffectFlags::LOSE_ON_ESUNA.bits(),
+                overwrite: StatusEffectOverwrite::GreaterOrEqualTo.as_u8(),
+                tick_ms: 0,
+                hidden: false,
+                silent_on_gain: false,
+                silent_on_loss: false,
+                status_gain_text_id: 30335,
+                status_loss_text_id: 30338,
+            },
+        );
+        let mut c = StatusEffectContainer::new(1);
+        let mut ob = StatusOutbox::new();
+        let mut weak = StatusEffect::new(1, STATUS_POISON, 60.0, 3000, 30, 0, 0);
+        weak.apply_catalog(&catalog);
+        assert_eq!(weak.name, "poison");
+        assert_eq!(weak.tick_ms, 0);
+        assert!(c.add_status_effect(weak, 1, 0, DEFAULT_GAIN_TEXT_ID, &mut ob));
+        // A stronger copy refreshes it, as the row's rule says.
+        let mut strong = StatusEffect::new(1, STATUS_POISON, 100.0, 3000, 20, 0, 0);
+        strong.apply_catalog(&catalog);
+        assert!(c.add_status_effect(strong, 1, 0, DEFAULT_GAIN_TEXT_ID, &mut ob));
+        assert_eq!(c.get(STATUS_POISON).unwrap().magnitude, 100.0);
+        // Ids with no row keep what they had.
+        let mut bare = StatusEffect::new(1, 999_999, 1.0, 3000, 5, 0, 0);
+        bare.apply_catalog(&catalog);
+        assert_eq!((bare.tick_ms, bare.name.as_str()), (3000, ""));
+    }
+
+    #[test]
     fn remove_by_flag_purges_matching() {
         let mut c = StatusEffectContainer::new(1);
         let mut ob = StatusOutbox::new();
@@ -922,5 +1107,24 @@ mod tests {
         assert!(any);
         assert!(!c.has(STATUS_POISON));
         assert!(c.has(STATUS_STUN));
+    }
+
+    #[test]
+    fn saved_effects_keep_only_the_time_they_have_left() {
+        let left = StatusEffectContainer::time_left_at_login;
+        // Started at 1000 with 600 s, saved at logout 100 s in: 500 s left
+        // however long the player was away.
+        assert_eq!(left(1_000, 600, 1_100, 9_000, false), Some(500));
+        // An effect that ticks offline ran on: 500 s left 100 s later...
+        assert_eq!(left(1_000, 600, 1_100, 1_100, true), Some(500));
+        assert_eq!(left(1_000, 600, 1_100, 1_200, true), Some(400));
+        // ...and is gone once its time is up.
+        assert_eq!(left(1_000, 600, 1_100, 1_600, true), None);
+        // Saved with no time left.
+        assert_eq!(left(1_000, 600, 1_600, 1_700, false), None);
+        // No start time (saved before seed 298), no duration, never ends.
+        assert_eq!(left(0, 600, 0, 9_000, false), Some(600));
+        assert_eq!(left(1_000, 0, 1_100, 9_000, false), Some(0));
+        assert_eq!(left(1_000, u32::MAX, 1_100, 9_000, true), Some(u32::MAX));
     }
 }

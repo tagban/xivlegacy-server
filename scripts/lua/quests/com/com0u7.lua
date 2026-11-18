@@ -8,7 +8,7 @@ Quest Script
 Name: 	By Fire Reborn
 Code: 	Com0u7
 Id: 	111807
-Prereq: Com0u3 complete, level 25; not sworn to any Grand Company.
+Prereq: Com0u6 complete, level 25; not sworn to any Grand Company.
 
 Official enlistment. Flame Lieutenant Aubrey asks a recruit to swear sole
 allegiance to the Immortal Flames: doing so ends any recruit standing with

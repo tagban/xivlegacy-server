@@ -100,7 +100,8 @@ function onUpdate(tick, area)
 	if not state.bannerShown then
 		state.bannerShown = true;
 		state.startTick = tick;
-		owner:SendGameMessage(GetWorldMaster(), TEXT_BOUND_BY_DUTY, 0x20);
+		-- No "bound by duty" line here: the client prints its own when
+		-- the content starts (sending 50011 too showed it twice).
 	end
 	if not gladiator:IsEngaged() then
 		allyGlobal.EngageTarget(gladiator, owner);
@@ -122,7 +123,12 @@ function onUpdate(tick, area)
 		-- explicit — civilian MainState stops the swings before the
 		-- director's kick + processEvent035 go out. (Branch review
 		-- finding, 2026-07-09.)
+		-- A passive ChangeState on a fighting actor is a real disengage
+		-- (quest_apply::apply_change_state): the gladiator stops swinging,
+		-- and the player's own auto-attack stops too, so it can't re-seed
+		-- his hate and pull him back in before the cutscene.
 		gladiator:ChangeState(0);
+		owner:ChangeState(0);
 		-- Retail revives the loser for the post-match scene ("Otto is
 		-- defeated." then straight to Greinfarr, no weakness). Restore
 		-- before the teardown clears the 1-HP pin — a 1-HP exit would

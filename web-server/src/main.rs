@@ -32,6 +32,7 @@ mod bug_reports;
 mod config;
 mod database;
 mod handlers;
+mod reports;
 mod server;
 mod session;
 mod status;
@@ -71,13 +72,13 @@ async fn main() -> Result<()> {
     tracing::info!(
         bind_ip = %config.bind_ip(),
         port = config.port(),
-        db_path = %config.db_path().display(),
+        database = %common::sql::redact(&config.db_url()),
         session_hours = config.session_hours(),
         "config resolved"
     );
 
-    tracing::info!(db_path = %config.db_path().display(), "opening sqlite database");
-    let db = match Database::open(config.db_path()).await {
+    tracing::info!(database = %common::sql::redact(&config.db_url()), "opening sqlite database");
+    let db = match Database::open(&config.db_url()).await {
         Ok(db) => db,
         Err(e) => {
             if smoke {

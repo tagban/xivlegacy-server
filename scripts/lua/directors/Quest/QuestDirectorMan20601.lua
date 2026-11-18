@@ -3,14 +3,14 @@ require ("modifiers")
 require ("quests/man/man206")
 
 -- Together We Stand's Moonspore Grove escort (content SimpleContentMan20601,
--- run by escort.lua). The client's QuestDirectorMan20601 is an empty
--- subclass of QuestDirectorBaseClass, like all its quest directors; the
--- scenes come from the quest itself.
+-- run by escort.lua). The client's QuestDirectorMan20601 is an empty subclass
+-- of QuestDirectorBaseClass, like all its quest directors; the scenes come
+-- from the quest itself.
 --
 -- Beat order follows the opening escorts' directors (QuestDirectorMan0g101),
--- except for the opening: the duty is entered in place (no warp), so no
--- loading veil is up for questBaseRewardSeting to lift, and the entry kick
--- is simply closed. Each leg's arrival signal then plays its scenes.
+-- except for the opening: the duty is entered in place (no warp), and the
+-- entry kick's loading veil is lifted with questBaseRewardSeting before the
+-- kick is closed. Each leg's arrival signal then plays its scenes.
 
 function init()
 	return "/Director/Quest/QuestDirectorMan20601";
@@ -20,6 +20,10 @@ function onEventStarted(player, actor, triggerName)
 	-- By id: GetQuest resolves names only for the opening quests.
 	local quest = player:GetQuest(110014);
 
+	-- The entry kick raises the Now Loading veil even in place (the screen
+	-- dims, a spinner turns, and no command or talk starts until it's
+	-- lifted); questBaseRewardSeting is the client's call that lifts it.
+	callClientFunction(player, "delegateEvent", player, quest, "questBaseRewardSeting");
 	-- Close the entry kick; the escort's own loop takes it from here.
 	player:EndEvent();
 

@@ -32,6 +32,44 @@ pub const STAT_COUNT: usize = 36;
 /// Max stack size for TP.
 pub const MAX_TP: u16 = 3000;
 
+/// The Archer class id (`chara.class`) and how far its bow reaches.
+const ARCHER_CLASS: i16 = 7;
+const ARCHER_ATTACK_RANGE: f32 = 20.0;
+
+/// Modifiers the player stat rebuild recomputes from scratch (class
+/// baseline, gear, weapon, derivation, food).
+const PLAYER_PIPELINE_MODS: [Modifier; 23] = {
+    use Modifier::*;
+    [
+        Hp,
+        Mp,
+        Tp,
+        Strength,
+        Vitality,
+        Dexterity,
+        Intelligence,
+        Mind,
+        Piety,
+        Attack,
+        Accuracy,
+        Defense,
+        AttackMagicPotency,
+        HealingMagicPotency,
+        EnhancementMagicPotency,
+        MagicAccuracy,
+        MagicEvasion,
+        EnfeeblingMagicPotency,
+        // Weapon-scoped — reset so unequipping a weapon doesn't
+        // leave the prior Delay / HitCount / damage-power lingering
+        // on a now-bare-fisted character.
+        Delay,
+        AttackType,
+        HitCount,
+        Parry,
+        WeaponDamagePower,
+    ]
+};
+
 impl Character {
     // ----- HP / MP / TP ------------------------------------------------------
 
@@ -145,28 +183,34 @@ impl Character {
     /// Scripts drive the modifier map via `player:SetMod(id, val)` when
     /// gear changes, so running this after equip/unequip gives the
     /// client the correct totals.
+    ///
+    /// A pool that was full (or had no max yet) stays full at the new max;
+    /// otherwise it keeps what the actor has, cut down to a lower max. The
+    /// recalc runs on every status gain and loss, and filling up there made
+    /// any buff landing or wearing off a full heal and MP refill, and stood
+    /// corpses' HP back up.
     pub fn calculate_base_stats(&mut self) {
         let hp_mod = self.chara.mods.get(Modifier::Hp) as i32;
         if hp_mod > 0 {
+            let full = self.chara.max_hp <= 0 || self.chara.hp >= self.chara.max_hp;
             self.set_max_hp(hp_mod);
             let hpp = self.chara.mods.get(Modifier::HpPercent);
-            let hp = if hpp > 0.0 {
-                ((hpp / 100.0) * hp_mod as f64).ceil() as i32
-            } else {
-                hp_mod
-            };
-            self.set_hp(hp);
+            if hpp > 0.0 {
+                self.set_hp(((hpp / 100.0) * hp_mod as f64).ceil() as i32);
+            } else if full {
+                self.set_hp(hp_mod);
+            }
         }
         let mp_mod = self.chara.mods.get(Modifier::Mp) as i32;
         if mp_mod > 0 {
+            let full = self.chara.max_mp <= 0 || self.chara.mp >= self.chara.max_mp;
             self.set_max_mp(mp_mod);
             let mpp = self.chara.mods.get(Modifier::MpPercent);
-            let mp = if mpp > 0.0 {
-                ((mpp / 100.0) * mp_mod as f64).ceil() as i32
-            } else {
-                mp_mod
-            };
-            self.set_mp(mp);
+            if mpp > 0.0 {
+                self.set_mp(((mpp / 100.0) * mp_mod as f64).ceil() as i32);
+            } else if full {
+                self.set_mp(mp_mod);
+            }
         }
         // HitCount defaults to 1 (single-hit h2h fists) but yields to
         // the equipped main-hand's `frequency` column — the weapon
@@ -236,17 +280,21 @@ impl Character {
         let primary = base + level * per_level;
 
         // Same shape for Hp/Mp/Tp so combat pools exist from L1.
-        let hp = 250.0 + level * 30.0;
+        // Fitted to retail captures (see `player_base_hp`).
+        let hp = crate::battle::utils::player_base_hp(self.chara.level);
         let tp = 1000.0;
         let is_caster = matches!(
             class,
             c if c == crate::gamedata::CLASSID_THM as i16
                 || c == crate::gamedata::CLASSID_CNJ as i16
         );
+        // Physical classes still spend MP on abilities (Decoy, Swiftsong,
+        // Second Wind...), which the client prices at about 280 by L50, so
+        // their pool has to clear that.
         let mp = if is_caster {
             80.0 + level * 20.0
         } else {
-            20.0 + level * 5.0
+            50.0 + level * 12.0
         };
 
         // Closure captures `self.chara.mods` via `&mut`, but borrowck
@@ -340,35 +388,124 @@ impl Character {
     /// `server_battlenpc_*_mods` seeds at spawn and never want them
     /// zeroed. The dispatcher guards this call with `is_player`.
     pub fn reset_player_bonus_stats(&mut self) {
-        use Modifier::*;
-        for m in [
-            Hp,
-            Mp,
-            Tp,
-            Strength,
-            Vitality,
-            Dexterity,
-            Intelligence,
-            Mind,
-            Piety,
-            Attack,
-            Accuracy,
-            Defense,
-            AttackMagicPotency,
-            HealingMagicPotency,
-            MagicAccuracy,
-            MagicEvasion,
-            EnfeeblingMagicPotency,
-            // Weapon-scoped — reset so unequipping a weapon doesn't
-            // leave the prior Delay / HitCount / damage-power lingering
-            // on a now-bare-fisted character.
-            Delay,
-            AttackType,
-            HitCount,
-            Parry,
-            WeaponDamagePower,
-        ] {
+        // Gear can add stats the list below doesn't zero (Evasion, crit,
+        // resistances): take last time's off so they don't stack.
+        for (k, d) in std::mem::take(&mut self.gear_mods) {
+            if !PLAYER_PIPELINE_MODS.iter().any(|m| *m as u32 == k) {
+                self.chara.mods.subtract_raw(k, d);
+            }
+        }
+        for m in PLAYER_PIPELINE_MODS {
             self.chara.mods.set(m, 0.0);
+        }
+    }
+
+    /// Put a status effect's `onGain` modifier changes on (replacing any it
+    /// already had, for a refreshed effect) and remember them.
+    pub fn apply_status_mods(&mut self, effect_id: u32, deltas: Vec<(u32, f64)>) {
+        self.remove_status_mods(effect_id);
+        for &(k, d) in &deltas {
+            self.chara.mods.add_raw(k, d);
+        }
+        if !deltas.is_empty() {
+            self.status_mods.insert(effect_id, deltas);
+        }
+    }
+
+    /// Add to a status effect's tracked modifier changes (a combat hook
+    /// stacking Berserk's attack per hit), so they come off with it.
+    pub fn add_status_mods(&mut self, effect_id: u32, deltas: &[(u32, f64)]) {
+        let tracked = self.status_mods.entry(effect_id).or_default();
+        for &(k, d) in deltas {
+            self.chara.mods.add_raw(k, d);
+            match tracked.iter_mut().find(|(t, _)| *t == k) {
+                Some(t) => t.1 += d,
+                None => tracked.push((k, d)),
+            }
+        }
+    }
+
+    /// Take a status effect's modifier changes back off.
+    pub fn remove_status_mods(&mut self, effect_id: u32) {
+        if let Some(deltas) = self.status_mods.remove(&effect_id) {
+            for (k, d) in deltas {
+                self.chara.mods.subtract_raw(k, d);
+            }
+        }
+    }
+
+    /// The active effects' modifier changes summed, for the combat formulas
+    /// that count only what statuses add (accuracy, evasion, potency).
+    pub fn status_mod_totals(&self) -> crate::actor::modifier::ModifierMap {
+        let mut totals = crate::actor::modifier::ModifierMap::new();
+        for deltas in self.status_mods.values() {
+            for &(k, d) in deltas {
+                totals.add_raw(k, d);
+            }
+        }
+        totals
+    }
+
+    /// What statuses, traits and gear add on top of the actor's own
+    /// stats: the share the accuracy, evasion and potency formulas count.
+    pub fn bonus_mod_totals(&self) -> crate::actor::modifier::ModifierMap {
+        let mut totals = self.status_mod_totals();
+        for &(k, d) in self
+            .trait_mods
+            .iter()
+            .chain(&self.gear_mods)
+            .chain(&self.food_mods)
+        {
+            totals.add_raw(k, d);
+        }
+        totals
+    }
+
+    /// Take the traits' modifier changes back off (before a stat rebuild).
+    pub fn remove_trait_mods(&mut self) {
+        for (k, d) in std::mem::take(&mut self.trait_mods) {
+            self.chara.mods.subtract_raw(k, d);
+        }
+    }
+
+    /// pmeteor `Player.CalculateTraitMods` / `HasTrait`: the player has
+    /// every trait of their class or job at or below their level, and
+    /// the stat ones add their bonus.
+    pub fn apply_traits(
+        &mut self,
+        traits: &std::collections::HashMap<u16, crate::gamedata::BattleTrait>,
+    ) {
+        self.remove_trait_mods();
+        let class = self.chara.class.max(0) as u8;
+        let job = self.chara.current_job as u8;
+        let level = self.chara.level;
+        let mut held: Vec<&crate::gamedata::BattleTrait> = traits
+            .values()
+            .filter(|t| {
+                (t.job == class || (job != 0 && t.job == job)) && i16::from(t.level) <= level
+            })
+            .collect();
+        held.sort_by_key(|t| t.id);
+        self.traits = held.iter().map(|t| u32::from(t.id)).collect();
+        for t in held {
+            if t.modifier != 0 && t.bonus != 0 {
+                let d = f64::from(t.bonus);
+                self.chara.mods.add_raw(t.modifier, d);
+                self.trait_mods.push((t.modifier, d));
+            }
+        }
+    }
+
+    /// The player stat rebuild zeroes [`PLAYER_PIPELINE_MODS`]; put the
+    /// active effects' share of those back. Other modifiers keep theirs.
+    pub fn apply_status_pipeline_mods(&mut self) {
+        let pipeline: Vec<u32> = PLAYER_PIPELINE_MODS.iter().map(|m| m.as_u32()).collect();
+        for deltas in self.status_mods.values() {
+            for &(k, d) in deltas {
+                if pipeline.contains(&k) {
+                    self.chara.mods.add_raw(k, d);
+                }
+            }
         }
     }
 
@@ -397,39 +534,70 @@ impl Character {
         items: &std::collections::HashMap<u32, crate::data::ItemData>,
         equipped_by_slot: &std::collections::HashMap<u16, u32>,
     ) {
+        self.gear_mods.clear();
         for &catalog_id in equipped_by_slot.values() {
             let Some(item) = items.get(&catalog_id) else {
                 continue;
             };
             for (mod_id, delta) in &item.gear_bonuses {
                 self.chara.mods.add_raw(*mod_id, *delta as f64);
+                self.gear_mods.push((*mod_id, *delta as f64));
+            }
+        }
+    }
+
+    /// The HQ bonus of each high-quality piece worn (`hq_slots`, from
+    /// [`Database::load_equipped_hq_slots`](crate::database::Database::load_equipped_hq_slots)),
+    /// on top of [`apply_player_gear_stats`].
+    pub fn apply_player_hq_gear_stats(
+        &mut self,
+        items: &std::collections::HashMap<u32, crate::data::ItemData>,
+        equipped_by_slot: &std::collections::HashMap<u16, u32>,
+        hq_slots: &std::collections::HashSet<u16>,
+    ) {
+        for slot in hq_slots {
+            let Some(item) = equipped_by_slot.get(slot).and_then(|c| items.get(c)) else {
+                continue;
+            };
+            for (mod_id, delta) in &item.hq_bonuses {
+                self.chara.mods.add_raw(*mod_id, *delta as f64);
+                self.gear_mods.push((*mod_id, *delta as f64));
             }
         }
     }
 
     /// Food / medicine bonuses on top of gear and derivation: each adds
-    /// `percent` of the stat as it stands, up to `cap`. Stats with nothing
-    /// to scale (EXP bonus) take the percent itself. Clears the buff once
-    /// its status is gone.
+    /// `percent` of the stat as it stands, up to `cap`, then the flat
+    /// amounts. Stats with nothing to scale (EXP bonus) take the percent
+    /// itself. A buff whose status is gone is dropped.
     pub fn apply_food_bonuses(&mut self) {
-        let Some(food) = &self.food else {
-            return;
-        };
-        if !self.status_effects.has(food.status_id) {
-            self.food = None;
-            return;
-        }
-        for &(mod_id, percent, cap) in &food.bonuses {
-            let base = self.chara.mods.get_raw(mod_id);
-            let mut delta = if base > 0.0 {
-                (base * percent as f64 / 100.0).floor()
-            } else {
-                percent as f64
-            };
-            if cap > 0 {
-                delta = delta.min(cap as f64);
+        // Last recalc's bonuses on stats the rebuild doesn't zero come off
+        // first, so they don't stack.
+        for (k, d) in std::mem::take(&mut self.food_mods) {
+            if !PLAYER_PIPELINE_MODS.iter().any(|m| *m as u32 == k) {
+                self.chara.mods.subtract_raw(k, d);
             }
-            self.chara.mods.add_raw(mod_id, delta);
+        }
+        let effects = &self.status_effects;
+        self.food.retain(|f| effects.has(f.status_id));
+        for food in &self.food {
+            for &(mod_id, percent, cap) in &food.bonuses {
+                let base = self.chara.mods.get_raw(mod_id);
+                let mut delta = if base > 0.0 {
+                    (base * percent as f64 / 100.0).floor()
+                } else {
+                    percent as f64
+                };
+                if cap > 0 {
+                    delta = delta.min(cap as f64);
+                }
+                self.chara.mods.add_raw(mod_id, delta);
+                self.food_mods.push((mod_id, delta));
+            }
+            for &(mod_id, amount) in &food.flat {
+                self.chara.mods.add_raw(mod_id, amount as f64);
+                self.food_mods.push((mod_id, amount as f64));
+            }
         }
     }
 
@@ -491,6 +659,14 @@ impl Character {
             self.chara.mods.add(Modifier::Attack, w.attack as f64);
             self.chara.mods.add(Modifier::Parry, w.parry as f64);
         }
+        // A shield in the off hand blocks (and can't parry): Aegis Boon,
+        // Phalanx, Shield Bash. Shields are catalog ids 410xxxx.
+        let shield = equipped_by_slot
+            .get(&SLOT_OFFHAND)
+            .is_some_and(|cid| *cid / 10_000 == 410);
+        self.chara
+            .mods
+            .set(Modifier::CanBlock, if shield { 1.0 } else { 0.0 });
     }
 
     /// Raw `damage_power` of the equipped main-hand weapon, or 0 if no
@@ -524,7 +700,7 @@ impl Character {
     /// Ratios from `Map Server/Actors/Chara/Player/Player.cs:2765-2779`:
     ///   STR → Attack (×0.667),  DEX → Accuracy,  VIT → Defense
     ///   INT → AttackMagicPotency (×0.25)
-    ///   MND → MagicAccuracy + HealingMagicPotency
+    ///   MND → MagicAccuracy + HealingMagicPotency + EnhancementMagicPotency
     ///   Piety → MagicEvasion + EnfeeblingMagicPotency
     ///
     /// We skip Meteor's `AddMod(Modifier.Hp, (float)Modifier.Vitality)` —
@@ -560,10 +736,36 @@ impl Character {
         self.chara
             .mods
             .add(HealingMagicPotency, (mnd_v * 0.25).floor());
+        // Protect and Stoneskin size themselves from this; without it a
+        // player's casts gave nothing.
+        self.chara
+            .mods
+            .add(EnhancementMagicPotency, (mnd_v * 0.25).floor());
         self.chara.mods.add(MagicEvasion, (pie_v * 0.25).floor());
         self.chara
             .mods
             .add(EnfeeblingMagicPotency, (pie_v * 0.25).floor());
+    }
+
+    /// The player's `charaWork.battleTemp.generalParameter[35]` as the
+    /// client's character window reads it: slots 0-2 are the nameplate
+    /// flags (always 1 for a player), and slots 3-34 are the stats in
+    /// modifier-id order (STR 3 .. PIE 8, resistances 9-14, Accuracy 15,
+    /// Evasion 16, Attack 17, Defense 18, magic 23-28, Craftsmanship 29,
+    /// Magic Craftsmanship 30, Control 31, Gathering 32, Output 33,
+    /// Perception 34). The client's CharaBaseClass getters (getAttack,
+    /// getCraftProcessing, ...) index the same slots. HP/MP travel as
+    /// hpMax/mpMax instead.
+    pub fn player_general_parameter(&self) -> [i16; 35] {
+        let mut p = [0i16; 35];
+        p[0] = 1;
+        p[1] = 1;
+        p[2] = 1;
+        for (i, slot) in p.iter_mut().enumerate().skip(3) {
+            let v = self.chara.mods.get_raw(i as u32).floor();
+            *slot = v.clamp(f64::from(i16::MIN), f64::from(i16::MAX)) as i16;
+        }
+        p
     }
 
     // ----- Class / level ----------------------------------------------------
@@ -640,11 +842,20 @@ impl Character {
             && self.chara.mods.get(Modifier::CanBlock) >= 0.0
     }
 
-    /// Attack range in yalms. The C# default is 3.0 for h2h; non-default is
-    /// stored under the AttackRange modifier.
+    /// Attack range in yalms: the AttackRange modifier when something set
+    /// it, else the class's reach. Archers shoot from as far as their
+    /// weaponskills reach (Heavy Shot and Leaden Arrow are 20 yalms);
+    /// everyone else swings from 3.0, the C# default. The C# never set the
+    /// modifier for archers, so they had to walk into melee to auto-attack.
     pub fn get_attack_range(&self) -> f32 {
         let raw = self.chara.mods.get(Modifier::AttackRange);
-        if raw > 0.0 { raw as f32 } else { 3.0 }
+        if raw > 0.0 {
+            raw as f32
+        } else if self.chara.class == ARCHER_CLASS {
+            ARCHER_ATTACK_RANGE
+        } else {
+            3.0
+        }
     }
 
     /// Attack delay in milliseconds, derived from the `Delay` modifier.
@@ -759,13 +970,20 @@ mod recalc_tests {
         c.status_effects
             .add_status_effect(well_fed, 1, 0, 30328, &mut outbox);
         // Boiled Egg: HP +15% (up to 30), EXP +3%.
-        c.food = Some(crate::actor::FoodBuff {
+        c.food = vec![crate::actor::FoodBuff {
             status_id: 223_999,
             bonuses: vec![(Modifier::Hp as u32, 15, 30), (62, 3, 0)],
-        });
+            flat: vec![(Modifier::Vitality as u32, 2)],
+        }];
         c.chara.mods.set(Modifier::Hp, 590.0);
         c.apply_food_bonuses();
         assert_eq!(c.chara.mods.get(Modifier::Hp), 620.0);
+        assert_eq!(c.chara.mods.get_raw(62), 3.0);
+        assert_eq!(c.chara.mods.get(Modifier::Vitality), 2.0);
+        // A second rebuild doesn't stack the EXP bonus (not zeroed by the reset).
+        c.chara.mods.set(Modifier::Hp, 590.0);
+        c.chara.mods.set(Modifier::Vitality, 0.0);
+        c.apply_food_bonuses();
         assert_eq!(c.chara.mods.get_raw(62), 3.0);
 
         c.status_effects
@@ -773,7 +991,8 @@ mod recalc_tests {
         c.chara.mods.set(Modifier::Hp, 590.0);
         c.apply_food_bonuses();
         assert_eq!(c.chara.mods.get(Modifier::Hp), 590.0);
-        assert!(c.food.is_none());
+        assert_eq!(c.chara.mods.get_raw(62), 0.0);
+        assert!(c.food.is_empty());
     }
 
     #[test]
@@ -919,6 +1138,36 @@ mod recalc_tests {
         assert!(c.chara.mods.get(Modifier::Attack) > 0.0);
         assert!(c.chara.mods.get(Modifier::Accuracy) > 0.0);
         assert!(c.chara.mods.get(Modifier::Defense) > 0.0);
+    }
+
+    #[test]
+    fn status_mods_come_off_and_survive_the_player_rebuild() {
+        use crate::actor::modifier::Modifier;
+        let mut c = Character::new(1);
+        c.chara.mods.set(Modifier::Defense, 100.0);
+        c.chara.mods.set(Modifier::Regen, 0.0);
+        let protect = vec![(Modifier::Defense.as_u32(), 40.0)];
+        let regen = vec![(Modifier::Regen.as_u32(), 5.0)];
+        c.apply_status_mods(7, protect.clone());
+        c.apply_status_mods(8, regen);
+        // Refreshing an effect replaces its share rather than stacking.
+        c.apply_status_mods(7, protect);
+        assert_eq!(c.chara.mods.get(Modifier::Defense), 140.0);
+        assert_eq!(c.chara.mods.get(Modifier::Regen), 5.0);
+
+        // The rebuild zeroes Defense and rebuilds it (here: back to 100),
+        // then the effect's share goes back on; Regen is left alone.
+        c.reset_player_bonus_stats();
+        c.chara.mods.set(Modifier::Defense, 100.0);
+        c.apply_status_pipeline_mods();
+        assert_eq!(c.chara.mods.get(Modifier::Defense), 140.0);
+        assert_eq!(c.chara.mods.get(Modifier::Regen), 5.0);
+
+        c.remove_status_mods(7);
+        c.remove_status_mods(8);
+        c.remove_status_mods(8);
+        assert_eq!(c.chara.mods.get(Modifier::Defense), 100.0);
+        assert_eq!(c.chara.mods.get(Modifier::Regen), 0.0);
     }
 
     #[test]
@@ -1212,6 +1461,33 @@ mod minimum_hp_lock_tests {
     /// Without `MinimumHpLock`, `set_hp` clamps to `[0, max_hp]` —
     /// taking lethal damage zeros HP.
     #[test]
+    fn recalc_keeps_spent_pools_and_tops_up_full_ones() {
+        let mut c = Character::new(1);
+        c.chara.mods.set(Modifier::Hp, 1000.0);
+        c.chara.mods.set(Modifier::Mp, 500.0);
+        c.calculate_base_stats();
+        assert_eq!((c.chara.hp, c.chara.mp), (1000, 500), "first calc fills");
+        c.chara.hp = 600;
+        c.chara.mp = 100;
+        c.calculate_base_stats();
+        assert_eq!(
+            (c.chara.hp, c.chara.mp),
+            (600, 100),
+            "a status change is no heal"
+        );
+        c.chara.mods.set(Modifier::Hp, 400.0);
+        c.calculate_base_stats();
+        assert_eq!(c.chara.hp, 400, "cut to a lower max");
+        // Full at the old max: full at the new one (login's DB max -> gear).
+        c.chara.mods.set(Modifier::Hp, 1750.0);
+        c.calculate_base_stats();
+        assert_eq!((c.chara.hp, c.chara.max_hp), (1750, 1750));
+        c.chara.hp = 0;
+        c.calculate_base_stats();
+        assert_eq!(c.chara.hp, 0, "a corpse stays down");
+    }
+
+    #[test]
     fn set_hp_floor_is_zero_without_lock() {
         let mut c = Character::new(1);
         c.chara.max_hp = 100;
@@ -1262,6 +1538,19 @@ mod minimum_hp_lock_tests {
         c.set_hp(-50);
         assert_eq!(c.chara.hp, 0, "cleared lock → death allowed again");
     }
+
+    /// Archers shoot from range; other classes swing from 3 yalms; an
+    /// AttackRange modifier wins over both.
+    #[test]
+    fn attack_range_follows_class_unless_modded() {
+        let mut c = Character::new(1);
+        c.chara.class = 3; // Gladiator
+        assert_eq!(c.get_attack_range(), 3.0);
+        c.chara.class = ARCHER_CLASS;
+        assert_eq!(c.get_attack_range(), ARCHER_ATTACK_RANGE);
+        c.chara.mods.set(Modifier::AttackRange, 5.0);
+        assert_eq!(c.get_attack_range(), 5.0);
+    }
 }
 
 /// Trait reference used by Player::has_trait — imported here because the
@@ -1277,5 +1566,102 @@ impl Character {
     /// Does the character meet `trait_ref`'s class/level requirement?
     pub fn meets_trait(&self, trait_ref: TraitRef) -> bool {
         self.chara.class as u8 == trait_ref.job && trait_ref.level as i16 <= self.chara.level
+    }
+}
+
+#[cfg(test)]
+mod trait_tests {
+    use super::*;
+    use crate::gamedata::BattleTrait;
+    use std::collections::HashMap;
+
+    fn catalog() -> HashMap<u16, BattleTrait> {
+        let t = |id: u16, job: u8, level: u8, modifier: u32, bonus: i32| BattleTrait {
+            id,
+            name: String::new(),
+            job,
+            level,
+            modifier,
+            bonus,
+        };
+        let acc = Modifier::Accuracy as u32;
+        let def = Modifier::Defense as u32;
+        [
+            t(27161, 3, 28, 0, 0),
+            t(27162, 3, 48, 0, 0),
+            t(1, 3, 10, acc, 15),
+            t(2, 3, 30, def, 20),
+            t(3, 4, 10, acc, 99),
+        ]
+        .into_iter()
+        .map(|x| (x.id, x))
+        .collect()
+    }
+
+    #[test]
+    fn traits_follow_class_and_level_and_do_not_stack() {
+        let mut c = Character::new(1);
+        c.chara.class = 3;
+        c.chara.level = 29;
+        c.chara.mods.set(Modifier::Accuracy, 100.0);
+        c.apply_traits(&catalog());
+        assert_eq!(c.traits, vec![1, 27161]);
+        assert_eq!(c.chara.mods.get(Modifier::Accuracy), 115.0);
+        assert_eq!(c.chara.mods.get(Modifier::Defense), 0.0);
+        assert_eq!(c.bonus_mod_totals().get(Modifier::Accuracy), 15.0);
+
+        // A second recalc swaps the old bonus for the new one.
+        c.chara.level = 50;
+        c.apply_traits(&catalog());
+        assert_eq!(c.traits, vec![1, 2, 27161, 27162]);
+        assert_eq!(c.chara.mods.get(Modifier::Accuracy), 115.0);
+        assert_eq!(c.chara.mods.get(Modifier::Defense), 20.0);
+
+        // Changing class drops them.
+        c.chara.class = 7;
+        c.apply_traits(&catalog());
+        assert!(c.traits.is_empty());
+        assert_eq!(c.chara.mods.get(Modifier::Accuracy), 100.0);
+        assert_eq!(c.chara.mods.get(Modifier::Defense), 0.0);
+    }
+}
+
+#[cfg(test)]
+mod gear_share_tests {
+    use super::*;
+    use crate::data::ItemData;
+    use std::collections::HashMap;
+
+    #[test]
+    fn gear_counts_in_the_bonus_share_and_does_not_stack() {
+        let mut items = HashMap::new();
+        items.insert(
+            7,
+            ItemData {
+                id: 7,
+                gear_bonuses: vec![
+                    (Modifier::Accuracy as u32, 20),
+                    (Modifier::Evasion as u32, 10),
+                ],
+                ..Default::default()
+            },
+        );
+        let equipped: HashMap<u16, u32> = [(5u16, 7u32)].into();
+        let mut c = Character::new(1);
+        for _ in 0..3 {
+            c.reset_player_bonus_stats();
+            c.apply_player_gear_stats(&items, &equipped);
+        }
+        assert_eq!(c.chara.mods.get(Modifier::Evasion), 10.0);
+        assert_eq!(c.chara.mods.get(Modifier::Accuracy), 20.0);
+        let share = c.bonus_mod_totals();
+        assert_eq!(share.get(Modifier::Accuracy), 20.0);
+        assert_eq!(share.get(Modifier::Evasion), 10.0);
+
+        // Taking it off takes it all back.
+        c.reset_player_bonus_stats();
+        c.apply_player_gear_stats(&items, &HashMap::new());
+        assert_eq!(c.chara.mods.get(Modifier::Evasion), 0.0);
+        assert_eq!(c.bonus_mod_totals().get(Modifier::Accuracy), 0.0);
     }
 }

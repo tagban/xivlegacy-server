@@ -284,6 +284,8 @@ impl BattleNpc {
         self.bnpc_id = bnpc_id;
         self.pool_id = spawn.pool_id;
         self.genus_id = spawn.genus_id;
+        self.skill_list_id = spawn.skill_list_id;
+        self.spell_list_id = spawn.spell_list_id;
         self.drop_list_id = spawn.drop_list_id;
         self.respawn_time_seconds = spawn.respawn_time;
         self.detection_type = DetectionType(spawn.detection);
@@ -335,26 +337,17 @@ impl BattleNpc {
             .set(crate::actor::modifier::Modifier::MovementSpeed, 5.0);
         // Level-scaled fallback combat stats. The genus/pool mod seed
         // tables carry no stat rows (016_server_battlenpc_genus_mods.sql
-        // is empty), so `attack_calculate_base_damage` — WeaponDamagePower
-        // + 0.85·Strength + Attack — read all zeros and every BNpc melee
-        // swing clamped to 1 damage (the SEQ_005 live fight: wolves and
-        // Yda chipping 0–1 while Papalymo's cast did all the killing).
-        // Mirrors the HP fallback in the spawn path: only fill stats the
-        // seed layers left at zero, so a future real stat derivation
-        // (pmeteor `CalculateBaseStats`) overrides cleanly. lvl 1 →
-        // base ≈ 3 + 0.85·7 + 3 ≈ 12 per swing. (Garlemald-Server #28.)
+        // is empty), so without these every BNpc melee swing read all
+        // zeros and clamped to 1 damage (Garlemald-Server #28). Only stats
+        // the seed layers left at zero are filled. Sizes: see
+        // `battle::utils::monster_melee_stats` (fitted to retail hits).
         {
-            use crate::actor::modifier::Modifier;
-            let level = f64::from(self.npc.character.chara.level.max(1));
+            let level = self.npc.character.chara.level.max(1);
             let mods = &mut self.npc.character.chara.mods;
-            if mods.get(Modifier::Strength) == 0.0 {
-                mods.set(Modifier::Strength, 5.0 + 2.0 * level);
-            }
-            if mods.get(Modifier::Attack) == 0.0 {
-                mods.set(Modifier::Attack, 2.0 + level);
-            }
-            if mods.get(Modifier::WeaponDamagePower) == 0.0 {
-                mods.set(Modifier::WeaponDamagePower, 2.0 + level);
+            for (m, v) in crate::battle::utils::monster_melee_stats(level) {
+                if mods.get(m) == 0.0 {
+                    mods.set(m, v);
+                }
             }
         }
         // Caster archetype: pool currentJob 22 (THM) / 23 (CNJ). Casters
@@ -410,6 +403,8 @@ impl BattleNpc {
         // Restore HP to max.
         let max_hp = self.npc.character.chara.max_hp;
         self.npc.character.chara.hp = max_hp;
+        // A fresh monster starts with no TP (no opening TP move).
+        self.npc.character.chara.tp = 0;
         // Clear hate + last attacker.
         self.npc.character.hate.clear_hate(None);
         self.last_attacker_actor_id = 0;
@@ -569,6 +564,8 @@ mod tests {
             current_job: 0,
             combat_skill: 0,
             combat_delay: 0,
+            skill_list_id: 0,
+            spell_list_id: 0,
             aggro_type,
             speed: 8,
             detection,

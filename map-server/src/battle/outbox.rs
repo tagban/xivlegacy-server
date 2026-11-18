@@ -101,6 +101,14 @@ pub enum BattleEvent {
         cast_time_ms: u32,
         cast_type: u8,
     },
+    /// A monster starts a TP move: the battle log's "<monster> readies
+    /// <move>." (0x0139, text 30126) to everyone around it, so players
+    /// see the move coming during its wind-up.
+    SkillReady {
+        owner_actor_id: u32,
+        target_actor_id: u32,
+        command_id: u16,
+    },
     CastComplete {
         owner_actor_id: u32,
         command_id: u16,

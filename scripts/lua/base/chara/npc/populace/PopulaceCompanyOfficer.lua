@@ -48,6 +48,12 @@ function onEventStarted(player, npc, triggerName)
     if player:HasQuestNpc(npcId) then
         return;
     end
+    -- The company salute (the officer's one emote condition, seed 190) only
+    -- means something to a quest that asks for it.
+    if string.sub(triggerName, 1, 5) == "emote" then
+        player:EndEvent();
+        return;
+    end
 
     local npcGC = gcOfficer[npcId];
     local sworn = GetSwornGC(player);

@@ -105,7 +105,7 @@ function onTalk(player, quest, npc)
 	elseif (sequence == SEQ_020 and classId == GUINCUM) then
 		-- the deciphered code; the Admiral's next move
 		callClientFunction(player, "delegateEvent", player, quest, "processEvent_020");
-		callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1, 2);
+		callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1, 5);
 		player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
 		player:AddSeals(COMPANY, REWARD_SEALS);
 		player:EndEvent();

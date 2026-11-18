@@ -3,9 +3,10 @@ require ("modifiers")
 require ("quests/com/com0l4")
 
 -- Engineering Victory's ambush in the canyon (content SimpleContentCom0l401).
--- The duty is entered in place, so the entry kick is simply closed. Once the
--- fleeing imperials fall, one of them yields a magitek transceiver and the
--- quest sends you back to Guincum.
+-- The duty is entered in place, but the entry kick still raises the loading
+-- veil, so it is lifted and the kick closed. Once the fleeing imperials fall,
+-- one of them yields a magitek transceiver and the quest sends you back to
+-- Guincum.
 
 function init()
 	return "/Director/Quest/SimpleQuestBattle/QuestDirectorCom0l401";
@@ -15,6 +16,10 @@ function onEventStarted(player, actor, triggerName)
 	-- By id: GetQuest resolves names only for the opening quests.
 	local quest = player:GetQuest(111404);
 
+	-- The entry kick raises the Now Loading veil even in place (the screen
+	-- dims, a spinner turns, and no command or talk starts until it's
+	-- lifted); questBaseRewardSeting is the client's call that lifts it.
+	callClientFunction(player, "delegateEvent", player, quest, "questBaseRewardSeting");
 	player:EndEvent();
 
 	-- A duty that ends any other way purges this coroutine with the content.

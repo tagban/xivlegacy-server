@@ -117,6 +117,7 @@ pub async fn fire_on_kill_bnpc(
             current_level: c.chara.level,
             current_job: c.chara.current_job as u8,
             gc_current: c.chara.gc_current,
+            faction_credits: c.chara.faction_credits,
             gc_rank_limsa: c.chara.gc_rank_limsa,
             gc_rank_gridania: c.chara.gc_rank_gridania,
             gc_rank_uldah: c.chara.gc_rank_uldah,
@@ -295,13 +296,7 @@ mod tests {
         let registry = ActorRegistry::new();
         registry.insert(handle.clone()).await;
         let world = WorldManager::new();
-        let db_path = common::test_tmp::dir().join(format!(
-            "garlemald-quest-hook-{}.db",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let db_path = common::test_db::fresh_blocking();
         let db = crate::database::Database::open(db_path)
             .await
             .expect("db stub");
@@ -341,13 +336,7 @@ mod tests {
         let registry = ActorRegistry::new();
         registry.insert(handle.clone()).await;
         let world = WorldManager::new();
-        let db_path = common::test_tmp::dir().join(format!(
-            "garlemald-quest-hook-empty-{}.db",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let db_path = common::test_db::fresh_blocking();
         let db = crate::database::Database::open(db_path)
             .await
             .expect("db stub");
@@ -401,13 +390,7 @@ mod tests {
         registry.insert(handle.clone()).await;
         let world = WorldManager::new();
 
-        let db_path = common::test_tmp::dir().join(format!(
-            "garlemald-quest-hook-drain-{}.db",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let db_path = common::test_db::fresh_blocking();
         let db = crate::database::Database::open(db_path).await.expect("db");
         // AddExp reaches into characters_class_exp — seed the row so the
         // UPDATE has a target.

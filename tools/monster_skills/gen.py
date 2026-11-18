@@ -1,0 +1,606 @@
+"""Generate the monster skill data files for xivlegacy-server.
+
+Inputs: client move sheet (ZAM cache sheets.json, sheet 16), ZAM mob-page
+sightings (zam_hits.json), modern Action data (modern.json from XIVAPI).
+Outputs (into the repo): server_battle_commands rows for 1.0 monster moves,
+server_battlenpc_skill_info (one row per move: family, evidence, modern
+match), server_battlenpc_skill_list (family lists), pools skillListId.
+"""
+import json, os, re, sys, collections
+
+REPO = sys.argv[1]
+C = '/Volumes/AppStorage/xivlegacy-reference-cache/'
+sheet = json.load(open(C + 'sheets.json'))[16]['rows']
+modern = json.load(open('modern.json'))
+zam = json.load(open('zam_hits.json'))
+# Archived (2012-13) Gamer Escape pages: move name -> family it names, and
+# whether the page was already the ARR (2.0) version. From fetch_ge.py.
+ge = json.load(open('ge_family.json')) if os.path.exists('ge_family.json') else {}
+ge_arr = {k: v.get('arr') for k, v in json.load(open('ge3.json')).items()} if os.path.exists('ge3.json') else {}
+# Modern (ARR+) users with levels, from consolegameswiki. From fetch_cgw.py.
+cgw = json.load(open('cgw.json')) if os.path.exists('cgw.json') else {}
+
+GENUS = {}
+for l in open('genus.tsv'):
+    g, n, k = l.rstrip('\n').split('\t')
+    GENUS[int(g)] = n
+
+# Monster kinds: one model family each, so its moves share animation slots.
+# (list id, family, genera whose pools use it, pool-name regex, named pool
+#  ids, blocks of (first id, last id, block evidence, ZAM anchor pages),
+#  names a Gamer Escape page may use for it)
+# List id = the genus id where the kind is a genus, 101+ for kinds that are
+# not, and the pool id for a named boss's own list.
+# block evidence: zam = ZAM page shows a move of the block on that family;
+#   ge = an archived 1.0 Gamer Escape page names the family for one of the
+#   block's moves; modern = only an ARR-era page does; name = the names.
+KINDS = [
+    (12, 'Rodent', [12], r'squirrel|marmot|rat\b|dormouse|lemming|chinchilla', [], [(23011, 23012, 'ge', [])], ['Rodent']),
+    (39, 'Yarzon', [], r'yarzon', [], [(23138, 23140, 'zam', [2105501])], ['Yarzon']),
+    (42, 'Dodo', [42], '', [], [(23013, 23020, 'zam', [2102001, 2202003])], ['Dodo']),
+    (31, 'Basilisk', [31], '', [], [(23021, 23027, 'ge', []), (23105, 23106, 'name', [])], ['Basilisk', 'Peiste']),
+    (32, 'Raptor', [32], '', [], [(23028, 23031, 'zam', [2100203]), (23101, 23104, 'zam', [2100205])], ['Raptor']),
+    (64, 'Bomb', [64], '', [], [(23032, 23036, 'zam', [2101605, 2101602]), (23628, 23628, 'modern', [])], ['Bomb']),
+    (20, 'Jellyfish', [20], '', [], [(23037, 23040, 'ge', [])], ['Aurelia', 'Jellyfish']),
+    (60, 'Ogre', [60], '', [], [(23041, 23046, 'ge', [])], ['Ogre', 'Dhara']),
+    (43, 'Bat', [43], '', [], [(23047, 23049, 'name', [2204102, 2104101])], ['Bat']),
+    (36, 'Chigoe', [36], '', [], [(23050, 23051, 'zam', [2105603])], ['Chigoe']),
+    (101, 'Snurble', [], r'porcupine|snurble', [], [(23069, 23072, 'ge', [])], ['Snurble']),
+    (11, 'Mole', [11], '', [], [(23052, 23056, 'zam', [2105703])], ['Mole']),
+    (45, 'Puk', [45], '', [], [(23057, 23059, 'zam', [2100101, 2100109])], ['Puk']),
+    (17, 'Orobon', [17], '', [], [(23060, 23062, 'zam', [2104501, 2104506])], ['Orobon']),
+    (37, 'Gnat', [37], '', [], [(23063, 23068, 'modern', [])], ['Gnat']),
+    (4, 'Opo-opo', [4], '', [], [(23073, 23076, 'zam', [2100502, 2200405])], ['Opo-Opo', 'Opo-opo']),
+    (2, 'Antelope', [2], '', [], [(23078, 23079, 'modern', [])], ['Antelope']),
+    (44, 'Hippogryph', [44], '', [], [(23080, 23083, 'ge', [])], ['Hippogryph']),
+    (38, 'Beetle', [38], '', [], [(23084, 23085, 'zam', [2103901, 2103902, 2103904])], ['Beetle']),
+    (15, 'Flytrap', [15], '', [], [(23086, 23089, 'zam', [2102705])], ['Landtrap', 'Flytrap']),
+    (1, 'Aldgoat', [1], '', [], [(23090, 23092, 'zam', [2102301, 2102303, 2102305])], ['Aldgoat']),
+    (51, 'Ahriman', [51], '', [], [(23093, 23095, 'ge', [])], ['Ahriman']),
+    (5, 'Coeurl', [5], '', [], [(23096, 23097, 'name', [])], ['Coeurl']),
+    (21, 'Slug', [21], '', [], [(23098, 23100, 'zam', [2104201])], ['Slug']),
+    (49, 'Coblyn', [49], '', [], [(23113, 23114, 'zam', [2102101, 2102109])], ['Coblyn']),
+    (52, 'Imp', [52], '', [], [(23115, 23119, 'zam', [2202601, 2202603])], ['Imp']),
+    (50, 'Spriggan', [50], '', [], [(23121, 23125, 'ge', []), (23168, 23177, 'ge', [])], ['Spriggan']),
+    (46, 'Ghost', [46], '', [], [(23127, 23130, 'zam', [2204305])], ['Ghost', 'Bogy']),
+    (22, 'Crab', [22], '', [], [(23132, 23135, 'zam', [2107614])], ['Crab', 'Megalocrab']),
+    (3, 'Wolf', [], r'wolf|hound|watchdog|mongrel', [], [(23141, 23145, 'zam', [2101401, 2101321])], ['Wolf']),
+    (13, 'Cactuar', [13], '', [], [(23146, 23150, 'zam', [2100910, 2100901])], ['Cactuar']),
+    (102, 'Elemental', [54, 55, 56, 57, 58, 59], '', [], [(23151, 23153, 'name', []), (23178, 23182, 'name', [])], ['Elemental']),
+    (9, 'Boar', [9], '', [], [(23154, 23157, 'ge', [])], ['Boar']),
+    (19, 'Salamander', [19], '', [], [(23158, 23159, 'zam', [2101317]), (23160, 23165, 'ge', [])], ['Salamander']),
+    (27, 'Kobold', [27], r'kobold', [], [(23183, 23187, 'ge', []), (23394, 23398, 'ge', [])], ['Kobold']),
+    (28, 'Sylph', [28], '', [], [(23189, 23190, 'name', [])], ['Sylph']),
+    (24, 'Ixal', [24], r'ixal', [], [(23192, 23196, 'modern', [])], ['Ixal']),
+    (23, "Amalj'aa", [23], r"amalj|ahzabb", [], [(23198, 23206, 'zam', [2206523])], ["Amalj'aa"]),
+    (40, 'Apkallu', [40], '', [], [(23207, 23209, 'zam', [2102901])], ['Apkallu']),
+    (6, 'Goobbue', [6], '', [], [(23210, 23215, 'zam', [2103301])], ['Goobbue']),
+    (104, 'Garlean', [], r"^imperial|^elite |magitek transmitter", [], [(23223, 23224, 'modern', [])], ['Magitek Armor']),
+    (105, 'Magitek Vanguard', [], r'magitek vanguard', [], [(23565, 23567, 'ge', [])], ['Vanguard']),
+    (33, 'Ant', [33], '', [], [(23226, 23229, 'name', [])], ['Ant', 'Antling']),
+    (106, 'Fomor', [], '', [], [(23230, 23232, 'ge', [])], ['Fomor']),
+    (41, 'Vulture', [41], '', [], [(23233, 23237, 'zam', [2101204, 2101205])], ['Vulture']),
+    (7, 'Sheep', [7], '', [], [(23238, 23240, 'zam', [2106011])], ['Ram', 'Sheep']),
+    (48, 'Wight', [48], r'wight|skeleton|magicked_bones|hellsbound|purgatory', [], [(23244, 23247, 'zam', [2101903, 2201901])], ['Wight', 'Skeleton']),
+    (14, 'Funguar', [14], '', [], [(23250, 23256, 'zam', [2105901, 2105903, 2105915])], ['Funguar']),
+    (34, 'Swarm', [34], '', [], [(23257, 23257, 'zam', [2105302, 2105301, 2105202])], ['Swarm']),
+    (53, 'Wisp', [53], '', [], [(23258, 23261, 'zam', [2105801, 2105803])], ['Firefly', 'Wisp']),
+    (18, 'Gigantoad', [18], '', [], [(23262, 23269, 'name', [])], ['Gigantoad', 'Toad']),
+    (30, 'Drake', [30], '', [], [(23270, 23278, 'ge', [])], ['Drake']),
+    (16, 'Morbol', [16], '', [], [(23281, 23286, 'zam', [2101001])], ['Morbol']),
+    (35, 'Diremite', [35], r"diremite|miteling|banemite|cell mite|bastard mite|horde mite|widow's suitor", [], [(23288, 23294, 'ge', [])], ['Diremite']),
+    (8, 'Buffalo', [8], '', [], [(23296, 23299, 'modern', [])], ['Buffalo']),
+    (63, 'Flan', [63], '', [], [(23306, 23308, 'name', [])], ['Flan', 'Pudding']),
+    (26, 'Goblin', [26], '', [], [(23311, 23315, 'name', [2110301])], ['Goblin']),
+    (25, 'Qiqirn', [25], '', [], [(23318, 23324, 'name', [])], ['Qiqirn']),
+    (107, 'Gargoyle', [], '', [], [(23350, 23354, 'modern', [])], ['Gargoyle']),
+    (103, 'Golem', [], r'golem', [], [(23385, 23393, 'modern', []), (23638, 23641, 'modern', [])], ['Golem']),
+    (108, 'Moogle', [], r'moogle|mog', [], [(23410, 23424, 'ge', []), (23451, 23453, 'ge', [])], ['Moogle']),
+    (109, 'Treant', [], r'treant|great oak', [], [(23438, 23450, 'ge', []), (23642, 23643, 'modern', [])], ['Treant']),
+    (110, 'Chimera', [], r'chimera', [], [(23456, 23464, 'modern', [])], ['Chimera', 'Chimera Genus']),
+    (111, 'Bahamut', [], '', [], [(23596, 23596, 'name', []), (23617, 23626, 'name', [])], []),
+    (112, 'Cyclops', [], r'cyclops', [], [(23476, 23482, 'modern', []), (23629, 23630, 'name', [])], ['Cyclops']),
+    (30100, 'Ifrit', [], '', [30100], [(23361, 23376, 'modern', []), (23408, 23409, 'name', []), (23577, 23583, 'modern', []), (23592, 23595, 'modern', [])], ['Primal']),
+    (30109, 'Garuda', [], '', [30109], [(23537, 23559, 'modern', []), (23568, 23573, 'modern', [])], ['Primal']),
+    (30115, 'Nael van Darnus', [], '', [30115], [(23603, 23615, 'name', []), (23627, 23627, 'name', []), (23631, 23631, 'name', [])], []),
+    # Dungeon bosses: each its own list, holding the unplaced moves its
+    # dungeon's data points to; BOSS_SHARES adds its family's moves.
+    (30043, 'Antares', [], '', [30043], [], []),
+    (30044, 'Sargas', [], '', [30044], [], []),
+    (30045, 'Shaula', [], '', [30045], [], []),
+    (30046, 'Batraal', [], '', [30046], [(23355, 23357, 'name', []), (23587, 23588, 'name', []), (23590, 23591, 'name', []), (23302, 23302, 'name', [])], []),
+    (30047, 'All-seeing Eye', [], '', [30047], [], []),
+    (30048, 'Soulgazer', [], '', [30048], [], []),
+    (30049, 'Coincounter', [], '', [30049], [(23340, 23342, 'name', [])], []),
+    (30050, "Miser's Mistress", [], '', [30050], [(23343, 23343, 'name', []), (23347, 23348, 'name', [])], []),
+    (30051, 'Myrmidon Princess', [], '', [30051], [(23560, 23560, 'name', [])], []),
+    (30052, 'Chimera', [], '', [30052], [], []),
+]
+# A boss list also takes these family lists' moves (the family keeps them).
+BOSS_SHARES = {
+    30043: [35], 30044: [35], 30045: [35],   # Toto-Rak's diremites
+    30046: [107], 30047: [51], 30048: [51],  # Dzemael: Gargoyle, Ahriman
+    30049: [112], 30050: [16],               # Aurum Vale: Cyclops, Morbol
+    30051: [33], 30052: [110],               # Cutter's Cry: Ant, Chimera
+}
+BOSS_LISTS = {k[0] for k in KINDS if k[4]}
+# Pools whose move and spell lists were set by hand (quest enemies picked
+# for a scene): the generator keeps whatever their rows say.
+PINNED = {30133, 30134, 30135, 30136, 30227, 30228}  # Man406's Imperials (Garlean list 104); Gla306's tourney bout (no moves)
+# Thornmarch's court (Sum6m0): each moogle has its own list, its signature
+# move plus Mogdive (1.0 Gamer Escape move pages: "only used by <moogle>",
+# Mogdive "used by all moogles"); the Healer and Nuker models also cast.
+# The king takes up a fallen moogle's move and opens with Memento Moogle
+# (scripts/lua/content/SimpleContentThornmarch.lua).
+HAND_LISTS = {
+    31616: [(23410, 'block'), (23414, 'ge'), (23415, 'block')],  # Tanker: Whisker Bash
+    31617: [(23411, 'block'), (23413, 'block'), (23414, 'ge')],  # Attacker: 100 Needles
+    31618: [(23414, 'ge'), (23420, 'block')],                    # Sniper: Moogle Eye Shot
+    31619: [(23414, 'ge'), (23417, 'block')],                    # Healer: Moogle-Go-Round
+    31620: [(23414, 'ge'), (23421, 'ge')],                       # Nuker: Pom Flare
+    31621: [(23414, 'ge'), (23422, 'ge')],                       # Buffer: Maximoogle
+    31622: [(23414, 'ge'), (23423, 'ge')],                       # Debuffer: Mognesia
+    31623: [(23412, 'block'), (23414, 'ge')],                    # Good King Moggle Mog XII
+}
+PINNED |= set(HAND_LISTS)  # their rows hold the list and the Healer/Nuker spells
+BOSS_LISTS |= set(HAND_LISTS)
+# Class move lists for human and beastman enemies with no kind list,
+# matched by the pool's currentJob or its name: (list id, family, jobs,
+# pool-name regex, blocks). The client keeps these copies of player class
+# actions with the monster moves.
+JOB_LISTS = [
+    (122, 'Enemy pugilist', {2, 15}, r'brawler|pugilist', [(23486, 23488, 'name', [])]),
+    (123, 'Enemy marauder', {4, 17}, r'cleaver|marauder|axeman', [(23484, 23485, 'name', []), (23489, 23491, 'name', [])]),
+    (124, 'Enemy lancer', {8, 19}, r'spearman|pikeman|lancer', [(23492, 23496, 'name', [])]),
+]
+# Spell lists (pool spellListId) for casters, matched the same way. The
+# client's monster spell block 23508-23534 holds the "II" tier of the 1.0
+# thaumaturge and conjurer spells.
+THM_SPELLS = [23508, 23509, 23510, 23511, 23512, 23513, 23520, 23521, 23522, 23526, 23527, 23530, 23531, 23532, 23534, 23584]
+CNJ_SPELLS = [23514, 23515, 23516, 23517, 23518, 23519, 23523, 23524, 23525, 23528, 23529, 23533]
+SPELL_LISTS = [
+    (120, 'Enemy thaumaturge', {22, 26}, r'divinator|stargazer|signifer|thunder_mage|zombie mage|transfigurator', THM_SPELLS),
+    (121, 'Enemy conjurer', {23, 24}, r'medicus|soilseer|bedesman|shaman', CNJ_SPELLS),
+]
+
+# Class lists with no monster copies in the client (gladiator, archer):
+# the enemy uses the player weaponskills of that class (enemy-targeted
+# weaponskill rows of server_battle_commands), at the 1.0 learn level.
+PLAYER_WS_LISTS = [
+    (125, 'Enemy gladiator', {3, 16}, r'gladiator', 3),
+    (126, 'Enemy archer', {7, 18}, r'archer|bowman', 7),
+]
+
+# Enemies with no class and no kind list (bandits, assassins...): the
+# class of the weapon their model holds (gamedata_actor_appearance
+# mainHand >> 20, the weapon model family; matched against pools whose
+# class is known: 56 hand-to-hand, 76/77 sword, 141 axe, 161 spear,
+# 201 bow, 296/331 thaumaturge scepter, 316 conjurer staff).
+WEAPON_LISTS = {56: 122, 76: 125, 77: 125, 141: 123, 161: 124, 201: 126}
+WEAPON_SPELLS = {296: 120, 331: 120, 316: 121}
+main_hand = {}
+for l in open(f'{REPO}/common/sql/data/gamedata_actor_appearance.sql'):
+    if l.startswith('('):
+        f = l.strip().rstrip(',;').strip('()').split(', ')
+        main_hand[int(f[0])] = int(f[20]) >> 20
+
+# Moves an archived 1.0 Gamer Escape page says knock back ("knocking
+# them back"), with a guessed strength 1-5 (the client's knockback
+# hit-effect levels). Dream Bubble is wind damage + knockback, not sleep.
+KNOCKBACK = {'Drop Kick': 1, 'Tender Thrust': 1, 'Dream Bubble': 1,
+             'Bone Breaker': 2, 'Iron Chariot': 2, 'Vulcan Burst': 3}
+
+# Inside a block but known to belong elsewhere (a stray copy of another
+# family's move): left out of the block's kind.
+SKIP = {23560: 30109}  # Formic Pheromones sits inside Garuda's block (it is the Myrmidon Princess's)
+
+STATUS = [  # (word in the move name, status id) for moves whose effect the name gives away
+    ('Slumber', 228001), ('Lullaby', 228001), ('Yawn', 228001),
+    ('Silencing', 223006), ('Blinding', 223007), ('Petrify', 223004), ('Stone Gaze', 223004),
+    ('Queasy', 223011), ('Poison', 223011), ('Numbing', 223005), ('Binding', 228011),
+    ('Sticky Web', 228011), ('Stun', 223015),
+]
+
+def blank(n):
+    return not n or n.strip() in ('', '-', 'Attack', 'Ranged Attack', 'explosion')
+
+def snake(n):
+    return re.sub(r'[^a-z0-9]+', '_', n.lower()).strip('_')
+
+def modern_match(name):
+    rows = modern.get(name)
+    if not isinstance(rows, list):
+        return None
+    rows = [r for r in rows if r.get('Name', '').lower() == name.lower() and not r.get('IsPlayerAction')]
+    return rows[0] if rows else None
+
+# 1.0 facts from the archived 1.0 Gamer Escape / Eorzeapedia pages (2012-13):
+# name -> (actionType 1 physical / 2 magic, ActionProperty, status id or 0).
+# They win over the modern match and the name guess.
+FIRE, ICE, WIND, EARTH, LIGHTNING, WATER, ASTRAL, UMBRAL = 5, 6, 7, 8, 9, 10, 11, 12
+POISON, SLOW, STUN, SLEEP, BIND = 223011, 223003, 223015, 228001, 228011
+SILENCE, AMNESIA = 223006, 223014
+PAGE_1_0 = {
+    'Aural Vacuum': (2, WIND, 0), 'Bone Breaker': (1, 3, 0), 'Booming Bellow': (2, LIGHTNING, STUN),
+    'Cloud of Pestilence': (2, WATER, POISON), 'Corrosive Spit': (2, WATER, BIND),
+    'Deadly Thrust': (1, 2, POISON), 'Digestive Ooze': (2, WATER, POISON), 'Innernova': (2, 0, 0),
+    'Lullaby': (2, ASTRAL, SLEEP), 'Mine Dust': (2, 0, 0), 'Queasy Cloud': (2, WATER, POISON),
+    'Slumber Spores': (2, UMBRAL, SLEEP), 'Sticky Web': (1, 0, SLOW), 'Tender Thrust': (1, 3, 0),
+    'Bombardier': (1, 4, 0), 'Cermet Drill': (1, 2, 0), 'Cliff Cry': (1, 4, 0),
+    'Flames of Defiance': (2, FIRE, 0), 'Frenetic Flurry': (1, 3, 0), 'Gale Switch': (2, WIND, 0),
+    'Hair Ball': (1, 3, 0), 'Impish Incantations': (2, UMBRAL, 0), 'Memento Moogle': (2, UMBRAL, 0),
+    'Kinetic Pulse': (2, WATER, BIND), 'Magnetic Pulse': (2, WATER, BIND), 'Mogdive': (1, 3, 0), 'Mognesia': (2, UMBRAL, SILENCE), 'Whisker Bash': (1, 1, AMNESIA), 'Moogle Eye Shot': (1, 2, 0), 'Mortal Mist': (2, WATER, 0),
+    'Pom Flare': (2, UMBRAL, 0), 'Prickle': (1, 2, 0), 'Sand Breath': (2, EARTH, 0),
+    'Seismic Scream': (2, EARTH, 0), 'Snort': (2, WIND, 0), 'Soil Smear': (2, EARTH, 0),
+    'Sphere of Cold': (2, ICE, 0), 'Stellar Flame': (2, FIRE, 0), 'Tendril Spines': (1, 4, 0),
+    'Viscous Discharge': (2, WATER, 0), 'Vorpal Roar': (1, 4, 0),
+}
+
+ASPECT = {1: 5, 2: 6, 3: 7, 4: 8, 5: 9, 6: 10}  # modern Aspect -> ActionProperty
+PHYS = {'Slashing': 1, 'Piercing': 2, 'Blunt': 3, 'Shot': 4}
+
+fam_of = {}
+for lid, fam, genera, rx, named, blocks, aliases in KINDS:
+    for a, b, ev, anchors in blocks:
+        slot = 0
+        for i in range(a, b + 1):
+            n = sheet.get(str(i), [''])[0]
+            if blank(n):
+                continue
+            slot += 1
+            if SKIP.get(i) == lid:
+                continue
+            assert i not in fam_of, (i, fam, fam_of[i])
+            fam_of[i] = (lid, fam, ev, anchors, slot, aliases)
+
+for lid, fam, jobs, rx, blocks in JOB_LISTS:
+    for a, b, ev, anchors in blocks:
+        slot = 0
+        for i in range(a, b + 1):
+            n = sheet.get(str(i), [''])[0]
+            if blank(n):
+                continue
+            slot += 1
+            assert i not in fam_of, (i, fam)
+            fam_of[i] = (lid, fam, ev, anchors, slot, [])
+for lid, fam, jobs, rx, ids in SPELL_LISTS:
+    for i in ids:
+        assert i not in fam_of, (i, fam)
+        fam_of[i] = (lid, fam, 'name', [], i - 23507, [])
+
+# What each enemy caster spell does (lists 120/121). The generic move row
+# made them all blunt hits; these follow the 1.0 player spells and the
+# 1.23b client's own statuses: the elemental nukes deal magic damage of
+# their element, the "II" DoTs put the client's Burn/Frost/Choke/Rasp/
+# Shock/Drown on the target, the enfeebles their status, and Spikes and
+# Stoneskin II are buffs on the caster. name: (actionType, property,
+# status, seconds, chance, on the caster).
+FI, IC, WI, EA, LI, WA, UM = 5, 6, 7, 8, 9, 10, 12
+SPELL_EFFECTS = {
+    'Fire II': (2, FI, 0, 0, 0, False),
+    'Flare': (2, FI, 0, 0, 0, False),
+    'Burn II': (4, FI, 223148, 30, 0.9, False),
+    'Blizzard II': (2, IC, 0, 0, 0, False),
+    'Freeze': (2, IC, 0, 0, 0, False),
+    'Frost II': (4, IC, 223149, 30, 0.9, False),
+    'Aero II': (2, WI, 0, 0, 0, False),
+    'Tornado': (2, WI, 0, 0, 0, False),
+    'Choke II': (4, WI, 223152, 30, 0.9, False),
+    'Stone II': (2, EA, 0, 0, 0, False),
+    'Quake': (2, EA, 0, 0, 0, False),
+    'Rasp II': (4, EA, 223153, 30, 0.9, False),
+    'Thunder II': (2, LI, 0, 0, 0, False),
+    'Burst': (2, LI, 0, 0, 0, False),
+    'Shock II': (4, LI, 223150, 30, 0.9, False),
+    'Water II': (2, WA, 0, 0, 0, False),
+    'Flood': (2, WA, 0, 0, 0, False),
+    'Drown II': (4, WA, 223151, 30, 0.9, False),
+    'Blind': (4, UM, 223007, 30, 0.9, False),
+    'Sleep': (4, UM, 228001, 30, 0.9, False),
+    'Silence': (4, WI, 223006, 30, 0.9, False),
+    'Gravity': (4, WI, 228021, 30, 0.9, False),
+    'Paralyze': (4, IC, 223005, 30, 0.9, False),
+    'Slow': (4, EA, 223003, 30, 0.9, False),
+    'Stygian Spikes II': (4, UM, 223118, 180, 1.0, True),
+    'Shock Spikes II': (4, LI, 223132, 180, 1.0, True),
+    'Stoneskin II': (4, EA, 223133, 300, 1.0, True),
+}
+
+# A second command row for a move the kind already has: it plays the same
+# model motion (the bomb's two Self-destruct rows; both KO the bomb).
+SAME_ANIMATION = {23628: 23033}
+for i, j in SAME_ANIMATION.items():
+    fam_of[i] = fam_of[i][:4] + (fam_of[j][4],) + fam_of[i][5:]
+
+def genus_of(lid):
+    return lid if lid in GENUS else 0
+
+# damageMultiplier of magic moves: the server's physical move default (2.5x a hit)
+MAGIC_MOVE_MULTIPLIER = 2.5
+existing = set(range(23456, 23465))  # Chimera rows already in the commands data
+cmd_rows, info_rows, list_rows = [], [], []
+HITBOX = 3.0  # rough monster radius, yalms
+stats = collections.Counter()
+for k in sorted(sheet, key=int):
+    i = int(k)
+    n = sheet[k][0].strip()
+    if blank(n):
+        continue
+    m = modern_match(n)
+    lid, fam, ev, anchors, slot, aliases = fam_of.get(i, (0, '', '', [], 0, []))
+    # ZAM sighting of this exact move on one of the family's anchor pages
+    seen = [a for a in anchors if n in zam.get(str(a), {})]
+    ge_names = ge.get(n, '') in aliases
+    if seen:
+        evidence = 'zam'
+    elif ge_names:
+        evidence = 'modern' if ge_arr.get(n) else 'ge'
+    elif lid:
+        evidence = 'block' if ev in ('zam', 'ge', 'modern') else ev
+    else:
+        evidence = ''
+    notes = []
+    if seen:
+        notes.append('ZAM mob ' + ','.join(map(str, seen)))
+    if ge_names:
+        notes.append(('ARR-era' if ge_arr.get(n) else '1.0') + f' Gamer Escape page: family {ge[n]}')
+    # shape and timing: modern data when found, else a single-target melee move
+    aoe_type, aoe_range, cone, rng, cast, recast = 0, 0.0, 0.0, 5.0, 0, 10
+    centered = False  # True: the AoE is drawn around the caster
+    action_type, prop = 1, 3
+    if m:
+        ct, er = m.get('CastType', 1), float(m.get('EffectRange') or 0)
+        if ct in (2, 5, 7):
+            aoe_type, aoe_range = 1, er
+            centered = not m.get('Range')
+        elif ct == 3:
+            aoe_type, aoe_range, cone, centered = 2, er, 0.5, True
+        elif ct == 4:
+            aoe_type, aoe_range, centered = 3, er, True
+        if m.get('Range'):
+            # modern reach starts at the hitbox edge; keep at least melee reach
+            rng = max(5.0, float(m['Range']))
+        if centered and aoe_range:
+            # modern AoE radii start at the caster's hitbox edge too; the 1.0
+            # server measures from the monster's center, so add its size
+            aoe_range += HITBOX
+        cast = int(m.get('Cast100ms') or 0) * 100
+        recast = max(1, int(m.get('Recast100ms') or 100) // 10)
+        at = (m.get('AttackType') or {}).get('fields', {}).get('Name', '')
+        asp = m.get('Aspect', 0)
+        if at in PHYS:
+            action_type, prop = 1, PHYS[at]
+        elif asp in ASPECT:
+            action_type, prop = 2, ASPECT[asp]
+        elif at == 'Magic':
+            action_type, prop = 2, 0
+        notes.append(f'modern Action {m["row_id"]}')
+        stats['modern'] += 1
+    status = next((s for w, s in STATUS if w.lower() in n.lower()), 0)
+    if status and n not in PAGE_1_0:
+        notes.append('status from the move name')
+    if n in PAGE_1_0:
+        action_type, prop, status = PAGE_1_0[n]
+        notes.append('type, element and status from its 1.0 page')
+    spell = SPELL_EFFECTS.get(n) if lid in (120, 121) else None
+    on_self = False
+    status_secs, status_chance = (15, 1.0) if status else (0, 0.0)
+    if spell:
+        action_type, prop, status, status_secs, status_chance, on_self = spell
+        if on_self:
+            aoe_type, aoe_range, cone, centered = 0, 0.0, 0.0, False
+        notes.append('effect from the 1.0 player spell and the client status')
+    if i not in existing:
+        anim = (19 << 24) | (slot << 12)
+        is_ranged = 1 if rng > 5 else 0
+        # Caster-centered moves aim at the monster itself, like the
+        # Chimera rows (mainTarget 31, aoeTarget self); the rest aim at its
+        # enemy, like player weaponskills (mainTarget 768, aoeTarget target).
+        main_target = 31 if centered else 768
+        valid_target = 17152
+        if on_self:
+            # a buff on the caster itself (SELF | SELF_ONLY)
+            main_target, valid_target = 3, 3
+        cmd_rows.append((i, snake(n), 0, 1, 0, main_target, valid_target, aoe_type, aoe_range, 0.0, cone, 0.0, 1 if centered else 0,
+                         100, 1, 0, 0, rng, 0, 0, 10, 2, status, status_secs, status_chance,
+                         11 if cast else 0, cast, recast, 0, 0, 19, 0, slot, 3, anim, 0, 0, 0, 3, 0.0, 30301,
+                         2, action_type, prop, is_ranged, 0, -1, 0.0, -1, 0.0,
+                         # magic moves scale off the monster's hit too (no 1.0 potency data)
+                         MAGIC_MOVE_MULTIPLIER if action_type == 2 else 0.0))
+    if n in KNOCKBACK:
+        notes.append(f'knockback {KNOCKBACK[n]} (1.0 page)')
+    info_rows.append([i, n, genus_of(lid), lid, fam, evidence, slot, m['row_id'] if m else 0, KNOCKBACK.get(n, 0), notes])
+    if lid:
+        list_rows.append([lid, i, 1, '', evidence])
+        stats['listed'] += 1
+    stats['moves'] += 1
+
+def lit(v):
+    if isinstance(v, str):
+        return "'" + v.replace("'", "''") + "'"
+    if isinstance(v, float):
+        return repr(v)
+    return str(v)
+
+MODE = "SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';\n"
+
+def table_file(name, cols, rows, note):
+    out = [f'-- {name}: game data, {len(rows)} rows. Reloaded whole when this file changes.\n', f'-- {note}\n', MODE,
+           f'DELETE FROM `{name}`;\n']
+    if rows:
+        out.append(f'INSERT INTO `{name}` (' + ', '.join(f'`{c}`' for c in cols) + ') VALUES\n')
+        out.append(',\n'.join('(' + ', '.join(lit(v) for v in r) + ')' for r in rows) + ';\n')
+    return ''.join(out)
+
+# pools -> lists: a named boss's own list first, then a kind whose name
+# pattern matches the pool, then a kind that covers the pool's genus
+ppath = f'{REPO}/common/sql/data/server_battlenpc_pools.sql'
+# player weaponskill lists (see PLAYER_WS_LISTS)
+for l in open(f'{REPO}/common/sql/data/server_battle_commands.sql'):
+    if not l.startswith('('):
+        continue
+    f = [x.strip() for x in l.strip().rstrip(',;').strip('()').split(',')]
+    if len(f) < 42:
+        continue
+    cid, cname, cjob, clvl, main, ctype = int(f[0]), f[1].strip("'"), int(f[2]), int(f[3]), int(f[5]), int(f[41])
+    for lid, fam, jobs, rx, job in PLAYER_WS_LISTS:
+        if cjob == job and ctype == 2 and main & 0x100:
+            disp = ' '.join(w if w in ('of', 'the') else w.capitalize() for w in cname.split('_'))
+            info_rows.append([cid, disp, 0, lid, fam, 'class', 0, 0, 0, ['player weaponskill']])
+            list_rows.append([lid, cid, clvl, 'class', 'class'])
+            stats['player_ws'] += 1
+POOL_RE = re.compile(r"^(\((\d+), (\d+), '((?:[^']|'')*)', (\d+), (\d+), .*, )(\d+), (\d+)\)([,;])$", re.M)
+for lid, moves in HAND_LISTS.items():
+    for mid, ev in moves:
+        list_rows.append([lid, mid, 1, '', ev])
+for boss, fams in BOSS_SHARES.items():
+    for r in [r for r in list_rows if r[0] in fams]:
+        list_rows.append([boss, r[1], 1, '', r[4]])
+listed = {r[0] for r in list_rows}
+def list_for(pool, name, genus, job):
+    name = name.replace("''", "'")
+    for lid, fam, genera, rx, named, blocks, aliases in KINDS:
+        if pool in named:
+            return lid
+    for lid, fam, genera, rx, named, blocks, aliases in KINDS:
+        if rx and re.search(rx, name, re.I):
+            return lid
+    for lid, fam, jobs, rx, blocks in JOB_LISTS:
+        if job in jobs or re.search(rx, name, re.I):
+            return lid
+    for lid, fam, jobs, rx, cls in PLAYER_WS_LISTS:
+        if job in jobs or re.search(rx, name, re.I):
+            return lid
+    for lid, fam, genera, rx, named, blocks, aliases in KINDS:
+        if genus in genera and not rx:
+            return lid
+    for lid, fam, genera, rx, named, blocks, aliases in KINDS:
+        if genus in genera:  # genus covered, but the name pattern is the gate
+            return 0
+    return 0
+def spell_list_for(name, job):
+    name = name.replace("''", "'")
+    for lid, fam, jobs, rx, ids in SPELL_LISTS:
+        if job in jobs or re.search(rx, name, re.I):
+            return lid
+    return 0
+pool_list, pool_spells = {}, {}
+for mo in POOL_RE.finditer(open(ppath).read()):
+    pid, job = int(mo.group(2)), int(mo.group(6))
+    lid = list_for(pid, mo.group(4), int(mo.group(5)), job)
+    spells = spell_list_for(mo.group(4), job)
+    if not lid and not spells and job == 0:
+        weapon = main_hand.get(int(mo.group(3)), 0)
+        lid, spells = WEAPON_LISTS.get(weapon, 0), WEAPON_SPELLS.get(weapon, 0)
+        if lid or spells:
+            stats['by_weapon'] += 1
+    pool_list[pid] = lid if lid in listed else 0
+    pool_spells[pid] = spells
+    if pid in PINNED:  # lists set by hand: keep them
+        pool_spells[pid], pool_list[pid] = int(mo.group(7)), int(mo.group(8))
+
+# levels: spawn level range of the pools using each list
+span = collections.defaultdict(lambda: [999, 0])
+for l in open(f'{REPO}/common/sql/data/server_battlenpc_groups.sql'):
+    mo = re.match(r"\((\d+), (\d+), '(?:[^']|'')*', (\d+), (\d+),", l)
+    if not mo:
+        continue
+    for lid in (pool_list.get(int(mo.group(2))), pool_spells.get(int(mo.group(2)))):
+        if lid:
+            sp = span[lid]
+            sp[0] = min(sp[0], int(mo.group(3)))
+            sp[1] = max(sp[1], int(mo.group(4)))
+SPREAD = 40  # at most this many levels from a kind's first move to its last
+
+def modern_level(n):
+    lv = []
+    for u in cgw.get(n, {}).get('users', []):
+        if not u['duty']:
+            lv += [int(x) for x in re.findall(r'\d+', u['level'])[:1]]
+    return min(lv) if lv else 0
+
+by_list = collections.defaultdict(list)
+for r in list_rows:
+    by_list[r[0]].append(r)
+for lid, rows in by_list.items():
+    rows.sort(key=lambda r: r[1])
+    if lid in BOSS_LISTS:
+        for r in rows:
+            r[2], r[3] = 1, 'boss'
+        continue
+    if lid in {w[0] for w in PLAYER_WS_LISTS}:
+        continue  # learn levels already set
+    if lid not in span:
+        continue  # no pools use it yet: level 1, no source
+    lo, hi = span[lid]
+    hi = min(hi, lo + SPREAD)
+    for k, r in enumerate(rows):
+        r[2], r[3] = lo + (k * (hi - lo)) // len(rows), 'spawn'
+        mlv = modern_level(sheet[str(r[1])][0].strip())
+        if mlv:
+            r[2], r[3] = max(lo, min(hi, mlv)), 'modern'
+# Class move and spell lists: the 1.0 class learn level of the same
+# action (the 1.23b player row, else an archived 1.0 page's "Level
+# Learned"); a "II" spell takes its base spell's level.
+ge_levels = json.load(open('ge_levels.json')) if os.path.exists('ge_levels.json') else {}
+player_lvl = {}
+for l in open(f'{REPO}/common/sql/data/server_battle_commands.sql'):
+    mo = re.match(r"\((\d+), '([a-z0-9_]+)', (\d+), (\d+),", l)
+    if mo and mo.group(3) != '0':
+        player_lvl.setdefault(mo.group(2), int(mo.group(4)))
+def class_level(n):
+    if snake(n) in player_lvl:
+        return player_lvl[snake(n)]
+    if n in ge_levels:
+        return ge_levels[n]
+    base = re.sub(r' II$', '', n)
+    if base != n and snake(base) in player_lvl:
+        return player_lvl[snake(base)]
+    return 0
+CLASS_LISTS = {j[0] for j in JOB_LISTS} | {j[0] for j in SPELL_LISTS}
+for r in list_rows:
+    if r[0] in CLASS_LISTS:
+        clv = class_level(sheet[str(r[1])][0].strip())
+        if clv:
+            r[2], r[3] = clv, 'class'
+level_of = {r[1]: (r[2], r[3]) for r in list_rows}
+for r in info_rows:
+    if r[0] in level_of and level_of[r[0]][1]:
+        lv, src = level_of[r[0]]
+        r[9].append(f'unlocks at level {lv} ({src})')
+    r[9] = "; ".join(r[9])
+
+open(f'{REPO}/common/sql/data/server_battlenpc_skill_info.sql', 'w').write(table_file(
+    'server_battlenpc_skill_info',
+    ['skillId', 'displayName', 'genusId', 'skillListId', 'family', 'evidence', 'slot', 'modernActionId', 'knockback', 'notes'], info_rows,
+    'Monster moves (1.23b command sheet 23011-23645): kind, list, evidence (zam / ge / modern / block / name / empty = unassigned), modern match. Built by tools/monster_skills.'))
+open(f'{REPO}/common/sql/data/server_battlenpc_skill_list.sql', 'w').write(table_file(
+    'server_battlenpc_skill_list', ['skillListId', 'skillId', 'minLevel', 'levelSource', 'evidence'], list_rows,
+    'One list per monster kind (skillListId = genusId, 101+ for kinds with no genus, poolId for a named boss); minLevel gates each move.'))
+
+# commands: append monster rows after the existing data, keeping the file's own rows
+cpath = f'{REPO}/common/sql/data/server_battle_commands.sql'
+src = open(cpath).read()
+src = re.sub(r'\n-- monster moves \(generated.*', '', src, flags=re.S)
+header = src.split('\n')[3]  # the INSERT column list line
+assert header.startswith('INSERT INTO `server_battle_commands`'), header
+src = src.rstrip() + '\n'
+src += '\n-- monster moves (generated by tools/monster_skills; 1.0 names, shape/timing from modern data where found)\n'
+src += header + '\n' + ',\n'.join('(' + ', '.join(lit(v) for v in r) + ')' for r in cmd_rows) + ';\n'
+open(cpath, 'w').write(src)
+
+# pools: point each at its list
+p = open(ppath).read()
+changed = 0
+def fix(mo):
+    global changed
+    pid = int(mo.group(2))
+    spell, skill = str(pool_spells.get(pid, 0)), str(pool_list.get(pid, 0))
+    if (mo.group(7), mo.group(8)) != (spell, skill):
+        changed += 1
+    return mo.group(1) + spell + ', ' + skill + ')' + mo.group(9)
+p = POOL_RE.sub(fix, p)
+open(ppath, 'w').write(p)
+print(dict(stats), 'commands', len(cmd_rows), 'lists', len(listed),
+      'pools with a list', sum(1 for v in pool_list.values() if v),
+      'pools with spells', sum(1 for v in pool_spells.values() if v), 'pools changed', changed)

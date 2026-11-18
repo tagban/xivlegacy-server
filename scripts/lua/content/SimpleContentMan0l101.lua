@@ -1,4 +1,5 @@
 require ("global")
+require ("contenttimer")
 require ("modifiers")
 -- onUpdate drives ally/mob engagement through allyGlobal.EngageTarget;
 -- without this require the global is nil and every tick errors
@@ -270,7 +271,7 @@ function onCreate(starterPlayer, contentArea, director)
 end
 
 -- Entry TEXT lives in onUpdate's first-sighting latch (round 9 — it
--- needs Sisipu's actor id for the 51005 param and runs post-ack): this
+-- runs post-ack): this
 -- hook fires inside apply_do_zone_change_content immediately after the
 -- bundle flush — ~4s BEFORE the client's RX 0x0007 (wire-proven
 -- 2026-07-03 14:24: 0x0157 game messages shipped into the Now-Loading
@@ -384,6 +385,7 @@ function onUpdate(tick, area)
 		state.reminded5 = true;
 		owner:SendGameMessage(GetWorldMaster(), TEXT_TIME_REMAINING, 0x20, 5);
 	end
+	UpdateContentTimer(owner, state, tick, TICKS_PER_SECOND);
 
 	-- ---- Sisipu death = fail (rosters are live-only, so a dead
 	-- escort simply vanishes from GetAllies) ----
@@ -395,12 +397,11 @@ function onUpdate(tick, area)
 			-- loaded — 0x0157 is safe). Retail entry order: journal →
 			-- 34108 (Rust-side, rides the content-warp path) →
 			-- protect → bound → timer, then Sisipu's send-off. 51005
-			-- resolves "<displayName>" from the actor-id param — this
-			-- is why the banner set lives HERE and not in the
-			-- director, which has no handle on her.
-			owner:SendGameMessage(GetWorldMaster(), TEXT_PROTECT_SISIPU, 0x20, escort.actorId);
+			-- takes her display-name id (SISIPU_NAME_ID, man0l1.lua).
+			owner:SendGameMessage(GetWorldMaster(), TEXT_PROTECT_SISIPU, 0x20, SISIPU_NAME_ID, 1);
 			owner:SendGameMessage(GetWorldMaster(), TEXT_BOUND_BY_DUTY, 0x20);
 			owner:SendGameMessage(GetWorldMaster(), TEXT_TIME_REMAINING, 0x20, ESCORT_LIMIT_MINUTES);
+			QueueContentTimer(state, tick, state.startTick + ESCORT_LIMIT_TICKS);
 			emitBark(owner, BARKS.dutyStart);
 		end
 		state.sawEscort = true;
@@ -449,11 +450,20 @@ function onUpdate(tick, area)
 			local dMob = math.min(
 				dist2d(mob.positionX, mob.positionZ, escort.positionX, escort.positionZ),
 				dist2d(mob.positionX, mob.positionZ, owner.positionX, owner.positionZ))
-			if dMob <= HOLD_RADIUS then
+			-- Contested = a mob that is (or is about to be) in the fight.
+			-- An idle one between ENGAGE_RADIUS and HOLD_RADIUS never
+			-- pulls, so counting it froze Sisipu for the rest of the duty
+			-- (seen in Man0u1's twin escort, client run 2026-11-08).
+			if dMob <= HOLD_RADIUS and (mob:IsEngaged() or dMob <= ENGAGE_RADIUS) then
 				nearLive = nearLive + 1
 			end
 			if mob:IsEngaged() then
-				anyEngaged = true
+				-- Only an engaged mob still in the fight holds the walk:
+				-- one stuck behind terrain past HOLD_RADIUS would hold it
+				-- until the duty timed out.
+				if dMob <= HOLD_RADIUS then
+					anyEngaged = true
+				end
 				-- "Ankle biter is engaged." — announced once per mob on
 				-- its first engaged tick. Subject rides the DispId-sender
 				-- family (see ANKLE_BITER_DISPLAY_ID) — an actor-id

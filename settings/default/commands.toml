@@ -18,9 +18,12 @@ target_others = 2
 # everyone
 help = 0
 who = 0
+mp = 0
 version = 0
 # the bugreport module's !bug (modules/bugreport)
 bug = 0
+# every command you may use, with how to type it
+gmhelp = 0
 
 # GMs: moving players around, looking after them
 pos = 2
@@ -36,6 +39,7 @@ speed = 2
 dismount = 2
 wake = 2
 goto = 2
+side = 2
 bring = 2
 send = 2
 return = 2
@@ -43,14 +47,27 @@ up = 2
 down = 2
 posfix = 2
 getid = 2
+# saving a monster's or NPC's spot to the world database
+setpos = 3
 hasitem = 2
 haskeyitem = 2
+# looking up item ids by name
+finditem = 2
 togglegm = 2
 gmgear = 2
 jail = 2
 pardon = 2
 setmusic = 2
 setweather = 2
+# seasonal events (settings/events.toml): show, or switch on/off/auto
+event = 2
+# run one seasonal event and stop the others
+starlight = 2
+moonfire = 2
+halloween = 2
+allsaints = 2
+easter = 2
+hatchingtide = 2
 
 # senior GMs: changing what characters have, and what reaches everyone
 bringall = 3
@@ -85,7 +102,20 @@ dream = 3
 spawn = 3
 despawn = 3
 sethp = 3
+settp = 3
+usemove = 3
+monstermode = 3
+leve = 3
+factioncredit = 3
 die = 3
+# classes, levels, jobs and gear (a GM's test characters)
+setclass = 3
+setlevel = 3
+maxall = 3
+setjob = 3
+gearset = 3
+equip = 3
+unequip = 3
 # only while the finaldays module is enabled (modules/finaldays)
 worldend = 3
 

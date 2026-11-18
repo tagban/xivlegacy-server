@@ -12,6 +12,9 @@ Prereq: Level 40, Any DoW/DoM
 
 ]]
 
+-- Rewards (items/gil: ZAM and the client's reward table; the EXP is an estimate)
+REWARD_EXP			= 3000;
+
 -- Sequence Numbers
 SEQ_000	= 0;  -- Kill Lemurs.
 SEQ_001	= 1;  -- Talk to Eadbert.
@@ -70,7 +73,9 @@ function onTalk(player, quest, npc, eventName)
 	elseif (seq == SEQ_001) then
 		if (npcClassId == ENPC_EADBERT) then
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent005");
-			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 200, 1, 1, 9);
+			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
+			player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
+			player:GetItemPackage(INVENTORY_NORMAL):AddItem(1000012, 20, 1); -- Earth Crystal
             player:CompleteQuest(quest);
 		end
 	end

@@ -43,6 +43,8 @@ pub struct AppState {
     pub world_name: String,
     /// settings/bugreport.toml, for the bugreport module.
     pub bug_reports: Arc<common::bug_reports::Settings>,
+    /// The lowest account GM level that may read /reports.
+    pub reports_gm_level: u8,
 }
 
 const USERNAME_MIN: usize = 3;
@@ -274,7 +276,7 @@ fn hash_password(pw: &str) -> Result<String, argon2::password_hash::Error> {
         .to_string())
 }
 
-fn verify_password(pw: &str, hash: &str) -> bool {
+pub(crate) fn verify_password(pw: &str, hash: &str) -> bool {
     let parsed = match PasswordHash::new(hash) {
         Ok(h) => h,
         Err(e) => {
@@ -287,7 +289,7 @@ fn verify_password(pw: &str, hash: &str) -> bool {
         .is_ok()
 }
 
-fn pct(s: &str) -> String {
+pub(crate) fn pct(s: &str) -> String {
     use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
     utf8_percent_encode(s, NON_ALPHANUMERIC).to_string()
 }

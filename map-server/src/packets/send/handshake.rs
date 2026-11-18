@@ -209,14 +209,17 @@ pub fn build_0xf(actor_id: u32) -> SubPacket {
     SubPacket::new(OP_0XF_PACKET, actor_id, body(0x38))
 }
 
-/// OP_LOGOUT (0x000E) — server-side logout trigger.
+/// OP_LOGOUT (0x000E) — server-side logout trigger. A game message, as
+/// Meteor's `LogoutPacket` (`new SubPacket(OPCODE, id, new byte[8])`): sent
+/// bare, the client ignored it.
 pub fn build_logout(actor_id: u32) -> SubPacket {
-    SubPacket::new_with_flag(false, OP_LOGOUT, actor_id, body(0x28))
+    SubPacket::new(OP_LOGOUT, actor_id, body(0x28))
 }
 
-/// OP_QUIT (0x0011) — client-close command.
+/// OP_QUIT (0x0011) — client-close command. A game message, as Meteor's
+/// `QuitPacket`.
 pub fn build_quit(actor_id: u32) -> SubPacket {
-    SubPacket::new_with_flag(false, OP_QUIT, actor_id, body(0x28))
+    SubPacket::new(OP_QUIT, actor_id, body(0x28))
 }
 
 // --- Session control (opcode >= 0x1000, non-gamemessage) --------------------

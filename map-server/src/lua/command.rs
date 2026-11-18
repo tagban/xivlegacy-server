@@ -136,6 +136,33 @@ pub enum LuaCommand {
         player_id: u32,
         params: Vec<LuaCommandArg>,
     },
+    /// `player:HideActor(actorId)` — `0x00CB RemoveActor` to this one
+    /// player only. Unlike `zone:DespawnActor` the actor stays live for
+    /// everyone else sharing the area (a private area is shared per
+    /// name + level), e.g. Pgl200's coins vanish for the player who
+    /// picks them up. A later zone-in streams it back.
+    HideActor {
+        player_id: u32,
+        actor_id: u32,
+    },
+    /// `player:RestGatherNode(zoneId, uniqueId, seconds)` — a gathering
+    /// point the player picked clean leaves the world for everyone and
+    /// comes back after `seconds` (DummyCommand.lua).
+    RestGatherNode {
+        zone_id: u32,
+        unique_id: String,
+        seconds: u32,
+    },
+    /// `player:RestGatherNodeForMe(zoneId, uniqueId, seconds)` — a
+    /// gathering point the player used up leaves that player's world only
+    /// and comes back for them after `seconds`; other players keep it
+    /// (mining, harvesting and fishing points, DummyCommand.lua).
+    RestGatherNodeForPlayer {
+        player_id: u32,
+        zone_id: u32,
+        unique_id: String,
+        seconds: u32,
+    },
     PlayAnimation {
         actor_id: u32,
         animation_id: u32,
@@ -183,6 +210,23 @@ pub enum LuaCommand {
         /// Content instance (`crate::content_instance`) this belongs to; 0 = none.
         instance_id: u32,
     },
+    /// `contentArea:SpawnMapObjects()` — give a content copy its own
+    /// doors and barriers: every `DoorServer` spawn of the parent zone
+    /// (`server_spawn_locations`), spawned into the copy and registered
+    /// with `crate::dungeon_gates` so the copy can open and close them.
+    SpawnContentGates {
+        zone_id: u32,
+        instance_id: u32,
+        slot: u32,
+    },
+    /// `player:OpenDungeonChest(npc, loot)` from a dungeon treasure chest's
+    /// `onEventStarted`: open the boss chest the player is talking to and
+    /// hand out its loot (`crate::runtime::dungeon_chest`).
+    OpenDungeonChest {
+        player_id: u32,
+        chest_actor_id: u32,
+        loot: Vec<crate::runtime::dungeon_chest::ChestItem>,
+    },
     /// `director:AddMember(actor)` — port of C#
     /// `Director::AddMember`. Appends `member_actor_id` to the
     /// director's transient roster (keyed by director_actor_id on
@@ -218,6 +262,16 @@ pub enum LuaCommand {
         actor_id: u32,
         modifier_key: u32,
         value: i64,
+    },
+    /// `bnpc:LearnMonsterMove(id)` / `bnpc:UseMonsterMove(id)`: a content
+    /// script adds a monster move to a battle NPC's own move list
+    /// (`learn`), or makes it use that move on its next combat tick
+    /// whatever its TP (the `!usemove` path). Thornmarch's king takes a
+    /// fallen moogle's move this way.
+    MonsterMove {
+        actor_id: u32,
+        command_id: u16,
+        learn: bool,
     },
     /// Phase C3 — `actor:Engage(target)` (C#
     /// `Controller::Engage(target)`). Starts combat: pushes a
@@ -349,6 +403,8 @@ pub enum LuaCommand {
         item_package: u16,
         item_id: u32,
         quantity: i32,
+        /// Item quality: 1 normal, 2-4 high quality +1 to +3.
+        quality: u8,
     },
     /// `retainer:GetItemPackage(code):AddItem(id, qty)` — adds a stack
     /// to a retainer's personal inventory (not the bazaar). Routes
@@ -418,6 +474,19 @@ pub enum LuaCommand {
     AddGuildleve {
         player_id: u32,
         guildleve_id: u32,
+    },
+    /// `player:AcceptFactionLeve(id)` at the levemete: spend the faction
+    /// leve's credits and take it (`crate::leve::faction::accept`).
+    AcceptFactionLeve {
+        player_id: u32,
+        guildleve_id: u32,
+    },
+    /// `player:AddFactionCredits(faction, n)`: change the credits held
+    /// with faction 1..=3 by `amount` (`crate::leve::faction`).
+    AddFactionCredits {
+        player_id: u32,
+        faction: u8,
+        amount: i32,
     },
     /// `player:StartGuildleve(id, difficulty)` at a camp aetheryte.
     StartBattleleve {
@@ -815,6 +884,14 @@ pub enum LuaCommand {
     SetCurrentJob {
         player_id: u32,
         job_id: u8,
+    },
+    /// `player:ChangeJob(mode)` — ChangeJobCommand (12017), sent by the
+    /// gear window's soul crystal slot: 1 takes up the job of the
+    /// player's class (they must hold its soul crystal), 2 goes back to
+    /// the class.
+    ChangeJob {
+        player_id: u32,
+        mode: u8,
     },
     /// `player:SetNpcLs(id, state)` / `player:AddNpcLs(id)` and the
     /// quest-side `quest:NewNpcLsMsg(from)` all funnel here. State

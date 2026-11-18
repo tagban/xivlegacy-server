@@ -12,7 +12,7 @@ end
 --Applys Divine Regen to party in range when healed by cure or cura
 function onHealed(effect, caster, target, skill, action, actionContainer)
     --             cure                  cura
-    if (skill.id == 27346 or skill.id == 27347) and (caster ~= target) then
+    if (skill.id == 27346 or skill.id == 27347) and (caster.actorId ~= target.actorId) then
         local regenDuration = 30;
         --Apparently heals for 85 without AF, 113 with. Unsure if these can be improved with stats
         local magnitude = 85
@@ -22,9 +22,8 @@ function onHealed(effect, caster, target, skill, action, actionContainer)
             magnitude = 113;
         end
 
-        --For each party member in range, add divine regen
-        for chara in target.GetPartyMembersInRange(8) do
-            chara.statusEffects.AddStatusEffect(223264, effect.GetTier(), magnitude, regenDuration, actionContainer);
-        end
+        --Every party member within 8 yalms of the target gets Divine Regen
+        --(the server walks the party once no actor is locked)
+        target.AddPartyStatusEffect(8, 223264, effect.GetTier(), magnitude, regenDuration);
     end
 end;

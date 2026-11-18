@@ -41,15 +41,8 @@ use crate::zone::outbox::AreaOutbox;
 use crate::zone::zone::Zone;
 use common::Vector3;
 
-fn tempdb() -> std::path::PathBuf {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static SEQ: AtomicU64 = AtomicU64::new(0);
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-    common::test_tmp::dir().join(format!("garlemald-integration-{nanos}-{seq}.db"))
+fn tempdb() -> String {
+    common::test_db::fresh_blocking()
 }
 
 #[tokio::test]
@@ -615,15 +608,20 @@ async fn equip_event_writes_db_row_and_sends_bracket_packets() {
     // set_end, end_change — 5 inventory packets. Post-2026-04-22 the
     // equip-triggered RecalcStats also emits the HP/MP state bundle
     // (2 subs — chara + player variants) since equipping non-zero-HP
-    // gear flips the pool values from zero to non-zero, so the total
-    // is now 7.
-    let mut received = 0;
-    while rx.try_recv().is_ok() {
-        received += 1;
+    // gear flips the pool values from zero to non-zero, and since
+    // 2026-11-16 the character window's stats (generalParameter, 2
+    // property packets here) — 9 in all, 4 of them property sets.
+    let mut ops = Vec::new();
+    while let Ok(bytes) = rx.try_recv() {
+        ops.push(u16::from_le_bytes([bytes[18], bytes[19]]));
     }
+    assert_eq!(ops.len(), 9, "{ops:x?}");
     assert_eq!(
-        received, 7,
-        "expected 5 inventory packets + 2 HP/MP state bundle packets"
+        ops.iter()
+            .filter(|&&op| op == crate::packets::opcodes::OP_SET_ACTOR_PROPERTY)
+            .count(),
+        4,
+        "expected 2 HP/MP + 2 character-window property packets: {ops:x?}"
     );
 }
 
@@ -857,7 +855,7 @@ async fn equip_event_triggers_stat_recalc() {
 async fn linkshell_chat_fans_to_online_members_only() {
     use crate::social::dispatcher::dispatch_social_event;
     use crate::social::outbox::SocialEvent;
-    use rusqlite::named_params;
+    use common::sql::named_params;
 
     let world = Arc::new(WorldManager::new());
     let registry = Arc::new(ActorRegistry::new());
@@ -943,7 +941,7 @@ async fn linkshell_chat_fans_to_online_members_only() {
 #[tokio::test]
 async fn add_gil_creates_stack_then_increments() {
     use common::db::ConnCallExt;
-    use rusqlite::named_params;
+    use common::sql::named_params;
 
     let db = crate::database::Database::open(tempdb()).await.unwrap();
     // Seed a character row so foreign-key-like semantics hold.
@@ -1226,6 +1224,114 @@ async fn live_add_item_emits_normal_no_wipe_bracket() {
             "every self-bound subpacket must be session-stamped (proxy drops target 0)",
         );
     }
+}
+
+/// Shards, crystals and clusters go to the currency bag (99), where
+/// synthesis looks for them, whether the caller names the NORMAL bag
+/// (`!giveitem`, an Alchemist's synthesis result) or the currency bag.
+/// Repeat grants merge into one stack, the NORMAL bag stays empty, and
+/// the client gets a no-wipe currency bracket. Gil keeps its own path.
+#[tokio::test]
+async fn crystals_land_in_the_currency_bag() {
+    use crate::actor::Character;
+    use crate::data::ClientHandle;
+    use crate::runtime::actor_registry::{ActorHandle, ActorKindTag};
+    use common::db::ConnCallExt;
+    use std::sync::Arc;
+    use tokio::sync::mpsc;
+
+    const WIND_SHARD: u32 = 1_000_005;
+    const FIRE_CLUSTER: u32 = 1_000_015;
+
+    let world = Arc::new(WorldManager::new());
+    let registry = Arc::new(ActorRegistry::new());
+    let db = crate::database::Database::open(tempdb()).await.unwrap();
+    db.conn_for_test()
+        .call_db(|c| {
+            c.execute(
+                r"INSERT INTO characters (id, userId, slot, serverId, name)
+                  VALUES (43, 0, 0, 0, 'Crystal Keeper')",
+                [],
+            )?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+    registry
+        .insert(ActorHandle::new(
+            43,
+            ActorKindTag::Player,
+            230,
+            43,
+            Character::new(43),
+        ))
+        .await;
+    let (tx, mut rx) = mpsc::channel::<Vec<u8>>(64);
+    world.register_client(43, ClientHandle::new(43, tx)).await;
+
+    for (package, item, qty) in [
+        (crate::inventory::PKG_NORMAL, WIND_SHARD, 3),
+        (crate::inventory::PKG_CURRENCY_CRYSTALS, WIND_SHARD, 4),
+        (crate::inventory::PKG_NORMAL, FIRE_CLUSTER, 1),
+    ] {
+        crate::runtime::quest_apply::apply_add_item(
+            43,
+            package,
+            item,
+            qty,
+            &registry,
+            Some(&world),
+            &db,
+        )
+        .await;
+    }
+
+    let normal = db
+        .get_item_package(43, crate::inventory::PKG_NORMAL as u32)
+        .await
+        .unwrap();
+    assert!(
+        normal.is_empty(),
+        "no crystal in the NORMAL bag; saw {normal:?}"
+    );
+    let currency = db
+        .get_item_package(43, crate::inventory::PKG_CURRENCY_CRYSTALS as u32)
+        .await
+        .unwrap();
+    let qty = |id: u32| {
+        currency
+            .iter()
+            .filter(|r| r.item_id == id)
+            .map(|r| r.quantity)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(qty(WIND_SHARD), vec![7], "two grants merge into one stack");
+    assert_eq!(qty(FIRE_CLUSTER), vec![1]);
+    assert!(
+        currency.iter().all(|r| r.item_id != 1_000_001),
+        "a crystal grant must not turn into gil"
+    );
+
+    // The client heard about it in the currency bag (no-wipe bracket, code 99).
+    let mut set_begins = Vec::new();
+    while let Ok(bytes) = rx.try_recv() {
+        let mut offset = 0;
+        while offset < bytes.len() {
+            let Ok(sub) = common::subpacket::SubPacket::parse(&bytes, &mut offset) else {
+                break;
+            };
+            if sub.game_message.opcode == crate::packets::opcodes::OP_INVENTORY_SET_BEGIN {
+                set_begins.push(u16::from_le_bytes([sub.data[6], sub.data[7]]));
+            }
+        }
+    }
+    assert!(!set_begins.is_empty(), "a currency bracket was sent");
+    assert!(
+        set_begins
+            .iter()
+            .all(|&code| code == crate::inventory::PKG_CURRENCY_CRYSTALS),
+        "only the currency bag is updated; saw {set_begins:?}"
+    );
 }
 
 /// Inventory live-producer increment 2 — a mid-session KEYITEMS
@@ -2307,6 +2413,176 @@ async fn quest_set_enpc_emits_event_status_and_quest_graphic_packets() {
     let _ = std::fs::remove_dir_all(script_root);
 }
 
+/// A cross-zone warp's zone-in-complete must re-send EVERY active quest
+/// ENPC, not only the ones whose flags changed. Man200 accepts at the Waking
+/// Sands door in zone 175 (its SetENpc broadcasts find no live NPC there) and
+/// warps into zone 181; the re-establish then saw Tataru's talk flag as
+/// unchanged and never sent it, so she stayed silent until a relog.
+#[tokio::test]
+async fn zone_in_complete_resends_unchanged_quest_enpcs() {
+    use crate::actor::event_conditions::{EventConditionList, TalkCondition};
+    use crate::actor::quest::{Quest, quest_actor_id};
+    use crate::lua::LuaEngine;
+    use crate::lua::command::LuaCommand;
+    use crate::processor::PacketProcessor;
+
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let script_root = common::test_tmp::dir().join(format!("garlemald-reemit-{nanos}"));
+    std::fs::create_dir_all(script_root.join("quests/man")).unwrap();
+    std::fs::write(
+        script_root.join("quests/man/man200.lua"),
+        r#"
+            function onStateChange(player, quest, sequence)
+                quest:SetENpc(2000001, 0, true, false, false, false)
+            end
+        "#,
+    )
+    .unwrap();
+
+    let world = Arc::new(WorldManager::new());
+    let registry = Arc::new(ActorRegistry::new());
+    let db = Arc::new(crate::database::Database::open(tempdb()).await.expect("db"));
+    use common::db::ConnCallExt;
+    db.conn_for_test()
+        .call_db(|c| {
+            c.execute(
+                "INSERT INTO characters (id, userId, slot, serverId, name) VALUES (42, 0, 0, 0, 'Tester')",
+                [],
+            )?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+
+    let lua = Arc::new(LuaEngine::new(&script_root));
+    {
+        let mut quests = std::collections::HashMap::new();
+        quests.insert(
+            110_013u32,
+            crate::gamedata::QuestMeta {
+                id: 110_013,
+                quest_name: "Fade to White".to_string(),
+                class_name: "Man200".to_string(),
+                prerequisite: 0,
+                min_level: 18,
+            },
+        );
+        lua.catalogs().install_quests(quests);
+    }
+
+    let mut zone = Zone::new(
+        181,
+        "test",
+        1,
+        "/Area/Zone/Test",
+        0,
+        0,
+        0,
+        false,
+        false,
+        false,
+        false,
+        false,
+        Some(&StubNavmeshLoader),
+    );
+    let mut ob = AreaOutbox::new();
+    zone.core.add_actor(
+        StoredActor {
+            actor_id: 42,
+            kind: ActorKind::Player,
+            position: Vector3::ZERO,
+            grid: (0, 0),
+            is_alive: true,
+        },
+        &mut ob,
+    );
+    zone.core.add_actor(
+        StoredActor {
+            actor_id: 0x987_6543,
+            kind: ActorKind::Npc,
+            position: Vector3::new(2.0, 0.0, 0.0),
+            grid: (0, 0),
+            is_alive: true,
+        },
+        &mut ob,
+    );
+    world.register_zone(zone).await;
+
+    let mut player = Character::new(42);
+    let mut quest = Quest::new(quest_actor_id(110_013), "Man200".to_string());
+    quest.clear_dirty();
+    player.quest_journal.add(quest);
+    registry
+        .insert(ActorHandle::new(42, ActorKindTag::Player, 181, 99, player))
+        .await;
+
+    let (tx, mut rx) = mpsc::channel::<Vec<u8>>(64);
+    world.register_client(99, ClientHandle::new(99, tx)).await;
+
+    let processor = PacketProcessor {
+        db: db.clone(),
+        world: world.clone(),
+        registry: registry.clone(),
+        lua: Some(lua.clone()),
+        cmd: None,
+    };
+
+    // The quest registers its talk NPC while that NPC isn't live (the
+    // origin zone): the broadcast is skipped, but the registration sticks.
+    processor
+        .apply_login_lua_command(
+            &registry.get(42).await.unwrap(),
+            LuaCommand::QuestStartSequence {
+                player_id: 42,
+                quest_id: 110_013,
+                sequence: 0,
+            },
+        )
+        .await;
+    while rx.try_recv().is_ok() {}
+
+    // The warp lands: the destination zone's NPC is live now.
+    let mut npc = Character::new(0x987_6543);
+    npc.chara.actor_class_id = 2_000_001;
+    npc.base.event_conditions = EventConditionList {
+        talk: vec![TalkCondition {
+            condition_name: "talkDefault".to_string(),
+            is_disabled: false,
+            unknown1: 4,
+        }],
+        ..EventConditionList::default()
+    };
+    registry
+        .insert(ActorHandle::new(0x987_6543, ActorKindTag::Npc, 181, 0, npc))
+        .await;
+
+    processor.handle_zone_in_complete(99).await;
+
+    let mut saw_event_status = false;
+    while let Ok(bytes) = rx.try_recv() {
+        let mut offset = 0;
+        while offset < bytes.len() {
+            let Ok(sub) = common::subpacket::SubPacket::parse(&bytes, &mut offset) else {
+                break;
+            };
+            if sub.game_message.opcode == crate::packets::opcodes::OP_SET_EVENT_STATUS
+                && sub.header.source_id == 0x987_6543
+            {
+                saw_event_status = true;
+            }
+        }
+    }
+    assert!(
+        saw_event_status,
+        "zone-in-complete must re-send the unchanged talk NPC's event status",
+    );
+
+    let _ = std::fs::remove_dir_all(script_root);
+}
+
 // ---------------------------------------------------------------------------
 // Quest-engine DB round-trips (Phase A/B/C plumbing)
 // ---------------------------------------------------------------------------
@@ -2376,7 +2652,7 @@ async fn save_quest_roundtrips_all_columns_through_load_quest_scenario() {
                         r.get::<_, u16>(6)?,
                     ))
                 })?
-                .collect::<rusqlite::Result<_>>()?;
+                .collect::<common::sql::Result<_>>()?;
             Ok(out)
         })
         .await
@@ -3392,7 +3668,7 @@ async fn equipped_item_param_bonus_lifts_derived_secondary() {
     use crate::runtime::dispatcher::dispatch_status_event;
     use crate::status::outbox::StatusEvent;
     use common::db::ConnCallExt;
-    use rusqlite::named_params;
+    use common::sql::named_params;
     use std::sync::Arc;
 
     let world = Arc::new(WorldManager::new());
@@ -3491,7 +3767,7 @@ async fn hp_change_on_equip_emits_state_bundle_to_self() {
     use crate::runtime::dispatcher::dispatch_status_event;
     use crate::status::outbox::StatusEvent;
     use common::db::ConnCallExt;
-    use rusqlite::named_params;
+    use common::sql::named_params;
     use std::sync::Arc;
 
     let world = Arc::new(WorldManager::new());
@@ -3621,7 +3897,7 @@ async fn hp_change_on_equip_emits_state_bundle_to_self() {
 #[tokio::test]
 async fn addexp_past_threshold_levels_up_and_persists() {
     use common::db::ConnCallExt;
-    use rusqlite::named_params;
+    use common::sql::named_params;
     use std::sync::Arc;
 
     let registry = Arc::new(ActorRegistry::new());
@@ -3750,7 +4026,7 @@ async fn equipped_mainhand_weapon_populates_modifiers_and_damage() {
     use crate::runtime::dispatcher::dispatch_status_event;
     use crate::status::outbox::StatusEvent;
     use common::db::ConnCallExt;
-    use rusqlite::named_params;
+    use common::sql::named_params;
     use std::sync::Arc;
 
     let world = Arc::new(WorldManager::new());
@@ -3851,15 +4127,16 @@ async fn equipped_mainhand_weapon_populates_modifiers_and_damage() {
         level: 10,
         max_hp: 1000,
         mods: &mods_snapshot,
+        status: crate::battle::utils::no_status(),
         has_aegis_boon: false,
         has_protect: false,
         has_shell: false,
         has_stoneskin: false,
     };
-    // rng=0.0 → minimum deviation (0.96). base = 20 + 0.85*30 + 23
-    // = 20 + 25.5 + 23 = 68.5; × 0.96 = 65.76 → rounds to 66.
+    // rng=0.0 → minimum deviation (0.96). base = (20 + 0.85*30 + 23)
+    // × 0.4 = 27.4; × 0.96 = 26.3 → rounds to 26.
     let mut rng = FixedRng::new(&[0.0]);
-    assert_eq!(attack_calculate_base_damage(&atk_view, &mut rng), 66);
+    assert_eq!(attack_calculate_base_damage(&atk_view, &mut rng), 26);
 }
 
 /// Regression guard for the "derivation ran on zeros" gap — with a fresh
@@ -3957,7 +4234,12 @@ async fn load_gather_resolver_round_trips_seeded_rows() {
     assert_eq!(node2.num_items(), 5);
 }
 
-/// Spawn loader round-trips the two seeded rows and every row carries
+/// Ids of our own quest-only gathering rows (crafting/gathering guild
+/// quests): spawns, node templates and node items, kept apart from the
+/// retail catalog.
+const QUEST_GATHER_IDS: std::ops::RangeInclusive<u32> = 9100..=9199;
+
+/// Spawn loader round-trips the seeded rows and every row carries
 /// a valid harvest-type + position triple.
 #[tokio::test]
 async fn load_gather_node_spawns_round_trips_seeded_rows() {
@@ -3968,11 +4250,28 @@ async fn load_gather_node_spawns_round_trips_seeded_rows() {
         .load_gather_node_spawns()
         .await
         .expect("load gather spawns");
-    assert_eq!(spawns.len(), 2);
+    assert!(spawns.len() >= 15);
     for s in &spawns {
         assert!(crate::gathering::is_valid_harvest_type(s.harvest_type));
-        assert!(s.harvest_node_id >= 1001);
+        if QUEST_GATHER_IDS.contains(&s.id) {
+            // Our quest-only points: their own template, and a quest gate.
+            assert!(
+                QUEST_GATHER_IDS.contains(&s.harvest_node_id),
+                "{}",
+                s.unique_id
+            );
+            assert!(
+                !s.quest_gates.is_empty(),
+                "{} has no quest gate",
+                s.unique_id
+            );
+        } else {
+            assert!((2000..=2113).contains(&s.harvest_node_id));
+            assert!(s.quest_gates.is_empty(), "{} is gated", s.unique_id);
+        }
         assert!(s.zone_id > 0);
+        // Gathering points use the client's MiningPoint classes.
+        assert!((1_200_052..=1_200_057).contains(&s.actor_class_id));
     }
 }
 
@@ -4189,6 +4488,7 @@ async fn runtime_drain_add_item_persists_to_characters_inventory() {
         item_package: crate::inventory::PKG_NORMAL,
         item_id: 10_001_006,
         quantity: 7,
+        quality: 1,
     }];
     apply_runtime_lua_commands(cmds, &registry, &db, &world, None).await;
 
@@ -4223,13 +4523,22 @@ async fn gather_catalog_reseed_includes_mozk_rows() {
         .load_gather_resolver()
         .await
         .expect("gather catalog load");
+    // Our quest-only rows (QUEST_GATHER_IDS) come on top of the catalog.
+    let quest_nodes = resolver
+        .iter_nodes()
+        .filter(|n| QUEST_GATHER_IDS.contains(&n.id))
+        .count();
+    let quest_items = resolver
+        .iter_items()
+        .filter(|i| QUEST_GATHER_IDS.contains(&i.id))
+        .count();
     assert_eq!(
-        resolver.num_nodes(),
+        resolver.num_nodes() - quest_nodes,
         116,
         "2 tutorial + 114 mozk-sourced nodes"
     );
     assert_eq!(
-        resolver.num_items(),
+        resolver.num_items() - quest_items,
         539,
         "8 tutorial + 531 mozk-sourced items"
     );
@@ -4280,8 +4589,8 @@ async fn gather_resolver_resolves_mozk_sourced_node() {
 /// `server_gather_node_spawns`, converts each row to a
 /// `SpawnLocation` attached to its target zone, and populates
 /// `gather_metadata` with the `(harvest_node_id, harvest_type)` pair
-/// keyed by `(zone_id, unique_id)`. The seed ships two tutorial
-/// mining outcrops in zone 180, so both paths should be exercised.
+/// keyed by `(zone_id, unique_id)`. The seed places three mining points
+/// around each Thanalan mining place (tools/gathering/gen_nodes.py).
 #[tokio::test]
 async fn gather_spawns_attach_to_zones_and_metadata() {
     let db = crate::database::Database::open(tempdb())
@@ -4293,42 +4602,40 @@ async fn gather_spawns_attach_to_zones_and_metadata() {
         .await
         .expect("world boot-load");
 
-    // Both seeded spawns should have been attached to zone 180.
-    let zone_180 = world.zone(180).await.expect("zone 180 present");
-    let seeds_in_180 = {
-        let z = zone_180.read().await;
+    // Camp Black Brush (Central Thanalan, zone 170) has three grade-1 points.
+    let zone_170 = world.zone(170).await.expect("zone 170 present");
+    let seeds_in_170 = {
+        let z = zone_170.read().await;
         z.spawn_locations
             .iter()
-            .filter(|s| s.unique_id.starts_with("mining_outcrop_central_thanalan_"))
+            .filter(|s| s.unique_id.starts_with("mine_black_brush_"))
             .count()
     };
     assert_eq!(
-        seeds_in_180, 2,
-        "both tutorial gather spawns seeded into zone 180"
+        seeds_in_170, 3,
+        "three Black Brush mining points in zone 170"
     );
 
-    // Metadata map should carry a `(harvest_node_id, harvest_type)`
-    // pair for each spawn.
-    assert_eq!(world.gather_metadata_count().await, 2);
+    // Every spawn row carries metadata: 15 Thanalan mining points.
+    assert!(world.gather_metadata_count().await >= 15);
     let m1 = world
-        .gather_metadata(180, "mining_outcrop_central_thanalan_1")
+        .gather_metadata(170, "mine_black_brush_1")
         .await
-        .expect("metadata for spawn 1");
-    assert_eq!(m1.harvest_node_id, 1001);
+        .expect("metadata for a Black Brush point");
+    assert_eq!(m1.harvest_node_id, 2010); // Mine @ Black Brush
     assert_eq!(m1.harvest_type, crate::gathering::HARVEST_TYPE_MINE);
 
-    let m2 = world
-        .gather_metadata(180, "mining_outcrop_central_thanalan_2")
+    let m5 = world
+        .gather_metadata(172, "mine_nophica_s_wells_1")
         .await
-        .expect("metadata for spawn 2");
-    assert_eq!(m2.harvest_node_id, 1002);
-    assert_eq!(m2.harvest_type, crate::gathering::HARVEST_TYPE_MINE);
+        .expect("metadata for a Nophica's Wells point");
+    assert_eq!(m5.harvest_node_id, 2014); // Mine @ Nophica's Wells
 
     // Unknown keys return None.
-    assert!(world.gather_metadata(180, "does_not_exist").await.is_none());
+    assert!(world.gather_metadata(170, "does_not_exist").await.is_none());
     assert!(
         world
-            .gather_metadata(999, "mining_outcrop_central_thanalan_1")
+            .gather_metadata(999, "mine_black_brush_1")
             .await
             .is_none()
     );
@@ -5282,18 +5589,14 @@ async fn logout_command_emits_logout_packet_to_owner_session() {
         .apply_login_lua_command(&handle, LuaCommand::Logout { player_id: 33 })
         .await;
 
+    // One raw game-message subpacket aimed at the session; the connection
+    // writer frames it (#110).
     let bytes = rx.try_recv().expect("Logout should send one packet");
     let mut offset = 0;
-    let base = common::BasePacket::from_buffer(&bytes, &mut offset).expect("parse base packet");
-    let subs = base.get_subpackets().expect("parse subpackets");
-    assert_eq!(subs.len(), 1, "Logout sends one subpacket");
-    // Logout/Quit are non-game-message subpackets, so the opcode lives
-    // on `header.r#type` (see `SubPacket::new_with_flag`).
-    assert_eq!(
-        subs[0].header.r#type,
-        crate::packets::opcodes::OP_LOGOUT,
-        "subpacket type should be OP_LOGOUT (0x000E)",
-    );
+    let sub = common::SubPacket::parse(&bytes, &mut offset).expect("parse subpacket");
+    assert_eq!(offset, bytes.len(), "Logout sends one subpacket");
+    assert_eq!(sub.game_message.opcode, crate::packets::opcodes::OP_LOGOUT);
+    assert_eq!(sub.header.target_id, 33, "aimed at the owner's session");
 }
 
 #[tokio::test]
@@ -5644,14 +5947,10 @@ async fn quitgame_command_emits_quit_packet_to_owner_session() {
 
     let bytes = rx.try_recv().expect("QuitGame should send one packet");
     let mut offset = 0;
-    let base = common::BasePacket::from_buffer(&bytes, &mut offset).expect("parse base packet");
-    let subs = base.get_subpackets().expect("parse subpackets");
-    assert_eq!(subs.len(), 1, "QuitGame sends one subpacket");
-    assert_eq!(
-        subs[0].header.r#type,
-        crate::packets::opcodes::OP_QUIT,
-        "subpacket type should be OP_QUIT (0x0011)",
-    );
+    let sub = common::SubPacket::parse(&bytes, &mut offset).expect("parse subpacket");
+    assert_eq!(offset, bytes.len(), "QuitGame sends one subpacket");
+    assert_eq!(sub.game_message.opcode, crate::packets::opcodes::OP_QUIT);
+    assert_eq!(sub.header.target_id, 34, "aimed at the owner's session");
 }
 
 /// Drive `LogoutCommand.lua`'s `onEventStarted` against a real
@@ -8910,15 +9209,15 @@ async fn setup_level_up_equip_scene(
             c.execute(
                 r"INSERT INTO characters (id, userId, slot, serverId, name, restBonus)
                   VALUES (:cid, 0, 0, 0, 'SkillLearner', 0)",
-                rusqlite::named_params! { ":cid": chara_id },
+                common::sql::named_params! { ":cid": chara_id },
             )?;
             c.execute(
                 r"INSERT INTO characters_class_levels (characterId) VALUES (:cid)",
-                rusqlite::named_params! { ":cid": chara_id },
+                common::sql::named_params! { ":cid": chara_id },
             )?;
             c.execute(
                 r"INSERT INTO characters_class_exp (characterId) VALUES (:cid)",
-                rusqlite::named_params! { ":cid": chara_id },
+                common::sql::named_params! { ":cid": chara_id },
             )?;
             Ok(())
         })
@@ -8957,11 +9256,11 @@ async fn hotbar_row(
     use common::db::ConnCallExt;
     db.conn_for_test()
         .call_db(move |c| {
-            use rusqlite::OptionalExtension;
+            use common::sql::OptionalExtension;
             c.query_row(
                 r"SELECT commandId, recastTime FROM characters_hotbar
                   WHERE characterId = :cid AND classId = :class AND hotbarSlot = :slot",
-                rusqlite::named_params! { ":cid": chara_id, ":class": class_id, ":slot": slot0 },
+                common::sql::named_params! { ":cid": chara_id, ":class": class_id, ":slot": slot0 },
                 |r| Ok((r.get::<_, u32>(0)?, r.get::<_, u32>(1)?)),
             )
             .optional()
@@ -10996,6 +11295,7 @@ async fn fieldcraft_leve_progress_ticks_on_add_item() {
             item_package: crate::inventory::PKG_NORMAL,
             item_id: 10_001_006,
             quantity: 3,
+            quality: 1,
         }],
         &registry,
         &db,
@@ -11023,6 +11323,7 @@ async fn fieldcraft_leve_progress_ticks_on_add_item() {
             item_package: crate::inventory::PKG_NORMAL,
             item_id: 10_001_006,
             quantity: 2,
+            quality: 1,
         }],
         &registry,
         &db,
@@ -11124,6 +11425,7 @@ async fn fieldcraft_leve_progress_gated_on_accepted_flag() {
             item_package: crate::inventory::PKG_NORMAL,
             item_id: 10_001_006,
             quantity: 3,
+            quality: 1,
         }],
         &registry,
         &db,
@@ -11525,7 +11827,7 @@ async fn spawn_my_retainer_records_meeting_group_id_on_snapshot() {
                 [],
             )?;
             c.execute(
-                r"INSERT OR IGNORE INTO characters_retainers (characterId, retainerId, doRename)
+                r"INSERT IGNORE INTO characters_retainers (characterId, retainerId, doRename)
                   VALUES (90, 1001, 0)",
                 [],
             )?;
@@ -11618,7 +11920,7 @@ async fn rename_retainer_persists_and_load_returns_custom_name() {
                 [],
             )?;
             c.execute(
-                r"INSERT OR IGNORE INTO characters_retainers
+                r"INSERT IGNORE INTO characters_retainers
                     (characterId, retainerId, doRename)
                   VALUES (91, 1001, 1)",
                 [],
@@ -11712,7 +12014,7 @@ async fn rename_retainer_is_per_character() {
                 [],
             )?;
             c.execute(
-                r"INSERT OR IGNORE INTO characters_retainers
+                r"INSERT IGNORE INTO characters_retainers
                     (characterId, retainerId, doRename)
                   VALUES (93, 1001, 1), (94, 1001, 1)",
                 [],
@@ -11766,7 +12068,7 @@ async fn processor_rename_retainer_persists() {
                 [],
             )?;
             c.execute(
-                r"INSERT OR IGNORE INTO characters_retainers
+                r"INSERT IGNORE INTO characters_retainers
                     (characterId, retainerId, doRename)
                   VALUES (95, 1002, 1)",
                 [],
@@ -11855,7 +12157,7 @@ async fn setup_completed_leve(
             c.execute(
                 r"INSERT INTO characters (id, userId, slot, serverId, name)
                   VALUES (:cid, 0, 0, 0, :nm)",
-                rusqlite::named_params! { ":cid": chara_id, ":nm": name },
+                common::sql::named_params! { ":cid": chara_id, ":nm": name },
             )?;
             Ok(())
         })
@@ -12555,6 +12857,7 @@ async fn full_leve_loop_accept_progress_hand_in() {
             item_package: crate::inventory::PKG_NORMAL,
             item_id: 10_001_006,
             quantity: 5,
+            quality: 1,
         }],
         &registry,
         &db,
@@ -12784,11 +13087,11 @@ async fn setup_bazaar_listing(
         .call_db(move |c| {
             c.execute(
                 r"INSERT INTO characters (id, userId, slot, serverId, name) VALUES (:cid, 0, 0, 0, :nm)",
-                rusqlite::named_params! { ":cid": owner_id, ":nm": owner_name },
+                common::sql::named_params! { ":cid": owner_id, ":nm": owner_name },
             )?;
             c.execute(
                 r"INSERT INTO characters (id, userId, slot, serverId, name) VALUES (:cid, 0, 0, 0, :nm)",
-                rusqlite::named_params! { ":cid": buyer_id, ":nm": buyer_name },
+                common::sql::named_params! { ":cid": buyer_id, ":nm": buyer_name },
             )?;
             Ok(())
         })
@@ -13423,15 +13726,9 @@ async fn ticker_survives_tutorial_state_and_drains_time_parks() {
     let world = Arc::new(WorldManager::new());
     let registry = Arc::new(ActorRegistry::new());
     let db = Arc::new(
-        crate::database::Database::open(common::test_tmp::dir().join(format!(
-                "garlemald-ticker-liveness-{}.db",
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_nanos()
-            )))
-        .await
-        .expect("db"),
+        crate::database::Database::open(common::test_db::fresh_blocking())
+            .await
+            .expect("db"),
     );
 
     // Zone 166 with the tutorial cast.
@@ -14751,29 +15048,32 @@ async fn hotbar_press_executes_fast_blade_with_costs_and_recast() {
     let handle = registry.get(1).await.expect("player handle");
     let press = event_start_body(1, 0xA0F0_6A0E, "commandDefault", &[LuaParam::Actor(2)]);
 
-    // Phase 0 — passive mode: gated with the 32503 line, one EndEvent,
-    // no state pushed.
-    processor.handle_event_start(42, &press).await.unwrap();
+    // Phase 0 — passive mode, aimed at no monster (yourself): gated with
+    // the 32503 line, one EndEvent, no state pushed.
+    let self_press = event_start_body(1, 0xA0F0_6A0E, "commandDefault", &[LuaParam::Actor(1)]);
+    processor.handle_event_start(42, &self_press).await.unwrap();
     let subs = parse_all_subpackets(&mut rx);
     assert_eq!(count_end_events(&subs), 1, "exactly one EndEvent per press");
     {
         let c = handle.character.read().await;
         assert!(
             !c.ai_container.is_engaged(),
-            "passive-mode press must not engage",
+            "passive-mode press without a monster must not engage",
         );
     }
 
-    // Phase 1 — active mode: the press engages + pushes WeaponSkill.
-    {
-        let mut c = handle.character.write().await;
-        c.base.current_main_state = crate::actor::MAIN_STATE_ACTIVE;
-    }
+    // Phase 1 — still passive, aimed at the wolf: the press draws the
+    // weapon (active mode), engages + pushes WeaponSkill.
     processor.handle_event_start(42, &press).await.unwrap();
     let subs = parse_all_subpackets(&mut rx);
     assert_eq!(count_end_events(&subs), 1, "exactly one EndEvent per press");
     {
         let c = handle.character.read().await;
+        assert_eq!(
+            c.base.current_main_state,
+            crate::actor::MAIN_STATE_ACTIVE,
+            "an attack on a monster from passive mode draws the weapon",
+        );
         assert!(c.ai_container.is_engaged(), "press must engage-if-not");
         assert!(
             c.ai_container.is_current(BattleStateKind::WeaponSkill),
@@ -15077,49 +15377,106 @@ async fn sheathe_mid_combat_flushes_battle_states_and_stops_auto_attack() {
     }
 }
 
-/// #46 — the 0x00CD SetTarget auto-attack engage is stance-gated: while
-/// PASSIVE (weapon sheathed) the engage is a silent drop that keeps the
-/// soft target + reticle broadcast (pmeteor PacketProcessor.cs:266-295
-/// sends no error on this path); the same press engages once ACTIVE.
+/// A spell cast on yourself mid-fight (Cure, Cura, Stoneskin) must survive
+/// the 0x00CD packets the client sends while it is placed: first
+/// `selected = 0xC0000000` (no such actor), then the monster being fought
+/// again. Both used to clear the cast (client run 2026-11-07, CNJ 50 on Old
+/// Six-arms: Stoneskin and Cura dispatched, never resolved).
 #[tokio::test]
-async fn set_target_auto_attack_gated_on_active_mode() {
-    let mut scene = sheathe_scene().await;
+async fn self_cast_mid_fight_survives_the_clients_target_packets() {
+    use crate::battle::state::BattleStateKind;
+
+    let scene = sheathe_scene().await;
     let handle = scene.registry.get(1).await.expect("player handle");
-
-    // PASSIVE (default): no engage, soft target + reticle preserved.
-    scene.processor.apply_player_set_target(42, 2, true).await;
-    {
-        let c = handle.character.read().await;
-        assert!(
-            !c.ai_container.is_engaged(),
-            "sheathed 0x00CD must not engage the swing loop",
-        );
-        assert!(
-            c.ai_container.state_stack().is_empty(),
-            "sheathed 0x00CD must not push any battle state",
-        );
-        assert_eq!(c.chara.current_target, 2, "soft target survives the gate");
-    }
-    let subs = parse_all_subpackets(&mut scene.rx);
-    assert!(
-        subs.iter().any(|s| s.game_message.opcode
-            == crate::packets::opcodes::OP_SET_ACTOR_TARGET_ANIMATED),
-        "reticle broadcast still goes out on the sheathed press",
-    );
-
-    // ACTIVE: the same press engages.
     {
         let mut c = handle.character.write().await;
         c.base.current_main_state = crate::actor::MAIN_STATE_ACTIVE;
     }
     scene.processor.apply_player_set_target(42, 2, true).await;
     {
-        let c = handle.character.read().await;
+        let mut c = handle.character.write().await;
+        assert!(c.ai_container.is_engaged(), "engaged on the wolf");
+        let mut cure = crate::battle::BattleCommand::new(27346, "cure");
+        cure.cast_time_ms = 3000;
+        let now = crate::runtime::clock::server_now_ms();
         assert!(
-            c.ai_container.is_engaged(),
-            "active-mode 0x00CD must engage"
+            c.ai_container.internal_cast(1, cure, now),
+            "cure on self pushed"
         );
     }
+    let kinds = |c: &crate::actor::Character| -> Vec<BattleStateKind> {
+        c.ai_container
+            .state_stack()
+            .iter()
+            .map(|s| s.kind)
+            .collect()
+    };
+
+    scene
+        .processor
+        .apply_player_set_target(42, 0xC000_0000, true)
+        .await;
+    scene.processor.apply_player_set_target(42, 2, true).await;
+    {
+        let c = handle.character.read().await;
+        assert_eq!(
+            kinds(&c),
+            vec![BattleStateKind::Attack, BattleStateKind::Magic],
+            "the cast is still under way, still engaged on the wolf",
+        );
+        assert_eq!(
+            c.ai_container.current_state().map(|s| s.target_actor_id),
+            Some(1)
+        );
+    }
+
+    // A real switch to another monster still re-engages (and drops the cast).
+    scene
+        .registry
+        .insert(ActorHandle::new(
+            3,
+            ActorKindTag::BattleNpc,
+            100,
+            0,
+            Character::new(3),
+        ))
+        .await;
+    scene.processor.apply_player_set_target(42, 3, true).await;
+    {
+        let c = handle.character.read().await;
+        assert_eq!(kinds(&c), vec![BattleStateKind::Attack]);
+        assert_eq!(
+            c.ai_container.current_state().map(|s| s.target_actor_id),
+            Some(3)
+        );
+    }
+}
+
+/// The 0x00CD SetTarget auto-attack on a monster while PASSIVE (weapon
+/// sheathed) draws the weapon and engages, as the press would once ACTIVE
+/// (a QoL change from pmeteor, which dropped it: PacketProcessor.cs:266-295).
+#[tokio::test]
+async fn set_target_auto_attack_draws_weapon_from_passive() {
+    let mut scene = sheathe_scene().await;
+    let handle = scene.registry.get(1).await.expect("player handle");
+
+    scene.processor.apply_player_set_target(42, 2, true).await;
+    {
+        let c = handle.character.read().await;
+        assert_eq!(
+            c.base.current_main_state,
+            crate::actor::MAIN_STATE_ACTIVE,
+            "the attack draws the weapon",
+        );
+        assert!(c.ai_container.is_engaged(), "and engages the swing loop");
+        assert_eq!(c.chara.current_target, 2, "soft target kept");
+    }
+    let subs = parse_all_subpackets(&mut scene.rx);
+    assert!(
+        subs.iter().any(|s| s.game_message.opcode
+            == crate::packets::opcodes::OP_SET_ACTOR_TARGET_ANIMATED),
+        "reticle broadcast goes out",
+    );
 }
 
 /// A townsperson or quest giver (`Npc`) is never an auto-attack target,
@@ -16624,6 +16981,114 @@ async fn send_instance_update_streams_walked_in_npc() {
     );
 }
 
+/// `player:HideActor` (an Echo's NPC who leaves when the vision ends):
+/// the hidden NPC must not stream back in once the warp that follows
+/// the Echo has reset the client's actor list.
+#[tokio::test]
+async fn send_instance_update_skips_quest_hidden_npc() {
+    use crate::actor::Character;
+    use crate::data::{ClientHandle, Session as MapSession};
+    use crate::runtime::actor_registry::{ActorHandle, ActorKindTag};
+    use crate::zone::area::{ActorKind, StoredActor};
+    use crate::zone::outbox::AreaOutbox;
+    use crate::zone::zone::Zone;
+    use common::Vector3;
+    use std::sync::Arc;
+    use tokio::sync::mpsc;
+
+    let world = Arc::new(WorldManager::new());
+    let registry = Arc::new(ActorRegistry::new());
+
+    let zone = Zone::new(
+        128,
+        "sea0Field01".to_string(),
+        101,
+        String::new(),
+        0,
+        0,
+        0,
+        false,
+        false,
+        false,
+        false,
+        false,
+        None,
+    );
+    world.register_zone(zone).await;
+    let zone_arc = world.zone(128).await.unwrap();
+
+    // Player at the gate.
+    let mut player = Character::new(1);
+    player.base.zone_id = 128;
+    registry
+        .insert(ActorHandle::new(1, ActorKindTag::Player, 128, 1, player))
+        .await;
+    let (tx, mut rx) = mpsc::channel::<Vec<u8>>(64);
+    world.register_client(1, ClientHandle::new(1, tx)).await;
+    let mut session = MapSession::new(1);
+    session.current_zone_id = 128;
+    world.upsert_session(session).await;
+
+    // A camp NPC near the player, present in the zone core but NOT yet
+    // in the client's instance list (it spawned far from the warp).
+    let mut npc = Character::new(0x4000_0010);
+    npc.base.zone_id = 128;
+    npc.chara.actor_class_id = 1_500_013; // bearded_rock_battlewarden
+    npc.base.actor_name = "battlewarden".to_string();
+    registry
+        .insert(ActorHandle::new(
+            0x4000_0010,
+            ActorKindTag::Npc,
+            128,
+            0,
+            npc,
+        ))
+        .await;
+    {
+        let mut z = zone_arc.write().await;
+        let mut out = AreaOutbox::new();
+        z.core.add_actor(
+            StoredActor {
+                actor_id: 1,
+                kind: ActorKind::Player,
+                position: Vector3::new(0.0, 0.0, 0.0),
+                grid: (0, 0),
+                is_alive: true,
+            },
+            &mut out,
+        );
+        z.core.add_actor(
+            StoredActor {
+                actor_id: 0x4000_0010,
+                kind: ActorKind::Npc,
+                position: Vector3::new(3.0, 0.0, 3.0),
+                grid: (0, 0),
+                is_alive: true,
+            },
+            &mut out,
+        );
+    }
+
+    world.hide_actor_for_session(1, 0x4000_0010).await;
+    world.send_instance_update(&registry, None, 1, 1).await;
+
+    while let Ok(bytes) = rx.try_recv() {
+        let mut offset = 0;
+        while offset < bytes.len() {
+            let Ok(sub) = common::subpacket::SubPacket::parse(&bytes, &mut offset) else {
+                break;
+            };
+            assert_ne!(
+                sub.game_message.opcode,
+                crate::packets::opcodes::OP_ADD_ACTOR,
+                "a quest-hidden NPC must not be streamed back in",
+            );
+        }
+    }
+    let session = world.session(1).await.unwrap();
+    assert!(!session.actor_instance_list.contains(&0x4000_0010));
+}
+
 /// Garlemald-Server #46 escort rendering — `send_instance_update` must
 /// stream CONTENT-band actors by proximity inside a content instance
 /// (pmeteor `Session.UpdateInstance` parity). Before this arm existed
@@ -18057,4 +18522,1591 @@ async fn send_instance_update_removes_far_monsters_only() {
         s.actor_instance_list.contains(&NPC),
         "populace stays add-only"
     );
+}
+
+/// A relog keeps the player's spot and HP/MP, and their status icons come
+/// back with the zone-in. Live 2026-11-03: a walk then logout came back at
+/// the last warp spot, HP/MP were never saved, and restored effects ran with
+/// no icons on the client.
+#[tokio::test]
+async fn leaving_saves_spot_and_pools_and_zone_in_resends_status_icons() {
+    use crate::data::Session as MapSession;
+    use crate::lua::LuaEngine;
+    use crate::status::{StatusEffect, StatusOutbox};
+    use common::db::ConnCallExt;
+
+    const PLAYER_ID: u32 = 9;
+    const ZONE: u32 = 206;
+    const PROTECT: u32 = 223129;
+
+    let world = Arc::new(WorldManager::new());
+    let registry = Arc::new(ActorRegistry::new());
+    let db = Arc::new(crate::database::Database::open(tempdb()).await.expect("db"));
+    db.conn_for_test()
+        .call_db(|c| {
+            c.execute_batch(
+                "INSERT INTO users (id, username, passwordHash) VALUES (2, 'gm', 'x');
+                 INSERT INTO characters (id, userId, slot, serverId, name, currentZoneId,
+                     positionX, positionY, positionZ)
+                     VALUES (9, 2, 0, 1, 'God Washere', 206, 51.93, 10.83, -1262.74);
+                 INSERT INTO characters_parametersave
+                     (characterId, hp, hpMax, mp, mpMax, mainSkill, mainSkillLevel)
+                     VALUES (9, 1900, 1000, 115, 115, 22, 5);",
+            )
+        })
+        .await
+        .unwrap();
+    world
+        .register_zone(Zone::new(
+            ZONE,
+            "fst0Town01".to_string(),
+            102,
+            String::new(),
+            0,
+            0,
+            0,
+            false,
+            false,
+            false,
+            false,
+            false,
+            None,
+        ))
+        .await;
+
+    // In Gridania, walked to a new spot, hurt, with Protect on.
+    let mut player = Character::new(PLAYER_ID);
+    player.base.zone_id = ZONE;
+    player.base.position_x = 43.94;
+    player.base.position_y = 10.51;
+    player.base.position_z = -1272.0;
+    player.base.rotation = -2.43;
+    player.chara.hp = 300;
+    player.chara.max_hp = 428;
+    player.chara.mp = 150;
+    player.chara.max_mp = 180;
+    let mut ob = StatusOutbox::new();
+    player.status_effects.add_status_effect(
+        StatusEffect::new(PLAYER_ID, PROTECT, 0.0, 0, 600, 0, 1_000),
+        PLAYER_ID,
+        1_000,
+        30328,
+        &mut ob,
+    );
+    registry
+        .insert(ActorHandle::new(
+            PLAYER_ID,
+            ActorKindTag::Player,
+            ZONE,
+            PLAYER_ID,
+            player,
+        ))
+        .await;
+    let (tx, mut rx) = mpsc::channel::<Vec<u8>>(256);
+    world
+        .register_client(PLAYER_ID, ClientHandle::new(PLAYER_ID, tx))
+        .await;
+    let mut session = MapSession::new(PLAYER_ID);
+    session.current_zone_id = ZONE;
+    world.upsert_session(session).await;
+
+    let processor = crate::processor::PacketProcessor {
+        db: db.clone(),
+        world: world.clone(),
+        registry: registry.clone(),
+        lua: Some(Arc::new(LuaEngine::new("/nonexistent"))),
+        cmd: None,
+    };
+
+    // Zone-in complete: Protect's icon goes to the player's own client.
+    processor.handle_zone_in_complete(PLAYER_ID).await;
+    let mut icons = Vec::new();
+    while let Ok(bytes) = rx.try_recv() {
+        let mut offset = 0;
+        while offset < bytes.len() {
+            let Ok(sub) = common::subpacket::SubPacket::parse(&bytes, &mut offset) else {
+                break;
+            };
+            if sub.game_message.opcode == crate::packets::opcodes::OP_SET_ACTOR_STATUS {
+                icons.push(u16::from_le_bytes([sub.data[2], sub.data[3]]));
+            }
+        }
+    }
+    let short_id = registry
+        .get(PLAYER_ID)
+        .await
+        .unwrap()
+        .character
+        .read()
+        .await
+        .status_effects
+        .status[0];
+    assert!(short_id != 0);
+    assert_eq!(icons, vec![short_id], "zone-in must resend the status icon");
+
+    // Leaving saves the spot and HP/MP.
+    let handle = registry.get(PLAYER_ID).await.unwrap();
+    processor.save_on_leave(&handle, PLAYER_ID).await;
+    let saved = db
+        .conn_for_test()
+        .call_db(|c| {
+            c.query_row(
+                "SELECT c.positionX, c.positionZ, c.currentZoneId, p.hp, p.hpMax, p.mp, p.mpMax
+                 FROM characters c JOIN characters_parametersave p ON p.characterId = c.id
+                 WHERE c.id = 9",
+                [],
+                |r| {
+                    Ok((
+                        r.get::<_, f64>(0)?,
+                        r.get::<_, f64>(1)?,
+                        r.get::<_, u32>(2)?,
+                        r.get::<_, i16>(3)?,
+                        r.get::<_, i16>(4)?,
+                        r.get::<_, i16>(5)?,
+                        r.get::<_, i16>(6)?,
+                    ))
+                },
+            )
+        })
+        .await
+        .unwrap();
+    assert!(
+        (saved.0 - 43.94).abs() < 0.01 && (saved.1 + 1272.0).abs() < 0.01,
+        "{saved:?}"
+    );
+    assert_eq!(
+        (saved.2, saved.3, saved.4, saved.5, saved.6),
+        (ZONE, 300, 428, 150, 180)
+    );
+    // ...and Protect, stamped now, so its time left counts the time played.
+    let (sid, start, saved_at): (u32, u32, u32) = db
+        .conn_for_test()
+        .call_db(|c| {
+            c.query_row(
+                "SELECT statusId, startTime, savedAt FROM characters_statuseffect WHERE characterId = 9",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+        })
+        .await
+        .unwrap();
+    assert_eq!((sid, start), (PROTECT, 1));
+    assert!(
+        saved_at > 1_700_000_000,
+        "savedAt must be now, got {saved_at}"
+    );
+
+    // Mid-warp the warp's own save stands: HP/MP still save, the spot doesn't.
+    {
+        let mut s = world.session(PLAYER_ID).await.unwrap();
+        s.reload_in_flight = true;
+        world.upsert_session(s).await;
+    }
+    {
+        let mut c = handle.character.write().await;
+        c.base.position_x = 0.0;
+        c.base.position_z = 0.0;
+        c.chara.hp = 200;
+    }
+    processor.save_on_leave(&handle, PLAYER_ID).await;
+    let (x, hp) = db
+        .conn_for_test()
+        .call_db(|c| {
+            c.query_row(
+                "SELECT c.positionX, p.hp FROM characters c
+                 JOIN characters_parametersave p ON p.characterId = c.id WHERE c.id = 9",
+                [],
+                |r| Ok((r.get::<_, f64>(0)?, r.get::<_, i16>(1)?)),
+            )
+        })
+        .await
+        .unwrap();
+    assert!(
+        (x - 43.94).abs() < 0.01,
+        "mid-warp must keep the saved spot, got x={x}"
+    );
+    assert_eq!(hp, 200);
+}
+
+/// The map server confirms a session end with error 0 and the destination
+/// the world named. It used to answer 1, so the world logged "error ending
+/// session" on every logout.
+#[tokio::test]
+async fn session_end_confirms_without_error_and_echoes_destination() {
+    const SESSION: u32 = 9;
+    let world = Arc::new(WorldManager::new());
+    let registry = Arc::new(ActorRegistry::new());
+    let db = Arc::new(crate::database::Database::open(tempdb()).await.expect("db"));
+    let processor = crate::processor::PacketProcessor {
+        db,
+        world,
+        registry,
+        lua: None,
+        cmd: None,
+    };
+    let (tx, mut rx) = mpsc::channel::<Vec<u8>>(8);
+    let client = ClientHandle::new(SESSION, tx);
+    for (request, destination) in [
+        (SESSION.to_le_bytes().to_vec(), 0u32),
+        ([SESSION.to_le_bytes(), 133u32.to_le_bytes()].concat(), 133),
+    ] {
+        let sub = common::subpacket::SubPacket::new_with_flag(
+            false,
+            crate::packets::opcodes::OP_SESSION_END,
+            SESSION,
+            request,
+        );
+        processor.handle_session_end(&client, &sub).await.unwrap();
+        let bytes = rx.try_recv().expect("a confirm");
+        let mut offset = 0;
+        let reply = common::subpacket::SubPacket::parse(&bytes, &mut offset).unwrap();
+        assert_eq!(&reply.data[0..4], &SESSION.to_le_bytes());
+        assert_eq!(&reply.data[4..6], &[0, 0], "error code must be 0");
+        assert_eq!(&reply.data[6..10], &destination.to_le_bytes());
+    }
+}
+
+/// A three-actor zone for the party status tests: player 1, monster 2 and
+/// paladin 3, standing together.
+async fn party_hook_zone() -> (Arc<WorldManager>, Arc<ActorRegistry>, Arc<RwLock<Zone>>) {
+    let world = Arc::new(WorldManager::new());
+    let registry = Arc::new(ActorRegistry::new());
+    let zone = Zone::new(
+        100,
+        "test",
+        1,
+        "/Area/Zone/Test",
+        0,
+        0,
+        0,
+        false,
+        false,
+        false,
+        false,
+        false,
+        Some(&StubNavmeshLoader),
+    );
+    world.register_zone(zone).await;
+    for (id, kind) in [
+        (1, ActorKindTag::Player),
+        (2, ActorKindTag::BattleNpc),
+        (3, ActorKindTag::Player),
+    ] {
+        let mut c = Character::new(id);
+        c.chara.hp = 1000;
+        c.chara.max_hp = 1000;
+        c.chara.level = 50;
+        registry.insert(ActorHandle::new(id, kind, 100, 0, c)).await;
+    }
+    let zone = world.zone(100).await.unwrap();
+    (world, registry, zone)
+}
+
+async fn put_status(
+    registry: &ActorRegistry,
+    owner: u32,
+    id: u32,
+    name: &str,
+    flags: u32,
+    source: u32,
+) {
+    let h = registry.get(owner).await.unwrap();
+    let mut c = h.character.write().await;
+    let mut e =
+        crate::status::StatusEffect::from_template(id, name, flags, 2, 0, false, true, true, 0, 0);
+    e.duration = 600;
+    let mut ob = crate::status::StatusOutbox::new();
+    assert!(
+        c.status_effects
+            .add_status_effect(e, source, 1_000, 0, &mut ob)
+    );
+}
+
+async fn hp_of(registry: &ActorRegistry, id: u32) -> i16 {
+    registry
+        .get(id)
+        .await
+        .unwrap()
+        .character
+        .read()
+        .await
+        .chara
+        .hp
+}
+
+/// A swing that misses still puts the attacker on the monster's hate list,
+/// so a monster the player can't hit (far above their level) fights back.
+#[tokio::test]
+async fn a_missed_swing_still_pulls_the_monster() {
+    let (world, registry, zone) = party_hook_zone().await;
+    {
+        let m = registry.get(2).await.unwrap();
+        let mut c = m.character.write().await;
+        c.chara
+            .mods
+            .set(crate::actor::modifier::Modifier::RawEvadeRate, 1000.0);
+    }
+    dispatch_battle_event(
+        &BattleEvent::ResolveAutoAttack {
+            attacker_actor_id: 1,
+            defender_actor_id: 2,
+        },
+        &registry,
+        &world,
+        &zone,
+        None,
+        None,
+    )
+    .await;
+    let m = registry.get(2).await.unwrap();
+    let c = m.character.read().await;
+    assert_eq!(c.chara.hp, 1000, "the swing missed");
+    assert_eq!(
+        c.hate.most_hated(),
+        Some(1),
+        "but the monster hates the player"
+    );
+}
+
+/// Cover: the monster's swings at a Covered player land on the paladin
+/// who covered them.
+#[tokio::test]
+async fn covered_players_melee_hits_land_on_their_paladin() {
+    let (world, registry, zone) = party_hook_zone().await;
+    put_status(&registry, 1, 223173, "covered", 4105, 3).await;
+    for _ in 0..30 {
+        dispatch_battle_event(
+            &BattleEvent::ResolveAutoAttack {
+                attacker_actor_id: 2,
+                defender_actor_id: 1,
+            },
+            &registry,
+            &world,
+            &zone,
+            None,
+            None,
+        )
+        .await;
+    }
+    assert_eq!(
+        hp_of(&registry, 1).await,
+        1000,
+        "the covered player takes nothing"
+    );
+    assert!(
+        hp_of(&registry, 3).await < 1000,
+        "the paladin takes the hits"
+    );
+}
+
+/// Collusion: the next hit's enmity goes on the warrior who used it, and
+/// the hit uses Collusion up.
+#[tokio::test]
+async fn collusion_puts_the_hits_enmity_on_its_warrior() {
+    let (world, registry, zone) = party_hook_zone().await;
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../scripts/lua");
+    let lua = Arc::new(crate::lua::LuaEngine::new(&root));
+    put_status(&registry, 1, 223097, "collusion", 1_048_601, 3).await;
+    let collusion_on = |registry: Arc<ActorRegistry>| async move {
+        let p = registry.get(1).await.unwrap();
+        p.character.read().await.status_effects.has(223097)
+    };
+    // Swing until a hit lands and uses Collusion up. (Stopping on HP
+    // alone is flaky: a hit can land for 0 damage, use Collusion up,
+    // and leave the next swing's enmity to the attacker.)
+    for _ in 0..30 {
+        if !collusion_on(registry.clone()).await {
+            break;
+        }
+        dispatch_battle_event(
+            &BattleEvent::ResolveAutoAttack {
+                attacker_actor_id: 1,
+                defender_actor_id: 2,
+            },
+            &registry,
+            &world,
+            &zone,
+            Some(&lua),
+            None,
+        )
+        .await;
+    }
+    assert!(
+        !collusion_on(registry.clone()).await,
+        "a hit landed and used Collusion up"
+    );
+    let mob = registry.get(2).await.unwrap();
+    let c = mob.character.read().await;
+    let warrior = c.hate.get(3).map_or(0, |e| e.cumulative_enmity);
+    let attacker = c.hate.get(1).map_or(0, |e| e.cumulative_enmity);
+    assert!(warrior > 0, "the warrior holds the hit's enmity");
+    // An entry starts at 1 (base hate); the hit added nothing to it.
+    assert!(
+        attacker <= 1,
+        "the attacker holds none of the hit: {attacker}"
+    );
+}
+
+/// Collusion also moves the enmity of a weaponskill (Heavy Swing) or a
+/// spell (Stone): "the next attack" is any attack, not only the swing.
+#[tokio::test]
+async fn collusion_moves_a_weaponskill_or_spells_enmity_too() {
+    for (cmd, class) in [(27190u16, 4i16), (27355, 23)] {
+        let (world, registry, zone) = party_hook_zone().await;
+        let db = Arc::new(crate::database::Database::open(tempdb()).await.expect("db"));
+        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../scripts/lua");
+        let lua = Arc::new(crate::lua::LuaEngine::new(&root));
+        let (catalog, by_level) = db.load_global_battle_command_list().await.unwrap();
+        let statuses = db.load_global_status_effect_list().await.unwrap();
+        lua.catalogs()
+            .install_battle_commands_with_level_index(catalog.clone(), by_level);
+        lua.catalogs().install_status_effects(statuses);
+        {
+            let h = registry.get(2).await.unwrap();
+            let mut c = h.character.write().await;
+            c.chara.hp = 30000;
+            c.chara.max_hp = 30000;
+            c.chara.level = 1;
+        }
+        registry
+            .get(1)
+            .await
+            .unwrap()
+            .character
+            .write()
+            .await
+            .chara
+            .class = class;
+        put_status(&registry, 1, 223097, "collusion", 1_048_601, 3).await;
+        let collusion_on = |registry: Arc<ActorRegistry>| async move {
+            let p = registry.get(1).await.unwrap();
+            p.character.read().await.status_effects.has(223097)
+        };
+        for _ in 0..30 {
+            if !collusion_on(registry.clone()).await {
+                break;
+            }
+            {
+                let h = registry.get(1).await.unwrap();
+                let mut c = h.character.write().await;
+                c.chara.tp = 3000;
+                c.chara.mp = 5000;
+                c.chara.max_mp = 5000;
+            }
+            // Only the try that uses Collusion up counts: an earlier one
+            // that missed (or was resisted) leaves the attacker's enmity.
+            registry
+                .get(2)
+                .await
+                .unwrap()
+                .character
+                .write()
+                .await
+                .hate
+                .clear_hate(None);
+            dispatch_battle_event(
+                &BattleEvent::ResolveAction {
+                    attacker_actor_id: 1,
+                    defender_actor_id: 2,
+                    command: catalog[&cmd].to_battle_command(),
+                },
+                &registry,
+                &world,
+                &zone,
+                Some(&lua),
+                Some(&db),
+            )
+            .await;
+        }
+        assert!(
+            !collusion_on(registry.clone()).await,
+            "command {cmd}: a hit landed and used Collusion up"
+        );
+        let mob = registry.get(2).await.unwrap();
+        let c = mob.character.read().await;
+        let warrior = c.hate.get(3).map_or(0, |e| e.cumulative_enmity);
+        let attacker = c.hate.get(1).map_or(0, |e| e.cumulative_enmity);
+        assert!(warrior > 0, "command {cmd}: the warrior holds the enmity");
+        assert!(
+            attacker <= 1,
+            "command {cmd}: the attacker holds none of the hit: {attacker}"
+        );
+    }
+}
+
+/// Fast Blade starts a combo, Savage Blade continues it for free and
+/// carries the combo step, and a weaponskill outside the chain ends it.
+#[tokio::test]
+async fn fast_blade_then_savage_blade_is_a_free_combo() {
+    let (world, registry, zone) = party_hook_zone().await;
+    let db = Arc::new(crate::database::Database::open(tempdb()).await.expect("db"));
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../scripts/lua");
+    let lua = Arc::new(crate::lua::LuaEngine::new(&root));
+    let (catalog, by_level) = db.load_global_battle_command_list().await.unwrap();
+    let statuses = db.load_global_status_effect_list().await.unwrap();
+    lua.catalogs()
+        .install_battle_commands_with_level_index(catalog.clone(), by_level);
+    lua.catalogs().install_status_effects(statuses);
+    {
+        let h = registry.get(2).await.unwrap();
+        let mut c = h.character.write().await;
+        c.chara.hp = 30000;
+        c.chara.max_hp = 30000;
+        c.chara.level = 1;
+    }
+    {
+        let h = registry.get(1).await.unwrap();
+        h.character.write().await.chara.class = 3;
+    }
+    let press = |id: u16| {
+        let command = catalog[&id].to_battle_command();
+        let (world, registry, zone, lua, db) = (
+            world.clone(),
+            registry.clone(),
+            zone.clone(),
+            lua.clone(),
+            db.clone(),
+        );
+        async move {
+            dispatch_battle_event(
+                &BattleEvent::ResolveAction {
+                    attacker_actor_id: 1,
+                    defender_actor_id: 2,
+                    command,
+                },
+                &registry,
+                &world,
+                &zone,
+                Some(&lua),
+                Some(&db),
+            )
+            .await;
+        }
+    };
+    let player = |registry: Arc<ActorRegistry>| async move {
+        let h = registry.get(1).await.unwrap();
+        let c = h.character.read().await;
+        (c.combo_next, c.chara.tp, c.status_effects.has(223205))
+    };
+    // A miss breaks the chain, so try the whole chain a few times.
+    let mut chained = false;
+    for _ in 0..10 {
+        registry
+            .get(1)
+            .await
+            .unwrap()
+            .character
+            .write()
+            .await
+            .chara
+            .tp = 3000;
+        press(27150).await; // fast_blade, 1000 TP
+        let (next, tp, combo) = player(registry.clone()).await;
+        if next != [27151, 27152] {
+            continue;
+        }
+        assert!(combo, "the Combo status is up");
+        assert_eq!(tp, 2000);
+        press(27152).await; // savage_blade, the second link
+        let (next, tp, _) = player(registry.clone()).await;
+        assert_eq!(tp, 2000, "a continuing link costs no TP");
+        if next != [27153, 0] {
+            continue;
+        }
+        chained = true;
+        break;
+    }
+    assert!(chained, "Fast Blade -> Savage Blade never chained");
+    // Riot Blade starts its own chain, so the Savage Blade combo ends.
+    registry
+        .get(1)
+        .await
+        .unwrap()
+        .character
+        .write()
+        .await
+        .chara
+        .tp = 3000;
+    press(27154).await;
+    let (next, tp, _) = player(registry.clone()).await;
+    assert_ne!(next, [27153, 0]);
+    assert_eq!(
+        tp, 1000,
+        "Riot Blade isn't a link here, so it costs its 2000 TP"
+    );
+}
+
+/// Goring Blade's bleed only lands from behind: its row has statusChance
+/// 0 and its `onPositional` raises it to 0.9 when the attacker is at the
+/// target's rear.
+#[tokio::test]
+async fn goring_blade_bleeds_only_from_behind() {
+    let (world, registry, zone) = party_hook_zone().await;
+    let db = Arc::new(crate::database::Database::open(tempdb()).await.expect("db"));
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../scripts/lua");
+    let lua = Arc::new(crate::lua::LuaEngine::new(&root));
+    let (catalog, by_level) = db.load_global_battle_command_list().await.unwrap();
+    let statuses = db.load_global_status_effect_list().await.unwrap();
+    lua.catalogs()
+        .install_battle_commands_with_level_index(catalog.clone(), by_level);
+    lua.catalogs().install_status_effects(statuses);
+    {
+        let h = registry.get(2).await.unwrap();
+        let mut c = h.character.write().await;
+        c.chara.hp = 30000;
+        c.chara.max_hp = 30000;
+        c.chara.level = 1;
+    }
+    registry
+        .get(1)
+        .await
+        .unwrap()
+        .character
+        .write()
+        .await
+        .chara
+        .class = 3;
+    // Spots around the monster (at the origin, facing rotation 0) by the
+    // side the hit-direction rule gives them.
+    let spot = |want: u8| {
+        (0..16)
+            .map(|i| {
+                let a = f32::from(i as u8) * std::f32::consts::PI / 8.0 + 0.1;
+                Vector3::new(2.0 * a.cos(), 0.0, 2.0 * a.sin())
+            })
+            .find(|p| crate::status::hooks::hit_direction(Vector3::ZERO, 0.0, *p) == want)
+            .unwrap()
+    };
+    let mut landed = std::collections::HashMap::new();
+    for (side, dir) in [("front", 1u8), ("rear", 4u8)] {
+        let p = spot(dir);
+        {
+            let h = registry.get(1).await.unwrap();
+            let mut c = h.character.write().await;
+            c.base.position_x = p.x;
+            c.base.position_z = p.z;
+        }
+        let mut n = 0;
+        for _ in 0..12 {
+            registry
+                .get(1)
+                .await
+                .unwrap()
+                .character
+                .write()
+                .await
+                .chara
+                .tp = 3000;
+            dispatch_battle_event(
+                &BattleEvent::ResolveAction {
+                    attacker_actor_id: 1,
+                    defender_actor_id: 2,
+                    command: catalog[&27153].to_battle_command(),
+                },
+                &registry,
+                &world,
+                &zone,
+                Some(&lua),
+                Some(&db),
+            )
+            .await;
+            let h = registry.get(2).await.unwrap();
+            let mut c = h.character.write().await;
+            if c.status_effects.has(223206) {
+                n += 1;
+                let mut ob = crate::status::StatusOutbox::new();
+                c.status_effects
+                    .remove_status_effect(223206, 0, false, &mut ob);
+            }
+        }
+        landed.insert(side, n);
+    }
+    assert_eq!(landed["front"], 0, "{landed:?}");
+    assert!(landed["rear"] >= 6, "{landed:?}");
+}
+
+/// Holy Succor on someone else gives the paladin half of what it healed.
+#[tokio::test]
+async fn holy_succor_on_a_friend_heals_the_paladin_half() {
+    let (world, registry, zone) = party_hook_zone().await;
+    let db = Arc::new(crate::database::Database::open(tempdb()).await.expect("db"));
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../scripts/lua");
+    let lua = Arc::new(crate::lua::LuaEngine::new(&root));
+    let (catalog, by_level) = db.load_global_battle_command_list().await.unwrap();
+    lua.catalogs()
+        .install_battle_commands_with_level_index(catalog.clone(), by_level);
+    for (id, hp, max) in [(1, 100, 5000), (3, 100, 5000)] {
+        let h = registry.get(id).await.unwrap();
+        let mut c = h.character.write().await;
+        c.chara.hp = hp;
+        c.chara.max_hp = max;
+    }
+    dispatch_battle_event(
+        &BattleEvent::ResolveAction {
+            attacker_actor_id: 1,
+            defender_actor_id: 3,
+            command: catalog[&27149].to_battle_command(),
+        },
+        &registry,
+        &world,
+        &zone,
+        Some(&lua),
+        Some(&db),
+    )
+    .await;
+    let healed = i32::from(hp_of(&registry, 3).await) - 100;
+    let back = i32::from(hp_of(&registry, 1).await) - 100;
+    assert!(healed > 0, "the friend is healed");
+    assert_eq!(back, healed / 2, "the paladin recovers half");
+}
+
+/// Whirlwind in combo spends the warrior's Berserk stacks: their Attack
+/// and Defense come off and the stack count goes back to 0.
+#[tokio::test]
+async fn whirlwind_combo_spends_berserk_stacks() {
+    use crate::actor::modifier::Modifier;
+    let (world, registry, zone) = party_hook_zone().await;
+    let db = Arc::new(crate::database::Database::open(tempdb()).await.expect("db"));
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../scripts/lua");
+    let lua = Arc::new(crate::lua::LuaEngine::new(&root));
+    let (catalog, by_level) = db.load_global_battle_command_list().await.unwrap();
+    let statuses = db.load_global_status_effect_list().await.unwrap();
+    lua.catalogs()
+        .install_battle_commands_with_level_index(catalog.clone(), by_level);
+    lua.catalogs().install_status_effects(statuses);
+    put_status(&registry, 1, 223207, "berserk2", 0, 1).await;
+    put_status(&registry, 1, 223205, "combo", 0, 1).await;
+    {
+        let h = registry.get(1).await.unwrap();
+        let mut c = h.character.write().await;
+        c.chara.class = 4;
+        c.chara.tp = 3000;
+        c.combo_next = [27197, 0];
+        c.status_effects.get_mut(223207).unwrap().extra = 5.0;
+        c.add_status_mods(
+            223207,
+            &[
+                (Modifier::Attack.as_u32(), 100.0),
+                (Modifier::Defense.as_u32(), -100.0),
+            ],
+        );
+    }
+    dispatch_battle_event(
+        &BattleEvent::ResolveAction {
+            attacker_actor_id: 1,
+            defender_actor_id: 2,
+            command: catalog[&27197].to_battle_command(),
+        },
+        &registry,
+        &world,
+        &zone,
+        Some(&lua),
+        Some(&db),
+    )
+    .await;
+    let h = registry.get(1).await.unwrap();
+    let c = h.character.read().await;
+    assert_eq!(c.status_effects.get(223207).unwrap().extra, 0.0);
+    // The stacks' Attack/Defense are gone (a stat recalc may have set the
+    // base values since, so read what statuses add).
+    let added = c.status_mod_totals();
+    assert_eq!(added.get(Modifier::Attack), 0.0);
+    assert_eq!(added.get(Modifier::Defense), 0.0);
+    assert_eq!(c.chara.tp, 3000, "Whirlwind as the next link is free");
+}
+
+/// Enhanced Rampart (trait 27163) widens Rampart to the paladin's party:
+/// without the trait only the paladin gets it, and a stranger standing as
+/// close never does.
+#[tokio::test]
+async fn enhanced_rampart_covers_the_party() {
+    // Own ids: the party table is process-wide.
+    let (pld, friend, stranger) = (9301u32, 9303u32, 9304u32);
+    crate::parties::join_for_test(pld, friend).expect("party");
+    for (traits, friend_gets_it) in [(vec![], false), (vec![27163u32], true)] {
+        let world = Arc::new(WorldManager::new());
+        let registry = Arc::new(ActorRegistry::new());
+        let zone = Zone::new(
+            100,
+            "test",
+            1,
+            "/Area/Zone/Test",
+            0,
+            0,
+            0,
+            false,
+            false,
+            false,
+            false,
+            false,
+            Some(&StubNavmeshLoader),
+        );
+        world.register_zone(zone).await;
+        let zone = world.zone(100).await.unwrap();
+        for (id, x) in [(pld, 0.0f32), (friend, 3.0), (stranger, -3.0)] {
+            let mut c = Character::new(id);
+            c.chara.hp = 1000;
+            c.chara.max_hp = 1000;
+            c.chara.level = 50;
+            c.base.position_x = x;
+            if id == pld {
+                c.chara.class = 3;
+                c.traits = traits.clone();
+            }
+            registry
+                .insert(ActorHandle::new(id, ActorKindTag::Player, 100, 0, c))
+                .await;
+            let mut ob = crate::zone::outbox::AreaOutbox::new();
+            zone.write().await.core.add_actor(
+                StoredActor {
+                    actor_id: id,
+                    kind: ActorKind::Player,
+                    position: Vector3::new(x, 0.0, 0.0),
+                    grid: (0, 0),
+                    is_alive: true,
+                },
+                &mut ob,
+            );
+        }
+        let db = Arc::new(crate::database::Database::open(tempdb()).await.expect("db"));
+        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../scripts/lua");
+        let lua = Arc::new(crate::lua::LuaEngine::new(&root));
+        let (catalog, by_level) = db.load_global_battle_command_list().await.unwrap();
+        let statuses = db.load_global_status_effect_list().await.unwrap();
+        lua.catalogs()
+            .install_battle_commands_with_level_index(catalog.clone(), by_level);
+        lua.catalogs().install_status_effects(statuses);
+        dispatch_battle_event(
+            &BattleEvent::ResolveAction {
+                attacker_actor_id: pld,
+                defender_actor_id: pld,
+                command: catalog[&27142].to_battle_command(),
+            },
+            &registry,
+            &world,
+            &zone,
+            Some(&lua),
+            Some(&db),
+        )
+        .await;
+        let mut has = Vec::new();
+        for id in [pld, friend, stranger] {
+            let h = registry.get(id).await.unwrap();
+            has.push(h.character.read().await.status_effects.has(223064));
+        }
+        assert_eq!(has, vec![true, friend_gets_it, false], "traits {traits:?}");
+    }
+}
+
+/// A bard's new song replaces their old one on the target (Paeon's Regain
+/// comes off with it); another bard's song stays.
+#[tokio::test]
+async fn a_bards_new_song_replaces_their_old_one() {
+    use crate::actor::modifier::Modifier;
+    let (world, registry, zone) = party_hook_zone().await;
+    let db = Arc::new(crate::database::Database::open(tempdb()).await.expect("db"));
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../scripts/lua");
+    let lua = Arc::new(crate::lua::LuaEngine::new(&root));
+    let (catalog, by_level) = db.load_global_battle_command_list().await.unwrap();
+    let statuses = db.load_global_status_effect_list().await.unwrap();
+    lua.catalogs()
+        .install_battle_commands_with_level_index(catalog.clone(), by_level);
+    lua.catalogs().install_status_effects(statuses);
+    put_status(&registry, 1, 223256, "minuet_of_rigor", 0, 3).await;
+    let cast = |id: u16| {
+        let (registry, world, zone, lua, db) = (
+            registry.clone(),
+            world.clone(),
+            zone.clone(),
+            lua.clone(),
+            db.clone(),
+        );
+        let command = catalog[&id].to_battle_command();
+        async move {
+            dispatch_battle_event(
+                &BattleEvent::ResolveAction {
+                    attacker_actor_id: 1,
+                    defender_actor_id: 1,
+                    command,
+                },
+                &registry,
+                &world,
+                &zone,
+                Some(&lua),
+                Some(&db),
+            )
+            .await;
+        }
+    };
+    let state = || {
+        let registry = registry.clone();
+        async move {
+            let h = registry.get(1).await.unwrap();
+            let c = h.character.read().await;
+            (
+                c.status_effects.has(223255),
+                c.status_effects.has(223254),
+                c.status_effects.has(223256),
+                c.chara.mods.get(Modifier::Regain),
+            )
+        }
+    };
+    cast(27238).await;
+    let (paeon, ballad, minuet, regain) = state().await;
+    assert!(
+        paeon && !ballad && minuet,
+        "Paeon lands beside the other bard's Minuet"
+    );
+    assert!(regain > 0.0, "Paeon gives Regain");
+    cast(27237).await;
+    let (paeon, ballad, minuet, regain) = state().await;
+    assert!(!paeon && ballad, "Ballad replaces Paeon");
+    assert!(minuet, "the other bard's Minuet stays");
+    assert_eq!(regain, 0.0, "Paeon's Regain went with it");
+}
+
+/// Kills and deaths go to log_combat: the player's kill by the monster's
+/// class id and level, a death by what killed them.
+#[tokio::test]
+async fn kills_and_deaths_are_logged() {
+    use common::db::ConnCallExt;
+    let (world, registry, zone) = party_hook_zone().await;
+    let db = Arc::new(crate::database::Database::open(tempdb()).await.expect("db"));
+    {
+        let h = registry.get(2).await.unwrap();
+        let mut c = h.character.write().await;
+        c.chara.actor_class_id = 2104001;
+        c.chara.level = 12;
+    }
+    for (dead, killer) in [(2u32, 1u32), (3, 2)] {
+        registry
+            .get(dead)
+            .await
+            .unwrap()
+            .character
+            .write()
+            .await
+            .chara
+            .hp = 0;
+        crate::runtime::dispatcher::die_if_defender_fell(
+            dead,
+            Some(killer),
+            &registry,
+            &world,
+            &zone,
+            None,
+            Some(&db),
+        )
+        .await;
+    }
+    let rows: Vec<(String, i64, i64, i64)> = db
+        .conn_for_test()
+        .call_db(|c| {
+            let mut st = c.prepare(
+                "SELECT kind, characterId, targetId, amount FROM log_combat ORDER BY id",
+            )?;
+            st.query_map((), |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
+                .collect::<common::sql::Result<_>>()
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        rows,
+        vec![
+            ("kill".into(), 1, 2104001, 12),
+            ("death".into(), 3, 2104001, 0),
+        ]
+    );
+}
+
+/// A zone with players at the given x positions and a loaded catalog.
+async fn party_scene(
+    actors: &[(u32, f32, u8)],
+) -> (
+    Arc<WorldManager>,
+    Arc<ActorRegistry>,
+    Arc<RwLock<Zone>>,
+    Arc<crate::lua::LuaEngine>,
+    Arc<crate::database::Database>,
+    std::collections::HashMap<u16, crate::gamedata::BattleCommand>,
+) {
+    let world = Arc::new(WorldManager::new());
+    let registry = Arc::new(ActorRegistry::new());
+    let zone = Zone::new(
+        100,
+        "test",
+        1,
+        "/Area/Zone/Test",
+        0,
+        0,
+        0,
+        false,
+        false,
+        false,
+        false,
+        false,
+        Some(&StubNavmeshLoader),
+    );
+    world.register_zone(zone).await;
+    let zone = world.zone(100).await.unwrap();
+    for &(id, x, class) in actors {
+        let mut c = Character::new(id);
+        c.chara.hp = 500;
+        c.chara.max_hp = 1000;
+        c.chara.mp = 1000;
+        c.chara.max_mp = 1000;
+        c.chara.level = 50;
+        c.chara.class = class.into();
+        c.base.position_x = x;
+        c.base.zone_id = 100;
+        registry
+            .insert(ActorHandle::new(id, ActorKindTag::Player, 100, 0, c))
+            .await;
+        let mut ob = crate::zone::outbox::AreaOutbox::new();
+        zone.write().await.core.add_actor(
+            StoredActor {
+                actor_id: id,
+                kind: ActorKind::Player,
+                position: Vector3::new(x, 0.0, 0.0),
+                grid: (0, 0),
+                is_alive: true,
+            },
+            &mut ob,
+        );
+    }
+    let db = Arc::new(crate::database::Database::open(tempdb()).await.expect("db"));
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../scripts/lua");
+    let lua = Arc::new(crate::lua::LuaEngine::new(&root));
+    let (catalog, by_level) = db.load_global_battle_command_list().await.unwrap();
+    let statuses = db.load_global_status_effect_list().await.unwrap();
+    lua.catalogs()
+        .install_battle_commands_with_level_index(catalog.clone(), by_level);
+    lua.catalogs().install_status_effects(statuses);
+    (world, registry, zone, lua, db, catalog)
+}
+
+async fn has_status_id(registry: &ActorRegistry, id: u32, status: u32) -> bool {
+    registry
+        .get(id)
+        .await
+        .unwrap()
+        .character
+        .read()
+        .await
+        .status_effects
+        .has(status)
+}
+
+/// Cover: the ally gets Covered and the paladin gets Cover (the script's
+/// `caster.statusEffects.AddStatusEffect`, which the setup sandbox lacked).
+#[tokio::test]
+async fn cover_puts_cover_on_the_paladin_and_covered_on_the_ally() {
+    let (pld, ally) = (9321u32, 9322u32);
+    crate::parties::join_for_test(pld, ally).expect("party");
+    let (world, registry, zone, lua, db, catalog) =
+        party_scene(&[(pld, 0.0, 16), (ally, 2.0, 3)]).await;
+    dispatch_battle_event(
+        &BattleEvent::ResolveAction {
+            attacker_actor_id: pld,
+            defender_actor_id: ally,
+            command: catalog[&27146].to_battle_command(),
+        },
+        &registry,
+        &world,
+        &zone,
+        Some(&lua),
+        Some(&db),
+    )
+    .await;
+    assert!(has_status_id(&registry, ally, 223173).await, "ally Covered");
+    assert!(
+        has_status_id(&registry, pld, 223063).await,
+        "paladin has Cover"
+    );
+}
+
+/// Divine Veil: someone else's Cure on the paladin gives Divine Regen to
+/// the paladin and the party members within 8 yalms, not to strangers or
+/// members farther out.
+#[tokio::test]
+async fn divine_veil_regens_the_party_on_a_real_cure() {
+    let (pld, cnj, near, far, stranger) = (9331u32, 9332u32, 9333u32, 9334u32, 9335u32);
+    for m in [cnj, near, far] {
+        crate::parties::join_for_test(pld, m).expect("party");
+    }
+    let (world, registry, zone, lua, db, catalog) = party_scene(&[
+        (pld, 0.0, 16),
+        (cnj, 4.0, 23),
+        (near, 5.0, 3),
+        (far, 20.0, 3),
+        (stranger, 3.0, 3),
+    ])
+    .await;
+    put_status(&registry, pld, 223248, "divine_veil", 36889, pld).await;
+    dispatch_battle_event(
+        &BattleEvent::ResolveAction {
+            attacker_actor_id: cnj,
+            defender_actor_id: pld,
+            command: catalog[&27346].to_battle_command(),
+        },
+        &registry,
+        &world,
+        &zone,
+        Some(&lua),
+        Some(&db),
+    )
+    .await;
+    assert!(hp_of(&registry, pld).await > 500, "the Cure healed");
+    assert!(
+        has_status_id(&registry, pld, 223264).await,
+        "paladin regens"
+    );
+    assert!(
+        has_status_id(&registry, near, 223264).await,
+        "near member regens"
+    );
+    assert!(
+        !has_status_id(&registry, far, 223264).await,
+        "far member doesn't"
+    );
+    assert!(
+        !has_status_id(&registry, stranger, 223264).await,
+        "a stranger doesn't"
+    );
+}
+
+/// A respawned monster was invisible until relog: the client had faded
+/// its corpse and the respawn only flipped its state. Forgetting it drops
+/// it from every client holding it (RemoveActor) and from their instance
+/// lists, so streaming spawns it afresh; sessions without it hear nothing.
+#[tokio::test]
+async fn forget_actor_for_all_sessions_drops_respawned_monster() {
+    use crate::data::{ClientHandle, Session as MapSession};
+    use std::sync::Arc;
+    use tokio::sync::mpsc;
+
+    let world = Arc::new(WorldManager::new());
+    let monster = 0x44D2_001E;
+
+    let (tx1, mut rx1) = mpsc::channel::<Vec<u8>>(8);
+    world.register_client(1, ClientHandle::new(1, tx1)).await;
+    let mut holder = MapSession::new(1);
+    holder.actor_instance_list.insert(monster);
+    holder.actor_instance_list.insert(0x44D2_001F);
+    world.upsert_session(holder).await;
+
+    let (tx2, mut rx2) = mpsc::channel::<Vec<u8>>(8);
+    world.register_client(2, ClientHandle::new(2, tx2)).await;
+    world.upsert_session(MapSession::new(2)).await;
+
+    world.forget_actor_for_all_sessions(monster).await;
+
+    let s1 = world.session(1).await.unwrap();
+    assert!(
+        !s1.actor_instance_list.contains(&monster),
+        "streaming will respawn it"
+    );
+    assert!(
+        s1.actor_instance_list.contains(&0x44D2_001F),
+        "other monsters stay"
+    );
+    let sent = rx1.try_recv().expect("the holder gets a RemoveActor");
+    let want = crate::packets::send::actor::build_remove_actor(monster);
+    assert_eq!(sent.len(), want.to_bytes().len());
+    assert!(
+        rx2.try_recv().is_err(),
+        "a session without it hears nothing"
+    );
+}
+
+/// A Toto-Rak copy entered as a party: the owner and one of the copy's
+/// monsters on the director's roster, then the member joined to it.
+/// Session ids are the actor ids. Returns (world, registry, the owner's
+/// active content).
+async fn party_copy_scene(
+    owner: u32,
+    member: u32,
+    monster: u32,
+) -> (
+    Arc<WorldManager>,
+    Arc<ActorRegistry>,
+    crate::data::ActiveContentScript,
+) {
+    use crate::data::Session as MapSession;
+    let world = Arc::new(WorldManager::new());
+    let registry = Arc::new(ActorRegistry::new());
+    let inst = crate::content_instance::allocate(159).expect("slot");
+    crate::content_instance::mark_party(inst.id);
+    let director = 0x64F8_0003;
+    let active = crate::data::ActiveContentScript {
+        parent_zone_id: 159,
+        area_name: "Totorak".to_string(),
+        area_class_path: "/Area/PrivateArea/Content/PrivateAreaMasterSimpleContent".to_string(),
+        director_name: "Occupancy/RaidFst0Dungeon03".to_string(),
+        director_actor_id: director,
+        content_area_actor_id: 0,
+        content_script: "SimpleContentDungeonTotorak".to_string(),
+        warp_complete: true,
+        spawned_actor_ids: vec![monster],
+        instance_id: inst.id,
+        party_member: false,
+    };
+    for (id, session) in [(owner, owner), (member, member)] {
+        let mut c = Character::new(id);
+        c.base.zone_id = 159;
+        registry
+            .insert(ActorHandle::new(id, ActorKindTag::Player, 159, session, c))
+            .await;
+    }
+    let mut c = Character::new(monster);
+    c.base.zone_id = 159;
+    registry
+        .insert(ActorHandle::new(
+            monster,
+            ActorKindTag::BattleNpc,
+            159,
+            0,
+            c,
+        ))
+        .await;
+    let mut owner_session = MapSession {
+        id: owner,
+        current_zone_id: 159,
+        active_content_script: Some(active.clone()),
+        ..MapSession::default()
+    };
+    owner_session
+        .transient_director_members
+        .insert(director, vec![owner, monster]);
+    world.upsert_session(owner_session).await;
+    world
+        .upsert_session(MapSession {
+            id: member,
+            current_zone_id: 159,
+            ..MapSession::default()
+        })
+        .await;
+    crate::runtime::quest_apply::join_party_to_copy(
+        &registry,
+        &world,
+        owner,
+        &active,
+        Some(&crate::data::PendingKickEvent {
+            trigger_actor_id: owner,
+            owner_actor_id: active.director_actor_id,
+            event_name: "noticeEvent".to_string(),
+            args: Vec::new(),
+        }),
+        &[(member, member)],
+    )
+    .await;
+    (world, registry, active)
+}
+
+/// A member entering the leader's copy gets a member's view of it; the
+/// director's roster stays the owner's alone (the kill gate fires
+/// `battleComplete` on whichever session holds it).
+#[tokio::test]
+async fn party_member_joins_the_copy_as_a_member() {
+    let (owner, member, monster) = (9501u32, 9502u32, 0x44FC_0001u32);
+    let (world, _registry, active) = party_copy_scene(owner, member, monster).await;
+    let dir = active.director_actor_id;
+    let o = world.session(owner).await.unwrap();
+    assert_eq!(o.transient_director_members[&dir], vec![owner, monster]);
+    let m = world.session(member).await.unwrap();
+    let ma = m
+        .active_content_script
+        .as_ref()
+        .expect("member in the copy");
+    assert!(ma.party_member);
+    assert_eq!(ma.instance_id, active.instance_id);
+    assert!(ma.spawned_actor_ids.is_empty(), "spawns stay the owner's");
+    assert!(!m.transient_director_members.contains_key(&dir));
+    let kick = m
+        .pending_kick_event
+        .as_ref()
+        .expect("their own director kick");
+    assert_eq!(kick.trigger_actor_id, member);
+    assert_eq!(kick.owner_actor_id, dir);
+    assert_eq!(
+        crate::runtime::quest_apply::content_group_roster(&world, &m, member).await,
+        vec![owner, monster, member],
+        "their content group comes from the owner's roster",
+    );
+    crate::content_instance::release(active.instance_id);
+}
+
+/// A member leaving drops their view of the copy; the copy goes on.
+#[tokio::test]
+async fn party_member_leaving_keeps_the_copy_up() {
+    let (owner, member, monster) = (9511u32, 9512u32, 0x44FC_0002u32);
+    let (world, registry, active) = party_copy_scene(owner, member, monster).await;
+    let dir = active.director_actor_id;
+    crate::runtime::quest_apply::apply_leave_content(member, &registry, &world, None).await;
+    let m = world.session(member).await.unwrap();
+    assert!(m.active_content_script.is_none());
+    let o = world.session(owner).await.unwrap();
+    assert!(o.active_content_script.is_some(), "the copy goes on");
+    assert_eq!(o.transient_director_members[&dir], vec![owner, monster]);
+    assert!(crate::content_instance::get(active.instance_id).is_some());
+    crate::content_instance::release(active.instance_id);
+}
+
+/// The owner leaving hands the copy to the member still inside: its
+/// spawns and the director's roster (less the owner) go with it, so the
+/// kill gate now fires on the heir.
+#[tokio::test]
+async fn party_copy_owner_leaving_hands_over_the_roster() {
+    let (owner, member, monster) = (9521u32, 9522u32, 0x44FC_0003u32);
+    let (world, registry, active) = party_copy_scene(owner, member, monster).await;
+    let dir = active.director_actor_id;
+    crate::runtime::quest_apply::apply_leave_content(owner, &registry, &world, None).await;
+    let o = world.session(owner).await.unwrap();
+    assert!(o.active_content_script.is_none());
+    assert!(!o.transient_director_members.contains_key(&dir));
+    let m = world.session(member).await.unwrap();
+    let ma = m
+        .active_content_script
+        .as_ref()
+        .expect("heir keeps the copy");
+    assert!(!ma.party_member, "the heir runs the copy");
+    assert_eq!(ma.spawned_actor_ids, vec![monster]);
+    assert_eq!(m.transient_director_members[&dir], vec![monster]);
+    assert!(crate::content_instance::get(active.instance_id).is_some());
+    crate::content_instance::release(active.instance_id);
+}
+
+/// Leaves a solo copy run by `director_name` with content `content_script`
+/// and returns every frame its player's client was sent.
+async fn leave_solo_copy(
+    player: u32,
+    zone: u32,
+    director_name: &str,
+    content_script: &str,
+) -> Vec<Vec<u8>> {
+    use crate::data::Session as MapSession;
+    let world = Arc::new(WorldManager::new());
+    let registry = Arc::new(ActorRegistry::new());
+    let (tx, mut rx) = mpsc::channel::<Vec<u8>>(512);
+    world
+        .register_client(player, ClientHandle::new(player, tx))
+        .await;
+    let mut c = Character::new(player);
+    c.base.zone_id = zone;
+    registry
+        .insert(ActorHandle::new(
+            player,
+            ActorKindTag::Player,
+            zone,
+            player,
+            c,
+        ))
+        .await;
+    world
+        .upsert_session(MapSession {
+            id: player,
+            current_zone_id: zone,
+            active_content_script: Some(crate::data::ActiveContentScript {
+                parent_zone_id: zone,
+                area_name: content_script.to_string(),
+                area_class_path: "/Area/PrivateArea/Content/PrivateAreaMasterSimpleContent"
+                    .to_string(),
+                director_name: director_name.to_string(),
+                director_actor_id: 0x67A8_0003,
+                content_area_actor_id: 0,
+                content_script: content_script.to_string(),
+                warp_complete: true,
+                spawned_actor_ids: Vec::new(),
+                instance_id: 0,
+                party_member: false,
+            }),
+            ..MapSession::default()
+        })
+        .await;
+    crate::runtime::quest_apply::apply_leave_content(player, &registry, &world, None).await;
+    assert!(
+        world
+            .session(player)
+            .await
+            .unwrap()
+            .active_content_script
+            .is_none(),
+        "the copy is left",
+    );
+    let mut frames = Vec::new();
+    while let Ok(f) = rx.try_recv() {
+        frames.push(f);
+    }
+    frames
+}
+
+fn sent_function(frames: &[Vec<u8>], name: &[u8]) -> bool {
+    frames
+        .iter()
+        .any(|f| f.windows(name.len()).any(|w| w == name))
+}
+
+/// Leaving an instance-raid dungeon copy (Aurum Vale, Cutter's Cry) runs
+/// the director's `clearEvent` on the client, which takes its desktop out
+/// of the raid layout; left in it, no NPC talked to the player anywhere
+/// until a relog. Occupancy dungeons don't switch layouts, and the Grand
+/// Company raids close it from their own director scripts.
+#[tokio::test]
+async fn leaving_an_instance_raid_dungeon_closes_the_raid_ui() {
+    let aurum = leave_solo_copy(
+        9531,
+        245,
+        "InstanceRaid/InstanceRaidAurumVale",
+        "SimpleContentDungeonAurumVale",
+    )
+    .await;
+    assert!(
+        sent_function(&aurum, b"clearEvent"),
+        "Aurum Vale: clearEvent sent"
+    );
+    let cutters = leave_solo_copy(
+        9532,
+        246,
+        "InstanceRaid/InstanceRaidCuttersCry",
+        "SimpleContentDungeonCuttersCry",
+    )
+    .await;
+    assert!(
+        sent_function(&cutters, b"clearEvent"),
+        "Cutter's Cry: clearEvent sent"
+    );
+    let totorak = leave_solo_copy(
+        9533,
+        159,
+        "Occupancy/RaidFst0Dungeon03",
+        "SimpleContentDungeonTotorak",
+    )
+    .await;
+    assert!(
+        !sent_function(&totorak, b"clearEvent"),
+        "Toto-Rak: no raid UI to close"
+    );
+    let ifrit = leave_solo_copy(
+        9534,
+        202,
+        "InstanceRaid/InstanceRaidLesserIfrit",
+        "SimpleContentBowlOfEmbers",
+    )
+    .await;
+    assert!(
+        !sent_function(&ifrit, b"clearEvent"),
+        "GC raid: its director closes it"
+    );
+}
+
+/// Any zone change out of a copy's zone leaves the copy, a party's or a
+/// quest duty's; one inside that zone doesn't.
+#[test]
+fn zone_changes_out_of_a_copy_leave_it() {
+    let inst = crate::content_instance::allocate(159).expect("slot");
+    let mut active = crate::data::ActiveContentScript {
+        parent_zone_id: 159,
+        area_name: "Totorak".to_string(),
+        area_class_path: String::new(),
+        director_name: String::new(),
+        director_actor_id: 0,
+        content_area_actor_id: 0,
+        content_script: String::new(),
+        warp_complete: true,
+        spawned_actor_ids: Vec::new(),
+        instance_id: inst.id,
+        party_member: false,
+    };
+    use crate::runtime::quest_apply::leaves_copy;
+    assert!(leaves_copy(&active, 154), "a quest duty's copy");
+    assert!(!leaves_copy(&active, 159), "a warp inside the duty's zone");
+    crate::content_instance::mark_party(inst.id);
+    assert!(leaves_copy(&active, 154), "a party copy");
+    assert!(!leaves_copy(&active, 159), "a warp inside the dungeon");
+    active.instance_id = 0;
+    assert!(leaves_copy(&active, 154), "untracked content");
+    crate::content_instance::release(inst.id);
+}
+
+/// `player:GetContentAreaName()` returns the duty the player is in, and nil
+/// outside one.
+#[test]
+fn lua_player_get_content_area_name() {
+    use crate::lua::command::CommandQueue;
+    use crate::lua::userdata::{LuaPlayer, PlayerSnapshot};
+    use mlua::Lua;
+
+    let lua = Lua::new();
+    for (area, want) in [("Mnk0j601", Some("Mnk0j601")), ("", None)] {
+        let player = LuaPlayer {
+            snapshot: PlayerSnapshot {
+                actor_id: 9,
+                content_area_name: area.to_string(),
+                ..Default::default()
+            },
+            queue: CommandQueue::new(),
+        };
+        lua.globals().set("player", player).unwrap();
+        let got: Option<String> = lua
+            .load("return player:GetContentAreaName()")
+            .eval()
+            .unwrap();
+        assert_eq!(got.as_deref(), want);
+    }
+}
+
+/// Two job quests at their fight steps at once (Pld0j1 at SEQ_010, Mnk0j6 at
+/// SEQ_000) share the job quest directors: the duty's win goes to the quest
+/// whose duty the player is in, never just the first held one.
+#[test]
+fn job_fight_director_credits_the_duty_quest() {
+    use mlua::Lua;
+
+    let root = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../scripts/lua"));
+    let src = std::fs::read_to_string(root.join("jobquest.lua")).unwrap();
+    let lua = Lua::new();
+    lua.load(
+        r#"
+        require = function() end
+        questBattle = { runDirector = function(player, actor, questId, onWin) credited = questId end }
+        function makePlayer(area)
+            local held = { [111281] = 10, [111226] = 0 }
+            return {
+                GetContentAreaName = function(self) return area end,
+                HasQuest = function(self, id) return held[id] ~= nil end,
+                GetQuest = function(self, id)
+                    return { GetSequence = function() return held[id] end }
+                end,
+                EndEvent = function(self) ended = true end,
+            }
+        end
+        "#,
+    )
+    .exec()
+    .unwrap();
+    lua.load(&src).exec().unwrap();
+    lua.load(
+        r#"
+        local noop = function() end
+        jobQuest.registerFight(111281, 10, noop)
+        jobQuest.registerFight(111226, 0, noop)
+        function route(area)
+            credited, ended = nil, false
+            jobQuest.runFightDirector(makePlayer(area), {})
+            return credited, ended
+        end
+        "#,
+    )
+    .exec()
+    .unwrap();
+    let route = |area: Option<&str>| -> (Option<u32>, bool) {
+        let f: mlua::Function = lua.globals().get("route").unwrap();
+        f.call(area).unwrap()
+    };
+    assert_eq!(route(Some("Mnk0j601")), (Some(111226), false));
+    assert_eq!(route(Some("Pld0j101")), (Some(111281), false));
+    // A job quest duty whose quest isn't at its fight step credits nothing.
+    assert_eq!(route(Some("War0j601")), (None, true));
+    // Not a job quest duty: nothing either.
+    assert_eq!(route(Some("Etc3l101")), (None, true));
 }

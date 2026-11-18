@@ -43,8 +43,11 @@ eventGLReward(                      -- Leve reward screen
 
 require ("global")
 
+-- `npc` is the officer's actor class id. The value after the base class's
+-- four is the client's work.townId (initForEvent): 1 Limsa Lominsa,
+-- 2 Gridania, 3 Ul'dah, the same numbers as the companies.
 function init(npc)
-	return false, false, 0, 0;	
+	return false, false, 0, 0, gcOfficer[npc] or 0;
 end
 
 gcOfficer = { 
@@ -56,11 +59,49 @@ gcOfficer = {
 [1500227] = 3, -- Flame Sergeant Dalvag
 }
 
+-- Leve allowances shown in the welcome; the levemete shows the same
+-- number (PopulaceGuildlevePublisher.lua). Allowances aren't tracked yet.
+LEVE_ALLOWANCES = 0x29;
+
+-- A member of the officer's company is offered "the mission currently
+-- available": one of the company's leves at this officer's camp. As the
+-- officer says, the duty begins the moment it is accepted: difficulty,
+-- confirm, and the leve starts (crate::leve::battle). Others get
+-- talkOutsider.
 function onEventStarted(player, npc, triggerName)
 
-    callClientFunction(player, "talkOutsider");
+	local gc = gcOfficer[npc:GetActorClassId()];
+	if (gc == nil or player:GetGC() ~= gc) then
+		callClientFunction(player, "talkOutsider");
+		callClientFunction(player, "finishTalkTurn");
+		player:EndEvent();
+		return;
+	end
 
-    callClientFunction(player, "finishTalkTurn");
-    player:EndEvent();
+	callClientFunction(player, "talkOfferWelcome", LEVE_ALLOWANCES);
+	if (callClientFunction(player, "askCompanyLeve") == 1) then
+		local leveId = GetCompanyLeveOffer(gc, npc:GetZoneID());
+		if (leveId == nil) then
+			player:SendMessage(0x20, "", "There are no company leves available here right now.");
+		elseif (player:GetGuildleve() ~= nil) then
+			player:SendMessage(0x20, "", "You are already on a levequest.");
+		else
+			::DETAIL::
+			local accepted = callClientFunction(player, "askLeveDetail", leveId, 0, 0, 0, 0, 0, 0, false);
+			if (accepted == true) then
+				::DIFFICULTY::
+				local difficulty = callClientFunction(player, "eventGLDifficulty", leveId);
+				if (difficulty == nil) then goto DETAIL; end
+				if (callClientFunction(player, "eventGLStart", leveId, difficulty, 0) == nil) then
+					goto DIFFICULTY;
+				end
+				player:AddGuildleve(leveId);
+				player:StartGuildleve(leveId, difficulty);
+				callClientFunction(player, "talkAfterOffer");
+			end
+		end
+	end
+
+	callClientFunction(player, "finishTalkTurn");
+	player:EndEvent();
 end
-

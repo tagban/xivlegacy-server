@@ -161,6 +161,31 @@ pub fn read_lua_params_from<R: Read>(reader: &mut R) -> std::io::Result<Vec<LuaP
                     inventory_type,
                 });
             }
+            0x8 => {
+                // Several item references in one param: the synthesis start
+                // widget sends this once two or more material units are
+                // placed (one reference per unit, the same stack repeated).
+                // Layout (seen from the 1.23b client): actor id, the first
+                // reference (unknown, slot, package), the reference count N,
+                // the other N-1 references, then one trailing byte (3N+7).
+                // Expanded into N Type7 params so scripts see one item
+                // table per unit, the same as a single placed item.
+                let actor_id = reader.read_u32::<BigEndian>()?;
+                let mut refs = vec![(reader.read_u8()?, reader.read_u8()?, reader.read_u8()?)];
+                let count = reader.read_u8()?;
+                for _ in 1..count {
+                    refs.push((reader.read_u8()?, reader.read_u8()?, reader.read_u8()?));
+                }
+                let _trailer = reader.read_u8()?;
+                for (unknown, slot, inventory_type) in refs {
+                    out.push(LuaParam::Type7 {
+                        actor_id,
+                        unknown,
+                        slot,
+                        inventory_type,
+                    });
+                }
+            }
             0x9 => {
                 let item1 = reader.read_u64::<BigEndian>()?;
                 let item2 = reader.read_u64::<BigEndian>()?;
@@ -245,5 +270,52 @@ mod tests {
         // UInt32 isn't in the roundtrip set because the writer collapses it to
         // tag 0x0 — callers decode it as Int32. Mixed set skips that case.
         assert_eq!(parsed, params);
+    }
+
+    fn item(slot: u8) -> LuaParam {
+        LuaParam::Type7 {
+            actor_id: 9,
+            unknown: 0,
+            slot,
+            inventory_type: 0,
+        }
+    }
+
+    /// Synthesis start results captured from the 1.23b client: menu choice,
+    /// recipe mode, the placed materials, then the empty material slots.
+    #[test]
+    fn several_item_refs_expand_to_one_per_unit() {
+        let cases: [(&str, Vec<u8>); 3] = [
+            // two different items (bag slots 0x41, 0x42)
+            (
+                "000000000100000000000800000009004100020042000d000000\
+                 0000000000000000000000000000000000000000000000000000000f",
+                vec![0x41, 0x42],
+            ),
+            // two of one stack (0x44) and one of another (0x41)
+            (
+                "0000000001000000000008000000090044000300440000410010\
+                 000000000000000000000000000000000000000000000000000f",
+                vec![0x44, 0x44, 0x41],
+            ),
+            // three of one stack
+            (
+                "0000000001000000000008000000090041000300410000410010\
+                 000000000000000000000000000000000000000000000000000f",
+                vec![0x41, 0x41, 0x41],
+            ),
+        ];
+        for (hex, slots) in cases {
+            let hex: String = hex.split_whitespace().collect();
+            let bytes: Vec<u8> = (0..hex.len())
+                .step_by(2)
+                .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap())
+                .collect();
+            let params = read_lua_params(&bytes).unwrap();
+            let mut want = vec![LuaParam::Int32(1), LuaParam::Int32(0)];
+            want.extend(slots.iter().map(|&s| item(s)));
+            want.extend(std::iter::repeat_n(LuaParam::Int32(0), 8 - slots.len()));
+            assert_eq!(params, want, "{hex}");
+        }
     }
 }

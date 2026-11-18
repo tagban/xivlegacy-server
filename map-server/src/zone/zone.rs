@@ -616,14 +616,18 @@ mod tests {
             most_hated_actor_id: None,
             current_target_actor_id: None,
             has_prevent_movement: false,
+            has_prevent_attack: false,
+            status_flags: 0,
             max_hp: 1000,
             current_hp: 1000,
             target_hpp: None,
             target_has_stealth: false,
             is_close_to_spawn: true,
+            spawn_position: None,
             target_is_locked: false,
             attack_delay_ms: 2500,
             attack_range: 3.0,
+            tp: 0,
         };
 
         let decision = controller.tick(1_000, owner_view, &zone);

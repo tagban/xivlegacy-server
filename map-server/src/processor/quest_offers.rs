@@ -15,8 +15,8 @@
 //! QFLAG_TALK)`), the marker goes up on that NPC, and talking to them runs
 //! the quest's `onTalk` at `SEQ_ACCEPT`, which shows the offer and calls
 //! `player:AcceptQuest(quest)` on a yes. Here the offers live on the
-//! character (`Character::quest_offers`), rebuilt at zone-in and whenever
-//! the journal changes.
+//! character (`Character::quest_offers`), rebuilt at zone-in, whenever
+//! the journal changes and when the player's level changes.
 
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
@@ -50,8 +50,50 @@ fn is_offerable(script_name: &str, has_prerequisite: bool) -> bool {
 
 /// Quests that follow any one of several others, which the single
 /// `prerequisite` column can't say: Fade to White follows whichever
-/// nation's level 13 quest the player finished.
-const ANY_OF_PREREQUISITES: &[(u32, &[u32])] = &[(110013, &[110004, 110008, 110012])];
+/// nation's level 13 quest the player finished, and The Usual Suspect
+/// (Hildibrand's first case, Etc5u1) follows whichever nation's Etc5?0.
+/// Louisoix's level 45 primal battles follow the Grand Company battle
+/// against the same foe in any company: Ifrit Bleeds, We Can Kill It
+/// (Sum6a0) follows It Kills with Fire (Gc?101), and Taming the Tempest
+/// (Sum6g0) follows In for Garuda Wakening (Gc?104). A Feast of Fools
+/// (Sum6m0), the moogle king, also follows It Kills with Fire.
+/// Hatching-tide: each city's Dreamer's Dilemma (Spl0u2, Spl0g2, Spl0l2)
+/// follows any city's Dreamer's Gospel, and Scrambled Eggs (Spl101, the
+/// next year's quest) follows any city's Dreamer's Dilemma. Moonfire
+/// Faire's Bombard Backlash (Spl102) follows The Heat Is On (Spl0i1).
+const ANY_OF_PREREQUISITES: &[(u32, &[u32])] = &[
+    (110013, &[110004, 110008, 110012]),
+    (110849, &[110828, 110838, 110848]),
+    (110627, &[111416, 111616, 111816]),
+    (110867, &[111430, 111630, 111830]),
+    (110816, &[111416, 111616, 111816]),
+    (110790, HATCHING_GOSPELS),
+    (110795, HATCHING_GOSPELS),
+    (110805, HATCHING_GOSPELS),
+    (110859, HATCHING_DILEMMAS),
+    (110860, &[110799]),
+];
+
+/// The Dreamer's Gospel in Ul'dah, Gridania and Limsa Lominsa.
+const HATCHING_GOSPELS: &[u32] = &[110789, 110794, 110804];
+
+/// Quests of which an adventurer does one: the same seasonal quest in
+/// each city (one Dreamer's Gospel, one Dreamer's Dilemma). Once one is
+/// taken or done, the others aren't offered.
+const ONE_OF: &[&[u32]] = &[HATCHING_GOSPELS, HATCHING_DILEMMAS];
+
+/// The Dreamer's Dilemma in Ul'dah, Gridania and Limsa Lominsa.
+const HATCHING_DILEMMAS: &[u32] = &[110790, 110795, 110805];
+
+/// Whether `quest_id` is kept back because the player took (`has`) or
+/// finished (`done`) another quest of its `ONE_OF` set.
+fn one_of_taken(quest_id: u32, has: impl Fn(u32) -> bool, done: impl Fn(u32) -> bool) -> bool {
+    ONE_OF
+        .iter()
+        .filter(|set| set.contains(&quest_id))
+        .flat_map(|set| set.iter())
+        .any(|&other| other != quest_id && (has(other) || done(other)))
+}
 
 /// The quests any one of which unlocks this one (empty: none needed).
 fn prerequisites(quest_id: u32, prerequisite: u32) -> Vec<u32> {
@@ -62,11 +104,81 @@ fn prerequisites(quest_id: u32, prerequisite: u32) -> Vec<u32> {
     }
 }
 
+/// Whether offers built at `built_at` are out of date for a player now at
+/// `level`. Offers never built (before the zone-in builds them) aren't
+/// rebuilt here.
+fn offers_stale(built_at: Option<i16>, level: i16) -> bool {
+    built_at.is_some_and(|built| built != level)
+}
+
 /// Grand Company quests by the company's standing. `com0x1`-`com0x6` and
 /// the oath `com0x7` are the recruits' arc (their prerequisites chain from
 /// the test quest); `com5*` and `gc*` are for sworn members. Anyone sworn
 /// to another company is offered none of this one's, and the oath isn't
 /// offered twice.
+/// The class a guild quest belongs to (Thm200 -> thaumaturge), by script
+/// prefix. Each guild offers its quests only to players on that class.
+const CLASS_QUESTS: &[(&str, i16)] = &[
+    ("pgl", 2),
+    ("gla", 3),
+    ("exc", 4),
+    ("arc", 7),
+    ("lnc", 8),
+    ("thm", 22),
+    ("cnj", 23),
+    ("wdk", 29),
+    ("bsm", 30),
+    ("gld", 32),
+    ("tan", 33),
+    ("wvr", 34),
+    ("alc", 35),
+    ("cul", 36),
+    ("min", 39),
+    ("hrv", 40),
+    ("fsh", 41),
+];
+
+fn class_gate(script_name: &str, class: i16) -> bool {
+    match CLASS_QUESTS
+        .iter()
+        .find(|(prefix, _)| script_name.starts_with(prefix) && script_name.len() == 6)
+    {
+        Some((_, needed)) => *needed == class,
+        None => true,
+    }
+}
+
+/// Job quests (`war0j1`-`war0j6` ...): the job, its class and the second
+/// class Job 1 asks for at level 15 (the client's own hint,
+/// processEventStart_Hint: Marauder 30 and Gladiator 15 for the warrior).
+const JOB_QUESTS: &[(&str, i16, u16, usize)] = &[
+    ("war0j", 4, 17, 3),
+    ("mnk0j", 2, 15, 8),
+    ("whm0j", 23, 27, 3),
+    ("blm0j", 22, 26, 2),
+    ("pld0j", 3, 16, 23),
+    ("brd0j", 7, 18, 23),
+    ("drg0j", 8, 19, 2),
+];
+
+/// Job 1 is offered on the job's class, with the second class at 15 and
+/// no job taken up; the later job quests only to the job itself.
+fn job_gate(script_name: &str, class: i16, current_job: u16, skill_level: &[i16]) -> bool {
+    let Some((prefix, base_class, job, second)) = JOB_QUESTS
+        .iter()
+        .find(|(prefix, ..)| script_name.starts_with(prefix) && script_name.len() == 6)
+    else {
+        return true;
+    };
+    if script_name == format!("{prefix}1") {
+        current_job == 0
+            && class == *base_class
+            && skill_level.get(*second).copied().unwrap_or(0) >= 15
+    } else {
+        current_job == *job
+    }
+}
+
 fn company_gate(script_name: &str, chara: &crate::actor::CharaState) -> bool {
     use crate::actor::gc;
     let (nation, kind) = if let Some(rest) = script_name.strip_prefix("com") {
@@ -131,16 +243,29 @@ impl PacketProcessor {
                     let needs = prerequisites(m.id, m.prerequisite);
                     is_offerable(&name, !needs.is_empty())
                         && company_gate(&name, &c.chara)
+                        && class_gate(&name, c.chara.class)
+                        && job_gate(
+                            &name,
+                            c.chara.class,
+                            c.chara.current_job,
+                            &c.battle_save.skill_level,
+                        )
                         && !journal.has(m.id)
                         && !journal.is_completed(m.id)
                         && level >= m.min_level
                         && (needs.is_empty() || needs.iter().any(|p| journal.is_completed(*p)))
+                        && !one_of_taken(m.id, |q| journal.has(q), |q| journal.is_completed(q))
+                        && crate::seasonal::quest_open(m.id)
                         && engine.resolver().quest(&name).exists()
                 })
                 .map(|m| m.id)
                 .collect()
         };
 
+        // One offer per NPC: when several quests share a giver, the
+        // lowest id (the earlier quest) is offered first, every time.
+        let mut eligible = eligible;
+        eligible.sort_unstable();
         let mut offers: HashMap<u32, (u32, QuestEnpc)> = HashMap::new();
         for quest_id in eligible {
             for enpc in self.quest_givers(handle, quest_id).await {
@@ -166,6 +291,7 @@ impl PacketProcessor {
                 .flat_map(|q| q.state.current.keys().copied())
                 .collect();
             c.quest_offers = offers.clone();
+            c.quest_offers_level = Some(c.chara.level);
             (removed, claimed)
         };
         // An NPC a taken quest now uses keeps that quest's marker.
@@ -185,6 +311,20 @@ impl PacketProcessor {
             offers = offers.len(),
             "quest offers refreshed"
         );
+    }
+
+    /// Rebuild the offers if the player's level moved since they were
+    /// built. Level-ups happen on paths that can't reach the processor (a
+    /// kill's EXP in the battle runtime, `!giveexp`), so the processor
+    /// checks on the player's next position update instead.
+    pub(super) async fn refresh_quest_offers_if_level_changed(&self, handle: &ActorHandle) {
+        let stale = {
+            let c = handle.character.read().await;
+            offers_stale(c.quest_offers_level, c.chara.level)
+        };
+        if stale {
+            self.refresh_quest_offers(handle).await;
+        }
     }
 
     pub(super) async fn refresh_quest_offers_for(&self, player_id: u32) {
@@ -277,6 +417,77 @@ impl PacketProcessor {
             .get(&npc_class_id)
             .map(|(quest_id, _)| *quest_id)
     }
+
+    /// `!talkto <class> [name]` aimed at the typing player's own giver of a
+    /// quest on offer. The command (`CommandProcessor::handle_talkto`) only
+    /// fans `onTalk` out to the journal's quests, so an offer never ran and
+    /// the quest could not be accepted through it. Here the talk starts as
+    /// a click on the NPC would and goes through the same hook, offer
+    /// included. `None` leaves every other `talkto` to the command.
+    pub(super) async fn gm_talkto_offer(
+        &self,
+        handle: &ActorHandle,
+        line: &str,
+        level: u8,
+    ) -> Option<Result<String, String>> {
+        let mut words = line.split_whitespace();
+        if !words.next()?.eq_ignore_ascii_case("talkto")
+            || level < crate::command_permissions::get().required("talkto")
+        {
+            return None;
+        }
+        let class_id: u32 = words.next()?.parse().ok()?;
+        let named = words.collect::<Vec<_>>().join(" ");
+        let me = {
+            let c = handle.character.read().await;
+            c.base.display_name().to_string()
+        };
+        if !named.is_empty() && !named.eq_ignore_ascii_case(&me) {
+            return None;
+        }
+        let quest_id = self.offered_quest_at(handle, class_id).await?;
+        let (zone_id, requester_area) = match self.world.session(handle.session_id).await {
+            Some(s) if s.current_zone_id != 0 => (
+                s.current_zone_id,
+                s.current_private_area_name
+                    .clone()
+                    .map(|n| (n, s.current_private_area_level)),
+            ),
+            _ => (handle.zone_id, None),
+        };
+        let near = crate::runtime::quest_apply::player_xz(handle).await;
+        let npc = self
+            .find_npc_by_class_id(zone_id, class_id, requester_area.as_ref(), Some(near))
+            .await?;
+        let mut outbox = crate::event::outbox::EventOutbox::new();
+        {
+            let mut c = handle.character.write().await;
+            c.event_session.start_event(
+                handle.actor_id,
+                npc.actor_id,
+                "talkDefault".to_string(),
+                1,
+                Vec::new(),
+                &mut outbox,
+            );
+        }
+        for e in outbox.drain() {
+            crate::event::dispatcher::dispatch_event_event(
+                &e,
+                &self.registry,
+                &self.world,
+                &self.db,
+                self.lua.as_ref(),
+            )
+            .await;
+        }
+        self.fire_quest_hook_for_active_quests(handle, npc.actor_id, "onTalk", "talkDefault")
+            .await;
+        Some(Ok(format!(
+            "talkto ran the offer of quest {quest_id} at NPC {:#X} (class {class_id})",
+            npc.actor_id
+        )))
+    }
 }
 
 /// A quest handle for a quest that isn't in the journal: `SEQ_ACCEPT`, no
@@ -311,10 +522,64 @@ mod tests {
     }
 
     #[test]
+    fn hatching_tide_quests_are_one_per_adventurer() {
+        let none = |_| false;
+        assert!(!one_of_taken(110789, none, none));
+        // the Ul'dah Gospel done: Gridania's isn't offered, nor Ul'dah's again
+        assert!(one_of_taken(110794, none, |q| q == 110789));
+        assert!(one_of_taken(110804, |q| q == 110794, none));
+        // the Dilemmas follow any Gospel, and are one per adventurer too
+        assert_eq!(prerequisites(110795, 0), vec![110789, 110794, 110804]);
+        assert!(one_of_taken(110805, none, |q| q == 110790));
+        assert!(!one_of_taken(110805, none, |q| q == 110789));
+        assert_eq!(prerequisites(110859, 0), vec![110790, 110795, 110805]);
+        assert_eq!(prerequisites(110860, 0), vec![110799]);
+        // quests in no set are never kept back
+        assert!(!one_of_taken(110801, |_| true, |_| true));
+    }
+
+    #[test]
+    fn offers_rebuild_after_a_level_change() {
+        assert!(!offers_stale(None, 8));
+        assert!(!offers_stale(Some(8), 8));
+        assert!(offers_stale(Some(7), 8));
+    }
+
+    #[test]
+    fn guild_quests_need_their_class() {
+        assert!(class_gate("thm200", 22));
+        assert!(!class_gate("thm200", 23));
+        assert!(!class_gate("exc306", 2));
+        assert!(class_gate("hrv200", 40));
+        assert!(class_gate("man200", 2));
+        assert!(class_gate("etc1l1", 22));
+    }
+
+    #[test]
     fn fade_to_white_follows_any_nations_level_13_quest() {
         assert_eq!(prerequisites(110013, 0), vec![110004, 110008, 110012]);
         assert_eq!(prerequisites(110011, 110010), vec![110010]);
         assert!(prerequisites(110001, 0).is_empty());
+    }
+
+    #[test]
+    fn ifrit_bleeds_follows_any_companys_it_kills_with_fire() {
+        assert_eq!(prerequisites(110627, 0), vec![111416, 111616, 111816]);
+    }
+
+    #[test]
+    fn taming_the_tempest_follows_any_companys_garuda_wakening() {
+        assert_eq!(prerequisites(110867, 0), vec![111430, 111630, 111830]);
+    }
+
+    #[test]
+    fn a_feast_of_fools_follows_any_companys_it_kills_with_fire() {
+        assert_eq!(prerequisites(110816, 0), vec![111416, 111616, 111816]);
+    }
+
+    #[test]
+    fn the_usual_suspect_follows_any_nations_first_hildibrand_quest() {
+        assert_eq!(prerequisites(110849, 0), vec![110828, 110838, 110848]);
     }
 
     fn standing(gc: u8, limsa: u8, gridania: u8, uldah: u8) -> crate::actor::CharaState {
@@ -351,5 +616,30 @@ mod tests {
         assert!(!company_gate("gcu101", &sworn));
         // Other quests are untouched.
         assert!(company_gate("man300", &sworn));
+    }
+}
+
+#[cfg(test)]
+mod job_gate_tests {
+    use super::job_gate;
+
+    #[test]
+    fn job_one_needs_the_class_and_a_second_class_at_15() {
+        let mut levels = vec![0i16; 64];
+        levels[4] = 30;
+        assert!(!job_gate("war0j1", 4, 0, &levels), "no gladiator 15");
+        levels[3] = 15;
+        assert!(job_gate("war0j1", 4, 0, &levels));
+        assert!(!job_gate("war0j1", 3, 0, &levels), "on another class");
+        assert!(!job_gate("war0j1", 4, 17, &levels), "already the warrior");
+    }
+
+    #[test]
+    fn later_job_quests_need_the_job() {
+        let levels = vec![50i16; 64];
+        assert!(job_gate("war0j2", 4, 17, &levels));
+        assert!(!job_gate("war0j2", 4, 0, &levels));
+        assert!(!job_gate("mnk0j3", 2, 17, &levels));
+        assert!(job_gate("gla306", 3, 0, &levels), "other quests pass");
     }
 }

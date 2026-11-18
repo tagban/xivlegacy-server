@@ -14,10 +14,15 @@ Sources (see `data/README.md`):
 
 Map coordinates convert to world x/z at 100 world units per map unit with a per-region offset,
 fitted against NPCs and aetherytes whose positions the server already has (median error about
-20 units). Ground height comes from the nearest known positions in the same zone (captures,
-NPCs, aetherytes, gathering points and logged player positions); the client does the rest.
+20 units). Ground height is the ground under the spawn point in the client's collision data
+where `data/ground_heights.csv` has it (tools/terrain/spawn_heights.py), otherwise a blend of the
+nearest known positions in the same zone (captures, NPCs, aetherytes, gathering points and
+logged player positions).
 
-Usage: generate.py [--db data/garlemald.db] [--client "<1.23b install>"]
+Usage: generate.py [--db data/garlemald.db] [--client "<1.23b install>"] [--points planned.csv]
+
+--points also writes every map-derived spawn point (before any ground_heights.csv lookup), the
+input for tools/terrain/spawn_heights.py.
 """
 
 import argparse
@@ -132,6 +137,9 @@ class World:
             self.zone_region[zid] = reg
             self.zone_names[zid] = name
         self.samples = collections.defaultdict(list)  # zone -> [(x, y, z)]
+        # Ground under the spawns themselves (data/ground_heights.csv):
+        # used as-is, never as samples, so zone votes and blends stay unchanged.
+        self.ground = collections.defaultdict(list)  # zone -> [(x, z, y, moved x, moved z)]
 
     def add_sample(self, zone, x, y, z):
         if self.zone_region.get(zone) in REGIONS and zone in FIELD_ZONES[self.zone_region[zone]]:
@@ -155,6 +163,25 @@ class World:
                 zone = ZONE_BY_TAG.get(r["zoneTag"].rstrip("a"))
                 if zone:
                     self.add_sample(zone, float(r["x"]), float(r["y"]), float(r["z"]))
+
+    def load_ground(self):
+        path = DATA / "ground_heights.csv"
+        if path.exists():
+            with open(path) as f:
+                for r in csv.DictReader(f):
+                    mx = float(r["moved_x"]) if r.get("moved_x") else None
+                    mz = float(r["moved_z"]) if r.get("moved_z") else None
+                    self.ground[int(r["zoneId"])].append(
+                        (float(r["x"]), float(r["z"]), float(r["y"]), mx, mz))
+
+    def measured(self, zone, x, z):
+        """(x, y, z) on the client's ground for a planned spawn point, if there is one.
+        A point with no ground under it (a cliff face, off the map) comes back moved onto
+        nearby ground."""
+        for gx, gz, gy, mx, mz in self.ground.get(zone, ()):
+            if abs(gx - x) < 0.01 and abs(gz - z) < 0.01:
+                return (x if mx is None else mx), gy, (z if mz is None else mz)
+        return None
 
     def nearest(self, zones, x, z, k=1):
         best = []
@@ -304,6 +331,8 @@ class Builder:
         self.spawns = []  # (bnpc, group, x, y, z, rot)
         self.skipped = collections.Counter()
         self.far_heights = 0
+        self.measured_heights = 0
+        self.planned = []  # (zone, x, z, group) of every map-derived point, before measuring
 
     def pool(self, cid, row, aggressive):
         key = (cid, aggressive)
@@ -322,6 +351,12 @@ class Builder:
         return gid
 
     def place(self, gid, zone, x, z, rot, y=None):
+        if y is None:
+            self.planned.append((zone, x, z, gid))
+            m = self.world.measured(zone, x, z)
+            if m is not None:
+                x, y, z = m
+                self.measured_heights += 1
         if y is None:
             y, dist = self.world.height(zone, x, z)
             if dist > 250:
@@ -346,12 +381,14 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", default=str(REPO / "data" / "garlemald.db"))
     ap.add_argument("--client", default="")
+    ap.add_argument("--points", help="write the planned map-derived spawn points to this CSV")
     args = ap.parse_args()
     global HP_FOR_LEVEL
     HP_FOR_LEVEL = hp_curve()
     db = sqlite3.connect(f"file:{args.db}?mode=ro", uri=True)
     world = World(db)
     world.load_samples()
+    world.load_ground()
     classes = Classes(db, args.client)
     b = Builder(world, classes)
     zone_id_by_name = collections.defaultdict(list)
@@ -458,12 +495,19 @@ def main():
             camps[g["mob_name"]].append((x, z))
 
     write_sql(b, classes)
+    if args.points:
+        with open(args.points, "w", newline="") as f:
+            w = csv.writer(f)
+            w.writerow(["zoneId", "x", "z", "groupId"])
+            for zone, x, z, gid in b.planned:
+                w.writerow([zone, repr(x), repr(z), gid])
     per_zone = collections.Counter()
     gz = {g["id"]: g["zone"] for g in b.groups}
     for s in b.spawns:
         per_zone[gz[s[1]]] += 1
     print(f"pools {len(b.pools)}  groups {len(b.groups)}  monsters {len(b.spawns)}  "
-          f"classPath repairs {len(classes.repairs)}  heights >250 from a sample {b.far_heights}")
+          f"classPath repairs {len(classes.repairs)}  heights >250 from a sample {b.far_heights}"
+          f"  ground heights {b.measured_heights}")
     for zone, n in sorted(per_zone.items()):
         print(f"  {zone} {world.zone_names[zone]}: {n}")
     print("skipped:", sum(b.skipped.values()), b.skipped.most_common(12))
@@ -480,6 +524,8 @@ def write_sql(b, classes):
         "-- Positions: retail 1.23b packet captures where available, otherwise Mooglebox (2012)",
         "-- camp maps and Gamer Escape 1.x monster pages, via the XIVLegacy xivl-captures",
         "-- research data (CC BY 4.0, https://github.com/XIVLegacy/xivl-captures).",
+        "-- Heights of map-derived spawns: the ground in the 1.23b client's collision data",
+        "-- (tools/terrain), where there is ground within reach.",
         "",
         "-- The test wharf rats (group 1) are not meant to spawn on their own.",
         "UPDATE server_battlenpc_groups SET spawnType = 1 WHERE groupId = 1;",

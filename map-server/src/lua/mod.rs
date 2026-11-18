@@ -214,9 +214,14 @@ pub struct LuaEngine {
 
 impl LuaEngine {
     pub fn new(script_root: impl Into<std::path::PathBuf>) -> Self {
+        let script_root = script_root.into();
+        let catalogs = Catalogs::new();
+        if let Ok(mut w) = catalogs.script_root.write() {
+            *w = script_root.clone();
+        }
         Self {
             resolver: PathResolver::new(script_root),
-            catalogs: Arc::new(Catalogs::new()),
+            catalogs: Arc::new(catalogs),
             scheduler: CoroutineScheduler::shared(),
             vm_cache: Mutex::new(HashMap::new()),
         }
@@ -384,6 +389,46 @@ impl LuaEngine {
         Ok(LuaCallResult {
             value: result,
             commands,
+        })
+    }
+
+    /// [`call_player_hook`] with string arguments after the player, the way
+    /// a GM command script's `onTrigger(player, argc, ...)` takes what was
+    /// typed: `args` are passed as `argc` then each word.
+    pub fn call_player_hook_with_args(
+        &self,
+        script_path: &Path,
+        function_name: &str,
+        snapshot: userdata::PlayerSnapshot,
+        args: &[&str],
+    ) -> Result<LuaCallResult> {
+        let (lua, queue) = self.load_script(script_path)?;
+        let f: Function = lua.globals().get(function_name).map_err(|e| {
+            anyhow::anyhow!("{function_name} not in {}: {e}", script_path.display())
+        })?;
+        let player = userdata::LuaPlayer {
+            snapshot,
+            queue: queue.clone(),
+        };
+        let mut values = vec![
+            Value::UserData(
+                lua.create_userdata(player)
+                    .map_err(|e| anyhow::anyhow!("create_userdata(LuaPlayer): {e}"))?,
+            ),
+            Value::Integer(args.len() as i64),
+        ];
+        for a in args {
+            values.push(Value::String(
+                lua.create_string(a)
+                    .map_err(|e| anyhow::anyhow!("create_string: {e}"))?,
+            ));
+        }
+        let result: Value = f
+            .call::<Value>(mlua::MultiValue::from_vec(values))
+            .map_err(|e| anyhow::anyhow!("{function_name}: {e}"))?;
+        Ok(LuaCallResult {
+            value: result,
+            commands: CommandQueue::drain(&queue),
         })
     }
 
@@ -1206,20 +1251,52 @@ impl LuaEngine {
     /// initForEvent` ("invalid argument: 2, integer" → error 40000 →
     /// kicked to login) whenever a door's event condition was enabled.
     /// `None` when the script / `init` is missing or errors — callers
-    /// fall back to the populace-shaped tail.
-    pub fn call_npc_init(&self, class_path_lower: &str) -> Option<Vec<common::luaparam::LuaParam>> {
-        use common::luaparam::LuaParam;
+    /// fall back to the populace-shaped tail. `init` gets the actor class
+    /// id, for base classes shared by npcs that differ (a GC officer's
+    /// company).
+    pub fn call_npc_init(
+        &self,
+        class_path_lower: &str,
+        actor_class_id: u32,
+    ) -> Option<Vec<common::luaparam::LuaParam>> {
         let path = self.resolver().base_class(class_path_lower);
+        self.call_init_at(&path, mlua::Value::Integer(i64::from(actor_class_id)))
+    }
+
+    /// An NPC's own `unique/<zone>/<class>/<uniqueId>.lua` `init`, the
+    /// way pmeteor's `CreateScriptBindPacket` resolves it: map objects
+    /// keep their background binding there (`DoorServer`'s
+    /// `(false, false, 0, 0, layoutId, instanceId, isOpen)`). `None` when
+    /// the script or its `init` is missing.
+    pub fn call_unique_npc_init(
+        &self,
+        zone_name: &str,
+        class_name: &str,
+        unique_id: &str,
+    ) -> Option<Vec<common::luaparam::LuaParam>> {
+        if zone_name.is_empty() || class_name.is_empty() || unique_id.is_empty() {
+            return None;
+        }
+        let path = self.resolver().npc(zone_name, class_name, unique_id);
+        self.call_init_at(&path, mlua::Value::Nil)
+    }
+
+    fn call_init_at(
+        &self,
+        path: &Path,
+        npc: mlua::Value,
+    ) -> Option<Vec<common::luaparam::LuaParam>> {
+        use common::luaparam::LuaParam;
         if !path.exists() {
             return None;
         }
-        let (lua, _queue) = self.load_script(&path).ok()?;
+        let (lua, _queue) = self.load_script(path).ok()?;
         let init: mlua::Function = lua.globals().get("init").ok()?;
-        // Base-class `init` implementations ignore the npc argument
-        // (they return constants); pass Nil rather than building a
-        // throwaway userdata. A script that does dereference it errors
-        // here and falls back to the default tail.
-        let ret: MultiValue = init.call(mlua::Value::Nil).ok()?;
+        // `init` implementations mostly ignore the npc argument (they
+        // return constants); it is the actor class id (base classes) or
+        // Nil rather than a throwaway userdata. A script that
+        // dereferences it errors here and falls back to the default tail.
+        let ret: MultiValue = init.call(npc).ok()?;
         let mut out = Vec::with_capacity(ret.len());
         for v in ret.iter() {
             out.push(match v {
@@ -1732,6 +1809,50 @@ mod tests {
             "Gegeissa's default line must be delegated; got {:?}",
             result.commands,
         );
+    }
+
+    /// `npc:SetQuestGraphic` takes Meteor's `(player, graphic)` (the
+    /// Hildibrand givers clear their marker with it) as well as a bare
+    /// `(graphic)`; the player-first form used to error and end the talk.
+    #[test]
+    fn set_quest_graphic_takes_the_player_first() {
+        let tmp = tmpdir();
+        let script = tmp.join("graphic.lua");
+        std::fs::write(
+            &script,
+            "function onEventStarted(player, npc, trigger)\n\
+             npc:SetQuestGraphic(player, 0)\n\
+             npc:SetQuestGraphic(2)\n\
+             end",
+        )
+        .unwrap();
+        let engine = LuaEngine::new(&tmp);
+        let npc_spec = LuaNpcSpec {
+            actor_id: 0x4578_0015,
+            name: "otopa_pottopa".to_string(),
+            class_name: "PopulaceStandard".to_string(),
+            class_path: "/Chara/Npc/Populace/PopulaceStandard".to_string(),
+            unique_id: "otopa_pottopa".to_string(),
+            zone_id: 175,
+            zone_name: String::new(),
+            state: 0,
+            pos: (0.0, 0.0, 0.0),
+            rotation: 0.0,
+            actor_class_id: 1_000_864,
+            quest_graphic: 0,
+        };
+        let result = engine.call_npc_on_event_started(
+            &script,
+            userdata::PlayerSnapshot {
+                actor_id: 1,
+                ..Default::default()
+            },
+            npc_spec,
+            "talkDefault".to_string(),
+            1,
+            Vec::new(),
+        );
+        assert!(result.error.is_none(), "{:?}", result.error);
     }
 
     /// The Hamlet breeder greets with the client's `defTalk(player)`, then
@@ -3044,8 +3165,9 @@ mod tests {
         );
         // First live sighting of Sisipu → the duty-entry banner set
         // (sheet-decoded worldMaster ids — man0l1.lua TEXT_*): 51005
-        // "Protect <displayName> from harm." carries her actor id as
-        // the param, 50011 "You are now bound by duty.", 25018 "There
+        // "Protect <displayName> from harm." carries her display-name
+        // id (1500024) and 1 for the single-escortee wording (an actor
+        // id raises a client Lua error), 50011 "You are now bound by duty.", 25018 "There
         // are <N> minutes remaining." carries the 30-minute limit.
         assert!(
             result.commands.iter().any(|c| matches!(
@@ -3055,9 +3177,9 @@ mod tests {
                     text_id: 51005,
                     params,
                     ..
-                } if params.as_slice() == [0x4008_0001_i64]
+                } if params.as_slice() == [1_500_024_i64, 1]
             )),
-            "duty start must announce 51005 Protect <Sisipu> with her actor id as param; got {:?}",
+            "duty start must announce 51005 Protect <Sisipu> with her display-name id; got {:?}",
             result.commands,
         );
         assert!(

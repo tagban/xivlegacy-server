@@ -89,6 +89,11 @@ pub struct Walkthrough {
     /// quest handoff) and completed via `CompleteQuest`, for `expectHandoff`.
     added: Vec<u32>,
     completed: Vec<u32>,
+
+    /// (item_id, quantity) the player carries, set by `give` and kept in step
+    /// with the quest's own `AddItem`/`RemoveItem` calls. `HasItem` and
+    /// `GetItemQuantity` read it through the snapshot.
+    inventory: Vec<(u32, i32)>,
 }
 
 impl Walkthrough {
@@ -127,6 +132,7 @@ impl Walkthrough {
             step: Vec::new(),
             added: Vec::new(),
             completed: Vec::new(),
+            inventory: Vec::new(),
         })
     }
 
@@ -136,6 +142,7 @@ impl Walkthrough {
             zone_id: self.zone_id,
             active_quests: vec![self.quest_id],
             active_quest_states: vec![self.quest_state()],
+            inventory: self.inventory.clone(),
             ..Default::default()
         }
     }
@@ -280,6 +287,14 @@ impl Walkthrough {
                 }
                 LuaCommand::AddQuest { quest_id, .. } => self.added.push(*quest_id),
                 LuaCommand::CompleteQuest { quest_id, .. } => self.completed.push(*quest_id),
+                LuaCommand::AddItem {
+                    item_id, quantity, ..
+                } => self.change_item(*item_id, *quantity),
+                LuaCommand::RemoveItem {
+                    catalog_id,
+                    quantity,
+                    ..
+                } => self.change_item(*catalog_id, -*quantity),
                 _ => {}
             }
         }
@@ -475,6 +490,63 @@ impl Walkthrough {
         }
     }
 
+    /// Add (or, negative, take) `quantity` of an item in the tracked bag.
+    fn change_item(&mut self, item_id: u32, quantity: i32) {
+        match self.inventory.iter_mut().find(|(id, _)| *id == item_id) {
+            Some((_, q)) => *q += quantity,
+            None => self.inventory.push((item_id, quantity)),
+        }
+        self.inventory.retain(|(_, q)| *q > 0);
+    }
+
+    /// Assert the current step gave this item (`AddItem`, any package).
+    fn expect_add_item(&self, item_id: u32, quantity: i32) -> Result<(), String> {
+        let found = self.step.iter().any(|c| {
+            matches!(c, LuaCommand::AddItem { item_id: i, quantity: q, .. }
+                if *i == item_id && *q == quantity)
+        });
+        if found {
+            Ok(())
+        } else {
+            Err(format!(
+                "expected AddItem({item_id}, {quantity}), got [{}]",
+                summarize(&self.step)
+            ))
+        }
+    }
+
+    /// Assert the current step took this item (`RemoveItem`, any package).
+    fn expect_remove_item(&self, item_id: u32, quantity: i32) -> Result<(), String> {
+        let found = self.step.iter().any(|c| {
+            matches!(c, LuaCommand::RemoveItem { catalog_id: i, quantity: q, .. }
+                if *i == item_id && *q == quantity)
+        });
+        if found {
+            Ok(())
+        } else {
+            Err(format!(
+                "expected RemoveItem({item_id}, {quantity}), got [{}]",
+                summarize(&self.step)
+            ))
+        }
+    }
+
+    /// Assert the current step took no item at all.
+    fn expect_no_remove_item(&self) -> Result<(), String> {
+        if self
+            .step
+            .iter()
+            .any(|c| matches!(c, LuaCommand::RemoveItem { .. }))
+        {
+            Err(format!(
+                "expected no RemoveItem, got [{}]",
+                summarize(&self.step)
+            ))
+        } else {
+            Ok(())
+        }
+    }
+
     /// Assert the current step granted exactly this much gil (`AddGil`).
     fn expect_gil(&self, amount: i32) -> Result<(), String> {
         let found = self
@@ -550,6 +622,71 @@ fn resolve_quest(code: &str) -> Option<(u32, u32)> {
         "Man0g1" => (110_006, 0),
         "Man0u0" => (110_009, 0),
         "Man0u1" => (110_010, 0),
+        "Man406" => (110_019, 0),
+        "Gla306" => (110_082, 0),
+        "Arc306" => (110_162, 0),
+        "Etc1u9" => (110_684, 0),
+        "Etc2u0" => (110_685, 0),
+        "Etc2u5" => (110_690, 0),
+        "Etc101" => (110_811, 0),
+        "Etc3l1" => (110_744, 0),
+        "Etc2l1" => (110_644, 0),
+        "Etc1l9" => (110_642, 0),
+        "Etc3g1" => (110_735, 0),
+        "Etc1g0" => (110_654, 0),
+        "Etc1g1" => (110_655, 0),
+        "Etc3u2" => (110_727, 0),
+        "Etc3g2" => (110_736, 0),
+        "Etc3l2" => (110_745, 0),
+        "Etc2g3" => (110_667, 0),
+        "Etc2g5" => (110_669, 0),
+        "Etc2g4" => (110_668, 0),
+        "Etc1u7" => (110_682, 0),
+        "Etc1u8" => (110_683, 0),
+        "Etc2l5" => (110_648, 0),
+        "Etc200" => (110_818, 0),
+        "Cnj300" => (110_261, 0),
+        "Pgl306" => (110_062, 0),
+        "Cnj306" => (110_262, 0),
+        "Spl0i2" => (110_800, 230),
+        "Blm0j2" => (111_262, 209),
+        "Blm0j3" => (111_263, 209),
+        "Blm0j4" => (111_264, 209),
+        "Blm0j5" => (111_265, 209),
+        "Blm0j6" => (111_266, 209),
+        "Spl0i3" => (110_801, 152),
+        "Spl0i4" => (110_802, 152),
+        // Crafting and gathering guild quests (L20/L30/L36).
+        "Wdk200" => (110_300, 0),
+        "Wdk300" => (110_301, 0),
+        "Wdk306" => (110_302, 0),
+        "Bsm200" => (110_320, 0),
+        "Bsm300" => (110_321, 0),
+        "Bsm306" => (110_322, 0),
+        "Gld200" => (110_360, 0),
+        "Gld300" => (110_361, 0),
+        "Gld306" => (110_362, 0),
+        "Tan200" => (110_380, 0),
+        "Tan300" => (110_381, 0),
+        "Tan306" => (110_382, 0),
+        "Wvr200" => (110_400, 0),
+        "Wvr300" => (110_401, 0),
+        "Wvr306" => (110_402, 0),
+        "Alc200" => (110_420, 0),
+        "Alc300" => (110_421, 0),
+        "Alc306" => (110_422, 0),
+        "Cul200" => (110_440, 0),
+        "Cul300" => (110_441, 0),
+        "Cul306" => (110_442, 0),
+        "Min200" => (110_460, 0),
+        "Min300" => (110_461, 0),
+        "Min306" => (110_462, 0),
+        "Hrv200" => (110_480, 0),
+        "Hrv300" => (110_481, 0),
+        "Hrv306" => (110_482, 0),
+        "Fsh200" => (110_500, 0),
+        "Fsh300" => (110_501, 0),
+        "Fsh306" => (110_502, 0),
         _ => return None,
     })
 }
@@ -682,6 +819,40 @@ impl UserData for Walkthrough {
         methods.add_function("expectGil", |_, (this, amount): (AnyUserData, i32)| {
             this.borrow::<Walkthrough>()?
                 .expect_gil(amount)
+                .map_err(lua_err)?;
+            Ok(this)
+        });
+        // Put items in the player's bag before a driver (crafted goods to
+        // hand in, gathered materials). `give(id, qty)`; qty defaults to 1.
+        methods.add_function(
+            "give",
+            |_, (this, item, qty): (AnyUserData, u32, Option<i32>)| {
+                this.borrow_mut::<Walkthrough>()?
+                    .change_item(item, qty.unwrap_or(1));
+                Ok(this)
+            },
+        );
+        methods.add_function(
+            "expectAddItem",
+            |_, (this, item, qty): (AnyUserData, u32, Option<i32>)| {
+                this.borrow::<Walkthrough>()?
+                    .expect_add_item(item, qty.unwrap_or(1))
+                    .map_err(lua_err)?;
+                Ok(this)
+            },
+        );
+        methods.add_function(
+            "expectRemoveItem",
+            |_, (this, item, qty): (AnyUserData, u32, Option<i32>)| {
+                this.borrow::<Walkthrough>()?
+                    .expect_remove_item(item, qty.unwrap_or(1))
+                    .map_err(lua_err)?;
+                Ok(this)
+            },
+        );
+        methods.add_function("expectNoRemoveItem", |_, this: AnyUserData| {
+            this.borrow::<Walkthrough>()?
+                .expect_no_remove_item()
                 .map_err(lua_err)?;
             Ok(this)
         });

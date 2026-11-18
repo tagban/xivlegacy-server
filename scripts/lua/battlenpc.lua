@@ -64,7 +64,6 @@ end
 function onLogin(player)
 
 	if (player:GetPlayTime(false) == 0) then
-		player:SendMessage(0x1D,"",">PlayTime == 0, new player!");
 		
 		initClassItems(player);
 		initRaceItems(player);	

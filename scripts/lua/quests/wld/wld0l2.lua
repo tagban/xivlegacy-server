@@ -13,6 +13,10 @@ Notes:  Rewards 200 gil
 
 ]]
 
+-- Rewards (the client's reward table; EXP from its row, or the level-band estimate)
+REWARD_EXP			= 300;
+REWARD_GIL			= 5000;
+
 -- Sequence Numbers
 SEQ_000 = 0;  -- Talk to the four gourmands.
 SEQ_001 = 1;  -- Return to Ahldskyf.
@@ -98,7 +102,7 @@ function onTalk(player, quest, npc)
 		elseif (classId == DACA_JINJAHL) then
 			if (not data:GetFlag(FLAG_TALKED_DACA_JINJAHL)) then
 				callClientFunction(player, "delegateEvent", player, quest, "processEvent010");
-				data:SetFlag(FLAG_TALKED_KEKETO);
+				data:SetFlag(FLAG_TALKED_DACA_JINJAHL);
                 incCounter = true;
 			else
 				callClientFunction(player, "delegateEvent", player, quest, "processEvent010_1");
@@ -128,7 +132,10 @@ function onTalk(player, quest, npc)
     elseif (sequence == SEQ_001) then
         if (classId == AHLDSKYF) then
             callClientFunction(player, "delegateEvent", player, quest, "processEvent020");
-			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 200, 1, 1, 9);
+			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
+			player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
+			player:AddGil(REWARD_GIL);
+			player:GetItemPackage(INVENTORY_NORMAL):AddItem(8050609, 1, 1); -- Hempen Kecks
 			player:CompleteQuest(quest);        
         end  
     end

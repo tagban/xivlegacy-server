@@ -8,7 +8,7 @@ Quest Script
 Name: 	Till Sea Swallows All
 Code: 	Com0l7
 Id: 	111407
-Prereq: Com0l3 complete, level 25; not sworn to any Grand Company.
+Prereq: Com0l6 complete, level 25; not sworn to any Grand Company.
 
 Official enlistment. Storm Lieutenant Guincum asks a recruit to swear sole
 allegiance to the Maelstrom: doing so ends any recruit standing with

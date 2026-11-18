@@ -112,6 +112,74 @@ pub fn build_set_actor_position(
     SubPacket::new(OP_SET_ACTOR_POSITION, actor_id, data)
 }
 
+/// "XKB1": marks the knockback note after a SetActorPosition's body.
+pub const KNOCKBACK_NOTE_MAGIC: u32 = u32::from_le_bytes(*b"XKB1");
+/// Where the note starts: right after the 0x28-byte body (spawnType and
+/// isZoningPlayer at 0x24/0x26 end it). The subpacket grows by
+/// [`KNOCKBACK_NOTE_SIZE`]; a client reads the body by offset and steps
+/// to the next subpacket by its size, so the tail goes unread there.
+pub const KNOCKBACK_NOTE_OFFSET: usize = 0x28;
+pub const KNOCKBACK_NOTE_SIZE: usize = 0x20;
+
+/// What a knockback did, for a client that slides the player itself.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct KnockbackNote {
+    /// Unit push direction on the ground (x, z): away from the attacker.
+    pub dir_x: f32,
+    pub dir_z: f32,
+    /// How far the push went (yalms, after walls and cliffs).
+    pub distance: f32,
+    /// How long the slide should take.
+    pub duration_ms: u16,
+    /// Where the push started.
+    pub start: [f32; 3],
+}
+
+/// The knockback move for the pushed player's own client: the in-zone
+/// warp to the landing spot (so a client without our knockback hook
+/// still ends up there) with a [`KnockbackNote`] appended. A
+/// patched client drops the warp and slides from where it stands to
+/// `x, y, z` over `duration_ms`, facing `rotation` (the attacker).
+///
+/// Note layout at body +0x28 (0x20 bytes): u32 magic "XKB1", f32 dir_x, f32 dir_z,
+/// f32 distance, u16 duration_ms, u16 flags (0), f32 start x/y/z.
+#[allow(clippy::too_many_arguments)]
+pub fn build_knockback_warp(
+    actor_id: u32,
+    target_actor_id: i32,
+    x: f32,
+    y: f32,
+    z: f32,
+    rotation: f32,
+    spawn_type: u16,
+    note: &KnockbackNote,
+) -> SubPacket {
+    let mut pkt = build_set_actor_position(
+        actor_id,
+        target_actor_id,
+        x,
+        y,
+        z,
+        rotation,
+        spawn_type,
+        false,
+    );
+    pkt.data
+        .resize(KNOCKBACK_NOTE_OFFSET + KNOCKBACK_NOTE_SIZE, 0);
+    pkt.header.subpacket_size += KNOCKBACK_NOTE_SIZE as u16;
+    let mut c = Cursor::new(&mut pkt.data[KNOCKBACK_NOTE_OFFSET..]);
+    c.write_u32::<LittleEndian>(KNOCKBACK_NOTE_MAGIC).unwrap();
+    c.write_f32::<LittleEndian>(note.dir_x).unwrap();
+    c.write_f32::<LittleEndian>(note.dir_z).unwrap();
+    c.write_f32::<LittleEndian>(note.distance).unwrap();
+    c.write_u16::<LittleEndian>(note.duration_ms).unwrap();
+    c.write_u16::<LittleEndian>(0).unwrap();
+    for v in note.start {
+        c.write_f32::<LittleEndian>(v).unwrap();
+    }
+    pkt
+}
+
 /// 0x00CF MoveActorToPositionPacket — server-driven path-to.
 ///
 /// Body layout (wiki "Move Actor to Position" + pmeteor
@@ -840,12 +908,32 @@ pub fn build_player_property_init(
     // of "the id->command lookup returned nil". pmeteor ships these exact
     // bytes to the same 1.23b client without crashing.
     // (Garlemald-Server #28.)
+    const SYNTHESIZE_COMMAND: u32 = 22001;
     const STARTER_COMMANDS: [u32; 16] = [
         21001, 21001, 21002, 12004, 21005, 21006, 21007, 12009, 12010, 12005, 12007, 12011, 22012,
         22013, 29497, 22015,
     ];
     for (i, id) in STARTER_COMMANDS.iter().enumerate() {
         b.add_int(&format!("charaWork.command[{}]", i), 0xA0F0_0000 | *id);
+    }
+    // Gathering commands (Mine, Log, Fish). A point's push circle offers
+    // "Interaction Menu -> Mine", but the client only runs the harvest
+    // command when it is one of the player's commands; without these slots
+    // it answers "That command cannot be performed right now". Slot 16 is
+    // Synthesize for crafting classes, so these start at 17.
+    const GATHER_COMMANDS: [u32; 3] = [22002, 22003, 22004];
+    const GATHER_COMMAND_SLOT: usize = 17;
+    for (i, id) in GATHER_COMMANDS.iter().enumerate() {
+        b.add_int(
+            &format!("charaWork.command[{}]", GATHER_COMMAND_SLOT + i),
+            0xA0F0_0000 | *id,
+        );
+    }
+    // Crafting classes (29 Carpenter .. 36 Culinarian) get Synthesize
+    // (22001) as a ready command; the client's main menu lists it from
+    // the ready commands and opens CraftCommand with it.
+    if (29..=36).contains(&main_skill) {
+        b.add_int("charaWork.command[16]", 0xA0F0_0000 | SYNTHESIZE_COMMAND);
     }
     // Equipped hotbar — pmeteor `Player.GetInitPackets` (Player.cs:484-487)
     // pairs every populated `command[i >= 32]` with that slot's
@@ -1099,6 +1187,7 @@ pub fn build_npc_property_init(
     tp: u16,
     hate_type: u8,
     level: u16,
+    push_command: (u16, i32, u8),
 ) -> Vec<SubPacket> {
     let mut b = ActorPropertyPacketBuilder::new(actor_id, "/_init");
     // potencial=1.0 — Meteor stamps this in the Npc ctor (line 86).
@@ -1134,6 +1223,17 @@ pub fn build_npc_property_init(
     // `npcWork/hate` subpacket and re-color live (judge re-runs per
     // WorkSync, no latch).
     b.add_byte("npcWork.hateType", hate_type);
+    // Meteor `Npc.GetInitPackets` (Npc.cs:250): the push command the
+    // client offers inside the actor's push circle (Mine at a mining
+    // point). Without it the circle registers but offers nothing.
+    let (cmd, sub, priority) = push_command;
+    if cmd != 0 {
+        b.add_short("npcWork.pushCommand", cmd);
+        if sub != 0 {
+            b.add_int("npcWork.pushCommandSub", sub as u32);
+        }
+        b.add_byte("npcWork.pushCommandPriority", priority);
+    }
     b.done()
 }
 
@@ -1282,6 +1382,21 @@ pub fn build_battle_parameter(actor_id: u32, general_parameter: &[i16; 35]) -> V
     b.done()
 }
 
+/// `charaWork/battleParameter` update carrying the given
+/// `(index, value)` slots, zeros included: unequipping a piece has to
+/// send its stat back down to 0, which [`build_battle_parameter`]
+/// (non-zero slots only, for the login bundle) can't express.
+pub fn build_battle_parameter_changes(actor_id: u32, changes: &[(usize, i16)]) -> Vec<SubPacket> {
+    let mut b = ActorPropertyPacketBuilder::new(actor_id, "charaWork/battleParameter");
+    for (i, v) in changes {
+        b.add_short(
+            &format!("charaWork.battleTemp.generalParameter[{i}]"),
+            *v as u16,
+        );
+    }
+    b.done()
+}
+
 use std::io::Write as _;
 
 #[cfg(test)]
@@ -1357,13 +1472,15 @@ mod npc_property_init_tests {
     /// one. (Garlemald-Server #46, round 2.)
     #[test]
     fn init_dump_carries_the_passed_hate_type() {
-        let spawn = build_npc_property_init(0x4700_0001, 0x13, 100, 100, 50, 50, 0, 1, 1);
+        let spawn =
+            build_npc_property_init(0x4700_0001, 0x13, 100, 100, 50, 50, 0, 1, 1, (0, 0, 0));
         assert_eq!(
             find_byte_property(&spawn, "npcWork.hateType"),
             Some(1),
             "spawn-table /_init carries the passive-white 1 (all actors, hostiles too)"
         );
-        let engaged = build_npc_property_init(0x4700_0002, 0x13, 100, 100, 50, 50, 0, 2, 3);
+        let engaged =
+            build_npc_property_init(0x4700_0002, 0x13, 100, 100, 50, 50, 0, 2, 3, (0, 0, 0));
         assert_eq!(
             find_byte_property(&engaged, "npcWork.hateType"),
             Some(2),
@@ -1505,6 +1622,37 @@ mod move_actor_to_position_tests {
     /// moveState=0. Pins the +0x08 float offset: writing x at +0x00 (the
     /// pre-#28 layout) makes the client decode garbage coordinates for
     /// every NPC movement packet.
+    #[test]
+    fn knockback_warp_carries_the_note_after_the_body() {
+        let note = KnockbackNote {
+            dir_x: 0.6,
+            dir_z: -0.8,
+            distance: 4.0,
+            duration_ms: 410,
+            start: [1.0, 2.0, 3.0],
+        };
+        let pkt = build_knockback_warp(9, 0xC000_0000_u32 as i32, 3.4, 2.0, -0.2, 1.5, 0x11, &note);
+        let plain =
+            build_set_actor_position(9, 0xC000_0000_u32 as i32, 3.4, 2.0, -0.2, 1.5, 0x11, false);
+        let d = &pkt.data;
+        assert_eq!(d.len(), 0x48);
+        // Everything a client without the hook reads is the plain warp.
+        assert_eq!(plain.data.len(), KNOCKBACK_NOTE_OFFSET);
+        assert_eq!(d[..KNOCKBACK_NOTE_OFFSET], plain.data[..]);
+        let bytes = pkt.to_bytes();
+        assert_eq!(bytes.len(), 0x68);
+        assert_eq!(
+            u16::from_le_bytes([bytes[0], bytes[1]]),
+            0x68,
+            "subpacket size covers the note"
+        );
+        let f = |o: usize| f32::from_le_bytes(d[o..o + 4].try_into().unwrap());
+        assert_eq!(&d[0x28..0x2C], b"XKB1");
+        assert_eq!((f(0x2C), f(0x30), f(0x34)), (0.6, -0.8, 4.0));
+        assert_eq!(u16::from_le_bytes([d[0x38], d[0x39]]), 410);
+        assert_eq!((f(0x3C), f(0x40), f(0x44)), (1.0, 2.0, 3.0));
+    }
+
     #[test]
     fn move_actor_to_position_matches_pmeteor_capture() {
         let x = f32::from_le_bytes([0x0C, 0xA2, 0xB6, 0x43]); // 365.266

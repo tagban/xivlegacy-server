@@ -12,6 +12,9 @@ Prereq: Level 10, Any Class
 
 ]]
 
+-- Rewards (the client's reward table; EXP from its row, or the level-band estimate)
+REWARD_EXP			= 300;
+
 -- Sequence Numbers
 SEQ_000	= 0;  -- Kill Nutgrabber Marmots.
 SEQ_001	= 1;  -- Talk to Kukusi.
@@ -70,7 +73,9 @@ function onTalk(player, quest, npc, eventName)
 	elseif (seq == SEQ_001) then
 		if (npcClassId == ENPC_KUKUSI) then
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent000_2", 1);
-			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 200, 1, 1, 9);
+			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
+			player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
+			player:GetItemPackage(INVENTORY_NORMAL):AddItem(8031915, 1, 1); -- Cotton Shepherd's Tunic
             player:CompleteQuest(quest);
 		end
 	end

@@ -12,6 +12,10 @@ Prereq: Level 20, Any Class
 
 ]]
 
+-- Rewards (the client's reward table; EXP from its row, or the level-band estimate)
+REWARD_EXP			= 1280;
+REWARD_GIL			= 10000;
+
 -- Sequence Numbers
 SEQ_000	= 0;  -- Spread rumors to all, must perform /psych.
 SEQ_001	= 1;  -- Return to Dympna.
@@ -121,7 +125,10 @@ function onTalk(player, quest, npc, eventName)
 		--Quest Complete
 		if (npcClassId == DYMPNA) then
 			callClientFunction(player, "delegateEvent", player, quest, "processEventClear");
-			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 200, 1, 1, 9);
+			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
+			player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
+			player:AddGil(REWARD_GIL);
+			player:GetItemPackage(INVENTORY_NORMAL):AddItem(8080224, 1, 1); -- Padded Sheepskin Duckbills
             player:CompleteQuest(quest);
 		end
 	end

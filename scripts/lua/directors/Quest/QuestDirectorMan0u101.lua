@@ -59,7 +59,9 @@ function onEventStarted(player, actor, triggerName)
 	-- in the echo scene (QFLAG_TALK gates on GLD==4). Branch review
 	-- finding, 2026-07-09.
 	man0u1Quest:UpdateENPCs();
-	player:SendGameMessage(GetWorldMaster(), 50012, 0x20);
+	-- No 50012 "no longer bound by duty" from here: the client prints
+	-- it itself on ContentFinished (sending it too showed it twice,
+	-- client-tested 2026-11-08).
 	player:EndEvent();
 	player:GetZone():ContentFinished();
 	-- The post-match echo scene PA (Greinfarr + Niellefresne cast,

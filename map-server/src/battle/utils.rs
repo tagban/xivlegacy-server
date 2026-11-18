@@ -117,6 +117,11 @@ pub struct CombatView<'a> {
     pub level: i16,
     pub max_hp: i16,
     pub mods: &'a ModifierMap,
+    /// The share of `mods` the actor's statuses, traits and gear put there
+    /// ([`crate::actor::Character::bonus_mod_totals`]). Accuracy, evasion
+    /// and potency count only this share, so stat baselines (which
+    /// monsters don't have) keep the tuned rates.
+    pub status: &'a ModifierMap,
     pub has_aegis_boon: bool,
     pub has_protect: bool,
     pub has_shell: bool,
@@ -127,6 +132,82 @@ impl CombatView<'_> {
     pub fn get_mod(&self, m: Modifier) -> f64 {
         self.mods.get(m)
     }
+
+    /// How much the actor's status effects moved `m`.
+    pub fn status_delta(&self, m: Modifier) -> f64 {
+        self.status.get(m)
+    }
+}
+
+/// An empty status share, for views of actors with no effects.
+pub fn no_status() -> &'static ModifierMap {
+    static EMPTY: std::sync::LazyLock<ModifierMap> = std::sync::LazyLock::new(ModifierMap::new);
+    &EMPTY
+}
+
+/// Hit rate per point of Accuracy (attacker) or Evasion (defender) a status
+/// adds or takes away: Blind's 50 at level 50 costs 25%, Minuet's 35 adds
+/// 17.5%.
+pub const HIT_RATE_PER_ACCURACY: f64 = 0.5;
+
+/// Resist rate per point of MagicEvasion (defender) or MagicAccuracy
+/// (caster) a status moves: Stone's Magic Evasion Down (50) takes 12.5% off
+/// the 15% base.
+pub const RESIST_RATE_PER_MAGIC_ACCURACY: f64 = 0.25;
+
+/// How much a potency modifier scales a spell. `effects` is the share the
+/// actor's status effects alone put on (`Character::status_mod_totals`).
+/// Cleric Stance multiplies AttackMagicPotency by 1.2 and
+/// HealingMagicPotency by 0.8, so the ratio to the value without effects is
+/// exactly that; an actor with no potency of its own (a monster) takes 1% per
+/// point instead. Gear and traits add a flat 1% per point: the level 8
+/// thaumaturge trait's +8 over an INT-derived 7 used to double every spell.
+pub fn potency_scale(view: &CombatView<'_>, m: Modifier, effects: &ModifierMap) -> f64 {
+    let now = view.get_mod(m);
+    let from_effects = effects.get(m);
+    let from_gear_and_traits = view.status_delta(m) - from_effects;
+    let by_effects = if from_effects == 0.0 {
+        1.0
+    } else if now - from_effects > 0.0 {
+        now / (now - from_effects)
+    } else {
+        1.0 + from_effects / 100.0
+    };
+    (by_effects * (1.0 + from_gear_and_traits / 100.0)).clamp(0.25, 4.0)
+}
+
+/// Scale a damage spell by AttackMagicPotency or a heal by
+/// HealingMagicPotency (see [`potency_scale`]).
+pub fn apply_magic_potency(
+    caster: &CombatView<'_>,
+    action_type: ActionType,
+    amount: u16,
+    effects: &ModifierMap,
+) -> u16 {
+    let m = match action_type {
+        ActionType::Magic => Modifier::AttackMagicPotency,
+        ActionType::Heal => Modifier::HealingMagicPotency,
+        _ => return amount,
+    };
+    let scale = potency_scale(caster, m, effects);
+    if scale == 1.0 {
+        return amount;
+    }
+    (f64::from(amount) * scale).round().clamp(1.0, 9999.0) as u16
+}
+
+/// The defender's resistance to an elemental action, if it has an element.
+pub fn elemental_resistance(defender: &CombatView<'_>, property: ActionProperty) -> f64 {
+    let m = match property {
+        ActionProperty::Fire => Modifier::FireResistance,
+        ActionProperty::Ice => Modifier::IceResistance,
+        ActionProperty::Wind => Modifier::WindResistance,
+        ActionProperty::Earth => Modifier::EarthResistance,
+        ActionProperty::Lightning => Modifier::LightningResistance,
+        ActionProperty::Water => Modifier::WaterResistance,
+        _ => return 0.0,
+    };
+    defender.get_mod(m)
 }
 
 /// Random source abstraction. The real game loop uses `rand::thread_rng`
@@ -198,8 +279,14 @@ pub fn calculate_spell_damage_taken(
 ) {
     let dlvl = defender.level - attacker.level;
     let dmg_down = 1.0 - defender.get_mod(Modifier::DamageTakenDown) / 100.0;
+    // An element's resistance is magic defense against that element
+    // (Protect II adds 6.67 per point of potency to all six), mitigated
+    // like Defense. Negative resistance adds damage.
+    let resistance = elemental_resistance(defender, action.action_property);
     let mitigation = calculate_dlvl_modifier(dlvl)
-        * (defender.get_mod(Modifier::Defense) + 0.67 * defender.get_mod(Modifier::Vitality));
+        * (defender.get_mod(Modifier::Defense)
+            + 0.67 * defender.get_mod(Modifier::Vitality)
+            + resistance);
     let pre = (action.amount as f64 - mitigation).max(0.0);
     action.amount = clamp_damage(pre);
     action.amount = clamp_damage(action.amount as f64 * dmg_down);
@@ -242,9 +329,13 @@ pub fn calculate_resist_damage(action: &mut CommandResult) {
         HitType::FullResist => 4,
         _ => 0,
     } as f64;
+    // `percent_resist` is the share the defender shrugs off: a single
+    // resist keeps 75% of the damage, a full resist none. (This used to
+    // keep `percent_resist` itself, so a single resist dealt 25% and a
+    // full resist 100%.)
     let percent_resist = 0.25 * tier;
-    action.amount_mitigated = clamp_damage(action.amount as f64 * (1.0 - percent_resist));
-    action.amount = clamp_damage(action.amount as f64 * percent_resist);
+    action.amount_mitigated = clamp_damage(action.amount as f64 * percent_resist);
+    action.amount = clamp_damage(action.amount as f64 * (1.0 - percent_resist));
 }
 
 /// Stoneskin absorbs damage from `action.amount` and subtracts the absorbed
@@ -254,6 +345,43 @@ pub fn handle_stoneskin(defender_mods: &mut ModifierMap, action: &mut CommandRes
     let mitigation = (action.amount as f64).min(stoneskin);
     action.amount = clamp_damage(action.amount as f64 - mitigation);
     defender_mods.subtract(Modifier::Stoneskin, mitigation);
+}
+
+/// An aspected attacker (`Modifier::Aspect`, Man2g0's Spirit of the Wood)
+/// deals damage of its current element, whatever the move's own property.
+pub fn apply_aspect(attacker: &CombatView<'_>, action: &mut CommandResult) {
+    let aspect = attacker.get_mod(Modifier::Aspect);
+    if aspect > 0.0 && ward_for(ActionProperty::from_u16(aspect as u16)).is_some() {
+        action.action_property = ActionProperty::from_u16(aspect as u16);
+    }
+}
+
+/// The ward modifier that blocks an element, if it is one.
+pub fn ward_for(property: ActionProperty) -> Option<Modifier> {
+    Some(match property {
+        ActionProperty::Fire => Modifier::FireWard,
+        ActionProperty::Ice => Modifier::IceWard,
+        ActionProperty::Wind => Modifier::WindWard,
+        ActionProperty::Earth => Modifier::EarthWard,
+        ActionProperty::Lightning => Modifier::LightningWard,
+        ActionProperty::Water => Modifier::WaterWard,
+        _ => return None,
+    })
+}
+
+/// A ward absorbs damage of its element from `action.amount` and loses
+/// what it absorbed; at 0 it is destroyed. Other elements pass through.
+pub fn handle_ward(defender_mods: &mut ModifierMap, action: &mut CommandResult) {
+    let Some(ward) = ward_for(action.action_property) else {
+        return;
+    };
+    let pool = defender_mods.get(ward);
+    if pool <= 0.0 {
+        return;
+    }
+    let mitigation = (action.amount as f64).min(pool);
+    action.amount = clamp_damage(action.amount as f64 - mitigation);
+    defender_mods.subtract(ward, mitigation);
 }
 
 // ---------------------------------------------------------------------------
@@ -266,11 +394,21 @@ pub fn get_hit_rate(
     skill: Option<&BattleCommand>,
 ) -> f64 {
     let mut hit_rate = 80.0;
+    // pmeteor uses a flat 80% whatever the levels, so a level 50 missed a
+    // level 3 one swing in five and a level 10 hit a level 50 as often.
+    // Each level of difference moves it 2%, between 20% and 95%.
+    let dlvl = f64::from(attacker.level) - f64::from(defender.level);
+    hit_rate += (2.0 * dlvl).clamp(-60.0, 15.0);
     let hit_buff = attacker.get_mod(Modifier::RawHitRate);
     let evade_buff = defender.get_mod(Modifier::RawEvadeRate);
     let accuracy_modifier = skill.map(|s| s.accuracy_modifier).unwrap_or(0.0) as f64;
-    hit_rate += (hit_buff + accuracy_modifier).clamp(0.0, 100.0);
+    // Negative buffs (accuracy downs) count too.
+    hit_rate += (hit_buff + accuracy_modifier).clamp(-100.0, 100.0);
     hit_rate -= evade_buff;
+    // Statuses that move Accuracy or Evasion (Blind, Glare, Hawk's Eye,
+    // Minuet of Rigor) shift the rate on top of the level gap.
+    hit_rate += HIT_RATE_PER_ACCURACY
+        * (attacker.status_delta(Modifier::Accuracy) - defender.status_delta(Modifier::Evasion));
     hit_rate.clamp(0.0, 100.0)
 }
 
@@ -297,7 +435,19 @@ pub fn get_crit_rate(
     crit + attacker.get_mod(Modifier::RawCritRate)
 }
 
-pub fn get_resist_rate(defender: &CombatView<'_>, action: &CommandResult) -> f64 {
+/// How far statuses move a spell's resist chance, in percent: up with the
+/// target's MagicEvasion, down with the caster's MagicAccuracy.
+pub fn magic_resist_shift(attacker: &CombatView<'_>, defender: &CombatView<'_>) -> f64 {
+    RESIST_RATE_PER_MAGIC_ACCURACY
+        * (defender.status_delta(Modifier::MagicEvasion)
+            - attacker.status_delta(Modifier::MagicAccuracy))
+}
+
+pub fn get_resist_rate(
+    attacker: &CombatView<'_>,
+    defender: &CombatView<'_>,
+    action: &CommandResult,
+) -> f64 {
     let is_spell = action.command_type == CommandType::SPELL;
     let is_ele = matches!(
         action.action_property,
@@ -313,7 +463,8 @@ pub fn get_resist_rate(defender: &CombatView<'_>, action: &CommandResult) -> f64
     if !is_spell && !is_ele {
         return 0.0;
     }
-    15.0 + defender.get_mod(Modifier::RawResistRate)
+    (15.0 + defender.get_mod(Modifier::RawResistRate) + magic_resist_shift(attacker, defender))
+        .clamp(0.0, 100.0)
 }
 
 pub fn get_block_rate(
@@ -343,8 +494,11 @@ pub fn try_miss(
     action: &mut CommandResult,
     rng: &mut dyn Rng,
 ) -> bool {
+    // `calc_rates` filled the rate; status hooks may have moved it since
+    // (Paralysis, Presence of Mind), so roll against what's on the action.
+    let _ = (attacker, defender, skill);
     let roll = rng.next_f64() * 100.0;
-    if roll >= get_hit_rate(attacker, defender, skill) {
+    if roll >= action.hit_rate {
         action.hit_type = HitType::Miss;
         action.amount_mitigated = action.amount;
         action.amount = 0;
@@ -423,7 +577,7 @@ pub fn calc_rates(
     action.crit_rate = get_crit_rate(attacker, action, skill);
     action.block_rate = get_block_rate(attacker, defender, action);
     action.parry_rate = get_parry_rate(defender, action);
-    action.resist_rate = get_resist_rate(defender, action);
+    action.resist_rate = get_resist_rate(attacker, defender, action);
 }
 
 // ---------------------------------------------------------------------------
@@ -441,10 +595,10 @@ pub fn set_hit_effect_physical(
         effect |= HitEffect::CRITICAL_HIT;
     } else {
         let percent_dealt = 100.0 * action.amount as f64 / defender.max_hp.max(1) as f64;
-        if percent_dealt > 5.0 {
-            effect |= HitEffect::RECOIL_LV2;
-        } else if percent_dealt > 10.0 {
+        if percent_dealt > 10.0 {
             effect |= HitEffect::RECOIL_LV3;
+        } else if percent_dealt > 5.0 {
+            effect |= HitEffect::RECOIL_LV2;
         }
     }
 
@@ -536,8 +690,10 @@ pub fn finish_action_physical(
     results: &mut CommandResultContainer,
     rng: &mut dyn Rng,
 ) -> Option<DamageRequest> {
+    apply_aspect(attacker, action);
     if !try_miss(attacker, defender, skill.as_deref(), action, rng) {
         handle_stoneskin(defender_mods, action);
+        handle_ward(defender_mods, action);
 
         if !try_crit(attacker, defender, skill.as_deref(), action, rng)
             && !try_block(defender, action, rng)
@@ -549,9 +705,10 @@ pub fn finish_action_physical(
 
     let multi_hit = matches!(skill.as_deref(), Some(s) if s.num_hits > 1);
     if multi_hit && action.hit_num == 1 {
-        // Add the "You use [command] on [target]" preamble.
+        // Add the "You use [command] on [target]" preamble. The row's
+        // target is the [target] in that text (the attacker read "on you").
         results.add_action(CommandResult {
-            target_actor_id: attacker.actor_id,
+            target_actor_id: defender.actor_id,
             world_master_text_id: 30441,
             effect_id: 0,
             hit_num: 1,
@@ -569,7 +726,8 @@ pub fn finish_action_physical(
     calculate_physical_damage_taken(attacker, defender, action);
 
     let enmity_mod = skill.as_deref().map(|s| s.enmity_modifier).unwrap_or(1.0) as f64;
-    action.enmity = ((action.enmity as f64) * enmity_mod).min(u16::MAX as f64) as u16;
+    action.enmity =
+        ((action.enmity as f64) * enmity_mod * enmity_scale(attacker)).min(u16::MAX as f64) as u16;
 
     let request = if defender.actor_id == 0 {
         None
@@ -585,6 +743,12 @@ pub fn finish_action_physical(
     request
 }
 
+/// The attacker's `Enmity` modifier as a percent on the enmity it makes
+/// (Maddening Potion +100, Nerve Drops -80, gear "Enmity -20").
+pub fn enmity_scale(attacker: &CombatView<'_>) -> f64 {
+    (1.0 + attacker.get_mod(Modifier::Enmity) / 100.0).max(0.0)
+}
+
 pub fn finish_action_spell(
     attacker: &CombatView<'_>,
     defender: &CombatView<'_>,
@@ -597,7 +761,9 @@ pub fn finish_action_spell(
     // C# calls HandleStoneskin twice — once pre-resist, once post. We
     // preserve the double-apply because the second hit will be a no-op
     // if the first consumed the pool.
+    apply_aspect(attacker, action);
     handle_stoneskin(defender_mods, action);
+    handle_ward(defender_mods, action);
 
     if !try_resist(action, rng) && !try_crit(attacker, defender, skill.as_deref(), action, rng) {
         action.hit_type = HitType::Hit;
@@ -608,6 +774,7 @@ pub fn finish_action_spell(
 
     handle_stoneskin(defender_mods, action);
     calculate_spell_damage_taken(attacker, defender, action);
+    action.enmity = ((action.enmity as f64) * enmity_scale(attacker)).min(u16::MAX as f64) as u16;
 
     results.add_action(action.clone());
     if defender.actor_id == 0 {
@@ -637,7 +804,13 @@ pub fn finish_action_heal(
 
 /// Try to apply a status as a side effect of a command. Returns `true` if
 /// the status should be added by the caller — we just report the roll.
-pub fn try_status(action: &CommandResult, skill: &BattleCommand, rng: &mut dyn Rng) -> bool {
+pub fn try_status(
+    attacker: &CombatView<'_>,
+    defender: &CombatView<'_>,
+    action: &CommandResult,
+    skill: &BattleCommand,
+    rng: &mut dyn Rng,
+) -> bool {
     if skill.status_id == 0 {
         return false;
     }
@@ -646,7 +819,14 @@ pub fn try_status(action: &CommandResult, skill: &BattleCommand, rng: &mut dyn R
     }
     // C# compares NextDouble() (0..1) to statusChance directly — values above
     // 1.0 are effectively "always lands". Match that.
-    rng.next_f64() < skill.status_chance as f64
+    let mut chance = skill.status_chance as f64;
+    // A spell's ailment lands more often on a target with its magic evasion
+    // lowered (Stone) and from a caster with Minuet. Only chances below
+    // "always" move, so trait-unlocked statuses (chance 0) stay off.
+    if skill.command_type == CommandType::SPELL && chance > 0.0 && chance < 1.0 {
+        chance = (chance - magic_resist_shift(attacker, defender) / 100.0).clamp(0.0, 1.0);
+    }
+    rng.next_f64() < chance
 }
 
 pub fn finish_action_status(
@@ -708,13 +888,78 @@ pub fn hit_dir_to_position(dir: HitDirection) -> super::command::BattleCommandPo
 // clear typo for `* 0.08`. We use the corrected 0.96..=1.04 range.
 // ---------------------------------------------------------------------------
 
+/// The share of `WeaponDamagePower + 0.85 × STR + Attack` a physical hit
+/// deals, fitted to retail 1.23b captures: a level 27 gladiator's swing on a
+/// level 30 monster did 18-23 and a level 26 marauder's 42-53, where the
+/// unscaled sum (with the monster's Defense) gave about 3x that. Monster
+/// melee stats ([`monster_melee_stats`]) are sized against it.
+pub const PHYSICAL_DAMAGE_SCALE: f64 = 0.4;
+
+/// How much [`PHYSICAL_DAMAGE_SCALE`] grows per level above 30. Retail
+/// monster HP rises about 4.4x from level 30 to 50 (723 to ~3200) and a
+/// level 50 pugilist's swing was 106-296 (median 165, war_quest_update2
+/// capture), but the placeholder stat curve only doubles a hit over those
+/// levels: without this a level 50 swing took 2-4% of a same-level monster.
+pub const PHYSICAL_SCALE_PER_LEVEL_OVER_30: f64 = 0.02;
+
+/// The physical scale at an attacker's level: 0.4 to level 30, then +2% a
+/// level (x1.4 at 50).
+pub fn physical_damage_scale(level: i16) -> f64 {
+    let over = f64::from((level - 30).max(0));
+    PHYSICAL_DAMAGE_SCALE * (1.0 + PHYSICAL_SCALE_PER_LEVEL_OVER_30 * over)
+}
+
 pub fn attack_calculate_base_damage(attacker: &CombatView<'_>, rng: &mut dyn Rng) -> i32 {
     let str_v = attacker.get_mod(Modifier::Strength);
     let attack_v = attacker.get_mod(Modifier::Attack);
     let weapon_dmg = attacker.get_mod(Modifier::WeaponDamagePower);
-    let base = weapon_dmg + 0.85 * str_v + attack_v;
+    let base = (weapon_dmg + 0.85 * str_v + attack_v) * physical_damage_scale(attacker.level);
     let dev = 0.96 + rng.next_f64() * 0.08;
     ((base * dev).round() as i32).clamp(1, 9999)
+}
+
+/// How much a status that adds auto-attack hits (Spinning Heel: fists 2 -> 3)
+/// grows one swing. `total_hits` is the actor's HitCount and `bonus_hits`
+/// the share statuses/gear put on top of the weapon's own count. The swing
+/// is balanced per weapon, so the weapon's own hits are 1.0 and every extra
+/// hit adds its share: 3 of 2 = 1.5.
+pub fn auto_attack_hit_multiplier(total_hits: f64, bonus_hits: f64) -> f64 {
+    let total = total_hits.max(1.0);
+    let base = (total - bonus_hits).max(1.0);
+    (total / base).max(1.0)
+}
+
+/// A player's max HP before gear, fitted to retail 1.23b captures: 126 at
+/// level 3, 148 at 5, 758 at 26 and 750 at 27 (2634 at 50 with gear).
+pub fn player_base_hp(level: i16) -> f64 {
+    let l = f64::from(level.max(1));
+    (110.0 + 3.5 * l + 0.82 * l * l).round()
+}
+
+/// What a monster's melee swing should deal to a same-level player before
+/// Defense: about 7% of that player's HP (retail: a level 30 monster hit a
+/// level 27 gladiator with 750 HP for 56-63), plus what the player's own
+/// Defense takes off at the same level.
+pub fn monster_melee_power(level: i16) -> f64 {
+    let l = f64::from(level.max(1));
+    0.07 * player_base_hp(level) + 1.5 + 0.3 * l
+}
+
+/// Fallback melee stats for a monster with none of its own: WeaponDamagePower,
+/// Strength, Attack and Defense. The first three split
+/// [`monster_melee_power`] a quarter, a half and a quarter (after
+/// [`physical_damage_scale`]), so its weaponskills, which scale off its own
+/// hit, keep their size. Defense equals the level: with the full level
+/// modifier a level 30 monster takes about 30 off a level 27 player's hit,
+/// which brings the gladiator's 47 down to the retail 18-23.
+pub fn monster_melee_stats(level: i16) -> [(Modifier, f64); 4] {
+    let t = monster_melee_power(level) / physical_damage_scale(level.max(1));
+    [
+        (Modifier::WeaponDamagePower, (0.25 * t).round()),
+        (Modifier::Strength, (0.5 * t / 0.85).round()),
+        (Modifier::Attack, (0.25 * t).round()),
+        (Modifier::Defense, f64::from(level.max(1))),
+    ]
 }
 
 pub fn attack_calculate_damage(
@@ -723,6 +968,79 @@ pub fn attack_calculate_damage(
     rng: &mut dyn Rng,
 ) -> i32 {
     attack_calculate_base_damage(attacker, rng)
+}
+
+// ---------------------------------------------------------------------------
+// Skill power (seed 291).
+//
+// Stat-scaled skills (spells, cures, a few abilities) carry a 1.x potency
+// (1000 = 1.0x) and up to two stats with weights:
+//
+//     amount = potency / 1000 * (4 * level + 20 + mod1 * stat1 + mod2 * stat2)
+//
+// The level term is fitted to retail captures: a level 26-27 Cure (1000,
+// MND x 0.2) healed 151-166 and Second Wind (1550, INT x 0.5) about 205.
+// Physical skills deal a multiple of the user's own auto-attack hit, fitted
+// per skill from the same captures (Fast Blade 3.1x for a gladiator, Heavy
+// Swing 1.8x for a marauder); skills with no capture use 2.5x. Both get the
+// usual +-4% swing and then the defender's mitigation.
+// ---------------------------------------------------------------------------
+
+/// Default weapon-skill multiplier for physical skills with no fitted value.
+pub const DEFAULT_PHYSICAL_SKILL_MULTIPLIER: f64 = 2.5;
+
+fn stat_modifier(stat: i8) -> Option<Modifier> {
+    Some(match stat {
+        1 => Modifier::Strength,
+        2 => Modifier::Vitality,
+        3 => Modifier::Dexterity,
+        4 => Modifier::Intelligence,
+        5 => Modifier::Mind,
+        6 => Modifier::Piety,
+        _ => return None,
+    })
+}
+
+/// The level part of a stat-scaled skill's power.
+pub fn skill_level_base(level: i16) -> f64 {
+    4.0 * f64::from(level.max(1)) + 20.0
+}
+
+/// The pre-mitigation amount of a damage or healing skill, or `None` when
+/// the skill has no power data (callers then keep `base_potency`).
+pub fn skill_amount(
+    attacker: &CombatView<'_>,
+    skill: &BattleCommand,
+    rng: &mut dyn Rng,
+) -> Option<u16> {
+    let dev = 0.96 + rng.next_f64() * 0.08;
+    if skill.magic_potency > 0 {
+        let mut base = skill_level_base(attacker.level);
+        for (stat, weight) in [
+            (skill.main_stat, skill.main_stat_mod),
+            (skill.second_stat, skill.second_stat_mod),
+        ] {
+            if let Some(m) = stat_modifier(stat) {
+                base += f64::from(weight) * attacker.get_mod(m);
+            }
+        }
+        let amount = f64::from(skill.magic_potency) / 1000.0 * base * dev;
+        return Some(amount.round().clamp(1.0, 9999.0) as u16);
+    }
+    // A magic move with no magic potency but a damage multiplier (the
+    // monster moves) scales off the user's own hit like a physical one;
+    // magic defense, not physical, still mitigates it.
+    let magic_by_hit = skill.action_type == ActionType::Magic && skill.damage_multiplier > 0.0;
+    if skill.action_type == ActionType::Physical || magic_by_hit {
+        let mult = if skill.damage_multiplier > 0.0 {
+            f64::from(skill.damage_multiplier)
+        } else {
+            DEFAULT_PHYSICAL_SKILL_MULTIPLIER
+        };
+        let hit = f64::from(attack_calculate_base_damage(attacker, rng));
+        return Some((hit * mult).round().clamp(1.0, 9999.0) as u16);
+    }
+    None
 }
 
 // ---------------------------------------------------------------------------
@@ -807,11 +1125,34 @@ mod tests {
             level,
             max_hp,
             mods,
+            status: no_status(),
             has_aegis_boon: false,
             has_protect: false,
             has_shell: false,
             has_stoneskin: false,
         }
+    }
+
+    #[test]
+    fn hit_rate_follows_the_level_gap() {
+        let m = zero_mods();
+        let rate = |a: i16, d: i16| {
+            get_hit_rate(&stub_view(a, 100, &m, 1), &stub_view(d, 100, &m, 2), None)
+        };
+        assert_eq!(rate(20, 20), 80.0);
+        assert_eq!(rate(22, 20), 84.0);
+        assert_eq!(rate(50, 3), 95.0);
+        assert_eq!(rate(10, 50), 20.0);
+        let mut blind = zero_mods();
+        blind.set(Modifier::RawHitRate, -30.0);
+        assert_eq!(
+            get_hit_rate(
+                &stub_view(20, 100, &blind, 1),
+                &stub_view(20, 100, &m, 2),
+                None
+            ),
+            50.0
+        );
     }
 
     #[test]
@@ -868,6 +1209,7 @@ mod tests {
         let def = stub_view(10, 2000, &mods, 2);
         let mut action = CommandResult::for_target(2, 0, 0);
         action.amount = 100;
+        calc_rates(&atk, &def, None, &mut action);
 
         let mut rng = FixedRng::new(&[0.99]); // guaranteed miss (99 >= 80)
         let missed = try_miss(&atk, &def, None, &mut action, &mut rng);
@@ -881,6 +1223,11 @@ mod tests {
         let missed = try_miss(&atk, &def, None, &mut action, &mut rng);
         assert!(!missed);
         assert_eq!(action.amount, 100);
+
+        // A hook that took the rate to 0 (Paralysis) makes it a miss.
+        action.hit_rate = 0.0;
+        let mut rng = FixedRng::new(&[0.0]);
+        assert!(try_miss(&atk, &def, None, &mut action, &mut rng));
     }
 
     #[test]
@@ -892,6 +1239,19 @@ mod tests {
         // 50% resist -> 500 mitigated, 500 damage.
         assert_eq!(action.amount, 500);
         assert_eq!(action.amount_mitigated, 500);
+
+        // Single resist keeps 75%, full resist keeps nothing.
+        let mut single = CommandResult::for_target(1, 0, 0);
+        single.amount = 1000;
+        single.hit_type = HitType::SingleResist;
+        calculate_resist_damage(&mut single);
+        assert_eq!(single.amount, 750);
+        assert_eq!(single.amount_mitigated, 250);
+        let mut full = CommandResult::for_target(1, 0, 0);
+        full.amount = 1000;
+        full.hit_type = HitType::FullResist;
+        calculate_resist_damage(&mut full);
+        assert_eq!(full.amount, 0);
     }
 
     #[test]
@@ -946,14 +1306,14 @@ mod tests {
     fn base_damage_scales_with_str_and_weapon_power() {
         // Minimum-deviation point (rng = 0.0 → dev = 0.96) so the math
         // is deterministic. Weapon power 20 + STR 30 + Attack 10 →
-        // base = 20 + 0.85*30 + 10 = 55.5, × 0.96 = 53.28, rounds to 53.
+        // (20 + 0.85*30 + 10) × 0.4 = 22.2, × 0.96 = 21.31, rounds to 21.
         let mut mods = ModifierMap::default();
         mods.set(Modifier::Strength, 30.0);
         mods.set(Modifier::Attack, 10.0);
         mods.set(Modifier::WeaponDamagePower, 20.0);
         let atk = stub_view(10, 1000, &mods, 1);
         let mut rng = FixedRng::new(&[0.0]);
-        assert_eq!(attack_calculate_base_damage(&atk, &mut rng), 53);
+        assert_eq!(attack_calculate_base_damage(&atk, &mut rng), 21);
     }
 
     #[test]
@@ -962,18 +1322,18 @@ mod tests {
         // bracket the center value. Catches a drift if someone
         // "restores" Meteor's 800% typo.
         let mut mods = ModifierMap::default();
-        mods.set(Modifier::Strength, 100.0);
+        mods.set(Modifier::Strength, 400.0);
         let atk = stub_view(10, 1000, &mods, 1);
 
-        // rng = 0.0 → dev = 0.96 → 85.0 * 0.96 = 81.6 → 82
+        // rng = 0.0 → dev = 0.96 → 340 × 0.4 = 136 → 130.56 → 131
         let mut rng_lo = FixedRng::new(&[0.0]);
         let low = attack_calculate_base_damage(&atk, &mut rng_lo);
 
-        // rng = 0.9999 → dev ≈ 1.04 → 85.0 * 1.04 ≈ 88.4 → 88
+        // rng = 0.9999 → dev ≈ 1.04 → 136 × 1.04 ≈ 141.4 → 141
         let mut rng_hi = FixedRng::new(&[0.9999]);
         let high = attack_calculate_base_damage(&atk, &mut rng_hi);
 
-        let center = 85.0f64; // 0.85 * 100.0
+        let center = 136.0f64; // 0.85 * 400.0 * PHYSICAL_DAMAGE_SCALE
         assert!(
             (low as f64) < center && (high as f64) > center,
             "expected {center} to be inside (low={low}, high={high})"
@@ -996,5 +1356,392 @@ mod tests {
         let atk = stub_view(10, 1000, &mods, 1);
         let mut rng = FixedRng::new(&[0.5]);
         assert_eq!(attack_calculate_base_damage(&atk, &mut rng), 9999);
+    }
+
+    #[test]
+    fn cure_heals_like_retail_at_level_27() {
+        // Retail: a level 26-27 conjurer's Cure healed 151-166. Potency
+        // 1000, MND x 0.2; MND 70 is the server baseline at 27 plus a
+        // little gear. dev 1.0 (rng 0.5): 1.0 * (128 + 14) = 142.
+        let mut mods = ModifierMap::default();
+        mods.set(Modifier::Mind, 70.0);
+        let caster = stub_view(27, 1000, &mods, 1);
+        let mut cure = BattleCommand::new(27346, "cure");
+        cure.action_type = ActionType::Heal;
+        cure.magic_potency = 1000;
+        cure.main_stat = 5;
+        cure.main_stat_mod = 0.2;
+        let mut rng = FixedRng::new(&[0.5]);
+        assert_eq!(skill_amount(&caster, &cure, &mut rng), Some(142));
+    }
+
+    #[test]
+    fn spells_scale_with_potency_and_level() {
+        let mut mods = ModifierMap::default();
+        mods.set(Modifier::Intelligence, 12.0);
+        let lv1 = stub_view(1, 300, &mods, 1);
+        let mut thunder = BattleCommand::new(27313, "thunder");
+        thunder.action_type = ActionType::Magic;
+        thunder.magic_potency = 1050;
+        thunder.main_stat = 4;
+        thunder.main_stat_mod = 0.5;
+        // 1.05 * (24 + 6) = 31.5 -> 32 at level 1
+        assert_eq!(
+            skill_amount(&lv1, &thunder, &mut FixedRng::new(&[0.5])),
+            Some(32)
+        );
+        let mut firaga = thunder.clone();
+        firaga.magic_potency = 1600;
+        firaga.main_stat_mod = 1.5;
+        mods.set(Modifier::Intelligence, 110.0);
+        let lv50 = stub_view(50, 3000, &mods, 1);
+        // 1.6 * (220 + 165) = 616
+        assert_eq!(
+            skill_amount(&lv50, &firaga, &mut FixedRng::new(&[0.5])),
+            Some(616)
+        );
+    }
+
+    #[test]
+    fn physical_scale_grows_past_level_30() {
+        assert_eq!(physical_damage_scale(1), 0.4);
+        assert_eq!(physical_damage_scale(30), 0.4);
+        assert!((physical_damage_scale(50) - 0.56).abs() < 1e-9);
+        // Monster stats divide the scale back out: a level 50 monster's
+        // hit stays at its melee power.
+        let mut mods = ModifierMap::default();
+        for (m, v) in monster_melee_stats(50) {
+            mods.set(m, v);
+        }
+        let mob = stub_view(50, 1000, &mods, 2);
+        let hit = attack_calculate_base_damage(&mob, &mut FixedRng::new(&[0.5]));
+        assert!(
+            (f64::from(hit) - monster_melee_power(50)).abs() <= 2.0,
+            "{hit}"
+        );
+    }
+
+    #[test]
+    fn extra_auto_attack_hits_grow_the_swing() {
+        // Fists hit twice; Spinning Heel adds one: 1.5x.
+        assert!((auto_attack_hit_multiplier(3.0, 1.0) - 1.5).abs() < 1e-9);
+        // The weapon's own hits are the balanced swing.
+        assert_eq!(auto_attack_hit_multiplier(2.0, 0.0), 1.0);
+        assert_eq!(auto_attack_hit_multiplier(1.0, 0.0), 1.0);
+        // Bad data never shrinks or zeroes a swing.
+        assert_eq!(auto_attack_hit_multiplier(0.0, 0.0), 1.0);
+        assert_eq!(auto_attack_hit_multiplier(1.0, 2.0), 1.0);
+    }
+
+    #[test]
+    fn physical_skills_multiply_the_auto_attack_hit() {
+        let mut mods = ModifierMap::default();
+        mods.set(Modifier::Strength, 40.0);
+        let atk = stub_view(27, 1000, &mods, 1);
+        let mut fast_blade = BattleCommand::new(27150, "fast_blade");
+        fast_blade.action_type = ActionType::Physical;
+        fast_blade.damage_multiplier = 3.1;
+        // auto-attack hit at dev 1.0: 0.85 * 40 * 0.4 = 13.6 -> 14; x 3.1 = 43.4
+        let mut rng = FixedRng::new(&[0.5, 0.5]);
+        assert_eq!(skill_amount(&atk, &fast_blade, &mut rng), Some(43));
+        fast_blade.damage_multiplier = 0.0;
+        let mut rng = FixedRng::new(&[0.5, 0.5]);
+        assert_eq!(skill_amount(&atk, &fast_blade, &mut rng), Some(35));
+    }
+
+    #[test]
+    fn skills_without_power_data_keep_base_potency() {
+        let mods = ModifierMap::default();
+        let atk = stub_view(10, 1000, &mods, 1);
+        let mut provoke = BattleCommand::new(27151, "provoke");
+        provoke.action_type = ActionType::Status;
+        assert_eq!(
+            skill_amount(&atk, &provoke, &mut FixedRng::new(&[0.5])),
+            None
+        );
+    }
+
+    #[test]
+    fn magic_monster_moves_scale_off_the_users_hit() {
+        let mods = with(&[(Modifier::Strength, 120.0), (Modifier::Attack, 60.0)]);
+        let goblin = stub_view(52, 3000, &mods, 1);
+        let mut toss = BattleCommand::new(23311, "bomb_toss");
+        toss.action_type = ActionType::Magic;
+        toss.base_potency = 100;
+        // no multiplier: no power data, the caller keeps base_potency
+        assert_eq!(
+            skill_amount(&goblin, &toss, &mut FixedRng::new(&[0.5])),
+            None
+        );
+        toss.damage_multiplier = 2.5;
+        let mut swipe = toss.clone();
+        swipe.action_type = ActionType::Physical;
+        let rolls = [0.5, 0.5, 0.5, 0.5];
+        let magic = skill_amount(&goblin, &toss, &mut FixedRng::new(&rolls)).unwrap();
+        let physical = skill_amount(&goblin, &swipe, &mut FixedRng::new(&rolls)).unwrap();
+        assert_eq!(magic, physical);
+        assert!(
+            magic > 100,
+            "a level 52 move must beat the flat 100: {magic}"
+        );
+    }
+
+    /// `stub_view` with a status share: `mods` already includes it, as on a
+    /// live Character.
+    fn status_view<'a>(
+        level: i16,
+        mods: &'a ModifierMap,
+        status: &'a ModifierMap,
+        actor_id: u32,
+    ) -> CombatView<'a> {
+        CombatView {
+            status,
+            ..stub_view(level, 1000, mods, actor_id)
+        }
+    }
+
+    fn with(pairs: &[(Modifier, f64)]) -> ModifierMap {
+        let mut m = ModifierMap::default();
+        for &(k, v) in pairs {
+            m.set(k, v);
+        }
+        m
+    }
+
+    #[test]
+    fn accuracy_and_evasion_statuses_move_the_hit_rate() {
+        let none = zero_mods();
+        // A level 50 with 66 accuracy from DEX: gear and stat accuracy don't
+        // move the tuned rate, only what statuses add.
+        let base = with(&[(Modifier::Accuracy, 66.0)]);
+        let plain = get_hit_rate(
+            &status_view(50, &base, &none, 1),
+            &stub_view(50, 100, &none, 2),
+            None,
+        );
+        assert_eq!(plain, 80.0);
+        // Minuet of Rigor at 50: +35 accuracy, +17.5%.
+        let minuet = with(&[(Modifier::Accuracy, 35.0)]);
+        let buffed = with(&[(Modifier::Accuracy, 101.0)]);
+        assert_eq!(
+            get_hit_rate(
+                &status_view(50, &buffed, &minuet, 1),
+                &stub_view(50, 100, &none, 2),
+                None
+            ),
+            97.5
+        );
+        // Blind on a monster with no accuracy of its own: -50, 25% less.
+        let blind = with(&[(Modifier::Accuracy, -50.0)]);
+        assert_eq!(
+            get_hit_rate(
+                &status_view(50, &blind, &blind, 1),
+                &stub_view(50, 100, &none, 2),
+                None
+            ),
+            55.0
+        );
+        // An evasion buff on the defender works the other way.
+        let eva = with(&[(Modifier::Evasion, 20.0)]);
+        assert_eq!(
+            get_hit_rate(
+                &stub_view(50, 100, &none, 1),
+                &status_view(50, &eva, &eva, 2),
+                None
+            ),
+            70.0
+        );
+        // The level gap still caps first and the total stays in 0..=100.
+        assert_eq!(
+            get_hit_rate(
+                &status_view(10, &blind, &blind, 1),
+                &stub_view(50, 100, &none, 2),
+                None
+            ),
+            0.0
+        );
+    }
+
+    #[test]
+    fn magic_accuracy_and_evasion_move_the_resist_rate() {
+        let none = zero_mods();
+        let mut fire = CommandResult::for_target(2, 0, 0);
+        fire.command_type = CommandType::SPELL;
+        fire.action_property = ActionProperty::Fire;
+        let rate = |a: &CombatView<'_>, d: &CombatView<'_>| get_resist_rate(a, d, &fire);
+        let caster = stub_view(50, 100, &none, 1);
+        assert_eq!(rate(&caster, &stub_view(50, 100, &none, 2)), 15.0);
+        // Stone's Magic Evasion Down (50).
+        let med = with(&[(Modifier::MagicEvasion, -50.0)]);
+        assert_eq!(rate(&caster, &status_view(50, &med, &med, 2)), 2.5);
+        // Minuet's +35 magic accuracy on the caster.
+        let minuet = with(&[(Modifier::MagicAccuracy, 35.0)]);
+        assert_eq!(
+            rate(
+                &status_view(50, &minuet, &minuet, 1),
+                &stub_view(50, 100, &none, 2)
+            ),
+            6.25
+        );
+        // Both together floor at 0.
+        assert_eq!(
+            rate(
+                &status_view(50, &minuet, &minuet, 1),
+                &status_view(50, &med, &med, 2)
+            ),
+            0.0
+        );
+        // Base magic stats (MND/PIE) alone don't move it.
+        let piety = with(&[(Modifier::MagicEvasion, 40.0)]);
+        assert_eq!(rate(&caster, &status_view(50, &piety, &none, 2)), 15.0);
+    }
+
+    #[test]
+    fn spell_ailments_land_more_through_lowered_magic_evasion() {
+        let none = zero_mods();
+        let mut sleep = BattleCommand::new(27306, "sleep");
+        sleep.status_id = 228001;
+        sleep.status_chance = 0.9;
+        sleep.command_type = CommandType::SPELL;
+        let action = CommandResult::for_target(2, 0, 0);
+        let caster = stub_view(50, 100, &none, 1);
+        // 0.95 misses the plain 0.9 chance...
+        assert!(!try_status(
+            &caster,
+            &stub_view(50, 100, &none, 2),
+            &action,
+            &sleep,
+            &mut FixedRng::new(&[0.95])
+        ));
+        // ...but lands once the target's magic evasion is down 50 (+12.5%).
+        let med = with(&[(Modifier::MagicEvasion, -50.0)]);
+        assert!(try_status(
+            &caster,
+            &status_view(50, &med, &med, 2),
+            &action,
+            &sleep,
+            &mut FixedRng::new(&[0.95])
+        ));
+        // A trait-gated status (chance 0) stays off whatever the target has.
+        sleep.status_chance = 0.0;
+        assert!(!try_status(
+            &caster,
+            &status_view(50, &med, &med, 2),
+            &action,
+            &sleep,
+            &mut FixedRng::new(&[0.0])
+        ));
+    }
+
+    #[test]
+    fn cleric_stance_swaps_attack_and_healing_potency() {
+        // A conjurer with 25 of each potency under Cleric Stance: x1.2 and
+        // x0.8, kept as status deltas of +5 and -5.
+        let mods = with(&[
+            (Modifier::AttackMagicPotency, 30.0),
+            (Modifier::HealingMagicPotency, 20.0),
+        ]);
+        let status = with(&[
+            (Modifier::AttackMagicPotency, 5.0),
+            (Modifier::HealingMagicPotency, -5.0),
+        ]);
+        let caster = status_view(50, &mods, &status, 1);
+        assert_eq!(
+            apply_magic_potency(&caster, ActionType::Magic, 278, &status),
+            334
+        );
+        assert_eq!(
+            apply_magic_potency(&caster, ActionType::Heal, 160, &status),
+            128
+        );
+        // Physical skills don't read magic potency.
+        assert_eq!(
+            apply_magic_potency(&caster, ActionType::Physical, 200, &status),
+            200
+        );
+        // Without statuses the tuned amounts are untouched.
+        let plain = status_view(50, &mods, no_status(), 1);
+        assert_eq!(
+            apply_magic_potency(&plain, ActionType::Magic, 278, no_status()),
+            278
+        );
+        // A monster with no potency of its own takes 1% per point.
+        let up = with(&[(Modifier::AttackMagicPotency, 20.0)]);
+        let mob = status_view(30, &up, &up, 3);
+        assert_eq!(apply_magic_potency(&mob, ActionType::Magic, 100, &up), 120);
+        // A trait's +8 over an INT-derived 7 adds 8%, not x2.1.
+        let thm = with(&[(Modifier::AttackMagicPotency, 15.0)]);
+        let trait_share = with(&[(Modifier::AttackMagicPotency, 8.0)]);
+        let thm_view = status_view(10, &thm, &trait_share, 1);
+        assert_eq!(
+            apply_magic_potency(&thm_view, ActionType::Magic, 100, no_status()),
+            108
+        );
+    }
+
+    #[test]
+    fn a_ward_blocks_its_element_until_destroyed() {
+        let none = zero_mods();
+        // The Spirit of the Wood's blunt moves take its Wind aspect.
+        let aspect = with(&[(Modifier::Aspect, ActionProperty::Wind as u16 as f64)]);
+        let spirit = stub_view(28, 2930, &aspect, 1);
+        let mut hit = CommandResult::for_target(2, 0, 0);
+        hit.action_property = ActionProperty::Blunt;
+        apply_aspect(&spirit, &mut hit);
+        assert_eq!(hit.action_property, ActionProperty::Wind);
+        // Without an aspect the move keeps its own property.
+        let mut plain = CommandResult::for_target(2, 0, 0);
+        plain.action_property = ActionProperty::Blunt;
+        apply_aspect(&stub_view(28, 2930, &none, 1), &mut plain);
+        assert_eq!(plain.action_property, ActionProperty::Blunt);
+
+        let mut ally = with(&[(Modifier::WindWard, 150.0)]);
+        let strike = |prop: ActionProperty, mods: &mut ModifierMap| {
+            let mut a = CommandResult::for_target(2, 0, 0);
+            a.amount = 100;
+            a.action_property = prop;
+            handle_ward(mods, &mut a);
+            a.amount
+        };
+        // Another element passes straight through.
+        assert_eq!(strike(ActionProperty::Earth, &mut ally), 100);
+        assert_eq!(ally.get(Modifier::WindWard), 150.0);
+        // The ward's element is absorbed until the pool is spent...
+        assert_eq!(strike(ActionProperty::Wind, &mut ally), 0);
+        assert_eq!(strike(ActionProperty::Wind, &mut ally), 50);
+        assert_eq!(ally.get(Modifier::WindWard), 0.0);
+        // ...and then it's gone.
+        assert_eq!(strike(ActionProperty::Wind, &mut ally), 100);
+    }
+
+    #[test]
+    fn elemental_resistance_mitigates_matching_spells() {
+        let none = zero_mods();
+        let atk = stub_view(50, 1000, &none, 1);
+        // Protect II at potency 25: 6.67 * 25 = 166.75 to every element.
+        let res = with(&[
+            (Modifier::FireResistance, 166.75),
+            (Modifier::IceResistance, 166.75),
+        ]);
+        let def = stub_view(50, 1000, &res, 2);
+        let cast = |prop: ActionProperty, def: &CombatView<'_>| {
+            let mut a = CommandResult::for_target(2, 0, 0);
+            a.amount = 300;
+            a.action_property = prop;
+            calculate_spell_damage_taken(&atk, def, &mut a);
+            a.amount
+        };
+        // Equal level: 0.225 x 166.75 = 37.5 off.
+        assert_eq!(cast(ActionProperty::Fire, &def), 262);
+        assert_eq!(cast(ActionProperty::Ice, &def), 262);
+        // Other elements and non-elemental spells ignore it.
+        assert_eq!(cast(ActionProperty::Lightning, &def), 300);
+        assert_eq!(cast(ActionProperty::Astral, &def), 300);
+        // Lowered resistance adds damage.
+        let weak = with(&[(Modifier::FireResistance, -100.0)]);
+        assert_eq!(
+            cast(ActionProperty::Fire, &stub_view(50, 1000, &weak, 2)),
+            322
+        );
     }
 }

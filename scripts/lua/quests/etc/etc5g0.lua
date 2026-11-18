@@ -13,6 +13,9 @@ Notes:  Rewards 200 gil
 
 ]]
 
+-- Rewards (the client's reward table; EXP from its row, or the level-band estimate)
+REWARD_EXP			= 200;
+
 -- Sequence Numbers
 SEQ_000 = 0;  -- Talk to Pfarahr.
 SEQ_001 = 1;  -- Return to V'korolon.
@@ -74,7 +77,8 @@ function onTalk(player, quest, npc)
     elseif (sequence == SEQ_001) then
         if (classId == VKOROLON) then
             callClientFunction(player, "delegateEvent", player, quest, "processEvent_020");
-            callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 200, 1)
+            callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
+            player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
             player:CompleteQuest(quest);
         elseif (classId == PFARAHR) then
             callClientFunction(player, "delegateEvent", player, quest, "processEvent_010_1");

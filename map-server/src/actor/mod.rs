@@ -31,6 +31,8 @@ pub mod aetheryte;
 pub mod chara;
 pub mod event_conditions;
 pub mod gc;
+pub mod job;
+pub use job::job_of_class;
 pub mod inn;
 pub mod modifier;
 pub mod player;
@@ -113,6 +115,10 @@ pub struct BaseActor {
     /// the mesh + collision baked into the zone (closed doors, gates).
     pub mapobj_layout_id: u32,
     pub mapobj_instance_id: u32,
+    /// Quests a seeded NPC belongs to (`SpawnLocation::quest_ids`); the
+    /// private-area zone-in bundle sends it only to a player holding one.
+    /// Empty = everyone.
+    pub spawn_quest_ids: Vec<u32>,
 }
 
 impl BaseActor {
@@ -189,6 +195,11 @@ pub struct CharaState {
     /// such as nameplate visibility, collision, and targetability.
     /// Zero for Players (Player.cs hardcodes its own bit set).
     pub property_flags: u32,
+    /// `npcWork.pushCommand` / `pushCommandSub` / `pushCommandPriority`
+    /// from `gamedata_actor_pushcommand` (Meteor `NpcWork`). The client
+    /// shows this command when the player walks into the actor's push
+    /// circle (Mine at a mining point, for one). `(0, 0, 0)` = none.
+    pub push_command: (u16, i32, u8),
     /// `playerWork.*` profile fields emitted in the `/_init` property dump
     /// mirrored from C# `Player.GetInitPackets()`. These exist on
     /// CharaState so the zone-in bundle can read them without a second DB
@@ -305,6 +316,9 @@ pub struct CharaState {
     /// PlayerState split as `npc_linkshells` above. (Kodama parity.)
     pub guildleves_local: Vec<crate::gamedata::GuildleveLocalEntry>,
     pub guildleves_regional: Vec<crate::gamedata::GuildleveRegionalEntry>,
+    /// Faction credits (`characters_faction_credit`), by faction: Broken
+    /// Blade, Azeyma's Shields, Horn and Hand.
+    pub faction_credits: [u16; 3],
     /// Equipped title (`characters.currentTitle`), hydrated at
     /// session-begin so the zone-in bundle emits `SetPlayerTitle`. The
     /// authoritative runtime copy; `PlayerState.current_title` stays as
@@ -344,6 +358,12 @@ pub struct CharaState {
     /// the director's 7-packet spawn sequence so the `Actor(…)` reference
     /// resolves on the client side.
     pub login_director_actor_id: u32,
+    /// The duty (content area) the player is in, e.g. `"Mnk0j601"`: set
+    /// when `CreateContentArea` opens it (owner and party members), cleared
+    /// when the player's copy is torn down. Empty outside a duty. Lua reads
+    /// it with `player:GetContentAreaName()`; several job quests share one
+    /// client director, so the director needs it to know whose duty it is.
+    pub content_area_name: String,
     pub animation_id: u32,
     pub current_target: u32,
     pub current_locked_target: u32,
@@ -351,6 +371,9 @@ pub struct CharaState {
     pub current_job: u16,
     pub new_main_state: u16,
 
+    /// The `server_battlenpc_spawn_locations` row a battle NPC came from
+    /// (0 for every other actor), so a GM's `setpos` knows what to save.
+    pub bnpc_id: u32,
     pub spawn_x: f32,
     pub spawn_y: f32,
     pub spawn_z: f32,
@@ -386,6 +409,7 @@ impl Default for CharaState {
             appearance_ids: [0u32; 28],
             actor_class_id: 0,
             property_flags: 0,
+            push_command: (0, 0, 0),
             tribe: 0,
             guardian: 0,
             birthday_day: 0,
@@ -413,6 +437,7 @@ impl Default for CharaState {
             npc_linkshells: Vec::new(),
             guildleves_local: Vec::new(),
             guildleves_regional: Vec::new(),
+            faction_credits: [0; 3],
             current_title: 0,
             unlocked_aetherytes: std::collections::HashSet::new(),
             snpc_nickname: String::new(),
@@ -420,12 +445,14 @@ impl Default for CharaState {
             snpc_personality: 0,
             snpc_coordinate: 0,
             login_director_actor_id: 0,
+            content_area_name: String::new(),
             animation_id: 0,
             current_target: 0,
             current_locked_target: 0,
             current_actor_icon: 0,
             current_job: 0,
             new_main_state: 0,
+            bnpc_id: 0,
             spawn_x: 0.0,
             spawn_y: 0.0,
             spawn_z: 0.0,
@@ -477,11 +504,13 @@ impl CharaState {
 
 /// Stat bonuses from food or medicine, applied by the stat recalc while
 /// `status_id` is on the character.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct FoodBuff {
     pub status_id: u32,
     /// (modifier id, percent, cap; 0 = no cap)
     pub bonuses: Vec<(u32, i32, i32)>,
+    /// (modifier id, flat amount): `15xxx` paramBonus types on food.
+    pub flat: Vec<(u32, i32)>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -517,9 +546,38 @@ pub struct Character {
     /// them: `(quest id, the giver's marker)`. Players only; see
     /// `processor/quest_offers.rs`.
     pub quest_offers: std::collections::HashMap<u32, (u32, crate::actor::quest::QuestEnpc)>,
+    /// The level `quest_offers` was built at. A level-up anywhere (a kill,
+    /// a quest reward, a GM grant) leaves it behind, and the next position
+    /// update rebuilds the offers so a level-gated quest shows up.
+    pub quest_offers_level: Option<i16>,
     /// The food or medicine buff riding the Well Fed status
     /// (`processor/items.rs`); the stat recalc applies it while it lasts.
-    pub food: Option<FoodBuff>,
+    /// One per buff status (Well Fed, Medicated, Bloodwall...).
+    pub food: Vec<FoodBuff>,
+    /// Net modifier change each active status effect's `onGain` made,
+    /// by effect id (`status/script.rs`). Taken back off when it goes.
+    pub status_mods: std::collections::HashMap<u32, Vec<(u32, f64)>>,
+    /// Movement-speed multiplier the client last got in a 0x00D0 (1.0 =
+    /// the default bands every zone-in sends; 0 while bound).
+    pub speed_sent: f32,
+    /// When a knockback's sped-up run ends (`server_now_ms`): the ticker
+    /// sends the usual speed again (`speed_sent`). 0 = none pending.
+    pub knockback_speed_until_ms: u64,
+    /// The commands that continue the player's combo
+    /// (`playerWork.comboNextCommandId`), 0 when no combo is going.
+    pub combo_next: [i32; 2],
+    /// The traits the player has (their class's or job's, up to their
+    /// level), by id; set by the stat recalc.
+    pub traits: Vec<u32>,
+    /// The modifier changes those traits made, taken off before the next
+    /// recalc puts them back.
+    pub trait_mods: Vec<(u32, f64)>,
+    /// What the player's gear added to their modifiers at the last
+    /// recalc (the stat rebuild clears the mods themselves).
+    pub gear_mods: Vec<(u32, f64)>,
+    /// What food and medicine added at the last recalc, taken off before
+    /// the next one (EXP, Evasion and the like aren't zeroed by the rebuild).
+    pub food_mods: Vec<(u32, f64)>,
 }
 
 impl Character {
@@ -550,7 +608,16 @@ impl Character {
             event_session: crate::event::EventSession::default(),
             quest_journal: crate::actor::quest::QuestJournal::default(),
             quest_offers: Default::default(),
-            food: None,
+            quest_offers_level: None,
+            food: Vec::new(),
+            status_mods: Default::default(),
+            speed_sent: 1.0,
+            knockback_speed_until_ms: 0,
+            combo_next: [0, 0],
+            traits: Vec::new(),
+            trait_mods: Vec::new(),
+            gear_mods: Vec::new(),
+            food_mods: Vec::new(),
         }
     }
 }

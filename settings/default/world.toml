@@ -10,4 +10,6 @@ show_timestamp = true
 world_id = 1
 
 [database]
-path = "./data/garlemald.db"
+# The MariaDB database every server shares. Put the password in your own
+# settings file or in XIVLEGACY_DB_URL, not here.
+url = "mysql://xivlegacy@127.0.0.1:3306/xivlegacy"

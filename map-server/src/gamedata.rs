@@ -135,6 +135,8 @@ pub struct CharaParameterSave {
     pub mp_max: i16,
     pub state_main_skill: [u8; 1],
     pub state_main_skill_level: i16,
+    /// The job the character is in (0 = none, playing `state_main_skill`).
+    pub state_current_job: u8,
     pub command_slot_recast_time: [u32; 32],
 }
 
@@ -149,6 +151,7 @@ impl Default for CharaParameterSave {
             mp_max: 0,
             state_main_skill: [0; 1],
             state_main_skill_level: 0,
+            state_current_job: 0,
             command_slot_recast_time: [0; 32],
         }
     }
@@ -352,6 +355,10 @@ fn tribe_default_model(tribe: u8) -> u32 {
 #[derive(Debug, Clone, Default)]
 pub struct StatusEffectEntry {
     pub status_id: u32,
+    /// Unix seconds the effect started; 0 = not known (saved before seed 298).
+    pub start_time: u32,
+    /// Unix seconds it was last saved; 0 = not known. Set by the save itself.
+    pub saved_at: u32,
     pub duration: u32,
     pub magnitude: u64,
     pub tick: u32,
@@ -486,6 +493,8 @@ pub struct LoadedPlayer {
     pub quest_scenario: Vec<QuestScenarioEntry>,
     pub guildleves_local: Vec<GuildleveLocalEntry>,
     pub guildleves_regional: Vec<GuildleveRegionalEntry>,
+    /// Faction credits, by faction (Broken Blade, Shields, Horn and Hand).
+    pub faction_credits: [u16; 3],
     pub npc_linkshells: Vec<NpcLinkshellEntry>,
 
     pub inventory_normal: Vec<InventoryItem>,
@@ -557,6 +566,18 @@ pub struct BattleCommand {
     pub action_type: i16,
     pub accuracy_modifier: f32,
     pub world_master_text_id: u16,
+    /// Stat-scaled power (seed 291): 1000 = 1.0x, 0 = not stat-scaled.
+    pub magic_potency: u16,
+    /// Stats it scales with (1 STR .. 6 PIE, -1 none) and their weights.
+    pub main_stat: i8,
+    pub main_stat_mod: f32,
+    pub second_stat: i8,
+    pub second_stat_mod: f32,
+    /// A physical skill's damage as a multiple of the user's auto-attack
+    /// (0 = the default for its kind).
+    pub damage_multiplier: f32,
+    /// Knockback level 0-5 (`server_battlenpc_skill_info.knockback`).
+    pub knockback: u8,
 }
 
 impl BattleCommand {
@@ -633,6 +654,13 @@ impl BattleCommand {
         out.action_type = crate::battle::effects::ActionType::from_u16(self.action_type as u16);
         out.base_potency = self.base_potency;
         out.accuracy_modifier = self.accuracy_modifier;
+        out.magic_potency = self.magic_potency;
+        out.main_stat = self.main_stat;
+        out.main_stat_mod = self.main_stat_mod;
+        out.second_stat = self.second_stat;
+        out.second_stat_mod = self.second_stat_mod;
+        out.damage_multiplier = self.damage_multiplier;
+        out.knockback = self.knockback;
         out.valid_user = match self.valid_user {
             1 => bc::BattleCommandValidUser::Player,
             2 => bc::BattleCommandValidUser::Monster,
@@ -689,6 +717,35 @@ pub struct GuildleveGamedata {
     /// Per objective: how many, and the target's display-name id.
     pub aim_num: [i8; 4],
     pub mobs: [u32; 4],
+    /// Per objective: the leve item it collects (Gather and Necrologos
+    /// leves; a Necrologos leve's fourth is the tome itself).
+    pub items: [u32; 4],
+    /// Per objective: its display name has no monster class to spawn
+    /// (leve-only humans and named monsters with no model yet).
+    pub mob_missing: [bool; 4],
+    /// Who issues the leve: the camp's city (40001...) or, for GC leves,
+    /// the Grand Company (40065 Maelstrom, 40066 Twin Adder, 40067
+    /// Immortal Flames).
+    pub authority: u32,
+    /// Zone of the camp aetheryte (`aetheryte`), 0 when it isn't spawned.
+    pub camp_zone: u32,
+    /// Faction leves: the credits accepting one costs.
+    pub faction_credit_required: u32,
+    /// Survive leves: the hold phase (`server_guildleve_survive`); none
+    /// when the leve's details aren't known yet.
+    pub survive: Option<SurviveHold>,
+}
+
+/// A Survive leve's hold: how long the area is held, and the monster that
+/// attacks meanwhile (display-name id, how many at once). Then the leve's
+/// own targets appear.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SurviveHold {
+    pub seconds: u32,
+    /// The time comes from a 1.0 account (false: the 5-minute default).
+    pub recorded: bool,
+    pub mob: u32,
+    pub up: u8,
 }
 
 // Gamedata row types (ItemData, InventoryItem) live in `crate::data`; import

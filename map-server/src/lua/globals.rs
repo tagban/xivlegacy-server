@@ -70,6 +70,25 @@ pub fn install_globals(
         globals.set("GetWorldMaster", f)?;
     }
 
+    // IsSeasonalEventActive(name) / IsSeasonalQuestOpen(questId): the
+    // seasonal-event switch (settings/events.toml, `!event`).
+    {
+        let f = lua.create_function(|_, name: String| Ok(crate::seasonal::is_active(&name)))?;
+        globals.set("IsSeasonalEventActive", f)?;
+        let f = lua.create_function(|_, quest: u32| Ok(crate::seasonal::quest_open(quest)))?;
+        globals.set("IsSeasonalQuestOpen", f)?;
+        // VanishSeasonalActor(actorId, seconds): hide an event NPC from
+        // every player for a while (an imp after its riddle); false when
+        // the actor belongs to no event.
+        let f = lua.create_function(|_, (actor_id, seconds): (u32, u64)| {
+            Ok(crate::seasonal::vanish(actor_id, seconds))
+        })?;
+        globals.set("VanishSeasonalActor", f)?;
+        // GetEorzeaHour(): the Eorzean hour of day, 0-23.
+        let f = lua.create_function(|_, _: ()| Ok(crate::seasonal::eorzea_hour()))?;
+        globals.set("GetEorzeaHour", f)?;
+    }
+
     // GetStaticActor(name) / GetStaticActorById(id) — return the actor id
     // registered under that name, or nil if unknown. A miss is warn-logged:
     // scripts pass the result straight into client delegates, and a nil
@@ -161,6 +180,7 @@ pub fn install_globals(
             t.set("borderId", gd.border_id)?;
             t.set("timeLimit", gd.time_limit)?;
             t.set("favorCount", gd.favor_count)?;
+            t.set("factionCreditRequired", gd.faction_credit_required)?;
             t.set("aimNum", gd.aim_num.to_vec())?;
             t.set("mob", gd.mobs.to_vec())?;
             Ok(Value::Table(t))
@@ -186,6 +206,44 @@ pub fn install_globals(
             Ok(offers)
         })?;
         globals.set("GetGuildleveOffers", f)?;
+    }
+
+    // GetFactionLeveOffers(faction, level) — the faction leves (faction 1
+    // Broken Blade, 2 Azeyma's Shields, 3 Horn and Hand) the levemete lists
+    // at that level band: up to 8 ids (crate::leve::faction).
+    {
+        let cats = catalogs.clone();
+        let f = lua.create_function(
+            move |_, (faction, level): (u8, u32)| -> mlua::Result<Vec<u32>> {
+                Ok(cats
+                    .guildleves
+                    .read()
+                    .map(|m| crate::leve::faction::offers(&m, faction, level))
+                    .unwrap_or_default())
+            },
+        )?;
+        globals.set("GetFactionLeveOffers", f)?;
+    }
+
+    // GetCompanyLeveOffer(gc, zoneId) — the GC leve an officer of Grand
+    // Company `gc` (1 Maelstrom, 2 Twin Adder, 3 Immortal Flames) in that
+    // zone offers right now, or nil.
+    {
+        let cats = catalogs.clone();
+        let f = lua.create_function(
+            move |_, (gc, zone): (u8, u32)| -> mlua::Result<Option<u32>> {
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or_default();
+                Ok(cats
+                    .guildleves
+                    .read()
+                    .ok()
+                    .and_then(|m| crate::leve::battle::company_offer(&m, gc, zone, now)))
+            },
+        )?;
+        globals.set("GetCompanyLeveOffer", f)?;
     }
 
     // GetRecipeResolver() → LuaRecipeResolver | nil. Mirrors Meteor's

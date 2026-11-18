@@ -40,6 +40,18 @@ pub struct SpawnLocation {
     /// LEFT JOINed by the spawn loader). 0/0 for regular NPCs.
     pub mapobj_layout_id: u32,
     pub mapobj_instance_id: u32,
+    /// Quests this spawn belongs to (`server_spawn_location_quests`):
+    /// in a private area several Echoes share, only a player holding one
+    /// of them is sent the actor. Empty = everyone.
+    pub quest_ids: Vec<u32>,
+    /// Seasonal event this spawn belongs to (`server_spawn_location_events`):
+    /// sent to players only while the event runs. None = always.
+    pub event: Option<String>,
+    /// `customDisplayName`: a name shown in place of the class's own.
+    pub custom_name: Option<String>,
+    /// Another actor class whose model and gear this spawn wears
+    /// (`server_spawn_looks`), e.g. a vendor in a monster's body. 0 = its own.
+    pub look_class_id: u32,
 }
 
 impl SpawnLocation {
@@ -71,6 +83,10 @@ impl SpawnLocation {
             animation_id,
             mapobj_layout_id: 0,
             mapobj_instance_id: 0,
+            custom_name: None,
+            look_class_id: 0,
+            quest_ids: Vec::new(),
+            event: None,
         }
     }
 

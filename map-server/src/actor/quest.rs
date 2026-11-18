@@ -421,7 +421,11 @@ impl QuestState {
 
         // Recycle from `old` if the previous sequence also had this NPC.
         if let Some(mut existing) = self.old.remove(&class_id) {
-            let changed = existing.is_changed(&enpc);
+            // A push trigger is always re-sent: the client disarms a push
+            // circle once it fires, so a sequence that re-uses the same
+            // trigger (man1l0 SEQ_030 -> SEQ_040 on the Astalicia's
+            // TRIGGER_MRD) would otherwise never fire again.
+            let changed = existing.is_changed(&enpc) || enpc.is_push_enabled;
             existing = enpc;
             self.current.insert(class_id, existing);
             if changed {
@@ -895,6 +899,17 @@ mod tests {
         s.begin_sequence_swap();
         let b = QuestEnpc::new(1001, 1, true, true, false, false);
         assert_eq!(s.add_enpc(b), AddEnpcOutcome::Updated(b));
+    }
+
+    #[test]
+    fn queststate_push_trigger_is_rearmed_on_every_sequence() {
+        // The client disarms a push circle after it fires, so the same
+        // push trigger carried into the next sequence must be re-sent.
+        let mut s = QuestState::new();
+        let push = QuestEnpc::new(1090081, 0, true, false, false, true);
+        assert_eq!(s.add_enpc(push), AddEnpcOutcome::New(push));
+        s.begin_sequence_swap();
+        assert_eq!(s.add_enpc(push), AddEnpcOutcome::Updated(push));
     }
 
     #[test]

@@ -12,6 +12,9 @@ Prereq: Level 37, Any Class, Requires "Letting Out Orion's Belt"
 
 ]]
 
+-- Rewards (items/gil: ZAM and the client's reward table; the EXP is an estimate)
+REWARD_EXP			= 2500;
+
 -- Sequence Numbers
 SEQ_000	= 0;  -- Talk to Ryssfloh.
 SEQ_001	= 1;  -- Talk to Faine.
@@ -71,7 +74,9 @@ function onTalk(player, quest, npc, eventName)
 		--Quest Complete
 		if (npcClassId == AHLDSKYF) then
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent010");
-			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 200, 1, 1, 9);
+			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
+			player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
+			player:GetItemPackage(INVENTORY_NORMAL):AddItem(10013004, 2, 1); -- Grade 4 Dark Matter
             player:CompleteQuest(quest);
 		elseif (npcClassId == FAINE) then
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent005_2");

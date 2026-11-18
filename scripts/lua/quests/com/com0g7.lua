@@ -8,7 +8,7 @@ Quest Script
 Name: 	Serenity, Purity, Sanctity
 Code: 	Com0g7
 Id: 	111607
-Prereq: Com0g3 complete, level 25; not sworn to any Grand Company.
+Prereq: Com0g6 complete, level 25; not sworn to any Grand Company.
 
 Official enlistment. Serpent Lieutenant Fulke asks a recruit to swear sole
 allegiance to the Order of the Twin Adder: doing so ends any recruit standing with

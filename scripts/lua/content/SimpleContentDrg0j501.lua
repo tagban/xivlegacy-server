@@ -1,0 +1,32 @@
+require ("global")
+require ("questbattle")
+
+-- Fatal Seduction (Drg0j5): Stollenwurm south of Camp Riversmeet.
+-- When every foe is down the content has no hostiles left, which fires
+-- "battleComplete" to the director (jobQuest.runFightDirector).
+
+local BNPCS = { 3754 };
+local FIGHT_LIMIT_SECONDS = 480;
+-- Where a loss sets the player down (outside the trigger circle).
+local SPOT = { 148, -1790.0, 271.0, -110.0, 0.0 };
+
+function onCreate(player, contentArea, director)
+	questBattle.create(player, contentArea, director, BNPCS);
+end
+
+function onZoneIn(player, contentArea, director)
+	player:ChangeMusic(37); -- the 1.x duty theme
+end
+
+function onUpdate(tick, area)
+	questBattle.update(tick, area, FIGHT_LIMIT_SECONDS, function(player, timedOut)
+		questBattle.leave(player, SPOT);
+	end);
+end
+
+function onAbort(player, contentArea, director)
+	questBattle.abort(player);
+end
+
+function onDestroy()
+end

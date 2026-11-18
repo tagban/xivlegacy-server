@@ -132,6 +132,15 @@ impl PacketProcessor {
         params: &[LuaParam],
     ) {
         let player_id = handle.actor_id;
+        // Changing gear or class ends Monster Mode first, so the change
+        // lands on the player's own body.
+        if crate::runtime::monster_mode::release(player_id, "gear")
+            .await
+            .is_some()
+        {
+            crate::runtime::monster_mode::refresh_client(&self.registry, &self.world, player_id)
+                .await;
+        }
         let item_ref = match params.first() {
             Some(LuaParam::Type7 {
                 slot,
@@ -182,7 +191,13 @@ impl PacketProcessor {
         }
     }
 
-    async fn equip_gear(&self, player_id: u32, equip_slot: u16, package: u16, slot: u16) {
+    pub(super) async fn equip_gear(
+        &self,
+        player_id: u32,
+        equip_slot: u16,
+        package: u16,
+        slot: u16,
+    ) {
         let Ok(Some((server_item_id, catalog_id))) = self
             .db
             .resolve_bag_slot_item_id(player_id, package, slot)
@@ -198,6 +213,7 @@ impl PacketProcessor {
         };
         let mut class_id = self.current_class(player_id).await;
         let mut redraw: Vec<u16> = vec![equip_slot];
+        let mut switched = false;
         // A main hand of another class switches to that class; a class with
         // no outfit of its own yet keeps the one being worn.
         if equip_slot == SLOT_MAINHAND
@@ -215,6 +231,7 @@ impl PacketProcessor {
             self.apply_do_class_change(player_id, new_class).await;
             class_id = new_class;
             redraw = DRAWN_SLOTS.to_vec();
+            switched = true;
         }
         if equip_slot == SLOT_UNDERSHIRT {
             redraw.push(SLOT_BODY);
@@ -233,13 +250,53 @@ impl PacketProcessor {
         };
         self.gear_message(player_id, MSG_EQUIPPED, equip_slot, catalog_id, quality)
             .await;
+        if switched {
+            self.send_class_state(player_id).await;
+        }
         let changed: Vec<u64> = std::iter::once(server_item_id).chain(replaced).collect();
         self.send_gear_update(player_id, class_id, &changed, None)
             .await;
         self.redraw_gear(player_id, class_id, &redraw).await;
     }
 
-    async fn remove_gear(&self, player_id: u32, equip_slot: u16) {
+    /// After a class switch: HP, the class and its level for the HUD's
+    /// class line and the nameplate (`stateAtQuicklyForAll`, the packet the
+    /// stat recalc sends only when the pools moved).
+    async fn send_class_state(&self, player_id: u32) {
+        let Some(handle) = self.registry.get(player_id).await else {
+            return;
+        };
+        let (hp, hp_max, class, level) = {
+            let c = handle.character.read().await;
+            (
+                c.chara.hp.max(0) as u16,
+                c.chara.max_hp.max(0) as u16,
+                c.chara.class.max(0) as u8,
+                c.chara.level.max(1) as u16,
+            )
+        };
+        for sub in
+            tx::actor::build_player_state_at_quickly_for_all(player_id, hp, hp_max, class, level)
+        {
+            let bytes = sub.to_bytes();
+            crate::runtime::dispatcher::send_to_self_if_player(
+                &self.registry,
+                &self.world,
+                player_id,
+                bytes.clone(),
+            )
+            .await;
+            crate::runtime::dispatcher::broadcast_to_neighbours(
+                &self.world,
+                &self.registry,
+                player_id,
+                bytes,
+            )
+            .await;
+        }
+    }
+
+    pub(super) async fn remove_gear(&self, player_id: u32, equip_slot: u16) {
         let class_id = self.current_class(player_id).await;
         let Ok(Some((server_item_id, catalog_id, quality))) =
             self.db.equipped_item(player_id, class_id, equip_slot).await

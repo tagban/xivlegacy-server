@@ -12,6 +12,9 @@ Prereq: Level 30, Any DoW/DoM
 
 ]]
 
+-- Rewards (items/gil: ZAM and the client's reward table; the EXP is an estimate)
+REWARD_EXP			= 2000;
+
 -- Sequence Numbers
 SEQ_000	= 0;  -- Kill Aurora Anglers.
 SEQ_001	= 1;  -- Talk to Nicoliaux.
@@ -43,7 +46,7 @@ function onStateChange(player, quest, sequence)
 		quest:SetENpc(ENPC_NICOLIAUX, QFLAG_TALK);
 	elseif (sequence == SEQ_000) then
         quest:SetENpc(ENPC_NICOLIAUX);
-		quest:SetENpc(BNPC_MUSK_ANGLER);
+		quest:SetENpc(BNPC_AURORA_ANGLER);
 	elseif (sequence == SEQ_001) then
 		quest:SetENpc(ENPC_NICOLIAUX, QFLAG_REWARD);
 	end	
@@ -70,7 +73,9 @@ function onTalk(player, quest, npc, eventName)
 	elseif (seq == SEQ_001) then
 		if (npcClassId == ENPC_NICOLIAUX) then
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent020");
-			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 200, 1, 1, 9);
+			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", REWARD_EXP, 1, 1);
+			player:AddExp(REWARD_EXP, player.charaWork.parameterSave.state_mainSkill[0], 0);
+			player:GetItemPackage(INVENTORY_NORMAL):AddItem(8080517, 1, 1); -- Boarskin Crakows
             player:CompleteQuest(quest);
 		end
 	end

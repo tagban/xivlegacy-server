@@ -1,0 +1,91 @@
+# XIVLegacy Server: seasonal events, shipped defaults.
+# Don't edit this file: override in settings/events.toml.
+#
+# Each event has a mode and date windows ("MM-DD", both days included; an
+# end before the start runs over the new year, by the server's local date).
+#   mode = "auto"  follow the windows
+#   mode = "on"    every window open, whatever the date
+#   mode = "off"   nothing open
+# A GM can override the mode in game with `!event <name> <on|off|auto>`;
+# the override is stored in the database (server_events) and wins over
+# this file until it is set back to auto.
+#
+# A window's quests are offered only while it is open. The event's NPCs
+# (server_spawn_location_events) show while any of its windows is open.
+
+[starlight]
+mode = "auto"
+
+# The yearly calendar (XIVLegacy's, longer than 1.0's runs so more
+# players catch each event):
+#   All Saints' Wake      Oct 1  - Oct 31
+#   Starlight Celebration Nov 1  - Jan 16 (Heavensturn follow-up from Dec 26)
+#   Hatching-tide         Apr 1  - Apr 30
+#   Moonfire Faire        Jun 1  - Aug 31
+
+# Starlight Celebration (1.0: Dec 16 - Jan 16, 2011-12).
+# Spl0i3 "Winter Is Not Coming": the city reps, Waldomar and Father Frost.
+[[starlight.windows]]
+name = "winter-is-not-coming"
+start = "11-01"
+end = "01-16"
+quests = [110801]
+
+# Spl0i4 "Gone with the Snow": the Heavensturn follow-up.
+[[starlight.windows]]
+name = "gone-with-the-snow"
+start = "12-26"
+end = "01-16"
+quests = [110802]
+
+# An event can also change zone looks while it runs: weather and music
+# replace the zone's own for every player in the listed zones (the first
+# matching entry wins; leave a field out to keep the zone's own), e.g.
+#   [[starlight.zone]]
+#   zones = [155, 206]
+#   weather = 8001
+#   music = 51
+# Starlight sets none: no Starlight music track is known in the 1.23b
+# client, and the one seasonal weather that snows (8027, "wtr_hall" in
+# the Black Shroud's weather set) also brings out the All Saints' Wake
+# pumpkins and garlands in Gridania's guild halls.
+
+# All Saints' Wake (1.0 ran it Oct 18 - Nov 1, 2011; here all of October): the Adventurers'
+# Guild runners (Ursielle, Mudede, Yvane) and the disguised trickster imps.
+# The imps (actor classes below) show only at night, Eorzean time, from
+# night_start up to night_end (19:00-05:00, as in 1.0).
+[allsaints]
+mode = "auto"
+night_classes = [1001792, 1001793, 1001794, 1001795, 1001796, 1001797, 1001798, 1001799, 1001800]
+night_start = 19
+night_end = 5
+
+# Spl0i2 "Impish Impositions".
+[[allsaints.windows]]
+name = "impish-impositions"
+start = "10-01"
+end = "10-31"
+quests = [110800]
+
+# Hatching-tide (1.0 ran it in April 2011): the Dreamer's Archon eggs.
+[hatchingtide]
+mode = "auto"
+
+# Spl0u1/g1/l1 "The Dreamer's Gospel" and Spl0u2/g2/l2 "The Dreamer's
+# Dilemma" (one per city), and Spl101 "Scrambled Eggs".
+[[hatchingtide.windows]]
+name = "dreamers-eggs"
+start = "04-01"
+end = "04-30"
+quests = [110789, 110790, 110794, 110795, 110804, 110805, 110859]
+
+# Moonfire Faire (1.0 ran it in August 2011).
+[moonfire]
+mode = "auto"
+
+# Spl0i1 "The Heat Is On" and Spl102 "Bombard Backlash".
+[[moonfire.windows]]
+name = "summer-festival"
+start = "06-01"
+end = "08-31"
+quests = [110799, 110860]

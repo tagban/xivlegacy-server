@@ -103,7 +103,7 @@ function onTalk(player, quest, npc)
 		callClientFunction(player, "delegateEvent", player, quest, "processEventAilithFree");
 	elseif (sequence == SEQ_040 and classId == FULKE) then
 		callClientFunction(player, "delegateEvent", player, quest, "processEventClear");
-		callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 1760, 1, 1, 2);
+		callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 1760, 1, 1);
 		player:AddExp(1760, player.charaWork.parameterSave.state_mainSkill[0], 0);
 		player:EndEvent();
 		player:CompleteQuest(quest);
