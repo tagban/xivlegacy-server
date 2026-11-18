@@ -41,7 +41,23 @@ static SERVER: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 
 unsafe extern "C" {
     fn atexit(cb: extern "C" fn()) -> std::ffi::c_int;
+    #[cfg(unix)]
     fn kill(pid: i32, sig: i32) -> std::ffi::c_int;
+}
+
+/// Whether the process that made a test database is gone. Unix asks with
+/// signal 0; elsewhere (Windows has no `kill`) we can't tell, so we keep it.
+fn owner_gone(pid: i32) -> bool {
+    #[cfg(unix)]
+    {
+        // SAFETY: signal 0 only asks whether the process exists.
+        pid > 0 && unsafe { kill(pid, 0) } != 0
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = pid;
+        false
+    }
 }
 
 /// The MariaDB server URL tests use, ending in `/`.
@@ -116,8 +132,7 @@ async fn sweep(admin: &Connection, keep_template: String) -> Result<()> {
                 .next()
                 .and_then(|p| p.parse().ok())
                 .unwrap_or(0);
-            // SAFETY: signal 0 only asks whether the process exists.
-            pid > 0 && unsafe { kill(pid, 0) } != 0
+            owner_gone(pid)
         } else if n.starts_with("xivlegacy_tpl_") {
             n != keep_template
         } else {
