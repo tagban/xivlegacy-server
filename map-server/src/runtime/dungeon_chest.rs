@@ -23,13 +23,6 @@
 //! calls `player:OpenDungeonChest(npc, DungeonChestLoot(...))` with the
 //! chest's list from `scripts/lua/dungeon_chests.lua`.
 //!
-//! In the Aurum Vale and Cutter's Cry the client is in raid mode (the
-//! InstanceRaid director's desktop widget mode 127), and a stock 1.23b
-//! client won't start a talk there, so the chest can't be opened by hand
-//! without our client patch. Those chests open on their own
-//! [`RAID_AUTO_OPEN_MS`] after they appear if nobody has opened them
-//! ([`tick`]), so the loot reaches every client.
-//!
 //! The client's chest script reads drop sheets that only ever lived on the
 //! retail server, and no archived source lists what the 1.0 dungeon chests
 //! held, so the lists there are picked by rule (see that file).
@@ -51,14 +44,6 @@ pub const CHEST_NAME: &str = "Treasure Chest";
 
 /// `gamedata_actor_class.propertyFlags` of the talkable objects.
 pub const CHEST_PROPERTY_FLAGS: u32 = 19;
-
-/// Copies whose client is in raid mode (Aurum Vale, Cutter's Cry): a stock
-/// client can't talk to a chest there.
-pub const RAID_MODE_ZONES: [u32; 2] = [245, 246];
-
-/// How long a raid-mode copy's chest waits to be opened by hand before it
-/// opens on its own.
-pub const RAID_AUTO_OPEN_MS: u64 = 30_000;
 
 /// One item a chest can give.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -112,8 +97,6 @@ struct Chest {
     instance_id: u32,
     boss_bnpc_id: u32,
     opened: bool,
-    /// When it opens on its own (raid-mode copies only).
-    auto_open_at_ms: Option<u64>,
 }
 
 fn chests() -> &'static Mutex<HashMap<u32, Chest>> {
@@ -132,7 +115,6 @@ pub fn release_instance(instance_id: u32) {
 /// A boss of a copy fell: put its chest in the middle of its room.
 /// Players in range get it through the normal actor streaming.
 pub async fn spawn(
-    now_ms: u64,
     registry: &ActorRegistry,
     world: &WorldManager,
     db: &Database,
@@ -232,9 +214,6 @@ pub async fn spawn(
             instance_id,
             boss_bnpc_id: room.bnpc_id,
             opened: false,
-            auto_open_at_ms: RAID_MODE_ZONES
-                .contains(&zone_id)
-                .then_some(now_ms + RAID_AUTO_OPEN_MS),
         },
     );
     tracing::info!(
@@ -334,11 +313,7 @@ pub async fn open(
         |i| eligible.get(&i.item_id).cloned().unwrap_or_default(),
         |n| rand::random_range(0..n),
     );
-    let mut lines = vec![if opener.is_empty() {
-        "The treasure chest opens.".to_string()
-    } else {
-        format!("{opener} opens the treasure chest.")
-    }];
+    let mut lines = vec![format!("{opener} opens the treasure chest.")];
     for (p, item) in &shares {
         crate::runtime::quest_apply::apply_add_item(
             *p,
@@ -393,59 +368,6 @@ pub async fn open(
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .remove(&chest_actor_id);
-}
-
-/// Open the raid-mode copies' chests nobody opened in time (every content
-/// tick, from the copy owner's session): the loot is the chest's list from
-/// `dungeon_chests.lua`, shared as if a player had opened it.
-pub async fn tick(
-    now_ms: u64,
-    registry: &ActorRegistry,
-    world: &WorldManager,
-    db: &Database,
-    lua: &Arc<LuaEngine>,
-    zone_id: u32,
-    instance_id: u32,
-) {
-    if instance_id == 0 || !RAID_MODE_ZONES.contains(&zone_id) {
-        return;
-    }
-    let due: Vec<(u32, u32)> = chests()
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .iter()
-        .filter(|(_, c)| {
-            c.instance_id == instance_id
-                && !c.opened
-                && c.auto_open_at_ms.is_some_and(|t| now_ms >= t)
-        })
-        .map(|(id, c)| (*id, c.boss_bnpc_id))
-        .collect();
-    for (chest_actor_id, boss_bnpc_id) in due {
-        let loot = chest_loot(lua, boss_bnpc_id);
-        tracing::info!(
-            zone = zone_id,
-            instance = instance_id,
-            actor_id = format!("0x{chest_actor_id:08X}"),
-            "dungeon chest opens on its own (raid-mode copy, not opened in time)",
-        );
-        open(0, chest_actor_id, &loot, registry, db, world, Some(lua)).await;
-    }
-}
-
-/// A boss's chest list from `dungeon_chests.lua` (`DungeonChestLoot`).
-fn chest_loot(lua: &Arc<LuaEngine>, boss_bnpc_id: u32) -> Vec<ChestItem> {
-    let path = lua.resolver().root.join("dungeon_chests.lua");
-    let read = || -> anyhow::Result<Vec<ChestItem>> {
-        let (vm, _) = lua.load_script(&path)?;
-        let f: mlua::Function = vm.globals().get("DungeonChestLoot")?;
-        let t: mlua::Table = f.call(unique_id(boss_bnpc_id))?;
-        Ok(loot_from_lua(&t))
-    };
-    read().unwrap_or_else(|e| {
-        tracing::warn!(boss_bnpc = boss_bnpc_id, err = %e, "dungeon chest: loot list unreadable");
-        Vec::new()
-    })
 }
 
 #[cfg(test)]

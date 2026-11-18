@@ -573,16 +573,8 @@ pub async fn tick_boss_fights(
             (next, step, newly_won)
         };
         if newly_won && boss_lies_dead {
-            crate::runtime::dungeon_chest::spawn(
-                now_ms,
-                registry,
-                world,
-                db,
-                room,
-                instance_id,
-                slot,
-            )
-            .await;
+            crate::runtime::dungeon_chest::spawn(registry, world, db, room, instance_id, slot)
+                .await;
         }
         record_sides(
             instance_id,
