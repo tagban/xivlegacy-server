@@ -3886,6 +3886,23 @@ impl Database {
             .await
     }
 
+    /// An item's `equipPoint` from the game data (`None` for items that
+    /// aren't equipment).
+    pub async fn item_equip_point(&self, catalog_id: u32) -> Result<Option<u16>> {
+        self.conn
+            .call_db(move |c| {
+                let row = c
+                    .query_row(
+                        "SELECT equipPoint FROM gamedata_items_equipment WHERE catalogID = :id",
+                        named_params! { ":id": catalog_id },
+                        |r| r.get::<_, i64>(0),
+                    )
+                    .optional()?;
+                Ok(row.map(|p| p as u16))
+            })
+            .await
+    }
+
     /// The item in gear slot `equip_slot` for `class_id` (undergarments are
     /// stored under class 0): `(serverItemId, catalogId, quality)`.
     pub async fn equipped_item(

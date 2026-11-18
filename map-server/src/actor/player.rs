@@ -58,6 +58,32 @@ pub const SLOT_WRISTS: u16 = 19;
 pub const SLOT_FINGER_RIGHT: u16 = 21;
 pub const SLOT_FINGER_LEFT: u16 = 22;
 
+/// Whether an item with `equipPoint` `point` (gamedata_items_equipment) goes
+/// in gear slot `slot`, or `None` for points that aren't checked (cowls,
+/// suits and flanchards that cover two parts, ammo, packs). Armor in the
+/// wrong slot draws the wrong model part: a robe on the head is a plain
+/// white hat.
+pub fn gear_slot_fits(point: u16, slot: u16) -> Option<bool> {
+    let slots: &[u16] = match point {
+        36..=39 => &[SLOT_MAINHAND],
+        2 | 40 => &[SLOT_OFFHAND],
+        9 => &[SLOT_HEAD],
+        10 => &[SLOT_UNDERSHIRT],
+        11 => &[SLOT_BODY],
+        12 => &[SLOT_UNDERGARMENT],
+        13 => &[SLOT_LEGS],
+        14 => &[SLOT_HANDS],
+        15 => &[SLOT_FEET],
+        16 => &[SLOT_WAIST],
+        17 => &[SLOT_NECK],
+        45 => &[SLOT_WRISTS],
+        47 => &[SLOT_EARS],
+        49 => &[SLOT_FINGER_RIGHT, SLOT_FINGER_LEFT],
+        _ => return None,
+    };
+    Some(slots.contains(&slot))
+}
+
 /// Extra per-player state needed by the helpers that doesn't live on the
 /// packet-shape `PlayerState`.
 ///
@@ -587,6 +613,26 @@ mod tests {
     use super::super::quest::{Quest, quest_actor_id};
     use super::*;
     use crate::actor::Player;
+
+    #[test]
+    fn gear_only_goes_in_its_slot() {
+        assert_eq!(gear_slot_fits(9, SLOT_HEAD), Some(true)); // Judge's Chain Coif
+        assert_eq!(gear_slot_fits(11, SLOT_HEAD), Some(false)); // a robe as a hat
+        assert_eq!(gear_slot_fits(13, SLOT_HEAD), Some(false)); // chausses as a hat
+        assert_eq!(gear_slot_fits(14, SLOT_BODY), Some(false)); // gloves as a body
+        assert_eq!(gear_slot_fits(11, SLOT_MAINHAND), Some(false));
+        assert_eq!(gear_slot_fits(10, SLOT_UNDERSHIRT), Some(true));
+        assert_eq!(gear_slot_fits(12, SLOT_UNDERGARMENT), Some(true));
+        assert_eq!(gear_slot_fits(49, SLOT_FINGER_LEFT), Some(true));
+        assert_eq!(gear_slot_fits(49, SLOT_FINGER_RIGHT), Some(true));
+        assert_eq!(gear_slot_fits(47, SLOT_EARS), Some(true));
+        assert_eq!(gear_slot_fits(45, SLOT_WRISTS), Some(true));
+        assert_eq!(gear_slot_fits(39, SLOT_MAINHAND), Some(true)); // a tool
+        assert_eq!(gear_slot_fits(40, SLOT_OFFHAND), Some(true)); // a second tool
+        assert_eq!(gear_slot_fits(36, SLOT_HEAD), Some(false));
+        assert_eq!(gear_slot_fits(42, SLOT_BODY), None); // a cowl isn't checked
+        assert_eq!(gear_slot_fits(0, SLOT_PACK), None);
+    }
 
     fn fresh_player() -> Player {
         Player::with_helpers(1)

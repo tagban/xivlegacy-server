@@ -21,7 +21,7 @@ use super::PacketProcessor;
 use crate::actor::player::{
     SLOT_BODY, SLOT_EARS, SLOT_FEET, SLOT_FINGER_LEFT, SLOT_FINGER_RIGHT, SLOT_HANDS, SLOT_HEAD,
     SLOT_LEGS, SLOT_MAINHAND, SLOT_NECK, SLOT_OFFHAND, SLOT_PACK, SLOT_THROWINGWEAPON,
-    SLOT_UNDERGARMENT, SLOT_UNDERSHIRT, SLOT_WAIST, SLOT_WRISTS,
+    SLOT_UNDERGARMENT, SLOT_UNDERSHIRT, SLOT_WAIST, SLOT_WRISTS, gear_slot_fits,
 };
 use crate::lua::command::LuaCommand;
 use crate::packets::send as tx;
@@ -211,6 +211,20 @@ impl PacketProcessor {
             );
             return;
         };
+        // The client sends whatever slot the item was dropped on; gear that
+        // doesn't go there is refused (a robe on the head draws white).
+        if let Ok(Some(point)) = self.db.item_equip_point(catalog_id).await
+            && gear_slot_fits(point, equip_slot) == Some(false)
+        {
+            tracing::warn!(
+                player = player_id,
+                item = catalog_id,
+                point,
+                equip_slot,
+                "EquipCommand: item doesn't go in that gear slot"
+            );
+            return;
+        }
         let mut class_id = self.current_class(player_id).await;
         let mut redraw: Vec<u16> = vec![equip_slot];
         let mut switched = false;
