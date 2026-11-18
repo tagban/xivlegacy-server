@@ -263,6 +263,43 @@ pub fn names() -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// The quests `name`'s windows list, in order, without repeats.
+pub fn quests_of(name: &str) -> Vec<u32> {
+    let mut out: Vec<u32> = Vec::new();
+    if let Ok(s) = state().read()
+        && let Some(e) = s.events.get(&name.to_ascii_lowercase())
+    {
+        for q in e.windows.iter().flat_map(|w| w.quests.iter()) {
+            if !out.contains(q) {
+                out.push(*q);
+            }
+        }
+    }
+    out
+}
+
+/// The event a switch command (`!starlight`, `!halloween` ...) names.
+pub fn switch_target(command: &str) -> Option<&'static str> {
+    match command {
+        "starlight" => Some("starlight"),
+        "moonfire" => Some("moonfire"),
+        "allsaints" | "halloween" => Some("allsaints"),
+        "hatchingtide" | "easter" => Some("hatchingtide"),
+        _ => None,
+    }
+}
+
+/// The modes that run `target` alone: it on, every other event off.
+pub fn solo_modes(target: &str) -> Vec<(String, Mode)> {
+    names()
+        .into_iter()
+        .map(|n| {
+            let m = if n == target { Mode::On } else { Mode::Off };
+            (n, m)
+        })
+        .collect()
+}
+
 pub fn exists(name: &str) -> bool {
     state()
         .read()
@@ -665,6 +702,16 @@ mod tests {
     }
 
     #[test]
+    fn switch_commands_name_their_events() {
+        assert_eq!(switch_target("halloween"), Some("allsaints"));
+        assert_eq!(switch_target("allsaints"), Some("allsaints"));
+        assert_eq!(switch_target("easter"), Some("hatchingtide"));
+        assert_eq!(switch_target("moonfire"), Some("moonfire"));
+        assert_eq!(switch_target("starlight"), Some("starlight"));
+        assert_eq!(switch_target("event"), None);
+    }
+
+    #[test]
     fn month_day_parses() {
         assert_eq!(MonthDay::parse("12-16"), Some(MonthDay(12, 16)));
         assert_eq!(MonthDay::parse("01-05"), Some(MonthDay(1, 5)));
@@ -683,6 +730,16 @@ mod tests {
         let a = &events["allsaints"];
         assert!(a.windows.iter().any(|w| w.quests == [110800]));
         assert_eq!(a.night_classes.len(), 9);
+        // the yearly calendar
+        let on = |name: &str, day: MonthDay| events[name].windows.iter().any(|w| w.contains(day));
+        assert!(on("allsaints", MonthDay(10, 1)) && on("allsaints", MonthDay(10, 31)));
+        assert!(!on("allsaints", MonthDay(9, 30)) && !on("allsaints", MonthDay(11, 1)));
+        assert!(on("starlight", MonthDay(11, 1)) && on("starlight", MonthDay(1, 16)));
+        assert!(!on("starlight", MonthDay(10, 31)) && !on("starlight", MonthDay(1, 17)));
+        assert!(on("hatchingtide", MonthDay(4, 1)) && on("hatchingtide", MonthDay(4, 30)));
+        assert!(!on("hatchingtide", MonthDay(3, 31)) && !on("hatchingtide", MonthDay(5, 1)));
+        assert!(on("moonfire", MonthDay(6, 1)) && on("moonfire", MonthDay(8, 31)));
+        assert!(!on("moonfire", MonthDay(5, 31)) && !on("moonfire", MonthDay(9, 1)));
         assert!(a.is_night(19) && a.is_night(4) && !a.is_night(5) && !a.is_night(18));
     }
 }

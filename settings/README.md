@@ -121,16 +121,27 @@ with `!!` to say a command without running it: `!!zone gridania` shows
 
 ### Seasonal events
 
-`settings/events.toml` lists the seasonal events and when they run. The
-shipped one is the Starlight Celebration (`starlight`): its NPCs (three
-Black Rabbit Traders reps and Waldomar and Father Frost in Hyrstmill) show
-from December 16 to January 16; Winter Is Not Coming is offered December
-16-31 and Gone with the Snow December 31-January 16, by the server's local
-date. Each window's dates are `MM-DD`, both days included; an end before the
-start runs over the new year. To change them, copy the whole `[starlight]`
-block from `settings/default/events.toml` into your `settings/events.toml`
-(both windows) and edit the dates; `mode = "on"` runs it whatever the date,
-`"off"` never.
+`settings/events.toml` lists the seasonal events and when they run, by the
+server's local date. The shipped calendar repeats every year:
+
+| Event | Name | Runs | Quests |
+|---|---|---|---|
+| All Saints' Wake | `allsaints` | Oct 1 - Oct 31 | Impish Impositions |
+| Starlight Celebration | `starlight` | Nov 1 - Jan 16 | Winter Is Not Coming (all of it); Gone with the Snow from Dec 26 |
+| Hatching-tide | `hatchingtide` | Apr 1 - Apr 30 | (being built) The Dreamer's Gospel, The Dreamer's Dilemma (one of each per city), Scrambled Eggs |
+| Moonfire Faire | `moonfire` | Jun 1 - Aug 31 | (being built) The Heat Is On, Bombard Backlash |
+
+An event's NPCs and decorations show while any of its windows is open, and
+each window's quests are offered only while it is open. Each window's dates
+are `MM-DD`, both days included; an end before the start runs over the new
+year. To change them, copy the event's whole block (all its windows) from
+`settings/default/events.toml` into your `settings/events.toml` and edit
+the dates; `mode = "on"` runs it whatever the date, `"off"` never.
+
+`!starlight`, `!moonfire`, `!halloween` (or `!allsaints`) and `!easter` (or
+`!hatchingtide`) run that one event and stop every other; the reply names
+any of its quests not built yet. `!event auto` puts every event back on the
+calendar.
 
 `!event starlight on` or `off` overrides the file until `!event starlight
 auto`. NPCs appear or vanish around players within a minute; quest offers

@@ -60,6 +60,13 @@ setmusic = 2
 setweather = 2
 # seasonal events (settings/events.toml): show, or switch on/off/auto
 event = 2
+# run one seasonal event and stop the others
+starlight = 2
+moonfire = 2
+halloween = 2
+allsaints = 2
+easter = 2
+hatchingtide = 2
 
 # senior GMs: changing what characters have, and what reaches everyone
 bringall = 3
