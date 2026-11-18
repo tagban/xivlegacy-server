@@ -92,23 +92,40 @@ pub fn is_faction_leve(gl_id: u32) -> bool {
     (1_001..10_801).contains(&gl_id)
 }
 
+/// The menu's highest band (its entries are 20, 30 and 40): it also lists
+/// the level 50 leves, which have no entry of their own.
+const TOP_BAND: u32 = 40;
+
+/// Past [`CARDS`], a band's page shows the next ones this often.
+const ROTATION_SECS: u64 = 36 * 3600;
+
 /// The faction leves the levemete lists for `faction` at level `level`
-/// (the band picked in the menu: 20, 30, 40): those the battle runtime
-/// can run, at most 8, in id order.
-pub fn offers(catalog: &HashMap<u32, GuildleveGamedata>, faction: u8, level: u32) -> Vec<u32> {
+/// (the band picked in the menu: 20, 30, 40, the last with the level 50
+/// ones too): those the leve runtime can run, in id order, at most
+/// [`CARDS`]; a band with more shows the next ones every [`ROTATION_SECS`].
+pub fn offers(
+    catalog: &HashMap<u32, GuildleveGamedata>,
+    faction: u8,
+    level: u32,
+    now_secs: u64,
+) -> Vec<u32> {
     let mut ids: Vec<u32> = catalog
         .values()
         .filter(|g| {
+            let l = u32::from(g.level);
             is_faction_leve(g.id)
                 && faction_of(g) == Some(faction)
-                && u32::from(g.level) == level
+                && (l == level || (level == TOP_BAND && l > TOP_BAND))
                 && crate::leve::battle::is_supported(g)
         })
         .map(|g| g.id)
         .collect();
     ids.sort_unstable();
-    ids.truncate(CARDS);
-    ids
+    if ids.len() <= CARDS {
+        return ids;
+    }
+    let start = ((now_secs / ROTATION_SECS) as usize * CARDS) % ids.len();
+    (0..CARDS).map(|k| ids[(start + k) % ids.len()]).collect()
 }
 
 /// `credits` changed by `delta`, kept within 0..=[`CAP`]. `None` when it
@@ -246,9 +263,39 @@ mod tests {
         .into_iter()
         .map(|g| (g.id, g))
         .collect();
-        assert_eq!(offers(&catalog, 1, 20), vec![1001, 1002]);
-        assert_eq!(offers(&catalog, 1, 30), vec![1003]);
-        assert_eq!(offers(&catalog, 2, 20), vec![1101]);
-        assert!(offers(&catalog, 3, 20).is_empty());
+        assert_eq!(offers(&catalog, 1, 20, 0), vec![1001, 1002]);
+        assert_eq!(offers(&catalog, 1, 30, 0), vec![1003]);
+        assert_eq!(offers(&catalog, 2, 20, 0), vec![1101]);
+        assert!(offers(&catalog, 3, 20, 0).is_empty());
+    }
+
+    #[test]
+    fn the_level_40_entry_also_lists_the_level_50_leves_a_page_at_a_time() {
+        let catalog: HashMap<u32, GuildleveGamedata> = (0..10)
+            .map(|k| leve(1010 + k, 40019, if k < 4 { 40 } else { 50 }))
+            .chain([leve(1030, 40019, 30)])
+            .map(|g| (g.id, g))
+            .collect();
+        let first = offers(&catalog, 1, 40, 0);
+        assert_eq!(first, (1010..1018).collect::<Vec<_>>());
+        let next = offers(&catalog, 1, 40, ROTATION_SECS);
+        assert_eq!(next.len(), CARDS);
+        assert!(next.contains(&1018) && next.contains(&1019));
+        assert_eq!(offers(&catalog, 1, 30, 0), vec![1030]);
+    }
+
+    #[test]
+    fn horn_and_hand_errands_are_on_its_menu() {
+        let crates = GuildleveGamedata {
+            id: 1201,
+            authority: 40021,
+            level: 20,
+            class_type: 4,
+            objective: 12004,
+            aim_num: [2, 2, 2, 9],
+            ..Default::default()
+        };
+        let catalog: HashMap<u32, GuildleveGamedata> = [(1201, crates)].into_iter().collect();
+        assert_eq!(offers(&catalog, 3, 20, 0), vec![1201]);
     }
 }

@@ -645,6 +645,21 @@ pub async fn apply_runtime_lua_command(
             .await;
             true
         }
+        LC::OpenLeveCrate {
+            player_id,
+            crate_actor_id,
+        } => {
+            crate::leve::battle::on_crate(
+                player_id,
+                crate_actor_id,
+                registry,
+                world,
+                db,
+                crate::runtime::clock::server_now_ms(),
+            )
+            .await;
+            true
+        }
         LC::LeveGatherVisit {
             player_id,
             zone_id,

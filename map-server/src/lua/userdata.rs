@@ -1620,6 +1620,22 @@ impl UserData for LuaPlayer {
                 ))
             },
         );
+        methods.add_method("IsLeveCrate", |_, this, npc: mlua::Value| {
+            Ok(crate::leve::battle::is_crate(
+                this.snapshot.actor_id,
+                lua_target_to_actor_id(&npc),
+            ))
+        });
+        methods.add_method("OpenLeveCrate", |_, this, npc: mlua::Value| {
+            push(
+                &this.queue,
+                LuaCommand::OpenLeveCrate {
+                    player_id: this.snapshot.actor_id,
+                    crate_actor_id: lua_target_to_actor_id(&npc),
+                },
+            );
+            Ok(())
+        });
         methods.add_method(
             "LeveGatherVisit",
             |_, this, (zone_id, unique_id, gained): (u32, String, u32)| {

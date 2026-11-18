@@ -243,7 +243,13 @@ pub fn install_globals(
                 Ok(cats
                     .guildleves
                     .read()
-                    .map(|m| crate::leve::faction::offers(&m, faction, level))
+                    .map(|m| {
+                        let now = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_secs())
+                            .unwrap_or_default();
+                        crate::leve::faction::offers(&m, faction, level, now)
+                    })
                     .unwrap_or_default())
             },
         )?;

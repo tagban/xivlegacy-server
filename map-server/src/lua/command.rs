@@ -498,6 +498,12 @@ pub enum LuaCommand {
     AbandonBattleleve {
         player_id: u32,
     },
+    /// `player:OpenLeveCrate(npc)` — GuildleveBonusTreasureBox.lua: a crate
+    /// of the player's errand leve opened (crate::leve::battle::on_crate).
+    OpenLeveCrate {
+        player_id: u32,
+        crate_actor_id: u32,
+    },
     /// `player:LeveGatherVisit(zoneId, uniqueId, gained)` — DummyCommand.lua
     /// after a visit to a gathering point: a fieldcraft leve counts it when
     /// it is the leve's marked point (crate::leve::battle::on_gather).

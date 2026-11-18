@@ -509,6 +509,24 @@ impl Database {
     }
 
     /// Every monster spawn point in a zone (positions on the ground).
+    /// Where a zone's NPCs and objects stand (an errand leve's crates
+    /// in town go beside them).
+    pub async fn npc_spawn_points(&self, zone_id: u32) -> Result<Vec<(f32, f32, f32)>> {
+        self.conn
+            .call_db(move |c| {
+                let mut stmt = c.prepare(
+                    r"SELECT positionX, positionY, positionZ
+                      FROM server_spawn_locations WHERE zoneId = ?1",
+                )?;
+                let rows = stmt
+                    .query_map([zone_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+                    .collect::<common::sql::Result<_>>()?;
+                Ok(rows)
+            })
+            .await
+            .context("leve data query")
+    }
+
     pub async fn battlenpc_spawn_points(&self, zone_id: u32) -> Result<Vec<(f32, f32, f32)>> {
         self.conn
             .call_db(move |c| {

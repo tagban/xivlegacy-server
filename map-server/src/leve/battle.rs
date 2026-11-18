@@ -41,6 +41,9 @@ use crate::packets::send::actor::ActorPropertyPacketBuilder;
 use crate::runtime::actor_registry::ActorRegistry;
 use crate::world_manager::WorldManager;
 
+mod errand;
+pub use errand::{is_crate, on_crate};
+
 const WORLD_MASTER: u32 = 0x5FF8_0001;
 const LOG_SYSTEM: u8 = 0x20;
 /// "You have started the leve..."
@@ -197,6 +200,9 @@ fn is_page(gd: &GuildleveGamedata, i: usize) -> bool {
 /// A battle leve this runtime can run: has at least one target to defeat,
 /// and every target it counts has a monster to spawn.
 pub fn is_supported(gd: &GuildleveGamedata) -> bool {
+    if gd.class_type == 4 {
+        return errand::supported(gd);
+    }
     if gd.class_type == 2 {
         return field_harvest_type(gd).is_some() && gd.aim_num.iter().any(|&a| a > 0);
     }
@@ -210,20 +216,24 @@ pub fn is_supported(gd: &GuildleveGamedata) -> bool {
     let counted = |i: usize| gd.aim_num[i] > 0 && target_of(gd, i) != 0;
     // a horde Survive leve has no targets: the hold is the task
     let hold_only = gd.plate_id == PLATE_SURVIVE && gd.survive.is_some();
+    // a named target with no monster model of its own (a faction leve's
+    // wanted NM, a band of footpads) runs with a stand-in ([`stand_in`])
     gd.class_type == 1
         && plate_supported(gd)
         && (hold_only || (0..4).any(|i| counted(i) || carried_by_local_beasts(gd, i)))
-        && (0..4).all(|i| !counted(i) || !target_missing(gd, i))
 }
 
-/// Objective `i`'s target has no monster class (its own mob, or the
-/// first one it falls back to).
-fn target_missing(gd: &GuildleveGamedata, i: usize) -> bool {
-    if gd.mobs[i] != 0 {
-        gd.mob_missing[i]
-    } else {
-        gd.mob_missing[0]
-    }
+/// The monster class a target with no model of its own appears as: the
+/// leve's other targets' or decoys' class (the NM's own band), else a
+/// beast of the area near the leve's level.
+fn stand_in(classes: &[u32; 4], decoys: &[u32], local: &[u32]) -> u32 {
+    classes
+        .iter()
+        .chain(decoys)
+        .chain(local)
+        .copied()
+        .find(|&c| c != 0)
+        .unwrap_or(0)
 }
 
 /// The regional leves a camp's levemete hands out (`10801..`). The rows
@@ -248,6 +258,11 @@ fn target_of(gd: &GuildleveGamedata, i: usize) -> u32 {
 
 /// The director script (and client class) for a leve's plate.
 fn director_class(gd: &GuildleveGamedata) -> &'static str {
+    if gd.class_type == 4 {
+        // an errand's tracker: the harvest director's lines read the
+        // leve sheet's objective text and counts
+        return "PrivateGLHarvestItemGet";
+    }
     crate::director::guildleve::guildleve_script_for_plate(gd.id, gd.plate_id)
         .map(|p| p.trim_start_matches("Guildleve/"))
         .unwrap_or("PrivateGLBattleSweepNormal")
@@ -459,6 +474,8 @@ struct Leve {
     sponsor: Option<u8>,
     /// A fieldcraft leve's gathering points.
     field: Option<FieldRun>,
+    /// A Horn and Hand errand ([`errand`]).
+    errand: Option<errand::ErrandRun>,
 }
 
 static ACTIVE: Mutex<Vec<Leve>> = Mutex::new(Vec::new());
@@ -611,6 +628,9 @@ pub struct SweepView {
     pub rescuee: Option<u32>,
     /// A Survive hold is running or waiting for a player at the spot.
     pub holding: bool,
+    /// An errand's crates still to open, and the beast to follow.
+    pub crates: Vec<u32>,
+    pub guide: Option<u32>,
 }
 
 /// The running leve `player_id` is on, for the GM sweep commands.
@@ -646,6 +666,12 @@ pub fn sweep_view(player_id: u32) -> Option<SweepView> {
             marker: l.marker,
             rescuee: l.rescuee,
             holding: l.holding,
+            crates: l
+                .errand
+                .as_ref()
+                .map(|e| e.crates.clone())
+                .unwrap_or_default(),
+            guide: l.errand.as_ref().and_then(|e| e.guide),
         })
     })
 }
@@ -983,6 +1009,12 @@ pub async fn start(
         Some(harvest_type) => {
             let points = field_points(zone_id, harvest_type, camp, db, world).await;
             if points.is_empty() {
+                tracing::info!(
+                    player = player_id,
+                    gl_id = gd.id,
+                    zone = zone_id,
+                    "fieldcraft leve has no gathering points"
+                );
                 say(
                     registry,
                     world,
@@ -1005,8 +1037,9 @@ pub async fn start(
     let necrologos = gd.plate_id == PLATE_NECROLOGOS;
     let mut classes = [0u32; 4];
     let mut targets = [0u32; 4];
-    if field.is_some() {
-        // gathering points, no monsters
+    let errand_kind = errand::errand_kind(&gd);
+    if field.is_some() || errand_kind.is_some() {
+        // gathering points or an errand, no monsters to defeat
     } else if necrologos || (0..4).any(|i| carried_by_local_beasts(&gd, i)) {
         // each page's beast: the leve's own mob, or a monster of the area
         // around the leve spot near its level (a different one per page)
@@ -1030,7 +1063,7 @@ pub async fn start(
                 local.get(i % local.len().max(1)).copied().unwrap_or(0)
             };
         }
-    } else {
+    } else if errand_kind.is_none() {
         for i in 0..4 {
             if gd.aim_num[i] <= 0 {
                 continue;
@@ -1042,6 +1075,26 @@ pub async fn start(
                 .ok()
                 .flatten()
                 .unwrap_or(0);
+        }
+        if (0..4).any(|i| gd.aim_num[i] > 0 && classes[i] == 0) {
+            let mut decoys = Vec::new();
+            for &m in gd.mobs.iter().filter(|&&m| m != 0) {
+                if let Ok(Some(c)) = db.monster_class_for_name(m).await {
+                    decoys.push(c);
+                }
+            }
+            let monsters = db.zone_monsters(zone_id).await.unwrap_or_default();
+            let local = pick_beasts(&monsters, center, u32::from(gd.level), 1);
+            let found = classes;
+            for i in (0..4).filter(|&i| gd.aim_num[i] > 0 && found[i] == 0) {
+                classes[i] = stand_in(&found, &decoys, &local);
+                tracing::info!(
+                    gl_id,
+                    target = targets[i],
+                    stand_in = classes[i],
+                    "guildleve: target has no monster model; a stand-in appears"
+                );
+            }
         }
     }
     let director_id = (6 << 28)
@@ -1063,7 +1116,9 @@ pub async fn start(
         director_id,
         // the client's difficulty menu: each star past the first is enemy level +3
         monster_level: u32::from(gd.level.max(1)) + 3 * u32::from(difficulty - 1),
-        aim: if necrologos {
+        aim: if let Some(kind) = errand_kind {
+            errand::aim(&gd, kind)
+        } else if necrologos {
             // the pages, then the tome (one, destroyed when they're in)
             std::array::from_fn(|i| match i {
                 3 => 1,
@@ -1106,6 +1161,7 @@ pub async fn start(
         hold_offset: 0,
         sponsor: crate::leve::faction::sponsor_of(&gd),
         field,
+        errand: None,
     };
     if let Some(hold) = gd.survive.clone().filter(|_| gd.plate_id == PLATE_SURVIVE) {
         leve.hold_class = db
@@ -1128,7 +1184,12 @@ pub async fn start(
         leve.holding = true;
     }
     for i in 0..4 {
-        if leve.field.is_none() && leve.aim[i] > 0 && classes[i] == 0 && !(necrologos && i == 3) {
+        if leve.field.is_none()
+            && errand_kind.is_none()
+            && leve.aim[i] > 0
+            && classes[i] == 0
+            && !(necrologos && i == 3)
+        {
             tracing::warn!(
                 gl_id,
                 target = targets[i],
@@ -1138,8 +1199,21 @@ pub async fn start(
         }
     }
     // (a horde Survive leve has no targets: its hold is the task)
+    if let Some(kind) = errand_kind
+        && !errand::setup(&mut leve, &gd, kind, &points, registry, world, db, lua).await
+    {
+        say(
+            registry,
+            world,
+            player_id,
+            "There is no place for this levequest here yet.",
+        )
+        .await;
+        return;
+    }
     if leve.hold.is_none()
         && leve.field.is_none()
+        && errand_kind.is_none()
         && leve
             .aim
             .iter()
@@ -1214,7 +1288,8 @@ pub async fn start(
         with_active(|a| a.push(leve));
         return;
     }
-    if leve.field.is_some() {
+    if leve.field.is_some() || leve.errand.is_some() {
+        let center = leve.marker;
         log_start(&leve, center);
         with_active(|a| a.push(leve));
         return;
@@ -2566,6 +2641,9 @@ pub async fn tick(
                     if let Some(person) = leve.rescuee {
                         rescue_tick(&leve, person, now_ms, registry, world, db, lua).await;
                     }
+                    if leve.errand.is_some() {
+                        errand::tick(&leve, &here, now_ms, registry, world, db).await;
+                    }
                     if leve.hold.is_some() {
                         if all_down(&leve, registry).await {
                             if let Some(ended) = finish(leve.owner, now_ms) {
@@ -2741,11 +2819,13 @@ mod tests {
         ] {
             cat.insert(g.id, g);
         }
+        // (a target with no monster of its own runs with a stand-in)
         cat.get_mut(&20901).unwrap().mob_missing[0] = true;
-        assert_eq!(company_offer(&cat, 1, 129, 0), Some(20902));
-        assert_eq!(company_offer(&cat, 1, 129, ROTATION_SECS), Some(20903));
-        assert_eq!(company_offer(&cat, 1, 129, 2 * ROTATION_SECS), Some(20904));
-        assert_eq!(company_offer(&cat, 1, 129, 3 * ROTATION_SECS), Some(20902));
+        assert_eq!(company_offer(&cat, 1, 129, 0), Some(20901));
+        assert_eq!(company_offer(&cat, 1, 129, ROTATION_SECS), Some(20902));
+        assert_eq!(company_offer(&cat, 1, 129, 2 * ROTATION_SECS), Some(20903));
+        assert_eq!(company_offer(&cat, 1, 129, 3 * ROTATION_SECS), Some(20904));
+        assert_eq!(company_offer(&cat, 1, 129, 4 * ROTATION_SECS), Some(20901));
         assert_eq!(company_offer(&cat, 1, 132, 0), Some(21422));
         assert_eq!(company_offer(&cat, 2, 129, 0), Some(22523));
         assert_eq!(company_offer(&cat, 3, 129, 0), None);
@@ -2861,7 +2941,7 @@ mod tests {
     }
 
     #[test]
-    fn a_target_with_no_monster_is_not_offered() {
+    fn a_target_with_no_monster_runs_with_a_stand_in() {
         // Securing Horizon's Edge: footpads and raiders have no monster class
         let mut footpads = leve(
             11661,
@@ -2872,10 +2952,15 @@ mod tests {
             [3280101, 3280105, 0, 0],
         );
         footpads.mob_missing = [true, true, false, false];
-        assert!(!is_supported(&footpads));
-        // one counted target missing is enough
-        footpads.mob_missing = [false, true, false, false];
-        assert!(!is_supported(&footpads));
+        assert!(is_supported(&footpads));
+        // the stand-in: another target's class, a decoy's, else a local beast
+        assert_eq!(
+            stand_in(&[0, 2203101, 0, 0], &[2200101], &[2201001]),
+            2203101
+        );
+        assert_eq!(stand_in(&[0; 4], &[2200101], &[2201001]), 2200101);
+        assert_eq!(stand_in(&[0; 4], &[], &[2201001]), 2201001);
+        assert_eq!(stand_in(&[0; 4], &[], &[]), 0);
         // a Detect leve's decoy without a monster doesn't matter
         let mut imps = leve(
             11668,
@@ -2890,7 +2975,7 @@ mod tests {
         // an objective with no mob of its own counts the first one
         let mut fallback = leve(1, 1280034, 20, 20021, [2, 3, 0, 0], [3280101, 0, 0, 0]);
         fallback.mob_missing = [true, false, false, false];
-        assert!(!is_supported(&fallback));
+        assert!(is_supported(&fallback));
     }
 
     #[test]

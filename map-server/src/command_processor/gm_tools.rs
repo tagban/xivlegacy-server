@@ -199,7 +199,7 @@ impl CommandProcessor {
     /// and start it where you stand, as the camp aetheryte's menu does;
     /// `leve abandon` gives up the running one.
     pub(super) async fn handle_leve(&self, args: &Args<'_>) -> String {
-        let usage = "usage: leve <guildleve id> [stars 1-5] | leve abandon | leve status | leve go | leve poke | leve camp <id>";
+        let usage = "usage: leve <guildleve id> [stars 1-5] | leve abandon | leve status | leve go | leve poke | leve open | leve camp <id>";
         let me = match self.invoker_id(args).await {
             Ok(id) => id,
             Err(e) => return e,
@@ -213,6 +213,7 @@ impl CommandProcessor {
             Some("status") => return self.leve_status(me),
             Some("go") => return self.leve_go(me, args).await,
             Some("camp") => return self.leve_camp(args).await,
+            Some("open") => return self.leve_open(me).await,
             Some("poke") => {
                 let n = crate::leve::battle::poke_all(
                     me,
@@ -263,7 +264,7 @@ impl CommandProcessor {
         match crate::leve::battle::sweep_view(me) {
             None => "leve status: none".into(),
             Some(v) => format!(
-                "leve status: {} running now={:?} aim={:?} targets={} others={} disguises={} holding={} rescuee={}",
+                "leve status: {} running now={:?} aim={:?} targets={} others={} disguises={} holding={} rescuee={} marker={},{:.2},{:.2},{:.2} crates={} guide={}",
                 v.guildleve_id,
                 v.now,
                 v.aim,
@@ -272,6 +273,12 @@ impl CommandProcessor {
                 v.disguises.len(),
                 v.holding,
                 v.rescuee.is_some(),
+                v.zone_id,
+                v.marker.0,
+                v.marker.1,
+                v.marker.2,
+                v.crates.len(),
+                v.guide.is_some(),
             ),
         }
     }
@@ -305,6 +312,32 @@ impl CommandProcessor {
                 break;
             }
         }
+        // an errand: the nearest crate, else a little behind the beast to
+        // follow (out of its sight)
+        if best.is_none() {
+            for &a in &v.crates {
+                if let Some(h) = self.registry.get(a).await {
+                    let c = h.character.read().await;
+                    let p = (c.base.position_x, c.base.position_y, c.base.position_z);
+                    let d = (p.0 - mx).powi(2) + (p.2 - mz).powi(2);
+                    if best.is_none_or(|b| d < b.0) {
+                        best = Some((d, p, "crate"));
+                    }
+                }
+            }
+        }
+        if best.is_none()
+            && let Some(g) = v.guide
+            && let Some(h) = self.registry.get(g).await
+        {
+            let c = h.character.read().await;
+            let p = (c.base.position_x, c.base.position_y, c.base.position_z);
+            // 12 yalms toward you: between the spotting and the following range
+            let (dx, dz) = (mx - p.0, mz - p.2);
+            let len = (dx * dx + dz * dz).sqrt().max(0.01);
+            let back = (p.0 + dx / len * 10.0, p.1, p.2 + dz / len * 10.0);
+            best = Some((0.0, back, "beast to follow"));
+        }
         let (pos, what) = match best {
             Some((_, p, w)) => (p, w),
             None => (v.marker, "leve spot"),
@@ -323,6 +356,39 @@ impl CommandProcessor {
             "leve go: to {what} at ({:.0}, {:.0}, {:.0})",
             pos.0, pos.1, pos.2
         )
+    }
+
+    /// `leve open`: open the errand crate you stand by (within 5 yalms), as
+    /// talking to it does.
+    async fn leve_open(&self, me: u32) -> String {
+        let Some(v) = crate::leve::battle::sweep_view(me) else {
+            return "leve open: no running leve".into();
+        };
+        let Some((_, mx, _, mz, _)) = self.spot_of(me).await else {
+            return "you are not online".into();
+        };
+        for &a in &v.crates {
+            let Some(h) = self.registry.get(a).await else {
+                continue;
+            };
+            let p = {
+                let c = h.character.read().await;
+                (c.base.position_x, c.base.position_z)
+            };
+            if (p.0 - mx).powi(2) + (p.1 - mz).powi(2) <= 25.0 {
+                crate::leve::battle::on_crate(
+                    me,
+                    a,
+                    &self.registry,
+                    &self.world,
+                    &self.db,
+                    crate::runtime::clock::server_now_ms(),
+                )
+                .await;
+                return format!("leve open: crate 0x{a:08X} opened");
+            }
+        }
+        "leve open: no crate within 5 yalms".into()
     }
 
     /// `leve camp <id>`: to the camp aetheryte leve `id` starts from.
