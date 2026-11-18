@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 2024 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 2036 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -2029,4 +2029,16 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (31044, 1000155, 'sisipu', 230, '', 0, -617.56, 4.55, 344.91, 1.11, 0, 0, NULL),
 (31200, 1091200, 'sum6a0_beastman_aetheryte', 174, '', 0, 1628.0, 249.88, 1070.0, 0.0, 0, 0, NULL),
 (31201, 1091201, 'sum6g0_beastman_aetheryte', 143, '', 0, 1196.0, 297.0, -143.0, 0.0, 0, 0, NULL),
-(31202, 1001836, 'sum6m0_pukwa_pika', 153, '', 0, -1345.0, -16.0, 355.0, -1.57, 0, 0, NULL);
+(31202, 1001836, 'sum6m0_pukwa_pika', 153, '', 0, -1345.0, -16.0, 355.0, -1.57, 0, 0, NULL),
+(31250, 1001584, 'hatch_kikina', 175, '', 0, -220.0, 190.0, 38.0, 2.6, 0, 0, NULL),
+(31251, 1001585, 'hatch_wadard', 175, '', 0, -217.0, 190.0, 41.0, 2.6, 0, 0, NULL),
+(31252, 1001586, 'hatch_figgy', 175, '', 0, -222.5, 190.0, 41.5, 2.6, 0, 0, NULL),
+(31253, 1001588, 'hatch_jihli', 206, '', 0, -121.0, 16.1, -1323.0, -1.6, 0, 0, NULL),
+(31254, 1001589, 'hatch_bricot', 206, '', 0, -118.0, 16.1, -1325.0, -1.6, 0, 0, NULL),
+(31255, 1001591, 'hatch_diggy', 206, '', 0, -124.0, 16.1, -1326.0, -1.6, 0, 0, NULL),
+(31256, 1001592, 'hatch_motte', 230, '', 0, -402.0, 42.5, 336.0, -2.4, 0, 0, NULL),
+(31257, 1001593, 'hatch_fhlae', 230, '', 0, -396.0, 42.5, 344.0, -2.4, 0, 0, NULL),
+(31258, 1001595, 'hatch_wiggy', 230, '', 0, -404.0, 42.5, 339.0, -2.4, 0, 0, NULL),
+(31259, 1001999, 'hatch_ziggy', 176, '', 0, 131.5, 167.1, -1198.9, 0.0, 0, 0, NULL),
+(31260, 1001998, 'hatch_twiggy', 157, '', 0, -956.5, -16.0, -2350.3, 0.0, 0, 0, NULL),
+(31261, 1001997, 'hatch_iggy', 132, '', 0, 1127.2, -79.7, -777.7, 0.0, 0, 0, NULL);
