@@ -1,0 +1,138 @@
+name: Linux server bundle
+
+# Builds the four servers as static x86_64 Linux binaries (musl), so one
+# download runs on any distribution (Debian, Ubuntu, Rocky/Alma, Alpine, Arch...)
+# with no glibc version to match. The tarball is what ops/linux/xiv.sh deploys:
+#
+#   xivlegacy-server-linux-x86_64-<sha>/
+#     bin/                 lobby-server, world-server, map-server, web-server
+#     scripts/lua/         content scripts (the map server's script_root)
+#     modules/             server modules
+#     settings/default/    shipped settings
+#     sql/                 schema, game data and migrations (also bundled in the
+#                          binaries; the web server applies them at first boot)
+#     ops/linux/           install.sh, xiv.sh, MariaDB config, README
+#     BUILD                commit, ref, date
+#     SHA256SUMS           every file above
+#
+# plus <bundle>.tar.gz.sha256 next to it. It runs on every push to develop (so
+# `xiv.sh deploy develop` always finds a build), on pull requests that change the
+# Linux ops files, and by hand (Actions > Linux server bundle > Run workflow) for
+# any branch, tag or commit. Separate from ci.yml and the release workflows.
+on:
+  push:
+    branches: [develop]
+  pull_request:
+    paths:
+      - 'ops/linux/**'
+      - '.github/workflows/linux-bundle.yml'
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch, tag or commit to build (empty = the branch picked above)"
+        required: false
+        default: ''
+
+concurrency:
+  group: linux-bundle-${{ github.event.inputs.ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    name: bundle (x86_64-unknown-linux-musl)
+    runs-on: ubuntu-latest
+    env:
+      TARGET: x86_64-unknown-linux-musl
+      # The two C builds (vendored Lua 5.4, ring for the web server's HTTPS
+      # client) compile against musl with musl-gcc.
+      CC_x86_64_unknown_linux_musl: musl-gcc
+      CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
+    steps:
+      - name: Check out
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.inputs.ref || github.event.pull_request.head.sha || github.sha }}
+
+      - name: musl toolchain
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq musl-tools
+
+      - name: Rust toolchain + musl target
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          # No `toolchain:` -> rust-toolchain.toml (1.95.0).
+          target: x86_64-unknown-linux-musl
+          rustflags: ""
+          cache: false
+
+      - name: Cache cargo + target
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: linux-musl
+
+      - name: Build (static)
+        run: |
+          cargo build --release --locked --target "$TARGET" \
+            -p web-server -p lobby-server -p world-server -p map-server
+
+      - name: Check the binaries are static
+        run: |
+          set -euo pipefail
+          for b in lobby-server world-server map-server web-server; do
+            f="target/$TARGET/release/$b"
+            file "$f"
+            if file "$f" | grep -q 'dynamically linked'; then
+              echo "::error::$b is dynamically linked"; exit 1
+            fi
+          done
+
+      - name: Package
+        id: pkg
+        run: |
+          set -euo pipefail
+          sha="$(git rev-parse HEAD)"
+          name="xivlegacy-server-linux-x86_64-$sha"
+          stage="dist/$name"
+          mkdir -p "$stage/bin" "$stage/scripts" "$stage/settings" "$stage/ops"
+          for b in lobby-server world-server map-server web-server; do
+            install -m 0755 "target/$TARGET/release/$b" "$stage/bin/$b"
+          done
+          cp -R scripts/lua "$stage/scripts/lua"
+          cp -R modules "$stage/modules"
+          cp -R settings/default "$stage/settings/default"
+          cp -R common/sql "$stage/sql"
+          cp -R ops/linux "$stage/ops/linux"
+          {
+            echo "commit=$sha"
+            echo "ref=${{ github.event.inputs.ref || github.ref_name }}"
+            echo "built=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "target=$TARGET"
+          } > "$stage/BUILD"
+          (cd "$stage" && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
+          tar -C dist -czf "dist/$name.tar.gz" "$name"
+          (cd dist && sha256sum "$name.tar.gz" > "$name.tar.gz.sha256")
+          rm -rf "$stage"
+          ls -l dist
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke-test on Alpine (no glibc)
+        run: |
+          set -euo pipefail
+          docker run --rm -v "$PWD/dist:/dist:ro" alpine:3.20 sh -c '
+            set -e
+            cd /tmp && tar -xzf /dist/*.tar.gz && cd xivlegacy-server-linux-x86_64-*
+            sha256sum -c SHA256SUMS >/dev/null
+            for b in lobby-server world-server map-server web-server; do
+              ./bin/$b --help >/dev/null && echo "$b runs"
+            done'
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          # xiv.sh deploy finds a build by this name.
+          name: ${{ steps.pkg.outputs.name }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
