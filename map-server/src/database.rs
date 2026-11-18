@@ -281,6 +281,15 @@ pub struct BugReport {
     pub created_at: i64,
 }
 
+/// What [`Database::award_monster_points`] granted.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct MonsterPointsGrant {
+    pub granted: i32,
+    pub today: i32,
+    pub week: i32,
+    pub balance: i32,
+}
+
 pub struct Database {
     conn: Connection,
 }
@@ -748,10 +757,12 @@ impl Database {
                              (SELECT GROUP_CONCAT(sq.questId)
                                 FROM server_spawn_location_quests sq
                                WHERE sq.spawnId = sl.id),
-                             se.eventName
+                             se.eventName,
+                             sl.customDisplayName, lk.appearanceClassId
                       FROM server_spawn_locations sl
                       LEFT JOIN server_eventnpc_mapobj mo ON mo.id = sl.id
-                      LEFT JOIN server_spawn_location_events se ON se.spawnId = sl.id",
+                      LEFT JOIN server_spawn_location_events se ON se.spawnId = sl.id
+                      LEFT JOIN server_spawn_looks lk ON lk.spawnId = sl.id",
                 )?;
                 let rows: Vec<crate::zone::SpawnLocation> = stmt
                     .query_map([], |r| {
@@ -782,6 +793,12 @@ impl Database {
                                 .ok()
                                 .flatten()
                                 .filter(|e| !e.is_empty()),
+                            custom_name: r
+                                .get::<_, Option<String>>(15)
+                                .ok()
+                                .flatten()
+                                .filter(|n| !n.is_empty()),
+                            look_class_id: r.get::<_, Option<u32>>(16).ok().flatten().unwrap_or(0),
                         })
                     })?
                     .collect::<common::sql::Result<_>>()?;
@@ -5658,14 +5675,23 @@ impl Database {
                         // Currency slot assignment — pick the next
                         // free slot within the currency package
                         // (matches add_gil behaviour).
+                        // The lowest free currency slot (as the bag
+                        // does since #293), not one past the highest.
                         let next_slot: i32 = tx
                             .query_row(
-                                r"SELECT COALESCE(MAX(slot), -1) + 1
-                                  FROM characters_inventory
-                                  WHERE characterId = :cid AND itemPackage = :pkg",
+                                r"SELECT MIN(s.n) FROM (
+                                    SELECT 0 AS n
+                                    UNION SELECT slot + 1 FROM characters_inventory
+                                     WHERE characterId = :cid AND itemPackage = :pkg
+                                  ) s
+                                  WHERE s.n NOT IN (
+                                    SELECT slot FROM characters_inventory
+                                     WHERE characterId = :cid AND itemPackage = :pkg)",
                                 named_params! { ":cid": chara_id, ":pkg": PKG_CURRENCY },
-                                |r| r.get::<_, i32>(0),
+                                |r| r.get::<_, Option<i32>>(0),
                             )
+                            .ok()
+                            .flatten()
                             .unwrap_or(0);
                         tx.execute(
                             r"INSERT INTO characters_inventory
@@ -5684,6 +5710,88 @@ impl Database {
             })
             .await?;
         Ok(total)
+    }
+
+    /// Grant up to `amount` Monster Points to `chara_id`: the day and week
+    /// counters reset on a new `day` / `week`, and the grant stops at
+    /// `day_cap` / `week_cap`. The points land in the currency bag as
+    /// `item_id`. Returns what was granted, today's and this week's totals
+    /// after it, and the balance.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn award_monster_points(
+        &self,
+        chara_id: u32,
+        item_id: u32,
+        amount: i32,
+        day: i32,
+        week: i32,
+        day_cap: i32,
+        week_cap: i32,
+    ) -> Result<MonsterPointsGrant> {
+        let (granted, today, this_week) = self
+            .conn
+            .call_db(move |c| {
+                let tx = c.transaction()?;
+                let row: Option<(i32, i32, i32, i32)> = tx
+                    .query_row(
+                        "SELECT earnedToday, dayStamp, earnedWeek, weekStamp \
+                         FROM characters_monster_points WHERE characterId = :c",
+                        named_params! { ":c": chara_id },
+                        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+                    )
+                    .optional()?;
+                let (mut today, d, mut wk, w) = row.unwrap_or((0, day, 0, week));
+                if d != day {
+                    today = 0;
+                }
+                if w != week {
+                    wk = 0;
+                }
+                let granted = crate::runtime::monster_points::capped(amount, today, wk, day_cap, week_cap);
+                today += granted;
+                wk += granted;
+                tx.execute(
+                    "INSERT INTO characters_monster_points \
+                       (characterId, earnedToday, dayStamp, earnedWeek, weekStamp, lifetime) \
+                     VALUES (:c, :t, :d, :wk, :w, :g) \
+                     ON DUPLICATE KEY UPDATE earnedToday = :t, dayStamp = :d, \
+                       earnedWeek = :wk, weekStamp = :w, lifetime = lifetime + :g",
+                    named_params! {
+                        ":c": chara_id, ":t": today, ":d": day, ":wk": wk, ":w": week, ":g": granted,
+                    },
+                )?;
+                tx.commit()?;
+                Ok((granted, today, wk))
+            })
+            .await?;
+        let balance = if granted > 0 {
+            self.add_currency_item(chara_id, item_id, granted).await?
+        } else {
+            self.currency_quantity(chara_id, item_id).await?
+        };
+        Ok(MonsterPointsGrant {
+            granted,
+            today,
+            week: this_week,
+            balance,
+        })
+    }
+
+    /// How much of currency `item_id` `chara_id` holds (0 if none).
+    pub async fn currency_quantity(&self, chara_id: u32, item_id: u32) -> Result<i32> {
+        const PKG_CURRENCY: u16 = 99;
+        self.conn
+            .call_db(move |c| {
+                Ok(c.query_row(
+                    r"SELECT COALESCE(SUM(si.quantity), 0)
+                      FROM characters_inventory ci
+                      INNER JOIN server_items si ON ci.serverItemId = si.id
+                      WHERE ci.characterId = :cid AND ci.itemPackage = :pkg AND si.itemId = :iid",
+                    named_params! { ":cid": chara_id, ":pkg": PKG_CURRENCY, ":iid": item_id },
+                    |r| r.get::<_, i64>(0),
+                )? as i32)
+            })
+            .await
     }
 
     /// Read current seal balance for `gc`. Returns `0` for unknown

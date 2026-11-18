@@ -95,6 +95,8 @@ impl CommandProcessor {
             return "Monster Mode works only out in the field.".into();
         }
 
+        // The tester form earns no Monster Points.
+        let tester_form = !args.rest().is_empty();
         let target = match args.rest().first() {
             // `!monstermode <class id>`: the nearest monster of that class.
             Some(word) => match word.parse::<u32>() {
@@ -134,6 +136,7 @@ impl CommandProcessor {
             target,
             mob.character.clone(),
             label.clone(),
+            !tester_form,
         )
         .await
         {
