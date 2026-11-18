@@ -2931,8 +2931,11 @@ async fn resolve_action(
                 }
                 hit.status_roll = rolled;
                 // Status commands on a monster (Provoke, Flash, Sleep) still
-                // draw its attention.
-                if defender_handle.kind == crate::runtime::actor_registry::ActorKindTag::BattleNpc {
+                // draw its attention. A monster's buff on itself (Stoneskin,
+                // Shock Spikes) doesn't: hating itself, it turned on itself.
+                if defender_handle.kind == crate::runtime::actor_registry::ActorKindTag::BattleNpc
+                    && attacker_actor_id != defender_actor_id
+                {
                     // The script's flat figure when it sets one (Provoke
                     // 750, Flash 400), else the row's potency.
                     let enmity =
