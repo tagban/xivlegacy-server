@@ -93,7 +93,7 @@ impl CommandProcessor {
         .await;
     }
 
-    async fn online_id(&self, name: &str) -> Result<u32, String> {
+    pub(super) async fn online_id(&self, name: &str) -> Result<u32, String> {
         let id = self
             .lookup_character_id(name)
             .await

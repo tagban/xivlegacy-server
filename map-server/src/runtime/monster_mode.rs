@@ -421,14 +421,18 @@ fn pending_bonus() -> MutexGuard<'static, HashMap<u32, i32>> {
 }
 
 /// Pay the session bonus of the body the player let go, if any.
+/// Also sends the duel notices owed (a foe's forfeit).
 pub async fn settle_points(player_id: u32, registry: &ActorRegistry, world: &WorldManager) {
+    let Some(db) = LOG_DB.get() else {
+        return;
+    };
+    for (to, line) in crate::runtime::monster_duel::take_notices() {
+        crate::runtime::monster_points::tell(to, line, registry, world, db).await;
+    }
     let Some(points) = pending_bonus().remove(&player_id) else {
         return;
     };
-    if let Some(db) = LOG_DB.get() {
-        crate::runtime::monster_points::award(player_id, points, "session", registry, world, db)
-            .await;
-    }
+    crate::runtime::monster_points::award(player_id, points, "session", registry, world, db).await;
 }
 
 /// player id -> possession.
@@ -592,9 +596,11 @@ pub async fn possess(
 /// Give the player their own body back, in memory. Safe to call on any
 /// exit and when the player isn't transformed (returns `None`). The
 /// monster is let go and respawns on the next ticker pass. `reason` goes
-/// to the log: `off`, `ko`, `zone`, `logout`, `class` or `gear`.
+/// to the log: `off`, `ko`, `duel`, `zone`, `logout`, `class` or `gear`.
 pub async fn release(player_id: u32, reason: &'static str) -> Option<Possession> {
     let p = possessions().remove(&player_id)?;
+    // Leaving mid-duel forfeits it (a fallen body has already ended it).
+    crate::runtime::monster_duel::forfeit(player_id);
     let bonus = session_bonus(
         p.earns_points,
         p.started_at,
@@ -727,9 +733,34 @@ pub async fn on_defeat(
     if !is_transformed(player_id) {
         return;
     }
+    // A duel ends with the fallen body: the winner turns back too.
+    let winner = crate::runtime::monster_duel::end(player_id);
     crate::runtime::dispatcher::apply_revive(player_id, registry, world, zone).await;
     if release(player_id, "ko").await.is_some() {
         refresh_client(registry, world, player_id).await;
+    }
+    let Some(winner) = winner else {
+        return;
+    };
+    if let Some(h) = registry.get(winner).await {
+        let mut c = h.character.write().await;
+        c.hate.clear_hate(Some(player_id));
+        c.ai_container.clear_states();
+    }
+    if release(winner, "duel").await.is_some() {
+        refresh_client(registry, world, winner).await;
+    }
+    if let Some(db) = LOG_DB.get() {
+        let name = db
+            .character_name(winner)
+            .await
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| "Your foe".into());
+        let line = format!("{name} wins the duel!");
+        for to in [winner, player_id] {
+            crate::runtime::monster_points::tell(to, line.clone(), registry, world, db).await;
+        }
     }
 }
 

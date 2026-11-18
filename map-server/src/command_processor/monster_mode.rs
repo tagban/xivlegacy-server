@@ -25,7 +25,13 @@
 //!
 //! Testers mark the move they just used (or one they name) for the move
 //! tracker: `!monstermode ok [move]`, `!monstermode bad [move] [note]`.
-//! The marks go to `log_monster_mode` with every move used.
+//! The marks go to `log_monster_mode` with every move used. The tester
+//! parts (a class id, the marks, `anim`) need the `monstermode_test` level
+//! in `settings/commands.toml`; `!monstermode` itself is for everyone.
+//!
+//! Duels (`runtime::monster_duel`): two transformed players fight each
+//! other only when both agree: `!monstermode duel [name]` challenges your
+//! target (or the named player) and answers their challenge the same way.
 
 use std::time::Duration;
 
@@ -37,9 +43,14 @@ use crate::runtime::monster_mode as mm;
 const POSSESS_RANGE: f32 = 30.0;
 /// Seconds to let go while in combat (FFXI's Relinquish countdown).
 const RELINQUISH_SECS: u64 = 4;
+/// How close a duel challenge must be made.
+const DUEL_RANGE: f32 = 30.0;
+/// The `settings/commands.toml` name of the tester parts' level.
+const TEST_LEVEL: &str = "monstermode_test";
 
 impl CommandProcessor {
-    pub(super) async fn handle_monstermode(&self, args: &Args<'_>) -> String {
+    /// `level`: the invoker's GM level, `None` on the console.
+    pub(super) async fn handle_monstermode(&self, args: &Args<'_>, level: Option<u8>) -> String {
         if !mm::enabled() {
             return format!(
                 "Monster Mode isn't enabled on this server (the {} module is off).",
@@ -53,10 +64,19 @@ impl CommandProcessor {
         let Some(handle) = self.registry.get(me).await else {
             return "you are not in the world".into();
         };
-        match args.rest().first() {
-            Some(&"anim") => return self.monster_anim(me, args).await,
-            Some(&"ok") => return self.monster_verdict(me, true, args).await,
-            Some(&"bad") => return self.monster_verdict(me, false, args).await,
+        let tester =
+            level.is_none_or(|l| l >= crate::command_permissions::get().required(TEST_LEVEL));
+        let first = args.rest().first().copied();
+        if first == Some("duel") {
+            return self.monster_duel(me, args).await;
+        }
+        if first.is_some() && !tester {
+            return "usage: monstermode (on a targeted monster; again to let go) | monstermode duel [name]".into();
+        }
+        match first {
+            Some("anim") => return self.monster_anim(me, args).await,
+            Some("ok") => return self.monster_verdict(me, true, args).await,
+            Some("bad") => return self.monster_verdict(me, false, args).await,
             _ => {}
         }
         if let Some((_, name)) = mm::possessed_mob(me) {
@@ -158,6 +178,87 @@ impl CommandProcessor {
         format!(
             "Monster Mode: you are {label} (level {level}, {hp} HP, {moves}). !monstermode again to let go."
         )
+    }
+
+    /// `monstermode duel [name]`: challenge another transformed player
+    /// (your target, or the one named), or accept their challenge.
+    async fn monster_duel(&self, me: u32, args: &Args<'_>) -> String {
+        if !mm::is_transformed(me) {
+            return "Duels are monster against monster: become one first (!monstermode on a monster).".into();
+        }
+        let named = args.rest()[1..].join(" ");
+        let foe = if named.is_empty() {
+            match self.my_target(me).await {
+                Ok(t) => t,
+                Err(_) => {
+                    return "Target the player you want to duel, or name them: !monstermode duel <name>".into();
+                }
+            }
+        } else {
+            match self.online_id(&named).await {
+                Ok(id) => id,
+                Err(e) => return e,
+            }
+        };
+        let (Some(mine), Some(theirs)) =
+            (self.registry.get(me).await, self.registry.get(foe).await)
+        else {
+            return "They aren't here.".into();
+        };
+        if theirs.kind != ActorKindTag::Player {
+            return "You can only duel another player.".into();
+        }
+        if !mm::is_transformed(foe) {
+            return "They aren't a monster: both of you must be in Monster Mode to duel.".into();
+        }
+        let far = mine.zone_id != theirs.zone_id || {
+            let (a, b) = (
+                mine.character.read().await.base.position(),
+                theirs.character.read().await.base.position(),
+            );
+            (a.x - b.x).hypot(a.z - b.z) > DUEL_RANGE
+        };
+        if far {
+            return "They are too far away to challenge.".into();
+        }
+        let name = |id: u32| async move {
+            self.db
+                .character_name(id)
+                .await
+                .ok()
+                .flatten()
+                .unwrap_or_else(|| "Someone".into())
+        };
+        let (my_name, foe_name) = (name(me).await, name(foe).await);
+        let now = common::utils::unix_timestamp() as u32;
+        match crate::runtime::monster_duel::challenge(me, foe, now) {
+            Err(e) => e.into(),
+            Ok(crate::runtime::monster_duel::Challenge::Sent) => {
+                self.tell_player(
+                    foe,
+                    format!(
+                        "{my_name} challenges you to a Monster Mode duel! To accept, target them and type !monstermode duel within {} seconds.",
+                        crate::runtime::monster_duel::CHALLENGE_SECS
+                    ),
+                )
+                .await;
+                format!(
+                    "You challenge {foe_name} to a duel. They have {} seconds to accept.",
+                    crate::runtime::monster_duel::CHALLENGE_SECS
+                )
+            }
+            Ok(crate::runtime::monster_duel::Challenge::Started) => {
+                tracing::info!(player = me, foe, "monstermode: duel started");
+                self.tell_player(
+                    foe,
+                    format!("{my_name} accepts! The duel begins: fight until one body falls."),
+                )
+                .await;
+                format!(
+                    "You accept {foe_name}'s challenge. The duel begins: fight until one body falls."
+                )
+            }
+        }
     }
 
     /// Take a possessed monster off every client, and stop anyone who

@@ -9436,7 +9436,11 @@ impl PacketProcessor {
             != 0
             && requested_id != actor_id
             && matches!(
-                self.registry.get(requested_id).await.map(|t| t.kind),
+                self.registry.get(requested_id).await.map(|t| kind_toward(
+                    actor_id,
+                    requested_id,
+                    t.kind
+                )),
                 Some(crate::runtime::actor_registry::ActorKindTag::BattleNpc)
             );
         let draw_first = main_state == crate::actor::MAIN_STATE_PASSIVE && attack_on_monster;
@@ -9457,7 +9461,7 @@ impl PacketProcessor {
                     let alive = t.character.read().await.is_alive();
                     Some(HotbarTargetView {
                         actor_id: requested_id,
-                        kind: t.kind,
+                        kind: kind_toward(actor_id, requested_id, t.kind),
                         alive,
                     })
                 }
@@ -9688,7 +9692,7 @@ impl PacketProcessor {
         let target_friendly = if selected_target != 0 && selected_target != Self::SET_TARGET_NONE {
             match self.registry.get(selected_target).await {
                 Some(t) => matches!(
-                    t.kind,
+                    kind_toward(actor_id, selected_target, t.kind),
                     crate::runtime::actor_registry::ActorKindTag::Player
                         | crate::runtime::actor_registry::ActorKindTag::Ally
                         | crate::runtime::actor_registry::ActorKindTag::Npc
@@ -9718,7 +9722,10 @@ impl PacketProcessor {
             && selected_target != Self::SET_TARGET_NONE
             && selected_target != actor_id
             && matches!(
-                self.registry.get(selected_target).await.map(|t| t.kind),
+                self.registry
+                    .get(selected_target)
+                    .await
+                    .map(|t| kind_toward(actor_id, selected_target, t.kind)),
                 Some(crate::runtime::actor_registry::ActorKindTag::BattleNpc)
             );
         if target_is_monster
@@ -11725,6 +11732,23 @@ pub(crate) fn build_player_snapshot_from_character(
         id => id,
     };
     snapshot
+}
+
+/// How `me` sees `target` for fighting: a Monster Mode duel foe (another
+/// player) counts as a monster, so attacks and enemy moves may land on
+/// them. Everyone else is what they are.
+pub(crate) fn kind_toward(
+    me: u32,
+    target: u32,
+    kind: crate::runtime::actor_registry::ActorKindTag,
+) -> crate::runtime::actor_registry::ActorKindTag {
+    if kind == crate::runtime::actor_registry::ActorKindTag::Player
+        && crate::runtime::monster_duel::foes(me, target)
+    {
+        crate::runtime::actor_registry::ActorKindTag::BattleNpc
+    } else {
+        kind
+    }
 }
 
 /// What the hotbar press selected, for [`resolve_hotbar_target`].
