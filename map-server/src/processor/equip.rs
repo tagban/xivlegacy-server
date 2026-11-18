@@ -132,6 +132,15 @@ impl PacketProcessor {
         params: &[LuaParam],
     ) {
         let player_id = handle.actor_id;
+        // Changing gear or class ends Monster Mode first, so the change
+        // lands on the player's own body.
+        if crate::runtime::monster_mode::release(player_id)
+            .await
+            .is_some()
+        {
+            crate::runtime::monster_mode::refresh_client(&self.registry, &self.world, player_id)
+                .await;
+        }
         let item_ref = match params.first() {
             Some(LuaParam::Type7 {
                 slot,

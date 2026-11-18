@@ -57,13 +57,36 @@ fn is_offerable(script_name: &str, has_prerequisite: bool) -> bool {
 /// (Sum6a0) follows It Kills with Fire (Gc?101), and Taming the Tempest
 /// (Sum6g0) follows In for Garuda Wakening (Gc?104). A Feast of Fools
 /// (Sum6m0), the moogle king, also follows It Kills with Fire.
+/// Hatching-tide: each city's Dreamer's Dilemma (Spl0u2, Spl0g2, Spl0l2)
+/// follows any city's Dreamer's Gospel.
 const ANY_OF_PREREQUISITES: &[(u32, &[u32])] = &[
     (110013, &[110004, 110008, 110012]),
     (110849, &[110828, 110838, 110848]),
     (110627, &[111416, 111616, 111816]),
     (110867, &[111430, 111630, 111830]),
     (110816, &[111416, 111616, 111816]),
+    (110790, HATCHING_GOSPELS),
+    (110795, HATCHING_GOSPELS),
+    (110805, HATCHING_GOSPELS),
 ];
+
+/// The Dreamer's Gospel in Ul'dah, Gridania and Limsa Lominsa.
+const HATCHING_GOSPELS: &[u32] = &[110789, 110794, 110804];
+
+/// Quests of which an adventurer does one: the same seasonal quest in
+/// each city (one Dreamer's Gospel, one Dreamer's Dilemma). Once one is
+/// taken or done, the others aren't offered.
+const ONE_OF: &[&[u32]] = &[HATCHING_GOSPELS, &[110790, 110795, 110805]];
+
+/// Whether `quest_id` is kept back because the player took (`has`) or
+/// finished (`done`) another quest of its `ONE_OF` set.
+fn one_of_taken(quest_id: u32, has: impl Fn(u32) -> bool, done: impl Fn(u32) -> bool) -> bool {
+    ONE_OF
+        .iter()
+        .filter(|set| set.contains(&quest_id))
+        .flat_map(|set| set.iter())
+        .any(|&other| other != quest_id && (has(other) || done(other)))
+}
 
 /// The quests any one of which unlocks this one (empty: none needed).
 fn prerequisites(quest_id: u32, prerequisite: u32) -> Vec<u32> {
@@ -224,6 +247,7 @@ impl PacketProcessor {
                         && !journal.is_completed(m.id)
                         && level >= m.min_level
                         && (needs.is_empty() || needs.iter().any(|p| journal.is_completed(*p)))
+                        && !one_of_taken(m.id, |q| journal.has(q), |q| journal.is_completed(q))
                         && crate::seasonal::quest_open(m.id)
                         && engine.resolver().quest(&name).exists()
                 })
@@ -488,6 +512,21 @@ mod tests {
         assert!(!is_offerable("trl0l1", false));
         assert!(is_offerable("etc1l1", false));
         assert!(is_offerable("wld0l1", false));
+    }
+
+    #[test]
+    fn hatching_tide_quests_are_one_per_adventurer() {
+        let none = |_| false;
+        assert!(!one_of_taken(110789, none, none));
+        // the Ul'dah Gospel done: Gridania's isn't offered, nor Ul'dah's again
+        assert!(one_of_taken(110794, none, |q| q == 110789));
+        assert!(one_of_taken(110804, |q| q == 110794, none));
+        // the Dilemmas follow any Gospel, and are one per adventurer too
+        assert_eq!(prerequisites(110795, 0), vec![110789, 110794, 110804]);
+        assert!(one_of_taken(110805, none, |q| q == 110790));
+        assert!(!one_of_taken(110805, none, |q| q == 110789));
+        // quests in no set are never kept back
+        assert!(!one_of_taken(110801, |_| true, |_| true));
     }
 
     #[test]

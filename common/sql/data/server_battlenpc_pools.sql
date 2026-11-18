@@ -1,4 +1,4 @@
--- server_battlenpc_pools: game data, 606 rows. Reloaded whole when this file changes.
+-- server_battlenpc_pools: game data, 607 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_pools`;
 INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId`, `currentJob`, `combatSkill`, `combatDelay`, `combatDmgMult`, `aggroType`, `immunity`, `linkType`, `spellListId`, `skillListId`) VALUES
@@ -608,4 +608,5 @@ INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId
 (31621, 2210406, 'Dark Moogle (Buffer)', 29, 0, 1, 4400, 1.0, 1, 0, 0, 0, 31621),
 (31622, 2210407, 'Dark Moogle (Debuffer)', 29, 0, 1, 4400, 1.0, 1, 0, 0, 0, 31622),
 (31623, 2210408, 'Good King Moggle Mog XII', 29, 0, 1, 3600, 1.5, 1, 0, 0, 0, 31623),
-(31624, 2210901, 'Nael van Darnus', 29, 0, 1, 3600, 1.5, 1, 0, 0, 0, 30115);
+(31624, 2210901, 'Nael van Darnus', 29, 0, 1, 3600, 1.5, 1, 0, 0, 0, 30115),
+(31650, 2106213, 'Sprinting Spriggan', 50, 0, 1, 4200, 1.0, 0, 0, 0, 0, 50);

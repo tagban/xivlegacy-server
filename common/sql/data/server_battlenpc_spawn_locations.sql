@@ -1,4 +1,4 @@
--- server_battlenpc_spawn_locations: game data, 5446 rows. Reloaded whole when this file changes.
+-- server_battlenpc_spawn_locations: game data, 5455 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_spawn_locations`;
 INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `groupId`, `positionX`, `positionY`, `positionZ`, `rotation`) VALUES
@@ -5457,4 +5457,13 @@ INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `
 (2996, '', 30016, -1036.0, 251.59, -1843.8, -0.75),
 (2997, '', 30016, -1028.2, 251.42, -1839.8, -1.29),
 (2998, '', 30021, -1138.4, 251.69, -1869.7, 0.02),
-(2999, '', 30021, -1134.2, 252.29, -1867.8, -2.84);
+(2999, '', 30021, -1134.2, 252.29, -1867.8, -2.84),
+(113000, 'sprinting_spriggan', 31650, -711.0, 83.3, -95.0, 0.0),
+(113001, 'sprinting_spriggan', 31650, -701.0, 83.05, -85.0, 1.6),
+(113002, 'sprinting_spriggan', 31650, -721.0, 82.12, -109.0, -1.6),
+(113003, 'sprinting_spriggan', 31651, 271.0, -34.9, -252.0, 0.0),
+(113004, 'sprinting_spriggan', 31651, 307.0, -34.7, -228.0, 1.6),
+(113005, 'sprinting_spriggan', 31651, 331.0, -35.59, -240.0, -1.6),
+(113006, 'sprinting_spriggan', 31652, -1779.0, -21.65, -1518.0, 0.0),
+(113007, 'sprinting_spriggan', 31652, -1783.0, -23.54, -1544.0, 1.6),
+(113008, 'sprinting_spriggan', 31652, -1811.0, -23.66, -1554.0, -1.6);

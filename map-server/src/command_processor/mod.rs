@@ -38,6 +38,7 @@ use crate::world_manager::WorldManager;
 
 mod events;
 mod gm_tools;
+mod monster_mode;
 pub(crate) mod world_end;
 
 pub struct CommandProcessor {
@@ -136,6 +137,7 @@ const COMMAND_SYNTAX: &[&str] = &[
     "dungeon <name> | dungeon leave",
     "settp <tp 0-3000> [name]",
     "usemove <command id> (target, else nearest monster)",
+    "monstermode [class id] (become your target monster; again to let go)",
     "leve <guildleve id> [stars 1-5] | leve abandon",
     "factioncredit <faction 1-3> <amount>",
     "setgm <level 0-4> <name>",
@@ -297,6 +299,7 @@ impl CommandProcessor {
             "die" => self.handle_die(&args).await,
             "settp" => self.handle_settp(&args).await,
             "usemove" => self.handle_usemove(&args).await,
+            "monstermode" => self.handle_monstermode(&args).await,
             "leve" => self.handle_leve(&args).await,
             "factioncredit" => self.handle_faction_credit(&args).await,
             "givegil" => self.handle_givegil(&args).await,
