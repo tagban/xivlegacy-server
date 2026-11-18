@@ -32,6 +32,40 @@ battlePacks = {
 
 GIL = 0xF4241;
 
+-- Fieldcraft (gathering) leves: the levemete's city (leve sheet location)
+-- by its zone, and the gathering class each FieldCraft menu entry lists.
+CITY_LOCATION = { [133] = 1, [155] = 2, [175] = 3 };
+FIELD_MENU = { [0x15] = 39, [0x16] = 40, [0x17] = 41 };
+
+-- A city's fieldcraft leves for one gathering class, as one page of cards.
+function fieldLeves(player, skill)
+	local location = CITY_LOCATION[player:GetZoneID()] or 1;
+	local offers = GetFieldLeveOffers(location, skill, player:GetHighestLevel() or 1);
+	local cards = {0, 0, 0, 0, 0, 0, 0, 0};
+	for i = 1, math.min(#offers, 8) do
+		cards[i] = offers[i];
+	end
+	if (cards[1] == 0) then
+		player:SendMessage(0x20, "", "There are no levequests of this kind available right now.");
+		return;
+	end
+	while true do
+		local chosen = callClientFunction(player, "eventTalkCard", cards[1], cards[2], cards[3], cards[4], cards[5], cards[6], cards[7], cards[8]);
+		if (chosen == nil or chosen == -1 or cards[chosen] == nil or cards[chosen] == 0) then
+			return;
+		end
+		local leveId = cards[chosen];
+		local gl = GetGuildleveGamedata(leveId);
+		local gil = 0;
+		if (gl ~= nil) then gil = gl.rewardGil; end
+		local accepted = callClientFunction(player, "eventTalkDetail", leveId, 0, GIL, gil, 0, 0, 0, false, nil);
+		if (accepted == true) then
+			player:AddGuildleve(leveId);
+			callClientFunction(player, "eventTalkAfterOffer");
+		end
+	end
+end
+
 -- The class tutorial leve each city's levemete offers from the Tutorial menu.
 TUTORIAL_LEVES = { [133] = 10801, [155] = 12401, [175] = 11601 };
 
@@ -147,12 +181,10 @@ function onEventStarted(player, npc)
 			end
 		end
 		
-	--FieldCraft Miner
-	elseif (menuChoice == 0x15) then
-	--FieldCraft Botanist
-	elseif (menuChoice == 0x16) then
-	--FieldCraft Fisher
-	elseif (menuChoice == 0x17) then
+	--FieldCraft Miner / Botanist / Fisher
+	elseif (FIELD_MENU[menuChoice] ~= nil) then
+		fieldLeves(player, FIELD_MENU[menuChoice]);
+		goto MENU_LOOP;
 	--FieldCraft Quit
 	elseif (menuChoice == 0x18) then
 	--Faction Broken Blade / Shields / Horn and Hand, at a level band

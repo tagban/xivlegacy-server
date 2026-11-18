@@ -498,6 +498,15 @@ pub enum LuaCommand {
     AbandonBattleleve {
         player_id: u32,
     },
+    /// `player:LeveGatherVisit(zoneId, uniqueId, gained)` — DummyCommand.lua
+    /// after a visit to a gathering point: a fieldcraft leve counts it when
+    /// it is the leve's marked point (crate::leve::battle::on_gather).
+    LeveGatherVisit {
+        player_id: u32,
+        zone_id: u32,
+        unique_id: String,
+        gained: u32,
+    },
     /// `player:BuyFromRetainer(retainerId, serverItemId)` — drain
     /// trigger for a bazaar purchase. Transactional: debits buyer
     /// gil, credits retainer owner, moves the item stack into the

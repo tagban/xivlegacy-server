@@ -199,15 +199,32 @@ impl CommandProcessor {
     /// and start it where you stand, as the camp aetheryte's menu does;
     /// `leve abandon` gives up the running one.
     pub(super) async fn handle_leve(&self, args: &Args<'_>) -> String {
-        let usage = "usage: leve <guildleve id> [stars 1-5] | leve abandon";
+        let usage = "usage: leve <guildleve id> [stars 1-5] | leve abandon | leve status | leve go | leve poke | leve camp <id>";
         let me = match self.invoker_id(args).await {
             Ok(id) => id,
             Err(e) => return e,
         };
-        if args.rest().first() == Some(&"abandon") {
-            self.run_lua(vec![LC::AbandonBattleleve { player_id: me }])
+        match args.rest().first().copied() {
+            Some("abandon") => {
+                self.run_lua(vec![LC::AbandonBattleleve { player_id: me }])
+                    .await;
+                return "leve abandoned".into();
+            }
+            Some("status") => return self.leve_status(me),
+            Some("go") => return self.leve_go(me, args).await,
+            Some("camp") => return self.leve_camp(args).await,
+            Some("poke") => {
+                let n = crate::leve::battle::poke_all(
+                    me,
+                    &self.registry,
+                    &self.world,
+                    &self.db,
+                    Some(&self.lua),
+                )
                 .await;
-            return "leve abandoned".into();
+                return format!("leve poke: {n} hiding beast(s) poked");
+            }
+            _ => {}
         }
         let Ok(guildleve_id) = args.parse_u32(0) else {
             return usage.into();
@@ -238,6 +255,94 @@ impl CommandProcessor {
         });
         self.run_lua(cmds).await;
         format!("leve {guildleve_id} at {difficulty} star(s)")
+    }
+
+    /// `leve status`: the running leve's counts and live monsters, one
+    /// line (the leve sweep reads it).
+    fn leve_status(&self, me: u32) -> String {
+        match crate::leve::battle::sweep_view(me) {
+            None => "leve status: none".into(),
+            Some(v) => format!(
+                "leve status: {} running now={:?} aim={:?} targets={} others={} disguises={} holding={} rescuee={}",
+                v.guildleve_id,
+                v.now,
+                v.aim,
+                v.targets.len(),
+                v.others.len(),
+                v.disguises.len(),
+                v.holding,
+                v.rescuee.is_some(),
+            ),
+        }
+    }
+
+    /// `leve go`: to the nearest live target of your running leve, else a
+    /// beast hiding one, else the leve's spot (a Survive hold, a rescue).
+    async fn leve_go(&self, me: u32, args: &Args<'_>) -> String {
+        let Some(v) = crate::leve::battle::sweep_view(me) else {
+            return "leve go: no running leve".into();
+        };
+        let Some((zone, mx, _, mz, _)) = self.spot_of(me).await else {
+            return "you are not online".into();
+        };
+        let mut best: Option<(f32, (f32, f32, f32), &str)> = None;
+        for (list, what) in [(&v.targets, "target"), (&v.disguises, "hiding beast")] {
+            for &a in list {
+                let Some(h) = self.registry.get(a).await else {
+                    continue;
+                };
+                let c = h.character.read().await;
+                if c.chara.hp <= 0 {
+                    continue;
+                }
+                let p = (c.base.position_x, c.base.position_y, c.base.position_z);
+                let d = (p.0 - mx).powi(2) + (p.2 - mz).powi(2);
+                if best.is_none_or(|b| d < b.0) {
+                    best = Some((d, p, what));
+                }
+            }
+            if best.is_some() {
+                break;
+            }
+        }
+        let (pos, what) = match best {
+            Some((_, p, w)) => (p, w),
+            None => (v.marker, "leve spot"),
+        };
+        if v.zone_id != zone {
+            return format!(
+                "leve go: the leve is in zone {}, you are in {zone}",
+                v.zone_id
+            );
+        }
+        let name = args.invoker.unwrap_or_default().to_string();
+        // a couple of yalms off, so you don't stand inside it
+        self.teleport(&name, Some(zone), None, 0, (pos.0 + 2.0, pos.1, pos.2))
+            .await;
+        format!(
+            "leve go: to {what} at ({:.0}, {:.0}, {:.0})",
+            pos.0, pos.1, pos.2
+        )
+    }
+
+    /// `leve camp <id>`: to the camp aetheryte leve `id` starts from.
+    async fn leve_camp(&self, args: &Args<'_>) -> String {
+        let Ok(id) = args.parse_u32(1) else {
+            return "usage: leve camp <guildleve id>".into();
+        };
+        let Some(gd) = crate::leve::battle::gamedata(Some(&self.lua), id) else {
+            return format!("leve camp: no leve {id}");
+        };
+        let Ok(Some((zone, x, y, z))) = self.db.aetheryte_spot(gd.aetheryte).await else {
+            return format!("leve camp: no spot for aetheryte {}", gd.aetheryte);
+        };
+        let name = args.invoker.unwrap_or_default().to_string();
+        self.teleport(&name, Some(zone), None, 0, (x + 4.0, y, z + 4.0))
+            .await;
+        format!(
+            "leve camp: {id} at aetheryte {} (zone {zone})",
+            gd.aetheryte
+        )
     }
 
     /// `factioncredit <faction> <amount>`: add (or, negative, take away)

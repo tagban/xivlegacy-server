@@ -731,6 +731,12 @@ pub struct GuildleveGamedata {
     pub camp_zone: u32,
     /// Faction leves: the credits accepting one costs.
     pub faction_credit_required: u32,
+    /// Fieldcraft leves (`class_type` 2): the gathering class (39 Miner,
+    /// 40 Botanist, 41 Fisher).
+    pub skill: u8,
+    /// The objective text: for fieldcraft leves 11011/11013/11014 "locate
+    /// promising points", 11021 "procure" the leve item.
+    pub objective: u32,
     /// Survive leves: the hold phase (`server_guildleve_survive`); none
     /// when the leve's details aren't known yet.
     pub survive: Option<SurviveHold>,

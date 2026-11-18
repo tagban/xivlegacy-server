@@ -1289,7 +1289,7 @@ impl Database {
                              authority,
                              (SELECT s.zoneId FROM server_spawn_locations s
                                  WHERE s.actorClassId = aetheryte LIMIT 1),
-                             factionCreditRequired
+                             factionCreditRequired, skill, objective
                       FROM gamedata_guildleves",
                 )?;
                 let rows: Vec<(u32, GuildleveGamedata)> = stmt
@@ -1328,6 +1328,8 @@ impl Database {
                                 authority: r.get::<_, u32>(31).unwrap_or_default(),
                                 camp_zone: r.get::<_, u32>(32).unwrap_or_default(),
                                 faction_credit_required: r.get::<_, u32>(33).unwrap_or_default(),
+                                skill: r.get::<_, u8>(34).unwrap_or_default(),
+                                objective: r.get::<_, u32>(35).unwrap_or_default(),
                                 survive: None,
                             },
                         ))

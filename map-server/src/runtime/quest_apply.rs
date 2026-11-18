@@ -645,6 +645,25 @@ pub async fn apply_runtime_lua_command(
             .await;
             true
         }
+        LC::LeveGatherVisit {
+            player_id,
+            zone_id,
+            unique_id,
+            gained,
+        } => {
+            crate::leve::battle::on_gather(
+                player_id,
+                zone_id,
+                &unique_id,
+                gained,
+                registry,
+                world,
+                db,
+                crate::runtime::clock::server_now_ms(),
+            )
+            .await;
+            true
+        }
         LC::AbandonBattleleve { player_id } => {
             crate::leve::battle::abandon(
                 player_id,

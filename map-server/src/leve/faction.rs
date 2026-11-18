@@ -62,7 +62,9 @@ const SPONSOR_BY_CITY: &[(u8, u8, &str)] = &[
 /// The faction (1 Broken Blade, 2 Azeyma's Shields, 3 Horn and Hand) that
 /// sponsors regional leve `gd`, or `None` for any other leve.
 pub fn sponsor_of(gd: &GuildleveGamedata) -> Option<u8> {
-    if !crate::leve::battle::is_regional(gd.id) {
+    // regional battle leves, and the fieldcraft (gathering) leves, which
+    // are regional leves of the same camps
+    if !crate::leve::battle::is_regional(gd.id) && gd.class_type != 2 {
         return None;
     }
     SPONSOR_BY_CITY
@@ -198,6 +200,11 @@ mod tests {
         }
         gd.location = 9;
         assert_eq!(sponsor_of(&gd), None);
+        // a fieldcraft (gathering) leve is regional too
+        let mut field = leve(4_001, 40009, 1);
+        field.class_type = 2;
+        field.location = 3;
+        assert_eq!(sponsor_of(&field), Some(2));
         // faction and GC leves earn nothing
         for id in [1_001, 20_901] {
             let mut gd = leve(id, 40019, 20);

@@ -146,6 +146,39 @@ const PLATE_CHASE: u32 = 20022;
 /// How far (yalms) a Chase leve's next group is from the last one.
 const STAGE_STEP: f32 = 40.0;
 
+/// Fieldcraft leves (Disciples of the Land, `class_type` 2): the leve
+/// marks gathering points near its camp, one at a time on the map, and
+/// working the marked point counts. "Locate promising points" leves
+/// (objectives 11011/11013/11014) count each point worked; "procure"
+/// leves (objective 11021) count the items gathered there. 1.0 showed
+/// leve-only sparkling points inside a circle; these use the zone's own
+/// points of the class's kind (the nearest [`FIELD_POINTS`] to the camp).
+const OBJECTIVE_PROCURE: u32 = 11021;
+const FIELD_POINTS: usize = 3;
+
+/// The harvest command (22002 Mine, 22003 Log, 22004 Fish) a fieldcraft
+/// leve's points take, or `None` for any other leve.
+pub fn field_harvest_type(gd: &GuildleveGamedata) -> Option<u32> {
+    if gd.class_type != 2 {
+        return None;
+    }
+    match gd.skill {
+        39 => Some(crate::gathering::HARVEST_TYPE_MINE),
+        40 => Some(crate::gathering::HARVEST_TYPE_LOG),
+        41 => Some(crate::gathering::HARVEST_TYPE_FISH),
+        _ => None,
+    }
+}
+
+/// A running fieldcraft leve's points: (unique id, position), nearest to
+/// the camp first, and the one marked now.
+#[derive(Debug, Clone)]
+struct FieldRun {
+    points: Vec<(String, (f32, f32, f32))>,
+    current: usize,
+    procure: bool,
+}
+
 /// An objective whose item is carried by monsters of the area: a Necrologos
 /// page, or a Gather leve's item when the sheet names no monster for it.
 fn carried_by_local_beasts(gd: &GuildleveGamedata, i: usize) -> bool {
@@ -164,6 +197,9 @@ fn is_page(gd: &GuildleveGamedata, i: usize) -> bool {
 /// A battle leve this runtime can run: has at least one target to defeat,
 /// and every target it counts has a monster to spawn.
 pub fn is_supported(gd: &GuildleveGamedata) -> bool {
+    if gd.class_type == 2 {
+        return field_harvest_type(gd).is_some() && gd.aim_num.iter().any(|&a| a > 0);
+    }
     if gd.plate_id == PLATE_NECROLOGOS {
         // a page's beast is the leve's own mob when it names one, else a
         // monster of the area
@@ -309,6 +345,34 @@ pub fn offers(
     (0..CARDS).map(|k| ids[(start + k) % ids.len()]).collect()
 }
 
+/// The fieldcraft leves a city's levemete lists for gathering class
+/// `skill` (location 1 Limsa Lominsa, 2 Gridania, 3 Ul'dah): up to
+/// [`CARDS`], those nearest the player's `level` in that class, then
+/// lowest level first; only those whose camp zone has live gathering
+/// points of the class's kind (`points`: (zone, harvest type)).
+pub fn field_offers(
+    catalog: &HashMap<u32, GuildleveGamedata>,
+    location: u8,
+    skill: u8,
+    level: u16,
+    points: &std::collections::HashSet<(u32, u32)>,
+) -> Vec<u32> {
+    let mut ids: Vec<(u16, u16, u32)> = catalog
+        .values()
+        .filter(|g| g.location == location && g.skill == skill && is_supported(g))
+        .filter(|g| field_harvest_type(g).is_some_and(|t| points.contains(&(g.camp_zone, t))))
+        .map(|g| (g.level.abs_diff(level), g.level, g.id))
+        .collect();
+    ids.sort_unstable();
+    let mut out: Vec<(u16, u32)> = ids
+        .into_iter()
+        .take(CARDS)
+        .map(|(_, l, id)| (l, id))
+        .collect();
+    out.sort_unstable();
+    out.into_iter().map(|(_, id)| id).collect()
+}
+
 #[derive(Debug, Clone, PartialEq)]
 enum Phase {
     Running {
@@ -393,6 +457,8 @@ struct Leve {
     /// The faction sponsoring this regional leve, credited on completion
     /// ([`crate::leve::faction::sponsor_of`]).
     sponsor: Option<u8>,
+    /// A fieldcraft leve's gathering points.
+    field: Option<FieldRun>,
 }
 
 static ACTIVE: Mutex<Vec<Leve>> = Mutex::new(Vec::new());
@@ -423,6 +489,183 @@ pub fn current(player_id: u32) -> Option<(u32, u8)> {
             .find(|l| l.has(player_id) && matches!(l.phase, Phase::Running { .. }))
             .map(|l| (l.guildleve_id, l.difficulty))
     })
+}
+
+/// Live gathering points of `harvest_type` in `zone_id`, nearest to the
+/// camp first: the [`FIELD_POINTS`] a fieldcraft leve marks.
+async fn field_points(
+    zone_id: u32,
+    harvest_type: u32,
+    camp: (f32, f32, f32),
+    db: &Database,
+    world: &WorldManager,
+) -> Vec<(String, (f32, f32, f32))> {
+    let rows = db.load_gather_node_spawns().await.unwrap_or_default();
+    let mut points = Vec::new();
+    for r in rows {
+        if r.zone_id != zone_id
+            || r.harvest_type != harvest_type
+            || !r.quest_gates.is_empty()
+            || !r.private_area_name.is_empty()
+            || world
+                .gather_node_actor_id(zone_id, &r.unique_id)
+                .await
+                .is_none()
+        {
+            continue;
+        }
+        points.push((r.unique_id, r.position));
+    }
+    let d = |p: &(f32, f32, f32)| (p.0 - camp.0).powi(2) + (p.2 - camp.2).powi(2);
+    points.sort_by(|a, b| d(&a.1).total_cmp(&d(&b.1)));
+    points.truncate(FIELD_POINTS);
+    points
+}
+
+/// Whether gathering point `(zone_id, unique_id)` is the one `player_id`'s
+/// fieldcraft leve marks now (DummyCommand.lua: such a point doesn't rest
+/// afterwards, and the visit counts).
+pub fn is_field_point(player_id: u32, zone_id: u32, unique_id: &str) -> bool {
+    with_active(|a| {
+        a.iter().any(|l| {
+            matches!(l.phase, Phase::Running { .. })
+                && l.has(player_id)
+                && l.zone_id == zone_id
+                && l.field
+                    .as_ref()
+                    .is_some_and(|f| f.points.get(f.current).is_some_and(|p| p.0 == unique_id))
+        })
+    })
+}
+
+/// A player finished working gathering point `(zone_id, unique_id)` and
+/// got `gained` items there. When it is their fieldcraft leve's marked
+/// point, the leve counts it (one point, or the items for a procure leve)
+/// and marks the next point; the last one needed completes the leve.
+#[allow(clippy::too_many_arguments)]
+pub async fn on_gather(
+    player_id: u32,
+    zone_id: u32,
+    unique_id: &str,
+    gained: u32,
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    db: &Database,
+    now_ms: u64,
+) {
+    let found = with_active(|a| {
+        let l = a.iter_mut().find(|l| {
+            matches!(l.phase, Phase::Running { .. })
+                && l.has(player_id)
+                && l.zone_id == zone_id
+                && l.field
+                    .as_ref()
+                    .is_some_and(|f| f.points.get(f.current).is_some_and(|p| p.0 == unique_id))
+        })?;
+        let f = l.field.as_mut()?;
+        let add = if f.procure { gained } else { 1 };
+        if let Some(i) = (0..4).find(|&i| l.aim[i] > 0 && l.now[i] < l.aim[i]) {
+            let room = (l.aim[i] - l.now[i]) as u32;
+            l.now[i] += add.min(room) as i8;
+        }
+        f.current = (f.current + 1) % f.points.len();
+        l.marker = f.points[f.current].1;
+        let done = (0..4).all(|i| l.now[i] >= l.aim[i]);
+        Some((l.clone(), done))
+    });
+    let Some((leve, done)) = found else {
+        return;
+    };
+    tracing::info!(
+        player = player_id,
+        gl_id = leve.guildleve_id,
+        point = unique_id,
+        gained,
+        now = ?leve.now,
+        aim = ?leve.aim,
+        "fieldcraft leve point worked"
+    );
+    if done {
+        complete(leve.owner, registry, world, db, now_ms).await;
+    } else {
+        send_all(registry, world, &leve.participants(), tracker_state(&leve)).await;
+    }
+}
+
+/// A running leve as a GM sweep (`!leve go`, `!leve status`) sees it.
+#[derive(Debug, Clone)]
+pub struct SweepView {
+    pub guildleve_id: u32,
+    pub zone_id: u32,
+    pub aim: [i8; 4],
+    pub now: [i8; 4],
+    /// Live targets that count for an objective.
+    pub targets: Vec<u32>,
+    /// Live monsters that don't count (decoys, a Survive hold's attackers).
+    pub others: Vec<u32>,
+    /// Beasts hiding a target (poke them).
+    pub disguises: Vec<u32>,
+    /// The leve's marker (the spot to reach for a Survive hold) and the
+    /// person a rescue protects.
+    pub marker: (f32, f32, f32),
+    pub rescuee: Option<u32>,
+    /// A Survive hold is running or waiting for a player at the spot.
+    pub holding: bool,
+}
+
+/// The running leve `player_id` is on, for the GM sweep commands.
+pub fn sweep_view(player_id: u32) -> Option<SweepView> {
+    with_active(|a| {
+        let l = a
+            .iter()
+            .find(|l| l.has(player_id) && matches!(l.phase, Phase::Running { .. }))?;
+        let mut targets: Vec<u32> = l
+            .spawned
+            .iter()
+            .filter(|(id, i)| i.is_some() && !l.disguises.contains_key(id))
+            .map(|(id, _)| *id)
+            .collect();
+        let mut others: Vec<u32> = l
+            .spawned
+            .iter()
+            .filter(|(id, i)| i.is_none() && !l.disguises.contains_key(id))
+            .map(|(id, _)| *id)
+            .collect();
+        let mut disguises: Vec<u32> = l.disguises.keys().copied().collect();
+        targets.sort_unstable();
+        others.sort_unstable();
+        disguises.sort_unstable();
+        Some(SweepView {
+            guildleve_id: l.guildleve_id,
+            zone_id: l.zone_id,
+            aim: l.aim,
+            now: l.now,
+            targets,
+            others,
+            disguises,
+            marker: l.marker,
+            rescuee: l.rescuee,
+            holding: l.holding,
+        })
+    })
+}
+
+/// Poke every beast hiding a target of `player_id`'s leve, as the
+/// `/poke` emote on each would (GM sweep: `!leve poke`). Returns how many.
+pub async fn poke_all(
+    player_id: u32,
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    db: &Database,
+    lua: Option<&Arc<LuaEngine>>,
+) -> usize {
+    let hidden = sweep_view(player_id)
+        .map(|v| v.disguises)
+        .unwrap_or_default();
+    for &d in &hidden {
+        on_emote(player_id, d, POKE_ANIM, registry, world, db, lua).await;
+    }
+    hidden.len()
 }
 
 /// Send each of `players` the same packets.
@@ -736,10 +979,35 @@ pub async fn start(
         spots.push(center);
     }
 
+    let field = match field_harvest_type(&gd) {
+        Some(harvest_type) => {
+            let points = field_points(zone_id, harvest_type, camp, db, world).await;
+            if points.is_empty() {
+                say(
+                    registry,
+                    world,
+                    player_id,
+                    "There are no gathering points for this levequest here yet.",
+                )
+                .await;
+                return;
+            }
+            Some(FieldRun {
+                points,
+                current: 0,
+                procure: gd.objective == OBJECTIVE_PROCURE,
+            })
+        }
+        None => None,
+    };
+    let center = field.as_ref().map_or(center, |f| f.points[0].1);
+
     let necrologos = gd.plate_id == PLATE_NECROLOGOS;
     let mut classes = [0u32; 4];
     let mut targets = [0u32; 4];
-    if necrologos || (0..4).any(|i| carried_by_local_beasts(&gd, i)) {
+    if field.is_some() {
+        // gathering points, no monsters
+    } else if necrologos || (0..4).any(|i| carried_by_local_beasts(&gd, i)) {
         // each page's beast: the leve's own mob, or a monster of the area
         // around the leve spot near its level (a different one per page)
         let monsters = db.zone_monsters(zone_id).await.unwrap_or_default();
@@ -837,6 +1105,7 @@ pub async fn start(
         hold_end_ms: 0,
         hold_offset: 0,
         sponsor: crate::leve::faction::sponsor_of(&gd),
+        field,
     };
     if let Some(hold) = gd.survive.clone().filter(|_| gd.plate_id == PLATE_SURVIVE) {
         leve.hold_class = db
@@ -859,7 +1128,7 @@ pub async fn start(
         leve.holding = true;
     }
     for i in 0..4 {
-        if leve.aim[i] > 0 && classes[i] == 0 && !(necrologos && i == 3) {
+        if leve.field.is_none() && leve.aim[i] > 0 && classes[i] == 0 && !(necrologos && i == 3) {
             tracing::warn!(
                 gl_id,
                 target = targets[i],
@@ -870,6 +1139,7 @@ pub async fn start(
     }
     // (a horde Survive leve has no targets: its hold is the task)
     if leve.hold.is_none()
+        && leve.field.is_none()
         && leve
             .aim
             .iter()
@@ -940,6 +1210,11 @@ pub async fn start(
 
     if gd.plate_id == PLATE_RESCUE {
         start_rescue(&mut leve, &gd, center, registry, world, db, lua).await;
+        log_start(&leve, center);
+        with_active(|a| a.push(leve));
+        return;
+    }
+    if leve.field.is_some() {
         log_start(&leve, center);
         with_active(|a| a.push(leve));
         return;

@@ -136,7 +136,7 @@ const COMMAND_SYNTAX: &[&str] = &[
     "dungeon <name> | dungeon leave",
     "settp <tp 0-3000> [name]",
     "usemove <command id> (target, else nearest monster)",
-    "leve <guildleve id> [stars 1-5] | leve abandon",
+    "leve <guildleve id> [stars 1-5] | leve abandon | leve status | leve go | leve poke | leve camp <id>",
     "factioncredit <faction 1-3> <amount>",
     "setgm <level 0-4> <name>",
     "reload",

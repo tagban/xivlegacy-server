@@ -177,10 +177,14 @@ function onEventStarted(player, commandActor, triggerName, arg1, arg2, arg3, arg
         player:EndEvent();
         return;
     end
+    -- A fieldcraft leve's marked point: the visit counts for the leve, and
+    -- the point doesn't rest afterwards (the leve moves its marker on).
+    levePoint = player:IsLeveGatherPoint(nodeZoneId, nodeUniqueId);
     harvestNode = resolver:BuildAimSlots(harvestNodeId);  -- [1-11] = {itemCatalogId, remainder, sweetspot, maxYield}
     harvestGained = 0;   -- items obtained this visit (EXP is per item kind gathered)
     harvestGrade = nodeMeta.grade or 0;
     harvestAttempts = nodeMeta.attempts or 0;
+    local attemptsAtStart = harvestAttempts;
     nodeRemainder = 0;
 
     strikeAnim = harvestAnimByType[harvestType] or minerAnim;
@@ -396,7 +400,9 @@ function onEventStarted(player, commandActor, triggerName, arg1, arg2, arg3, arg
     player:SendGameMessage(harvestJudge, 31, MESSAGE_TYPE_SYSTEM);
 
 
-    if harvestAttempts == 0 then
+    if levePoint and harvestAttempts < attemptsAtStart then
+        player:LeveGatherVisit(nodeZoneId, nodeUniqueId, harvestGained);
+    elseif harvestAttempts == 0 then
         player:SendGameMessage(player, worldMaster, 40310, 0x20); -- "The deposit has been exhausted."
         -- The point leaves only this gatherer's world and comes back for
         -- them later; everyone else still sees it and can gather there.
