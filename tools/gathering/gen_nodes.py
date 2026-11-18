@@ -14,16 +14,30 @@ Rewrites, in common/sql/data:
   gamedata_gather_nodes       grade + attempts of each placed pool (other rows untouched)
   server_gather_node_spawns   POINTS_PER_POOL points per placed pool
 """
-import csv, math, os, re, sys
+import collections, csv, math, os, re, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 DATA = os.path.join(ROOT, "common", "sql", "data")
 sys.path.insert(0, os.path.join(ROOT, "tools", "terrain"))
 
-# command -> (harvest command id in the 1.23b command sheet, MiningPoint actor class)
-COMMANDS = {"Mine": (22002, 1200052), "Quarry": (22006, 1200052), "Log": (22003, 1200054),
-            "Harvest": (22007, 1200054), "Fish": (22004, 1200056), "Spearfish": (22008, 1200056)}
+# command -> (harvest command id in the 1.23b command sheet, MiningPoint actor class).
+# 1.23b retired Quarry, Harvest and Spearfish: the command sheet leaves 22006-22008 without
+# text ("****") and HarvestJudge only loads the Mining, Felling and Fishing widgets. Their
+# pools hold recipe materials found in no other pool, so their points are gathered with the
+# 1.23b command of the same hand: Quarry -> Mine, Harvest -> Log, Spearfish -> Fish.
+COMMANDS = {"Mine": (22002, 1200052), "Quarry": (22002, 1200052), "Log": (22003, 1200054),
+            "Harvest": (22003, 1200054), "Fish": (22004, 1200056), "Spearfish": (22004, 1200056)}
+# Points of different pools stay at least this far apart, so the push circle a player stands
+# in names one pool.
+POOL_GAP = 20
+# Spots the client sweep could not walk up to (rocks/trees the collision terrain
+# does not have): (zone, x, z). place() keeps BLOCKED_GAP yalms away from them.
+BLOCKED = [
+    (130, 1177.28, -939.18), (154, 765.55, 1080.95), (172, -1261.04, -160.76),
+    (143, 204.56, -204.2), (143, 163.69, -241.0), (150, -127.93, -586.5),
+]
+BLOCKED_GAP = 8
 # place -> (region, aetheryte id, grade). Grades per camp from Gamer Escape 1.0 item pages (2010-12;
 # grade 1 = levels 1-10 ... grade 5 = 41-50): one camp per grade in each starting region.
 PLACES = {
@@ -40,6 +54,12 @@ PLACES = {
     "Dragonhead": ("Coerthas", 1280092, 5), "The Fields of Glory": ("Coerthas", 1280094, 4),
     "Riversmeet": ("Coerthas", 1280096, 5),
 }
+# Camps with no 1.x pool of their own whose leves need points: (region, aetheryte id, grade,
+# camp whose pools they reuse, commands). Crimson Bark's fieldcraft leves are level 20 (grade 2).
+REUSE = {"Crimson Bark": ("The Black Shroud", 1280066, 2, "Emerald Moss", ["Mine", "Log"])}
+# Hand-picked points where tools/terrain has no ground (zone 176 has no layout it can read):
+# near the Min200 quest points at Nanawa Mines, which stand at y 168.
+HAND_SPOTS = {("Mine", "Nanawa Mines"): [(58.0, 168.0, -1232.0), (118.0, 168.0, -1272.0), (60.0, 168.0, -1292.0)]}
 POINTS_PER_POOL = 3
 ATTEMPTS = 3
 # Fishing spots, hand-picked per camp: a dry standing point on the shore and the water it faces,
@@ -64,6 +84,8 @@ FISH_SPOTS = {
     "The Fields of Glory": [(2117.3, 121.65, 405.3, 2733.8, 43.1), (2053.3, 121.65, 277.3, 2605.8, -212.9), (2117.3, 121.65, 341.3, 2733.8, -84.9)],
     "Riversmeet": [(-1952.0, 251.85, 0.0, -2143.6, 194.7), (-1888.0, 251.85, 192.0, -2015.6, 578.7), (-2080.0, 267.85, 64.0, -2399.6, 322.7)],
 }
+# Spearfishing pools (folded into Fish): a shore spot of their own, POOL_GAP+ from the Fish spot.
+SPEAR_SPOTS = {}
 # No spot found yet (client never lit Fish at the candidates): Bentbranch, Black Brush, Drybone,
 # Broken Water, Dragonhead.
 
@@ -76,8 +98,9 @@ def aetherytes():
     return out
 
 
-def place(terrain, zone, ax, ay, az, n, seed):
-    """n points 45-80 yalms out from the aetheryte on level, walkable ground, 25+ yalms apart."""
+def place(terrain, zone, ax, ay, az, n, seed, taken=()):
+    """n points 45-80 yalms out from the aetheryte on level, walkable ground, 25+ yalms apart
+    and POOL_GAP+ yalms from the `taken` points of other pools."""
     got = []
     for ring in (55, 70, 45, 80):
         for step in range(24):
@@ -88,6 +111,10 @@ def place(terrain, zone, ax, ay, az, n, seed):
                 continue
             around = [terrain.ground_y(zone, x + dx, z + dz, near_y=y) for dx, dz in ((2, 0), (-2, 0), (0, 2), (0, -2))]
             if any(a is None or abs(a - y) > 1.5 for a in around):
+                continue
+            if any(math.hypot(x - px, z - pz) < POOL_GAP for px, _, pz in taken):
+                continue
+            if any(bz == zone and math.hypot(x - bx, z - bzz) < BLOCKED_GAP for bz, bx, bzz in BLOCKED):
                 continue
             if all(math.hypot(x - px, z - pz) > 25 for px, _, pz in got):
                 got.append((round(x, 2), round(y, 2), round(z, 2)))
@@ -118,6 +145,10 @@ def main():
     aeth = aetherytes()
     pools = list(csv.DictReader(open(os.path.join(HERE, "mozk_places.csv"), encoding="utf8")))
     grades, spawns, sid = {}, [], 100
+    taken = collections.defaultdict(list)  # zone -> points placed so far
+    for name, spots in list(FISH_SPOTS.items()) + list(SPEAR_SPOTS.items()):
+        if name in PLACES and PLACES[name][1] in aeth:  # hand-picked shore spots come first
+            taken[aeth[PLACES[name][1]][0]] += [(x, y, z) for x, y, z, _, _ in spots]
     for p in pools:
         tid, cmd, name = int(p["template"]), p["command"], p["place"]
         if name not in PLACES:
@@ -131,14 +162,16 @@ def main():
             continue
         zone, ax, ay, az = aeth[aid]
         harvest, cls = COMMANDS[cmd]
-        if cmd == "Fish":
-            spots = FISH_SPOTS.get(name, [])
+        if cmd in ("Fish", "Spearfish"):
+            spots = (FISH_SPOTS if cmd == "Fish" else SPEAR_SPOTS).get(name, [])
             pts = [(x, y, z) for x, y, z, _, _ in spots]
             faces = [(wx, wz) for _, _, _, wx, wz in spots]
         else:
-            pts = place(terrain, zone, ax, ay, az, POINTS_PER_POOL, tid)
+            pts = HAND_SPOTS.get((cmd, name)) or place(terrain, zone, ax, ay, az, POINTS_PER_POOL, tid, taken[zone])
             faces = [(ax, az)] * len(pts)
-        if len(pts) < (1 if cmd == "Fish" else POINTS_PER_POOL):
+        if cmd not in ("Fish", "Spearfish"):
+            taken[zone] += pts
+        if len(pts) < (1 if cmd in ("Fish", "Spearfish") else POINTS_PER_POOL):
             print(f"warning: {cmd} @ {name}: only {len(pts)} spots", file=sys.stderr)
         slug = re.sub(r"[^a-z]+", "_", name.lower()).strip("_")
         for i, (x, y, z) in enumerate(pts):
@@ -147,6 +180,24 @@ def main():
             spawns.append(f"({sid}, {cls}, '{cmd.lower()}_{slug}_{i + 1}', {zone}, '', 0, {x}, {y}, {z}, {rot}, {tid}, {harvest})")
             sid += 1
         print(f"{tid} {cmd} @ {name} ({region}, zone {zone}) grade {grade}: {len(pts)} points")
+
+    tids = {(p["command"], p["place"]): int(p["template"]) for p in pools}
+    for name, (region, aid, grade, src, cmds) in REUSE.items():
+        if aid not in aeth:
+            print(f"warning: {name}: aetheryte {aid} has no spawn", file=sys.stderr)
+            continue
+        zone, ax, ay, az = aeth[aid]
+        slug = re.sub(r"[^a-z]+", "_", name.lower()).strip("_")
+        for cmd in cmds:
+            tid = tids[(cmd, src)]
+            harvest, cls = COMMANDS[cmd]
+            pts = place(terrain, zone, ax, ay, az, POINTS_PER_POOL, tid + aid % 97, taken[zone])
+            taken[zone] += pts
+            for i, (x, y, z) in enumerate(pts):
+                rot = round(math.atan2(ax - x, az - z), 2)
+                spawns.append(f"({sid}, {cls}, '{cmd.lower()}_{slug}_{i + 1}', {zone}, '', 0, {x}, {y}, {z}, {rot}, {tid}, {harvest})")
+                sid += 1
+            print(f"{tid} {cmd} @ {name} (reuses {src}, zone {zone}): {len(pts)} points")
 
     path = os.path.join(DATA, "gamedata_gather_nodes.sql")
     head, cols, rows = rows_of(path)
@@ -159,8 +210,9 @@ def main():
         out.append("(" + ", ".join(f) + ")")
     write(path, head, cols, out)
     path = os.path.join(DATA, "server_gather_node_spawns.sql")
-    head, cols, _ = rows_of(path)
-    write(path, head, cols, spawns)
+    head, cols, old = rows_of(path)
+    # Quest-only points (ids 9000+) are hand-made rows of their quests: keep them.
+    write(path, head, cols, spawns + [r for r in old if int(r[1:].split(",")[0]) >= 9000])
 
 
 if __name__ == "__main__":
