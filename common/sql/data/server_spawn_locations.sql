@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 2036 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 2062 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -2041,4 +2041,30 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (31258, 1001595, 'hatch_wiggy', 230, '', 0, -404.0, 42.5, 339.0, -2.4, 0, 0, NULL),
 (31259, 1001999, 'hatch_ziggy', 176, '', 0, 131.5, 167.1, -1198.9, 0.0, 0, 0, NULL),
 (31260, 1001998, 'hatch_twiggy', 157, '', 0, -956.5, -16.0, -2350.3, 0.0, 0, 0, NULL),
-(31261, 1001997, 'hatch_iggy', 132, '', 0, 1127.2, -79.7, -777.7, 0.0, 0, 0, NULL);
+(31261, 1001997, 'hatch_iggy', 132, '', 0, 1127.2, -79.7, -777.7, 0.0, 0, 0, NULL),
+(31270, 1001669, 'moon_xheh_jakkya', 230, '', 0, -402.0, 42.5, 336.0, -2.4, 0, 0, NULL),
+(31271, 1001671, 'moon_judye', 206, '', 0, -121.0, 16.1, -1323.0, -1.6, 0, 0, NULL),
+(31272, 1001670, 'moon_miette', 175, '', 0, -220.0, 190, 38.0, 2.6, 0, 0, NULL),
+(31273, 1002081, 'moon_xheh_jakkya_yukata', 230, '', 0, -396.0, 42.5, 344.0, -2.4, 0, 0, NULL),
+(31274, 1002082, 'moon_judye_yukata', 206, '', 0, -118.0, 16.1, -1325.0, -1.6, 0, 0, NULL),
+(31275, 1002083, 'moon_miette_yukata', 175, '', 0, -217.0, 190, 41.0, 2.6, 0, 0, NULL),
+(31276, 1002097, 'moon_firedancer_hildibrand', 230, '', 0, -404.0, 42.5, 339.0, -2.4, 0, 0, NULL),
+(31277, 1002098, 'moon_firedancer_radolf', 206, '', 0, -124.0, 16.1, -1326.0, -1.6, 0, 0, NULL),
+(31278, 1002099, 'moon_firedancer_galsha_zasha', 175, '', 0, -222.5, 190, 41.5, 2.6, 0, 0, NULL),
+(31280, 1001653, 'moon_cadet_aleport', 129, '', 0, -1312.0, 2.5, -620.0, 0.0, 0, 0, NULL),
+(31281, 2201606, 'moon_bombard_aleport', 129, '', 0, -1308.0, 2.5, -616.0, 0.0, 0, 0, NULL),
+(31282, 1001666, 'moon_cadet_quarrymill', 154, '', 0, 1390.5, -6.3, 936.6, 0.0, 0, 0, NULL),
+(31283, 2201606, 'moon_bombard_quarrymill', 154, '', 0, 1386.5, -6.3, 940.6, 0.0, 0, 0, NULL),
+(31284, 1001662, 'moon_cadet_silverbazaar', 172, '', 0, -1376.0, 56, 561.0, 0.0, 0, 0, NULL),
+(31285, 2201606, 'moon_bombard_silverbazaar', 172, '', 0, -1372.0, 56, 565.0, 0.0, 0, 0, NULL),
+(31286, 1001657, 'moon_cadet_dragonhead', 143, '', 0, 222.0, 303, -258.0, 0.0, 0, 0, NULL),
+(31287, 2201606, 'moon_bombard_dragonhead', 143, '', 0, 226.0, 303, -254.0, 0.0, 0, 0, NULL),
+(31290, 1002080, 'moon_cadet_beardedrock', 128, '', 0, 36.0, 45.83, -35.5, 0.0, 0, 0, NULL),
+(31291, 2201611, 'moon_bombard_beardedrock', 128, '', 0, 40.0, 45.83, -31.5, 0.0, 0, 0, NULL),
+(31292, 2201612, 'moon_king_beardedrock', 128, '', 0, 44.0, 45.83, -35.5, 0.0, 0, 0, NULL),
+(31293, 1002079, 'moon_cadet_bentbranch', 150, '', 0, 294.0, 4, -544.0, 0.0, 0, 0, NULL),
+(31294, 2201611, 'moon_bombard_bentbranch', 150, '', 0, 298.0, 4, -540.0, 0.0, 0, 0, NULL),
+(31295, 2201612, 'moon_king_bentbranch', 150, '', 0, 302.0, 4, -544.0, 0.0, 0, 0, NULL),
+(31296, 1002078, 'moon_cadet_blackbrush', 170, '', 0, 39.0, 201, -482.0, 0.0, 0, 0, NULL),
+(31297, 2201611, 'moon_bombard_blackbrush', 170, '', 0, 43.0, 201, -478.0, 0.0, 0, 0, NULL),
+(31298, 2201612, 'moon_king_blackbrush', 170, '', 0, 47.0, 201, -482.0, 0.0, 0, 0, NULL);
