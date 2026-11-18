@@ -7,6 +7,9 @@
 -- allsaints: All Saints' Wake (Spl0i2 Impish Impositions):
 --   30910-30912 the Adventurers' Guild runners Ursielle (Limsa), Mudede (Gridania), Yvane (Ul'dah);
 --   30913-30921 the disguised trickster imps, three per city (night only, see settings/events.toml).
+-- hatchingtide: Hatching-tide (Spl0u1/g1/l1 The Dreamer's Gospel, Spl0u2/g2/l2 The Dreamer's Dilemma):
+--   31250-31258 the Dreamers, their helpers and hint spriggans (Ul'dah 31250-31252, Gridania 31253-31255, Limsa 31256-31258);
+--   31259-31261 the spriggan thieves Ziggy (Nanawa Mines), Twiggy (Mun-Tuy Cellars), Iggy (Cassiopeia Hollow).
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_location_events`;
 INSERT INTO `server_spawn_location_events` (`spawnId`, `eventName`) VALUES
@@ -41,4 +44,16 @@ INSERT INTO `server_spawn_location_events` (`spawnId`, `eventName`) VALUES
 (30937, 'starlight'),
 (30938, 'starlight'),
 (30939, 'starlight'),
-(30940, 'starlight');
+(30940, 'starlight'),
+(31250, 'hatchingtide'),
+(31251, 'hatchingtide'),
+(31252, 'hatchingtide'),
+(31253, 'hatchingtide'),
+(31254, 'hatchingtide'),
+(31255, 'hatchingtide'),
+(31256, 'hatchingtide'),
+(31257, 'hatchingtide'),
+(31258, 'hatchingtide'),
+(31259, 'hatchingtide'),
+(31260, 'hatchingtide'),
+(31261, 'hatchingtide');
