@@ -22,6 +22,10 @@
 //! again lets go (after a 4-second countdown in combat). Testers can
 //! name a monster class instead of targeting: `!monstermode <class id>`
 //! takes the nearest one.
+//!
+//! Testers mark the move they just used (or one they name) for the move
+//! tracker: `!monstermode ok [move]`, `!monstermode bad [move] [note]`.
+//! The marks go to `log_monster_mode` with every move used.
 
 use std::time::Duration;
 
@@ -43,13 +47,16 @@ impl CommandProcessor {
         let Some(handle) = self.registry.get(me).await else {
             return "you are not in the world".into();
         };
-        if args.rest().first() == Some(&"anim") {
-            return self.monster_anim(me, args).await;
+        match args.rest().first() {
+            Some(&"anim") => return self.monster_anim(me, args).await,
+            Some(&"ok") => return self.monster_verdict(me, true, args).await,
+            Some(&"bad") => return self.monster_verdict(me, false, args).await,
+            _ => {}
         }
         if let Some((_, name)) = mm::possessed_mob(me) {
             let engaged = handle.character.read().await.ai_container.is_engaged();
             if !engaged {
-                mm::release(me).await;
+                mm::release(me, "off").await;
                 mm::refresh_client(&self.registry, &self.world, me).await;
                 return format!("You let go of {name} and are yourself again.");
             }
@@ -193,7 +200,7 @@ impl CommandProcessor {
                 tell(format!("{n}...")).await;
             }
             tokio::time::sleep(Duration::from_secs(1)).await;
-            if mm::release(me).await.is_some() {
+            if mm::release(me, "off").await.is_some() {
                 mm::refresh_client(&registry, &world, me).await;
                 tell("You are yourself again.".into()).await;
             }
@@ -202,6 +209,47 @@ impl CommandProcessor {
 
     /// Spike: `monstermode anim <command id>` plays that command's
     /// battle animation on the player's own body, aimed at the target.
+    /// A tester's mark on a monster move: the one named (an id, or a move
+    /// name of the body they have now) or else the last one they used.
+    async fn monster_verdict(&self, me: u32, ok: bool, args: &Args<'_>) -> String {
+        let words: Vec<&str> = args.rest().iter().skip(1).copied().collect();
+        let names: Vec<(u16, String)> = {
+            let Ok(cmds) = self.lua.catalogs().battle_commands.read() else {
+                return "the command catalog is busy, try again".into();
+            };
+            mm::moves_of(me)
+                .into_iter()
+                .filter_map(|id| cmds.get(&id).map(|gd| (id, gd.to_battle_command().name)))
+                .collect()
+        };
+        let (named, note) = pick_move(&words, &names);
+        let Some((class_id, level, move_id)) = mm::verdict_move(me, named) else {
+            return "Use a monster move first, or name one: !monstermode ok <move id>".into();
+        };
+        let zone_id = match self.registry.get(me).await {
+            Some(h) => h.zone_id,
+            None => 0,
+        };
+        mm::log_verdict(me, class_id, level, move_id, ok, &note, zone_id);
+        let name = self
+            .lua
+            .catalogs()
+            .battle_commands
+            .read()
+            .ok()
+            .and_then(|c| {
+                c.get(&move_id)
+                    .map(|gd| move_title(&gd.to_battle_command().name))
+            })
+            .unwrap_or_else(|| "move".into());
+        let mark = if ok { "works" } else { "is broken" };
+        if note.is_empty() {
+            format!("Noted: {name} ({move_id}) {mark}.")
+        } else {
+            format!("Noted: {name} ({move_id}) {mark}: {note}")
+        }
+    }
+
     async fn monster_anim(&self, me: u32, args: &Args<'_>) -> String {
         let Some(id) = args.rest().get(1).and_then(|t| t.parse::<u16>().ok()) else {
             return "usage: monstermode anim <command id>".into();
@@ -281,4 +329,67 @@ fn monster_name(label: &str) -> String {
         .unwrap_or(label)
         .trim()
         .to_string()
+}
+
+/// A move's name for chat: `frenetic_flurry` -> `Frenetic Flurry`.
+fn move_title(raw: &str) -> String {
+    raw.split('_')
+        .filter(|w| !w.is_empty())
+        .map(|w| {
+            let mut c = w.chars();
+            c.next()
+                .map(|f| f.to_uppercase().chain(c).collect::<String>())
+                .unwrap_or_default()
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Split a verdict's words into the move they name and the note. A move
+/// is named by its id, or by its name (spaces or underscores, any case)
+/// among `moves`; whatever follows is the note.
+fn pick_move(words: &[&str], moves: &[(u16, String)]) -> (Option<u16>, String) {
+    if let Some(id) = words.first().and_then(|w| w.parse::<u16>().ok()) {
+        return (Some(id), words[1..].join(" "));
+    }
+    for take in (1..=words.len()).rev() {
+        let wanted = words[..take].join("_").to_ascii_lowercase();
+        if let Some((id, _)) = moves.iter().find(|(_, n)| n.to_ascii_lowercase() == wanted) {
+            return (Some(*id), words[take..].join(" "));
+        }
+    }
+    (None, words.join(" "))
+}
+
+#[cfg(test)]
+mod verdict_tests {
+    use super::{move_title, pick_move};
+
+    #[test]
+    fn move_titles_read_as_words() {
+        assert_eq!(move_title("frenetic_flurry"), "Frenetic Flurry");
+        assert_eq!(move_title("romp"), "Romp");
+    }
+
+    #[test]
+    fn a_verdict_names_a_move_by_id_or_name() {
+        let moves = vec![
+            (23122, "frenetic_flurry".to_string()),
+            (23123, "romp".to_string()),
+        ];
+        assert_eq!(
+            pick_move(&["23123", "no", "anim"], &moves),
+            (Some(23123), "no anim".into())
+        );
+        assert_eq!(
+            pick_move(&["Frenetic", "Flurry", "too", "weak"], &moves),
+            (Some(23122), "too weak".into())
+        );
+        assert_eq!(pick_move(&["romp"], &moves), (Some(23123), String::new()));
+        assert_eq!(
+            pick_move(&["no", "damage", "number"], &moves),
+            (None, "no damage number".into())
+        );
+        assert_eq!(pick_move(&[], &moves), (None, String::new()));
+    }
 }

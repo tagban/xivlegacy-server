@@ -4867,6 +4867,16 @@ impl Database {
             .await
     }
 
+    /// Record a Monster Mode event in `log_monster_mode`.
+    pub async fn log_monster_mode(&self, row: activity::MonsterModeRow) -> Result<()> {
+        self.conn
+            .call_db(move |c| {
+                activity::monster_mode(c, &row);
+                Ok(())
+            })
+            .await
+    }
+
     /// Record a kill or a death in `log_combat`.
     pub async fn log_combat(
         &self,

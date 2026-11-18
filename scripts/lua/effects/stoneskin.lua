@@ -1,7 +1,11 @@
 require("modifiers")
 
 function onGain(owner, effect, actionContainer)
-
+    --An enemy conjurer's Stoneskin II sets no size; give it three times
+    --the caster's level (150 at 50). The player spell always sets one.
+    if effect.GetMagnitude() == 0 then
+        effect.SetMagnitude(math.max(1, owner.GetLevel() * 3));
+    end
     owner.AddMod(modifiersGlobal.Stoneskin, effect.GetMagnitude());
 end
 
