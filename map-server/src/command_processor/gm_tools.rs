@@ -332,8 +332,13 @@ impl CommandProcessor {
         {
             let c = h.character.read().await;
             let p = (c.base.position_x, c.base.position_y, c.base.position_z);
-            // 12 yalms toward you: between the spotting and the following range
-            let (dx, dz) = (mx - p.0, mz - p.2);
+            // 10 yalms behind it (away from the spot it heads for, the
+            // marker): between the spotting and the following range, and
+            // out of its way
+            let (mut dx, mut dz) = (p.0 - v.marker.0, p.2 - v.marker.2);
+            if dx * dx + dz * dz < 1.0 {
+                (dx, dz) = (mx - p.0, mz - p.2);
+            }
             let len = (dx * dx + dz * dz).sqrt().max(0.01);
             let back = (p.0 + dx / len * 10.0, p.1, p.2 + dz / len * 10.0);
             best = Some((0.0, back, "beast to follow"));

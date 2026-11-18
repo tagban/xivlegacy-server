@@ -87,7 +87,9 @@ pub fn errand_kind(gd: &GuildleveGamedata) -> Option<ErrandKind> {
 /// class.
 pub(super) fn supported(gd: &GuildleveGamedata) -> bool {
     match errand_kind(gd) {
-        Some(ErrandKind::Follow) => gd.mobs[0] != 0 && !gd.mob_missing[0],
+        // a quarry with no model of its own is followed as a beast of the
+        // area (as a battle leve's stand-in)
+        Some(ErrandKind::Follow) => gd.mobs[0] != 0,
         Some(_) => true,
         None => false,
     }
@@ -142,21 +144,41 @@ pub(super) fn crate_spots(
     out
 }
 
-/// A followed beast's walk: from the point nearest the camp (but
-/// [`MIN_CAMP_DISTANCE`] away), [`FOLLOW_LEGS`] legs from point to point,
-/// each [`LEG_MIN`]..[`LEG_MAX`] long and leading away from the camp.
+/// A followed beast's walk: [`FOLLOW_LEGS`] legs from point to point,
+/// each [`LEG_MIN`]..[`LEG_MAX`] long and leading on, away from the camp.
+/// It starts at one of the points nearest the camp (but
+/// [`MIN_CAMP_DISTANCE`] away): the one with the longest walk.
 pub(super) fn follow_route(
     points: &[(f32, f32, f32)],
     camp: (f32, f32, f32),
 ) -> Vec<(f32, f32, f32)> {
-    let Some(first) = points
+    let mut starts: Vec<(f32, f32, f32)> = points
         .iter()
         .copied()
         .filter(|&p| flat(p, camp) >= MIN_CAMP_DISTANCE)
-        .min_by(|a, b| flat(*a, camp).total_cmp(&flat(*b, camp)))
-    else {
-        return Vec::new();
-    };
+        .collect();
+    starts.sort_by(|a, b| flat(*a, camp).total_cmp(&flat(*b, camp)));
+    let mut best: Vec<(f32, f32, f32)> = Vec::new();
+    for &first in starts.iter().take(START_TRIES) {
+        let route = walk_from(points, camp, first);
+        if route.len() > best.len() {
+            best = route;
+        }
+        if best.len() == FOLLOW_LEGS + 1 {
+            break;
+        }
+    }
+    best
+}
+
+/// Points a followed beast's walk may start from.
+const START_TRIES: usize = 8;
+
+fn walk_from(
+    points: &[(f32, f32, f32)],
+    camp: (f32, f32, f32),
+    first: (f32, f32, f32),
+) -> Vec<(f32, f32, f32)> {
     let mut route = vec![first];
     for _ in 0..FOLLOW_LEGS {
         let here = *route.last().unwrap();
@@ -164,8 +186,12 @@ pub(super) fn follow_route(
             .iter()
             .copied()
             .filter(|&p| {
+                // onward: away from the camp, not back past it (or past
+                // whoever follows from there)
+                let onward =
+                    (p.0 - here.0) * (here.0 - camp.0) + (p.2 - here.2) * (here.2 - camp.2);
                 (LEG_MIN..=LEG_MAX).contains(&flat(p, here))
-                    && flat(p, camp) > flat(here, camp)
+                    && onward > 0.0
                     && route.iter().all(|&q| flat(p, q) >= LEG_MIN)
             })
             .min_by(|a, b| flat(*a, here).total_cmp(&flat(*b, here)));
@@ -246,8 +272,22 @@ pub(super) async fn setup(
             if run.route.len() < 2 {
                 return false;
             }
-            let Some(class_id) = db.monster_class_for_name(gd.mobs[0]).await.ok().flatten() else {
-                return false;
+            let class_id = match db.monster_class_for_name(gd.mobs[0]).await.ok().flatten() {
+                Some(c) => c,
+                None => {
+                    let monsters = db.zone_monsters(leve.zone_id).await.unwrap_or_default();
+                    let local = pick_beasts(&monsters, run.route[0], u32::from(gd.level), 1);
+                    let Some(&c) = local.first() else {
+                        return false;
+                    };
+                    tracing::info!(
+                        gl_id = gd.id,
+                        target = gd.mobs[0],
+                        stand_in = c,
+                        "guildleve: target has no monster model; a stand-in appears"
+                    );
+                    c
+                }
             };
             let Some(id) = spawn_one(
                 leve,
@@ -482,7 +522,14 @@ pub(super) async fn tick(
                         )
                         .await;
                     }
-                    tracing::info!(gl_id = leve.guildleve_id, "battle leve failed: spotted");
+                    tracing::info!(
+                        gl_id = leve.guildleve_id,
+                        quarry = ?anchor,
+                        heading = ?e.route.get(e.leg),
+                        leg = e.leg,
+                        nearest,
+                        "battle leve failed: spotted"
+                    );
                 }
                 return;
             }
@@ -602,13 +649,14 @@ mod tests {
     }
 
     #[test]
-    fn a_follow_leve_needs_its_beast() {
+    fn a_follow_leve_needs_a_beast_to_follow() {
         let mut g = gd(12005, [1, 0, 0, 0]);
         assert!(!supported(&g));
         g.mobs[0] = 3_200_707;
         assert!(supported(&g));
+        // no model of its own: a stand-in beast
         g.mob_missing[0] = true;
-        assert!(!supported(&g));
+        assert!(supported(&g));
     }
 
     #[test]
@@ -638,6 +686,13 @@ mod tests {
         assert_eq!(route.len(), FOLLOW_LEGS + 1);
         assert!(route.windows(2).all(|w| w[1].0 > w[0].0));
         assert_eq!(go_spot(&points, camp), Some((150.0, 0.0, 0.0)));
+        // a point farther from the camp but on its other side is no leg;
+        // the walk starts where it can go on
+        let around = [(40.0, 0.0, 0.0), (-45.0, 0.0, 5.0), (-75.0, 0.0, 5.0)];
+        assert_eq!(
+            follow_route(&around, camp),
+            vec![(-45.0, 0.0, 5.0), (-75.0, 0.0, 5.0)]
+        );
         assert!(follow_route(&[], camp).is_empty());
     }
 }
