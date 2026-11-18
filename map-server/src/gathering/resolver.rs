@@ -93,17 +93,41 @@ impl GatherResolver {
     pub fn build_aim_slots(&self, node_id: u32) -> Option<[AimSlot; AIM_SLOTS]> {
         let node = self.nodes.get(&node_id)?;
         let mut slots = [AimSlot::empty(); AIM_SLOTS];
-        for key in node.active_item_keys() {
-            let Some(item) = self.items.get(&key) else {
-                continue;
-            };
-            let idx = item.aim_slot() - 1;
-            if idx < AIM_SLOTS {
+        // Two items of one pool can share an aim (the 1.x data puts every
+        // Quarry/Harvest/Spearfish item at 50). Items whose aim is free
+        // take it first; the rest take the nearest free slot, so every
+        // item stays reachable.
+        let items: Vec<&GatherNodeItem> = node
+            .active_item_keys()
+            .filter_map(|key| self.items.get(&key))
+            .collect();
+        let mut moved = Vec::new();
+        for item in items {
+            let want = item.aim_slot() - 1;
+            if want < AIM_SLOTS && slots[want].empty {
+                slots[want] = AimSlot::from_item(item);
+            } else {
+                moved.push(item);
+            }
+        }
+        for item in moved {
+            if let Some(idx) = nearest_free_slot(&slots, item.aim_slot() - 1) {
                 slots[idx] = AimSlot::from_item(item);
             }
         }
         Some(slots)
     }
+}
+
+/// The free slot nearest `want` (lower first on a tie), if any is left.
+fn nearest_free_slot(slots: &[AimSlot; AIM_SLOTS], want: usize) -> Option<usize> {
+    let want = want.min(AIM_SLOTS - 1);
+    (0..AIM_SLOTS).find_map(|d| {
+        [want.checked_sub(d), Some(want + d)]
+            .into_iter()
+            .flatten()
+            .find(|&i| i < AIM_SLOTS && slots[i].empty)
+    })
 }
 
 #[cfg(test)]
@@ -147,6 +171,32 @@ mod tests {
         assert_eq!(r.get_item(2).unwrap().aim, 50);
     }
 
+    /// Items sharing an aim each get their own slot (the nearest free
+    /// one), so none of them is overwritten and lost.
+    #[test]
+    fn build_aim_slots_spreads_items_that_share_an_aim() {
+        let r = GatherResolver::from_parts(
+            [mk_node(2063, &[1, 2, 3, 4])],
+            [
+                mk_item(1, 50),
+                mk_item(2, 50),
+                mk_item(3, 50),
+                mk_item(4, 60),
+            ],
+        );
+        let slots = r.build_aim_slots(2063).unwrap();
+        let keys: Vec<u32> = slots
+            .iter()
+            .filter(|s| !s.empty)
+            .map(|s| s.item_key)
+            .collect();
+        assert_eq!(keys.len(), 4, "every item keeps a slot: {keys:?}");
+        assert_eq!(slots[5].item_key, 1, "the first item keeps its own aim");
+        assert_eq!(slots[6].item_key, 4, "an item alone on its aim keeps it");
+        assert_eq!(slots[4].item_key, 2, "the next takes the nearest free slot");
+        assert_eq!(slots[3].item_key, 3);
+    }
+
     #[test]
     fn build_aim_slots_pivots_into_eleven_slots() {
         let r = GatherResolver::from_parts(
@@ -180,14 +230,15 @@ mod tests {
     }
 
     #[test]
-    fn build_aim_slots_overwrites_colliding_slot_with_last_wins() {
-        // Two items both landing on slot 1 — iteration order in a
-        // HashMap is nondeterministic but for deterministic test
-        // coverage we assert that exactly one slot is filled.
+    fn build_aim_slots_keeps_both_items_on_a_colliding_slot() {
+        // Two items both landing on slot 1: the second moves to slot 2
+        // instead of overwriting the first.
         let r =
             GatherResolver::from_parts([mk_node(1001, &[1, 2])], [mk_item(1, 0), mk_item(2, 5)]);
         let slots = r.build_aim_slots(1001).unwrap();
         let filled: usize = slots.iter().filter(|s| !s.empty).count();
-        assert_eq!(filled, 1, "overlapping aim slots collapse to one entry");
+        assert_eq!(filled, 2, "both items stay reachable");
+        assert_eq!(slots[0].item_key, 1);
+        assert_eq!(slots[1].item_key, 2);
     }
 }
