@@ -2030,6 +2030,36 @@ async fn battle_behavior_toggles_enmity_and_decoy() {
     );
 }
 
+/// A monster's buff on itself (an enemy caster's Stoneskin II) lands on
+/// it and adds no hate for itself: hating itself, the caster turned its
+/// spells and swings on itself.
+#[tokio::test]
+async fn battle_behavior_monster_self_buff_adds_no_self_hate() {
+    let env = env().await;
+    let stoneskin = by_name(&env, "stoneskin_ii").clone();
+    let fast_blade = by_name(&env, "fast_blade").clone();
+    let sc = real_scene_at(&env, &fast_blade, Recipient::Enemy, 10, 3).await;
+    reset_enemy(&sc).await;
+    crate::runtime::dispatcher::test_resolve(
+        &sc.registry,
+        &sc.processor.world,
+        Some(&env.lua),
+        Some(&env.db),
+        super::battle_audit_tests::ZONE,
+        ENEMY,
+        ENEMY,
+        &stoneskin.to_battle_command(),
+    )
+    .await;
+    assert!(
+        has_status(&sc, ENEMY, stoneskin.status_id).await,
+        "Stoneskin II on the caster"
+    );
+    let h = sc.registry.get(ENEMY).await.unwrap();
+    let c = h.character.read().await;
+    assert!(c.hate.get(ENEMY).is_none(), "the caster hates itself");
+}
+
 // ---------------------------------------------------------------------------
 // Balance: auto-attacks both ways against the retail 1.23b captures.
 // ---------------------------------------------------------------------------

@@ -73,7 +73,8 @@ pub async fn run(config: Config, db: Database, smoke: bool) -> Result<()> {
             get(crate::reports::login_form).post(crate::reports::login_submit),
         )
         .route("/reports/logout", post(crate::reports::logout))
-        .route("/reports/character", get(crate::reports::character));
+        .route("/reports/character", get(crate::reports::character))
+        .route("/reports/monster-mode", get(crate::reports::monster_mode));
     // modules/status
     let app = if common::modules::is_enabled("status") {
         tracing::info!("status module: GET /status");
