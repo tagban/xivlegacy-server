@@ -758,51 +758,65 @@ impl Database {
                                 FROM server_spawn_location_quests sq
                                WHERE sq.spawnId = sl.id),
                              se.eventName,
-                             sl.customDisplayName, lk.appearanceClassId
+                             sl.customDisplayName, lk.appearanceClassId, md.module
                       FROM server_spawn_locations sl
                       LEFT JOIN server_eventnpc_mapobj mo ON mo.id = sl.id
                       LEFT JOIN server_spawn_location_events se ON se.spawnId = sl.id
-                      LEFT JOIN server_spawn_looks lk ON lk.spawnId = sl.id",
+                      LEFT JOIN server_spawn_looks lk ON lk.spawnId = sl.id
+                      LEFT JOIN server_spawn_location_modules md ON md.spawnId = sl.id",
                 )?;
-                let rows: Vec<crate::zone::SpawnLocation> = stmt
+                let rows: Vec<(crate::zone::SpawnLocation, Option<String>)> = stmt
                     .query_map([], |r| {
-                        Ok(crate::zone::SpawnLocation {
-                            class_id: r.get(0)?,
-                            unique_id: r.get::<_, String>(1).unwrap_or_default(),
-                            zone_id: r.get(2)?,
-                            private_area_name: r.get::<_, String>(3).unwrap_or_default(),
-                            private_area_level: r.get::<_, u32>(4).unwrap_or_default(),
-                            x: r.get::<_, f32>(5).unwrap_or_default(),
-                            y: r.get::<_, f32>(6).unwrap_or_default(),
-                            z: r.get::<_, f32>(7).unwrap_or_default(),
-                            rotation: r.get::<_, f32>(8).unwrap_or_default(),
-                            state: r.get::<_, u16>(9).unwrap_or_default(),
-                            animation_id: r.get::<_, u32>(10).unwrap_or_default(),
-                            mapobj_layout_id: r.get::<_, u32>(11).unwrap_or_default(),
-                            mapobj_instance_id: r.get::<_, u32>(12).unwrap_or_default(),
-                            quest_ids: r
-                                .get::<_, Option<String>>(13)
-                                .ok()
-                                .flatten()
-                                .map(|s| {
-                                    s.split(',').filter_map(|q| q.trim().parse().ok()).collect()
-                                })
-                                .unwrap_or_default(),
-                            event: r
-                                .get::<_, Option<String>>(14)
-                                .ok()
-                                .flatten()
-                                .filter(|e| !e.is_empty()),
-                            custom_name: r
-                                .get::<_, Option<String>>(15)
-                                .ok()
-                                .flatten()
-                                .filter(|n| !n.is_empty()),
-                            look_class_id: r.get::<_, Option<u32>>(16).ok().flatten().unwrap_or(0),
-                        })
+                        Ok((
+                            crate::zone::SpawnLocation {
+                                class_id: r.get(0)?,
+                                unique_id: r.get::<_, String>(1).unwrap_or_default(),
+                                zone_id: r.get(2)?,
+                                private_area_name: r.get::<_, String>(3).unwrap_or_default(),
+                                private_area_level: r.get::<_, u32>(4).unwrap_or_default(),
+                                x: r.get::<_, f32>(5).unwrap_or_default(),
+                                y: r.get::<_, f32>(6).unwrap_or_default(),
+                                z: r.get::<_, f32>(7).unwrap_or_default(),
+                                rotation: r.get::<_, f32>(8).unwrap_or_default(),
+                                state: r.get::<_, u16>(9).unwrap_or_default(),
+                                animation_id: r.get::<_, u32>(10).unwrap_or_default(),
+                                mapobj_layout_id: r.get::<_, u32>(11).unwrap_or_default(),
+                                mapobj_instance_id: r.get::<_, u32>(12).unwrap_or_default(),
+                                quest_ids: r
+                                    .get::<_, Option<String>>(13)
+                                    .ok()
+                                    .flatten()
+                                    .map(|s| {
+                                        s.split(',').filter_map(|q| q.trim().parse().ok()).collect()
+                                    })
+                                    .unwrap_or_default(),
+                                event: r
+                                    .get::<_, Option<String>>(14)
+                                    .ok()
+                                    .flatten()
+                                    .filter(|e| !e.is_empty()),
+                                custom_name: r
+                                    .get::<_, Option<String>>(15)
+                                    .ok()
+                                    .flatten()
+                                    .filter(|n| !n.is_empty()),
+                                look_class_id: r
+                                    .get::<_, Option<u32>>(16)
+                                    .ok()
+                                    .flatten()
+                                    .unwrap_or(0),
+                            },
+                            r.get::<_, Option<String>>(17).ok().flatten(),
+                        ))
                     })?
                     .collect::<common::sql::Result<_>>()?;
-                Ok(rows)
+                // a module's spawns (server_spawn_location_modules) only
+                // while that module is on
+                Ok(rows
+                    .into_iter()
+                    .filter(|(_, m)| m.as_deref().is_none_or(crate::modules::is_enabled))
+                    .map(|(sl, _)| sl)
+                    .collect())
             })
             .await?;
         Ok(rows)

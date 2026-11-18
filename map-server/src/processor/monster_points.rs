@@ -35,6 +35,12 @@ impl PacketProcessor {
         if !words.next()?.eq_ignore_ascii_case("mp") {
             return None;
         }
+        if !crate::runtime::monster_mode::enabled() {
+            return Some(Err(format!(
+                "Monster Mode isn't enabled on this server (the {} module is off).",
+                crate::runtime::monster_mode::MODULE
+            )));
+        }
         if level < crate::command_permissions::get().required("mp") {
             return Some(Err("unknown command: !mp (!help lists yours)".into()));
         }

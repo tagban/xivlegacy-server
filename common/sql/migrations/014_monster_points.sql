@@ -20,3 +20,11 @@ CREATE TABLE IF NOT EXISTS `server_spawn_looks` (
     `spawnId` INT UNSIGNED NOT NULL PRIMARY KEY,
     `appearanceClassId` INT UNSIGNED NOT NULL
 );
+
+-- A spawn that belongs to an optional module (modules/README.md): it
+-- appears only while that module is enabled. The Monster Points vendors
+-- belong to `monstermode`. Game data in data/server_spawn_location_modules.sql.
+CREATE TABLE IF NOT EXISTS `server_spawn_location_modules` (
+    `spawnId` INT UNSIGNED NOT NULL PRIMARY KEY,
+    `module` VARCHAR(64) NOT NULL
+);

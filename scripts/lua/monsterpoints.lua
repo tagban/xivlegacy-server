@@ -18,7 +18,7 @@ require("global")
 -- The currency item that holds the balance (named "Monster Points" by the
 -- client patch) and the client shop pack the patched client knows.
 MP_ITEM = 1000124;
-MP_SHOP_PACK = 9100;
+MP_SHOP_PACK = 5124;
 
 -- { item id, price } in the client pack's row order.
 MP_GOODS = {
@@ -177,6 +177,8 @@ function MonsterPointsVendor(player, npc, kind)
     player:EndEvent();
 end
 
--- Whether vendors open the shop window (needs the XIVLegacy client's
--- Monster Points pack) or list the goods in chat.
+-- Whether vendors open the shop window or list the goods in chat. The
+-- window needs pack 5124 from the XIVLegacy client's Monster Points patch
+-- (xivlegacy-launcher #34): a client without it crashes when it opens.
+-- Turn it on only when every player runs a patched client.
 MP_SHOP_WINDOW = false;

@@ -346,7 +346,8 @@ impl CommandProcessor {
                 let name = c.split_whitespace().next().unwrap_or("");
                 (final_days || !world_end::COMMANDS.contains(&name))
                     && (name != "bug" || crate::modules::is_enabled(common::bug_reports::MODULE))
-                    && (name != "monstermode" || crate::runtime::monster_mode::enabled())
+                    && (!matches!(name, "monstermode" | "mp")
+                        || crate::runtime::monster_mode::enabled())
                     && level.is_none_or(|l| l >= perms.required(name))
             })
             .copied()
@@ -635,7 +636,8 @@ impl CommandProcessor {
                 let needed = perms.required(name);
                 let shown = (self.final_days || !world_end::COMMANDS.contains(&name))
                     && (name != "bug" || crate::modules::is_enabled(common::bug_reports::MODULE))
-                    && (name != "monstermode" || crate::runtime::monster_mode::enabled())
+                    && (!matches!(name, "monstermode" | "mp")
+                        || crate::runtime::monster_mode::enabled())
                     && level.is_none_or(|l| l >= needed)
                     && word
                         .as_ref()
