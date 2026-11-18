@@ -15,6 +15,13 @@
 //! by doing /firedance at it. The first `worldend` spawns that around the GM
 //! and in each city; the next one takes every one of them away again.
 //!
+//! The monsters land on top of townsfolk near each spot, and every one
+//! they land on falls down dead where they stood; the rest form a ring
+//! around the spot. Only plain townsfolk fall, never anyone a quest,
+//! duty or unique script names, and the fallen get back up when the
+//! event ends (a restart brings them back too: the dead state is never
+//! saved).
+//!
 //! The monsters are built straight from their actor classes (no
 //! `server_battlenpc_*` rows): the classes and their looks are already in the
 //! game data, the combat numbers are set here.
@@ -23,6 +30,7 @@
 //! with the module off (the default) the command doesn't exist.
 
 use std::collections::{HashMap, HashSet};
+use std::path::Path;
 
 use super::{Args, CommandProcessor};
 use crate::database::BattleNpcSpawn;
@@ -131,6 +139,15 @@ const CITY_SPOTS: &[(u32, f32, f32, f32)] = &[
     (209, -192.85, 194.6, 182.58), // Ul'dah, Sapphire Avenue
 ];
 
+/// How far from a spot (in yalms) townsfolk can be to fall in the
+/// onslaught.
+const FALL_RADIUS: f32 = 60.0;
+
+/// The townsfolk who fall: plain populace NPCs. Shopkeepers, guild and
+/// company NPCs, levemetes and the like stay up, so the cities keep
+/// working while the event runs.
+const FALLEN_CLASS_PATH: &str = "/chara/npc/populace/populacestandard";
+
 /// /firedances it takes to bring down a Bombard King.
 const FIREDANCES_TO_FELL: u32 = 10;
 
@@ -155,6 +172,8 @@ pub(crate) struct WorldEnd {
     spawned: Vec<u32>,
     /// Bombard King actor id → /firedances still needed.
     kings: HashMap<u32, u32>,
+    /// Townsfolk knocked down by the event, to stand back up at its end.
+    fallen: Vec<u32>,
     /// Zone → the next actor number to try.
     next: HashMap<u32, u32>,
 }
@@ -192,11 +211,20 @@ impl WorldEnd {
         }
     }
 
-    /// Ends the event: every actor id it spawned, to be removed.
-    fn end(&mut self) -> Vec<u32> {
+    /// A townsperson the event knocked down.
+    fn fell(&mut self, actor_id: u32) {
+        self.fallen.push(actor_id);
+    }
+
+    /// Ends the event: every actor id it spawned, to be removed, and every
+    /// townsperson it knocked down, to stand up again.
+    fn end(&mut self) -> (Vec<u32>, Vec<u32>) {
         self.active = false;
         self.kings.clear();
-        std::mem::take(&mut self.spawned)
+        (
+            std::mem::take(&mut self.spawned),
+            std::mem::take(&mut self.fallen),
+        )
     }
 
     /// A /firedance at `actor_id`: None when that isn't a Bombard King,
@@ -215,6 +243,97 @@ impl WorldEnd {
 fn state() -> &'static tokio::sync::Mutex<WorldEnd> {
     static STATE: std::sync::OnceLock<tokio::sync::Mutex<WorldEnd>> = std::sync::OnceLock::new();
     STATE.get_or_init(Default::default)
+}
+
+/// NPCs that must never fall: every ENPC class a quest, duty, director or
+/// other script names (the default-talk tables aside, which name nearly
+/// everyone), and every NPC whose unique script does more than hand the
+/// talk to the default-talk tables.
+#[derive(Debug, Default)]
+struct Spared {
+    classes: HashSet<u32>,
+    uniques: HashSet<String>,
+}
+
+impl Spared {
+    /// Read from the Lua scripts under `root`.
+    fn scan(root: &Path) -> Self {
+        let mut spared = Spared::default();
+        let mut dirs = vec![root.to_path_buf()];
+        while let Some(dir) = dirs.pop() {
+            let Ok(entries) = std::fs::read_dir(&dir) else {
+                continue;
+            };
+            for e in entries.flatten() {
+                let path = e.path();
+                let name = e.file_name().to_string_lossy().to_lowercase();
+                if path.is_dir() {
+                    if name != "dft" {
+                        dirs.push(path);
+                    }
+                    continue;
+                }
+                let Some(stem) = name.strip_suffix(".lua") else {
+                    continue;
+                };
+                let Ok(text) = std::fs::read_to_string(&path) else {
+                    continue;
+                };
+                if path.components().any(|c| c.as_os_str() == "unique") && !default_talk_only(&text)
+                {
+                    spared.uniques.insert(stem.to_string());
+                }
+                spared.classes.extend(enpc_class_ids(&text));
+            }
+        }
+        spared
+    }
+
+    fn spares(&self, class_id: u32, unique_id: &str) -> bool {
+        self.classes.contains(&class_id) || self.uniques.contains(&unique_id.to_lowercase())
+    }
+}
+
+/// A unique NPC script that only passes the talk on to the default-talk
+/// tables (`DftSea`, `DftFst`, `DftWil`, ...), as most townsfolk's do.
+fn default_talk_only(text: &str) -> bool {
+    let lower = text.to_lowercase();
+    lower.contains("getstaticactor(\"dft")
+        && !["quest", "director", "content", "shop", "seq_"]
+            .iter()
+            .any(|w| lower.contains(w))
+}
+
+/// ENPC class ids (1000000-1099999) written in a script.
+fn enpc_class_ids(text: &str) -> impl Iterator<Item = u32> + '_ {
+    text.split(|c: char| !c.is_ascii_digit())
+        .filter(|w| w.len() == 7 && w.starts_with("10"))
+        .filter_map(|w| w.parse().ok())
+}
+
+fn spared(root: &Path) -> &'static Spared {
+    static SPARED: std::sync::OnceLock<Spared> = std::sync::OnceLock::new();
+    SPARED.get_or_init(|| Spared::scan(root))
+}
+
+/// A townsperson who could fall: actor id and where they stand.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Townsperson {
+    actor_id: u32,
+    x: f32,
+    y: f32,
+    z: f32,
+    rotation: f32,
+}
+
+/// The townsfolk who fall around (x, z): the nearest `max` within
+/// [`FALL_RADIUS`].
+fn pick_fallen(mut near: Vec<Townsperson>, x: f32, z: f32, max: usize) -> Vec<Townsperson> {
+    let dist = |t: &Townsperson| (t.x - x).hypot(t.z - z);
+    near.retain(|t| dist(t) <= FALL_RADIUS);
+    near.sort_by(|a, b| dist(a).total_cmp(&dist(b)));
+    near.truncate(max);
+    near
 }
 
 /// Spots around (x, z) for `n` monsters: two rings, the inner one first.
@@ -291,8 +410,9 @@ impl CommandProcessor {
     pub(super) async fn handle_worldend(&self, args: &Args<'_>) -> String {
         let mut st = state().lock().await;
         if !st.begin() {
-            let ids = st.end();
+            let (ids, fallen) = st.end();
             let n = ids.len();
+            let up = self.stand_up(&fallen).await;
             for id in ids {
                 // gone already when it died and its corpse faded
                 crate::runtime::quest_apply::apply_despawn_actor(
@@ -308,7 +428,9 @@ impl CommandProcessor {
             self.set_weather_all(weather).await;
             self.announce_all("The skies clear. Dalamud's onslaught is over... for now.")
                 .await;
-            return format!("worldend off: {n} actor(s) removed");
+            return format!(
+                "worldend off: {n} actor(s) removed, {up} townsfolk back on their feet"
+            );
         }
 
         // around the GM, then each city (except the zone the GM is in)
@@ -344,18 +466,37 @@ impl CommandProcessor {
                 .iter()
                 .map(|h| h.actor_id)
                 .collect();
-            let places = ring(x, z, per_spot);
+            // the first monsters land on townsfolk, the rest ring the spot
+            let townsfolk = self.townsfolk(zone).await;
+            let standing = townsfolk.len();
+            let victims = pick_fallen(townsfolk, x, z, per_spot);
+            tracing::info!(
+                zone,
+                standing,
+                falling = victims.len(),
+                "worldend: townsfolk who can fall, and those near enough"
+            );
+            let places = victims.iter().map(|t| (t.x, t.y, t.z, t.rotation)).chain(
+                ring(x, z, per_spot)
+                    .into_iter()
+                    .map(|(px, pz, r)| (px, y, pz, r)),
+            );
             let foes = ROSTER
                 .iter()
                 .flat_map(|f| std::iter::repeat_n(f, f.count as usize));
             let mut any = false;
-            for (foe, &(px, pz, rot)) in foes.zip(places.iter()) {
+            for (i, (foe, at)) in foes.zip(places).enumerate() {
                 let Some(id) = st.next_actor_id(zone, &in_use) else {
                     break;
                 };
-                if self.spawn_foe(foe, zone, id, (px, y, pz, rot)).await {
+                if self.spawn_foe(foe, zone, id, at).await {
                     st.record(id, foe.role == Role::FiredanceOnly);
                     any = true;
+                    if let Some(t) = victims.get(i)
+                        && self.fall(t.actor_id, zone).await
+                    {
+                        st.fell(t.actor_id);
+                    }
                 }
             }
             if any {
@@ -363,6 +504,7 @@ impl CommandProcessor {
             }
         }
         let n = st.spawned.len();
+        let fell = st.fallen.len();
         if n == 0 {
             st.end();
             return "worldend: nothing could be spawned (no zones loaded?)".into();
@@ -400,10 +542,100 @@ impl CommandProcessor {
         )
         .await;
         format!(
-            "worldend on: {n} monster(s) in {zones} zone(s) and {goobbues} goobbue(s) \
-             at Ul'dah's gate; the Bombard King only falls to /firedance. \
-             !worldend again ends it"
+            "worldend on: {n} monster(s) in {zones} zone(s), {fell} townsfolk down, \
+             and {goobbues} goobbue(s) at Ul'dah's gate; the Bombard King only \
+             falls to /firedance. !worldend again ends it"
         )
+    }
+
+    /// The townsfolk of `zone` who may fall: plain populace NPCs out in the
+    /// open zone, standing, and named by no script that needs them.
+    async fn townsfolk(&self, zone: u32) -> Vec<Townsperson> {
+        let spared = spared(&self.lua.resolver().root);
+        let mut out = Vec::new();
+        for h in self.registry.actors_in_zone(zone).await {
+            if h.kind != crate::runtime::actor_registry::ActorKindTag::Npc {
+                continue;
+            }
+            let c = h.character.read().await;
+            if c.base.class_path.to_lowercase() != FALLEN_CLASS_PATH
+                || !c.base.private_area.is_empty()
+                || c.base.current_main_state != crate::actor::MAIN_STATE_PASSIVE
+                || !c.base.spawn_quest_ids.is_empty()
+                || spared.spares(c.chara.actor_class_id, &c.base.unique_id)
+            {
+                continue;
+            }
+            let pos = c.base.position();
+            out.push(Townsperson {
+                actor_id: h.actor_id,
+                x: pos.x,
+                y: pos.y,
+                z: pos.z,
+                rotation: c.base.rotation,
+            });
+        }
+        out
+    }
+
+    /// Knock a townsperson down: the death a monster gets, collapse and
+    /// all. Players who come by later see them lying there (the spawn
+    /// bundle carries the state); nothing of it is saved.
+    async fn fall(&self, actor_id: u32, zone: u32) -> bool {
+        let Some(zone_arc) = self.world.zone(zone).await else {
+            return false;
+        };
+        crate::runtime::dispatcher::emit_change_state_trio(
+            actor_id,
+            crate::actor::MAIN_STATE_DEAD,
+            &self.registry,
+            &self.world,
+            &zone_arc,
+        )
+        .await;
+        true
+    }
+
+    /// Stand the fallen back up; how many got up.
+    async fn stand_up(&self, fallen: &[u32]) -> usize {
+        let mut up = 0;
+        for &id in fallen {
+            let Some(h) = self.registry.get(id).await else {
+                continue;
+            };
+            {
+                let mut c = h.character.write().await;
+                if c.base.current_main_state != crate::actor::MAIN_STATE_DEAD {
+                    continue;
+                }
+                c.base.current_main_state = crate::actor::MAIN_STATE_PASSIVE;
+                c.chara.new_main_state = crate::actor::MAIN_STATE_PASSIVE;
+            }
+            up += 1;
+            let Some(zone_arc) = self.world.zone(h.zone_id).await else {
+                continue;
+            };
+            let state = crate::packets::send::actor::build_set_actor_state(
+                id,
+                crate::actor::MAIN_STATE_PASSIVE as u8,
+                0,
+            );
+            let get_up = crate::packets::send::actor::build_play_animation_on_actor(
+                id,
+                crate::runtime::dispatcher::GET_UP_ANIMATION,
+            );
+            let mut bytes = state.to_bytes();
+            bytes.extend(get_up.to_bytes());
+            crate::runtime::broadcast::broadcast_around_actor(
+                &self.world,
+                &self.registry,
+                &zone_arc,
+                id,
+                bytes,
+            )
+            .await;
+        }
+        up
     }
 
     /// Change the sky for everyone in the world, as it changes in place.
@@ -563,12 +795,14 @@ mod tests {
         we.record(b, true);
         we.record(c, false);
         assert!(!we.begin(), "second call ends it");
-        let mut gone = we.end();
+        we.fell(0x4730_0001);
+        let (mut gone, fallen) = we.end();
         gone.sort();
+        assert_eq!(fallen, vec![0x4730_0001]);
         let mut want = vec![a, b, c];
         want.sort();
         assert_eq!(gone, want);
-        assert!(we.end().is_empty(), "nothing left over");
+        assert_eq!(we.end(), (vec![], vec![]), "nothing left over");
         assert!(we.kings.is_empty());
         assert!(we.begin(), "and it can start again");
     }
@@ -588,7 +822,7 @@ mod tests {
                 assert!(taken.insert(id), "id handed out twice: {id:#X}");
                 we.record(id, false);
             }
-            assert_eq!(we.end().len(), 17);
+            assert_eq!(we.end().0.len(), 17);
         }
     }
 
@@ -680,6 +914,56 @@ mod tests {
                 None,
             ))
             .await;
+        // townsfolk around Limsa's aetheryte plaza (-407, 337)
+        let folk = |id: u32, class_path: &str, x: f32, quest: bool| {
+            let mut c = crate::actor::Character::new(id);
+            c.base.class_path = class_path.into();
+            c.base.zone_id = 230;
+            c.base.position_x = x;
+            c.base.position_y = 41.0;
+            c.base.position_z = 337.0;
+            c.chara.actor_class_id = 1_000_100 + (id & 0xFF);
+            if quest {
+                c.base.spawn_quest_ids = vec![110_001];
+            }
+            crate::runtime::actor_registry::ActorHandle::new(
+                id,
+                crate::runtime::actor_registry::ActorKindTag::Npc,
+                230,
+                0,
+                c,
+            )
+        };
+        const STANDARD: &str = "/Chara/Npc/Populace/PopulaceStandard";
+        let townsfolk = [
+            folk(0x4730_0001, STANDARD, -400.0, false), // falls
+            folk(0x4730_0002, STANDARD, -380.0, false), // falls
+            folk(0x4730_0003, STANDARD, -300.0, false), // too far away
+            folk(0x4730_0004, STANDARD, -405.0, true),  // a quest's NPC
+            folk(
+                0x4730_0005,
+                "/Chara/Npc/Populace/Shop/PopulaceShopSalesman",
+                -406.0,
+                false,
+            ),
+        ];
+        for t in townsfolk {
+            registry.insert(t).await;
+        }
+        let state_of = |id: u32| {
+            let registry = registry.clone();
+            async move {
+                registry
+                    .get(id)
+                    .await
+                    .unwrap()
+                    .character
+                    .read()
+                    .await
+                    .base
+                    .current_main_state
+            }
+        };
         let mut cmd = CommandProcessor::new(world.clone(), registry.clone(), db, lua);
         // module off (the default): no such command, nothing spawned
         let off = cmd.run("worldend").await.unwrap();
@@ -687,7 +971,7 @@ mod tests {
         let chat = cmd.run_as_player("worldend", "Some One", 4).await.unwrap();
         assert_eq!(chat, "unknown command: !worldend (!help lists yours)");
         assert!(!cmd.run("help").await.unwrap().contains("worldend"));
-        assert!(registry.actors_in_zone(230).await.is_empty());
+        assert_eq!(registry.actors_in_zone(230).await.len(), townsfolk_n());
 
         cmd.final_days = true;
         assert!(cmd.run("help").await.unwrap().contains("worldend"));
@@ -698,17 +982,108 @@ mod tests {
             let on = cmd.run("worldend").await.unwrap();
             assert!(on.starts_with("worldend on"), "{on}");
             assert_eq!(world.weather_id(), WEATHER_DALAMUD_THUNDER);
+            assert!(on.contains(", 2 townsfolk down,"), "{on}");
             let here = registry.actors_in_zone(230).await;
-            assert_eq!(here.len(), per_spot, "{on}");
+            assert_eq!(here.len(), per_spot + townsfolk_n(), "{on}");
+            let dead = crate::actor::MAIN_STATE_DEAD;
+            let up = crate::actor::MAIN_STATE_PASSIVE;
+            assert_eq!(state_of(0x4730_0001).await, dead);
+            assert_eq!(state_of(0x4730_0002).await, dead);
+            assert_eq!(state_of(0x4730_0003).await, up, "too far");
+            assert_eq!(state_of(0x4730_0004).await, up, "quest NPCs never fall");
+            assert_eq!(state_of(0x4730_0005).await, up, "shops stay open");
+            // a monster stands on each of the fallen
+            for x in [-400.0, -380.0] {
+                let mut on_top = false;
+                for h in &here {
+                    let c = h.character.read().await;
+                    on_top |= h.kind == crate::runtime::actor_registry::ActorKindTag::BattleNpc
+                        && c.base.position_x == x
+                        && c.base.position_z == 337.0
+                        && c.base.position_y == 41.0;
+                }
+                assert!(on_top, "no monster on the townsperson at x {x}");
+            }
             let wall = registry.actors_in_zone(170).await;
             assert_eq!(wall.len(), GOOBBUE.count as usize, "{on}");
             let off = cmd.run("worldend").await.unwrap();
             let all = per_spot + GOOBBUE.count as usize;
-            assert_eq!(off, format!("worldend off: {all} actor(s) removed"));
-            assert!(registry.actors_in_zone(230).await.is_empty());
+            assert_eq!(
+                off,
+                format!("worldend off: {all} actor(s) removed, 2 townsfolk back on their feet")
+            );
+            assert_eq!(registry.actors_in_zone(230).await.len(), townsfolk_n());
+            for n in 1..=5 {
+                assert_eq!(state_of(0x4730_0000 + n).await, up, "all standing again");
+            }
             assert!(registry.actors_in_zone(170).await.is_empty());
             assert_eq!(world.weather_id(), 1, "the configured sky comes back");
         }
+    }
+
+    fn townsfolk_n() -> usize {
+        5
+    }
+
+    #[test]
+    fn scripts_that_name_an_npc_spare_it() {
+        let root = common::test_tmp::dir().join(format!("worldend-spared-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        for (file, text) in [
+            (
+                "quests/man/man0l0.lua",
+                "local YSHTOLA = 1000001; local GIL = 10000000",
+            ),
+            ("content/x.lua", "spawn(1000002)"),
+            ("quests/dft/DftSea.lua", "[1000003] = 0,"),
+            (
+                "unique/sea0Town01a/PopulaceStandard/baderon.lua",
+                "-- no ids",
+            ),
+            (
+                "unique/sea0Town01a/PopulaceStandard/aentfoet.lua",
+                "defaultSea = GetStaticActor(\"DftSea\"); callClientFunction(player, \"delegateEvent\")",
+            ),
+            (
+                "unique/sea0Town01a/PopulaceStandard/sailor.lua",
+                "GetStaticActor(\"DftSea\"); if player:HasQuest(110001) then end",
+            ),
+        ] {
+            let path = root.join(file);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+        }
+        let spared = Spared::scan(&root);
+        assert!(spared.spares(1000001, "x"), "a quest names it");
+        assert!(spared.spares(1000002, "x"), "a duty names it");
+        assert!(
+            !spared.spares(1000003, "x"),
+            "default talk alone doesn't count"
+        );
+        assert!(!spared.spares(10000000, "x"), "not an ENPC class id");
+        assert!(spared.spares(1000004, "Baderon"), "it has a unique script");
+        assert!(!spared.spares(1000004, "someone_else"));
+        assert!(!spared.spares(1000004, "Aentfoet"), "default talk only");
+        assert!(
+            spared.spares(1000004, "sailor"),
+            "default talk, but a quest too"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn the_nearest_townsfolk_fall_first() {
+        let t = |actor_id, x| Townsperson {
+            actor_id,
+            x,
+            y: 0.0,
+            z: 0.0,
+            rotation: 0.0,
+        };
+        let near = vec![t(1, 50.0), t(2, -5.0), t(3, FALL_RADIUS + 1.0), t(4, 20.0)];
+        let ids = |v: Vec<Townsperson>| v.iter().map(|t| t.actor_id).collect::<Vec<_>>();
+        assert_eq!(ids(pick_fallen(near.clone(), 0.0, 0.0, 10)), vec![2, 4, 1]);
+        assert_eq!(ids(pick_fallen(near, 0.0, 0.0, 2)), vec![2, 4]);
     }
 
     #[test]
