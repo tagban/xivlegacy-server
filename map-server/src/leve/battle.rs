@@ -2652,6 +2652,72 @@ mod tests {
         }
     }
 
+    fn field(id: u32, skill: u8, level: u16, camp_zone: u32) -> GuildleveGamedata {
+        GuildleveGamedata {
+            class_type: 2,
+            skill,
+            camp_zone,
+            location: 3,
+            objective: OBJECTIVE_PROCURE,
+            ..leve(id, 1280032, level, 20044, [3, 0, 0, 0], [0; 4])
+        }
+    }
+
+    #[test]
+    fn fieldcraft_leves_run_on_their_class_points() {
+        assert_eq!(
+            field_harvest_type(&field(4000, 39, 1, 170)),
+            Some(crate::gathering::HARVEST_TYPE_MINE)
+        );
+        assert_eq!(
+            field_harvest_type(&field(4200, 40, 1, 170)),
+            Some(crate::gathering::HARVEST_TYPE_LOG)
+        );
+        assert_eq!(
+            field_harvest_type(&field(4400, 41, 1, 170)),
+            Some(crate::gathering::HARVEST_TYPE_FISH)
+        );
+        assert!(is_supported(&field(4000, 39, 1, 170)));
+        // a battle leve has no harvest type; a fieldcraft leve with no count
+        // can't run
+        assert_eq!(
+            field_harvest_type(&leve(10821, 1280002, 1, 20021, [5, 0, 0, 0], [1, 0, 0, 0])),
+            None
+        );
+        let mut empty = field(4001, 39, 1, 170);
+        empty.aim_num = [0; 4];
+        assert!(!is_supported(&empty));
+    }
+
+    #[test]
+    fn the_fieldcraft_menu_lists_a_citys_leves_near_the_players_level() {
+        let mut catalog = HashMap::new();
+        for (i, level) in [1u16, 10, 20, 30, 40, 50, 1, 10, 20, 30].iter().enumerate() {
+            let g = field(4000 + i as u32, 39, *level, 170);
+            catalog.insert(g.id, g);
+        }
+        // another class, another city, and a zone with no mining point
+        catalog.insert(4500, field(4500, 40, 1, 170));
+        let mut other_city = field(4501, 39, 1, 170);
+        other_city.location = 1;
+        catalog.insert(4501, other_city);
+        catalog.insert(4502, field(4502, 39, 1, 999));
+        let points: std::collections::HashSet<(u32, u32)> =
+            [(170, crate::gathering::HARVEST_TYPE_MINE)]
+                .into_iter()
+                .collect();
+        let low = field_offers(&catalog, 3, 39, 1, &points);
+        assert_eq!(low.len(), CARDS);
+        assert!(!low.contains(&4500) && !low.contains(&4501) && !low.contains(&4502));
+        assert!(
+            !low.contains(&4005),
+            "the level 50 one is furthest from level 1"
+        );
+        let high = field_offers(&catalog, 3, 39, 50, &points);
+        assert!(high.contains(&4005));
+        assert!(field_offers(&catalog, 3, 39, 1, &Default::default()).is_empty());
+    }
+
     #[test]
     fn a_gc_officer_offers_one_of_its_companys_leves_at_its_camp() {
         let gc = |id, authority, camp_zone, mob| GuildleveGamedata {
