@@ -287,12 +287,15 @@ install_dir() {
         :   # already installed, file for file
     elif [ "$(cd "$src" && pwd -P)" != "$(cd "$NEW_RELEASE" 2>/dev/null && pwd -P || true)" ]; then
         rm -rf "$NEW_RELEASE.tmp"
-        cp -a "$src" "$NEW_RELEASE.tmp"
+        # -Rp, not -a: a copy must take /opt's SELinux label, not the source's
+        # (a bundle unpacked in /tmp would keep user_tmp_t, which systemd can't run).
+        cp -Rp "$src" "$NEW_RELEASE.tmp"
         rm -rf "$NEW_RELEASE"
         mv "$NEW_RELEASE.tmp" "$NEW_RELEASE"
     fi
     chown -R root:root "$NEW_RELEASE"
     chmod -R go-w "$NEW_RELEASE"
+    if command -v restorecon >/dev/null 2>&1; then restorecon -R "$NEW_RELEASE" >/dev/null 2>&1 || true; fi
 }
 
 download_build() {

@@ -96,7 +96,7 @@ case "$PM" in
         # Rocky/Alma ship curl-minimal, which conflicts with the 'curl' package.
         command -v curl >/dev/null 2>&1 || pkgs="$pkgs curl"
         # shellcheck disable=SC2086
-        dnf install -y -q $pkgs
+        dnf install -y -q $pkgs >/dev/null
         ;;
     apk)
         apk add --no-cache -q bash mariadb mariadb-client mariadb-openrc curl ca-certificates jq unzip gzip tar iproute2 procps util-linux shadow
@@ -420,10 +420,21 @@ if [ "$SWAP" = 1 ]; then
     fi
 fi
 
+# RHEL-family images reserve memory for crash dumps (kdump): 192 MB of a 1 GB VPS.
+if grep -qs 'crashkernel=' /proc/cmdline && [ -n "$(dmesg 2>/dev/null | grep -i 'crashkernel reserved' || true)" ]; then
+    mem_kb="$(sed -n 's/^MemTotal: *\([0-9]*\).*/\1/p' /proc/meminfo)"
+    if [ "${mem_kb:-0}" -lt 2000000 ]; then
+        warn "the kernel keeps memory back for crash dumps (kdump). To give it to the server, run
+    grubby --update-kernel=ALL --remove-args=crashkernel && systemctl disable kdump && reboot"
+    fi
+fi
+
 # ---------------------------------------------------------------- 8. the xiv command
 mkdir -p /usr/local/sbin
 install -m 0755 "$HERE/xiv.sh" /usr/local/sbin/xiv.new
 mv -f /usr/local/sbin/xiv.new /usr/local/sbin/xiv
+# sudo on RHEL-family systems doesn't search /usr/local; a link makes 'sudo xiv' work there.
+if [ ! -e /usr/sbin/xiv ] || [ -L /usr/sbin/xiv ]; then ln -sfn /usr/local/sbin/xiv /usr/sbin/xiv; fi
 say "installed the 'xiv' command (/usr/local/sbin/xiv)"
 
 # ---------------------------------------------------------------- 9. this bundle

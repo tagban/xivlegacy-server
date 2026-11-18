@@ -1,9 +1,9 @@
 # Running XIVLegacy Server on a Linux VPS
 
 Everything needed to run the server on a small Linux machine: a cheap VPS with
-1 GB of RAM and 1-2 x86-64 vCPUs is enough. It works on any current
-distribution; it was tested on Debian 12 and Alpine 3.22 (see
-[Tested](#tested) below).
+1 GB of RAM and 1-2 x86-64 vCPUs is enough (2 vCPUs recommended; see
+[Tested](#tested)). It works on any current distribution; it was tested on
+Debian 12, Alpine 3.22 and Rocky Linux 9.
 
 | File | What it is |
 | --- | --- |
@@ -44,9 +44,10 @@ though the repository is public, so `xiv deploy <ref>` uses a token (step 4).
 
 Any provider with an x86-64 Linux VPS, 1 GB of RAM or more, and a public IPv4
 address. **Pick Debian 12 or 13, or Ubuntu 24.04** if the provider lets you
-choose: they ship MariaDB 10.11 or newer. Alpine and Arch work too. Rocky/Alma 9
-ship MariaDB 10.5, which is older than anything the server has been tested on.
-Add your SSH key when you create it.
+choose: they ship MariaDB 10.11 or newer, and nothing else runs on them. Alpine
+works too. Rocky/Alma 9 work (MariaDB 10.5, SELinux on), but their images keep
+192 MB back for crash dumps; install.sh says how to turn that off. Add your SSH
+key when you create it.
 
 If the provider has its own firewall (a "security group"), allow TCP **54993,
 54994 and 54992** in, plus SSH. Nothing else needs to be open: the map server
@@ -138,6 +139,8 @@ mean to move: the two databases drift apart from the moment of the import.
 
 ## Everyday commands
 
+Run these as root (`sudo xiv ...`).
+
 ```sh
 xiv status                       # services, memory, players online, deployed build
 xiv deploy                       # newest build of DEFAULT_REF (develop); backs up first,
@@ -200,5 +203,24 @@ itself, up to 5 times an hour.
 
 ## Tested
 
-See the pull request that added this folder for the measurements: fresh
-1 GB VMs, the live database imported, test clients logged in.
+November 2026, on fresh x86-64 VMs with 1 GB of RAM and 2 vCPUs (QEMU, so
+everything ran several times slower than on real hardware), with the CI bundle
+and a copy of the live database from the NUC. Resident memory in MB:
+
+| | Debian 12 | Alpine 3.22 | Rocky 9.8 |
+| --- | --- | --- | --- |
+| MariaDB | 10.11: 112-122 (210 right after an import) | 11.4: 135 | 10.5: 186-191 |
+| map-server | 193-195; 200-201 with a player in Limsa | 193 | 189 |
+| world, lobby, web | 9, 9, 10 | 9, 9, 13 | 5, 3, 6 |
+| Whole machine in use (`free`) | about 600 of 967 | 564 of 967 | 671 of 758 (kdump holds 192) |
+
+- A test client logged in to the Debian VM with an imported live character,
+  walked around and chatted. Each player adds roughly 6-8 MB to the map server.
+- Swap (the 1 GB file install.sh adds) stayed almost unused.
+- The map server keeps a tick going for every monster in the world: on the
+  NUC (i3-1315U) it uses about 14% of a core with nobody online. A cheap
+  shared vCPU is slower, so with 1 vCPU expect a good share of it to go to
+  the map server; 2 vCPUs leave room for MariaDB and the rest.
+- First start: the web server loads the game data into an empty database
+  (about 45 s in the VMs), then the map server loads the world (1-5 minutes
+  in the VMs; much faster on real hardware).
