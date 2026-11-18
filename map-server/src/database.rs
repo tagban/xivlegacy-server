@@ -57,6 +57,9 @@ pub struct UsableItem {
     pub duration_s: f32,
     /// (paramBonus type, value, cap; 0 = no cap)
     pub effects: Vec<(u32, i32, i32)>,
+    /// `effectMagnitude`: an unguent's potency, a raise item's success
+    /// chance.
+    pub magnitude: f64,
 }
 
 /// One row of `server_zones` — the on-disk record for a zone template.
@@ -3583,7 +3586,8 @@ impl Database {
                             e.paramBonusType5, e.paramBonusValue5,
                             e.paramBonusType6, e.paramBonusValue6,
                             e.paramBonusType7, e.paramBonusValue7,
-                            e.paramBonusValue8, e.paramBonusValue9, e.paramBonusValue10
+                            e.paramBonusValue8, e.paramBonusValue9, e.paramBonusValue10,
+                            i.effectMagnitude
                      FROM gamedata_items i
                      LEFT JOIN gamedata_items_equipment e ON e.catalogID = i.catalogID
                      WHERE i.catalogID = ?1",
@@ -3611,6 +3615,7 @@ impl Database {
                             recast_group: r.get::<_, Option<i32>>(3)?.unwrap_or(0),
                             duration_s: r.get::<_, Option<f64>>(4)?.unwrap_or(0.0) as f32,
                             effects,
+                            magnitude: r.get::<_, Option<f64>>(16)?.unwrap_or(0.0),
                         })
                     },
                 )

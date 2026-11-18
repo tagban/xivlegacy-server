@@ -4278,6 +4278,9 @@ pub async fn apply_add_exp(
             let rested_before = c.chara.rest_bonus_exp_rate;
             let (effective_gain, rested_after) = consume_rested_xp(exp, rested_before);
             c.chara.rest_bonus_exp_rate = rested_after;
+            // Food's EXP bonus and the company-issue manuals.
+            let effective_gain =
+                crate::processor::items::item_exp_bonus(&mut c, class_id, effective_gain);
             let prior_sp = c.battle_save.skill_point[class_slot];
             let combined = prior_sp.saturating_add(effective_gain).max(0);
             let prior_level = c
