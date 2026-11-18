@@ -134,7 +134,7 @@ impl PacketProcessor {
         let player_id = handle.actor_id;
         // Changing gear or class ends Monster Mode first, so the change
         // lands on the player's own body.
-        if crate::runtime::monster_mode::release(player_id)
+        if crate::runtime::monster_mode::release(player_id, "gear")
             .await
             .is_some()
         {

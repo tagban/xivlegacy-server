@@ -3497,6 +3497,42 @@ async fn resolve_action(
         }
     }
 
+    // Monster Mode: every move a transformed player uses goes to
+    // `log_monster_mode`, one row per target.
+    if attacker_handle.is_player()
+        && crate::runtime::monster_mode::is_transformed(attacker_actor_id)
+    {
+        let mut logged = Vec::with_capacity(hits.len());
+        for hit in &hits {
+            let target_class_id = match registry.get(hit.target_actor_id).await {
+                Some(t) => t.character.read().await.chara.actor_class_id,
+                None => 0,
+            };
+            logged.push(crate::runtime::monster_mode::MoveHit {
+                target_class_id,
+                landed: hit.landed,
+                damage: u32::from(hit.damage),
+                heal: if hit.healed {
+                    u32::from(hit.heal_amount)
+                } else {
+                    0
+                },
+                status_id: if hit.status_roll {
+                    command.status_id
+                } else {
+                    0
+                },
+            });
+        }
+        crate::runtime::monster_mode::log_move(
+            attacker_actor_id,
+            command.id,
+            command.battle_animation,
+            attacker_handle.zone_id,
+            &logged,
+        );
+    }
+
     // Combat-resolution log (companion to the auto-attack line).
     for hit in &hits {
         let (def_hp, def_max) = match registry.get(hit.target_actor_id).await {
