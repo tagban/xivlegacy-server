@@ -53,6 +53,7 @@ pub struct OwnBody {
     pub level: i16,
     pub mods: ModifierMap,
     pub stats: [i16; 36],
+    pub hotbar: Vec<crate::gamedata::HotbarEntry>,
 }
 
 impl OwnBody {
@@ -68,6 +69,7 @@ impl OwnBody {
             level: c.level,
             mods: c.mods.clone(),
             stats: c.stats,
+            hotbar: c.hotbar.clone(),
         }
     }
 
@@ -82,6 +84,7 @@ impl OwnBody {
         c.level = self.level;
         c.mods = self.mods.clone();
         c.stats = self.stats;
+        c.hotbar = self.hotbar.clone();
     }
 }
 
@@ -100,11 +103,80 @@ pub fn wear_monster(player: &mut CharaState, mob: &CharaState) {
     player.stats = mob.stats;
 }
 
+/// TP a monster move costs a player in Monster Mode: monsters use their
+/// moves at 1000 TP.
+pub const MOVE_TP: i16 = 1000;
+
+/// The monster's moves and spells, in list order, for the hotbar.
+pub fn monster_moves(mob: &Character) -> Vec<u16> {
+    let Some(ctrl) = mob.ai_container.controller.as_ref() else {
+        return Vec::new();
+    };
+    best_tiers(
+        ctrl.battle
+            .skills
+            .iter()
+            .chain(ctrl.battle.spells.iter())
+            .map(|c| (c.id, c.name.as_str())),
+    )
+}
+
+/// One hotbar slot per move: a list can hold several tiers of one move
+/// (the same name, unlocked at higher levels, later in the list); keep
+/// the last, strongest one in the first one's place.
+pub fn best_tiers<'a>(moves: impl Iterator<Item = (u16, &'a str)>) -> Vec<u16> {
+    let mut out: Vec<(u16, &str)> = Vec::new();
+    for (id, name) in moves {
+        match out
+            .iter_mut()
+            .find(|(i, n)| *i == id || (!name.is_empty() && *n == name))
+        {
+            Some(slot) => *slot = (id, name),
+            None => out.push((id, name)),
+        }
+    }
+    out.truncate(crate::runtime::quest_apply::HOTBAR_SLOTS as usize);
+    out.into_iter().map(|(id, _)| id).collect()
+}
+
+/// The hotbar of a player in Monster Mode: the monster's moves from
+/// slot 1 on, nothing else.
+pub fn monster_hotbar(moves: &[u16]) -> Vec<crate::gamedata::HotbarEntry> {
+    moves
+        .iter()
+        .enumerate()
+        .map(|(slot, id)| crate::gamedata::HotbarEntry {
+            hotbar_slot: slot as u16,
+            command_id: u32::from(*id),
+            recast_time: 0,
+        })
+        .collect()
+}
+
+/// The TP this command costs the player, if it is one of their monster's
+/// moves (at least [`MOVE_TP`]).
+pub fn move_tp_cost(player_id: u32, command_id: u16, listed_cost: i16) -> Option<i16> {
+    possessions()
+        .get(&player_id)
+        .filter(|p| p.moves.contains(&command_id))
+        .map(|_| listed_cost.max(MOVE_TP))
+}
+
+/// The monster moves the player holds (for tests and the reply line).
+pub fn moves_of(player_id: u32) -> Vec<u16> {
+    possessions()
+        .get(&player_id)
+        .map(|p| p.moves.clone())
+        .unwrap_or_default()
+}
+
 /// One player's possession.
 pub struct Possession {
     pub mob_id: u32,
     pub mob_name: String,
     pub own: OwnBody,
+    /// The monster's moves, on the player's hotbar.
+    pub moves: Vec<u16>,
     player: Arc<RwLock<Character>>,
     mob: Arc<RwLock<Character>>,
 }
@@ -124,6 +196,35 @@ fn vanished() -> MutexGuard<'static, HashMap<u32, bool>> {
     MAP.get_or_init(Default::default)
         .lock()
         .unwrap_or_else(|e| e.into_inner())
+}
+
+/// Monsters a player fought while transformed: monster id -> players.
+/// Finishing one of them after letting go earns nothing, so a strong
+/// monster body can't soften a fight for the player's own EXP. Cleared
+/// when the monster dies or respawns.
+fn fought() -> MutexGuard<'static, HashMap<u32, std::collections::HashSet<u32>>> {
+    static MAP: OnceLock<Mutex<HashMap<u32, std::collections::HashSet<u32>>>> = OnceLock::new();
+    MAP.get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+}
+
+/// Did this player fight this monster while transformed?
+pub fn fought_as_monster(player_id: u32, mob_id: u32) -> bool {
+    fought()
+        .get(&mob_id)
+        .is_some_and(|s| s.contains(&player_id))
+}
+
+/// No kill rewards for this player and monster: a transformed player's
+/// kill, or a monster they fought while transformed.
+pub fn no_rewards(player_id: u32, mob_id: u32) -> bool {
+    is_transformed(player_id) || fought_as_monster(player_id, mob_id)
+}
+
+/// The monster died or respawned: forget who fought it.
+pub fn forget_fights(mob_id: u32) {
+    fought().remove(&mob_id);
 }
 
 /// Is this player in Monster Mode?
@@ -157,6 +258,7 @@ pub fn may_respawn(actor_id: u32) -> bool {
 /// The ticker respawned this monster: show it to clients again.
 pub fn on_respawn(actor_id: u32) {
     vanished().remove(&actor_id);
+    forget_fights(actor_id);
 }
 
 /// Monster Mode is for the open world: field zones only (`sea0Field01`,
@@ -193,6 +295,8 @@ pub async fn possess(
         }
         let own = OwnBody::take(&p.chara);
         wear_monster(&mut p.chara, &m.chara);
+        let moves = monster_moves(&m);
+        p.chara.hotbar = monster_hotbar(&moves);
         m.chara.hp = 0;
         m.base.current_main_state = crate::actor::MAIN_STATE_DEAD;
         m.chara.new_main_state = crate::actor::MAIN_STATE_DEAD;
@@ -208,6 +312,7 @@ pub async fn possess(
                 mob_id,
                 mob_name,
                 own,
+                moves,
                 player,
                 mob,
             },
@@ -221,7 +326,23 @@ pub async fn possess(
 /// monster is let go and respawns on the next ticker pass.
 pub async fn release(player_id: u32) -> Option<Possession> {
     let p = possessions().remove(&player_id)?;
-    p.own.put(&mut p.player.write().await.chara);
+    {
+        let mut c = p.player.write().await;
+        // Whoever the monster body was fighting stays off the reward list.
+        let mut foes: Vec<u32> = c.hate.entries().map(|e| e.actor_id).collect();
+        if let Some(s) = c.ai_container.current_state() {
+            foes.push(s.target_actor_id);
+        }
+        {
+            let mut f = fought();
+            for foe in foes {
+                if foe != 0 && foe != player_id && foe != crate::actor::INVALID_ACTORID {
+                    f.entry(foe).or_default().insert(player_id);
+                }
+            }
+        }
+        p.own.put(&mut c.chara);
+    }
     {
         let mut m = p.mob.write().await;
         // Backdate the death so the ticker respawns it now.
@@ -298,6 +419,13 @@ pub async fn refresh_client(registry: &ActorRegistry, world: &WorldManager, play
         broadcast_to_neighbours(world, registry, player_id, bytes).await;
     }
     crate::runtime::dispatcher::sync_pools_after_tick(registry, world, player_id).await;
+    // The hotbar: the monster's moves, or the player's own commands back.
+    for slot in 0..crate::runtime::quest_apply::HOTBAR_SLOTS {
+        crate::runtime::quest_apply::send_hotbar_slot_update(
+            player_id, slot, registry, world, None,
+        )
+        .await;
+    }
 }
 
 /// The transformed player's monster body was defeated: they stand up in
@@ -320,6 +448,28 @@ pub async fn on_defeat(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn one_slot_per_move_strongest_tier() {
+        let moves = [
+            (23121, "quickchant"),
+            (23122, "frenetic_flurry"),
+            (23168, "quickchant"),
+            (23125, "forbidden_magicks"),
+            (23172, "quickchant"),
+            (23177, "forbidden_magicks"),
+        ];
+        assert_eq!(best_tiers(moves.into_iter()), vec![23172, 23122, 23177]);
+    }
+
+    #[test]
+    fn fighting_as_a_monster_bars_rewards_until_respawn() {
+        fought().entry(910_001).or_default().insert(910_002);
+        assert!(no_rewards(910_002, 910_001));
+        assert!(!no_rewards(910_003, 910_001));
+        on_respawn(910_001);
+        assert!(!no_rewards(910_002, 910_001));
+    }
 
     #[test]
     fn field_zones_only() {

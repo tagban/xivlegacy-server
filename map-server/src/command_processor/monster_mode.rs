@@ -133,8 +133,14 @@ impl CommandProcessor {
             (c.chara.level, c.chara.hp)
         };
         tracing::info!(player = me, target, level, hp, "monstermode: possessed");
+        let moves = mm::moves_of(me).len();
+        let moves = match moves {
+            0 => "no moves".to_string(),
+            1 => "1 move on your hotbar".to_string(),
+            n => format!("{n} moves on your hotbar"),
+        };
         format!(
-            "Monster Mode: you are {label} (level {level}, {hp} HP). !monstermode again to let go."
+            "Monster Mode: you are {label} (level {level}, {hp} HP, {moves}). !monstermode again to let go."
         )
     }
 

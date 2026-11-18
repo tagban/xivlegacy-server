@@ -4982,8 +4982,12 @@ pub(crate) async fn die_if_defender_fell(
         return;
     }
     // Monster Mode: a transformed player's kills earn nothing — no leve,
-    // seal, EXP or quest credit.
-    if attacker_actor_id.is_some_and(crate::runtime::monster_mode::is_transformed) {
+    // seal, EXP or quest credit — and neither does finishing, after
+    // letting go, a monster they fought as one.
+    let no_rewards = attacker_actor_id
+        .is_some_and(|a| crate::runtime::monster_mode::no_rewards(a, defender_actor_id));
+    if no_rewards {
+        crate::runtime::monster_mode::forget_fights(defender_actor_id);
         return;
     }
     // A battle leve's target counts whoever landed the blow.
@@ -5048,6 +5052,7 @@ pub(crate) async fn die_if_defender_fell(
     // seals, the EXP (with the party modifier) and the quest kill credit,
     // as the killer does.
     let sharers = kill_sharers(&attacker_handle, defender_actor_id, registry, zone).await;
+    crate::runtime::monster_mode::forget_fights(defender_actor_id);
     let party_size = sharers.len() as u32;
     for h in &sharers {
         award_grand_company_seals(h, mob_level, db_arc).await;
@@ -5122,8 +5127,9 @@ async fn kill_sharers(
         if !h.is_player() || h.session_id == 0 || copy_of(m).await != killer_copy {
             continue;
         }
-        // A party member in Monster Mode shares nothing.
-        if crate::runtime::monster_mode::is_transformed(m) {
+        // A party member in Monster Mode, or who fought this monster as
+        // one, shares nothing.
+        if crate::runtime::monster_mode::no_rewards(m, victim_id) {
             continue;
         }
         let near = {
