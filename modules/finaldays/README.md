@@ -12,6 +12,16 @@ enabled = ["status", "finaldays"]
 | --- | --- | --- |
 | `!worldend` | senior GM (3) | Spawns the Final Days monsters around you and in both halves of each city: three Nael van Darnus with Imperial centurions, Atomos, Bixie, Number 126 and 128, the Great Oak, an Imperial juggernaut and the Bombard King (levels 70-80). Run it again to remove all of them. |
 
+The monsters land on top of townsfolk near each spot, and each one they
+land on drops dead where they stood; the rest of the monsters ring the
+spot. Only plain townsfolk fall (populace NPCs within 60 yalms): never a
+shopkeeper, guild or company NPC, never an NPC a quest, duty or director
+script names or that a quest's spawn belongs to, and never one whose own
+script does more than default talk, so quests keep working. Ending the
+event stands every one of them back up, and those who were sitting or
+leaning sit or lean again. Since the fallen state is never saved, a
+server restart brings them back too.
+
 While it runs, every zone shows the red sky of 1.0's last days: Dalamud
 overhead and lightning now and then (weather 8032). Players who log in or
 change zones during the event get it too; ending the event brings back the
