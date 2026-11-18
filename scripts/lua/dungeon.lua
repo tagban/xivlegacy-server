@@ -13,8 +13,9 @@ Directors are the client's own for each dungeon (director/instanceraid and
 director/occupancy in the client scripts). Entry points are inside each
 dungeon by its first door or barrier; exits put you at the nearest camp's
 aetherial gate. Retail queued you through NPCs by each entrance (Toto-Rak's
-Bloisirant in the South Shroud, for one); until those are scripted, GMs use
-!dungeon.
+Bloisirant in the South Shroud, for one) during the Grand Company quests;
+Sir Tristechambel at Teriggan's Stand also takes anyone who meets the 1.21
+rules into the Aurum Vale (OPEN_RAIDS). GMs use !dungeon.
 
 ]]
 
@@ -155,6 +156,49 @@ function enterDungeon(player, key)
 	-- same-map warps leaves a cross-zone entry stuck on Now Loading.
 	GetWorldManager():DoZoneChangeContentParty(player, area,
 		d.entry[1], d.entry[2], d.entry[3], d.entry[4], 15);
+end
+
+-- Patch 1.21 opened the Aurum Vale and Cutter's Cry to anyone as instanced
+-- raids: Disciples of War or Magic of level 45 and up, and for the Vale,
+-- one of the three "Into the Dark" Grand Company quests (Com5l1/g1/u1)
+-- done. Toto-Rak and Dzemael Darkhold stayed quest dungeons, entered only
+-- through the Grand Company quests. raid is the client's raid list entry
+-- for askEnterInstanceRaid, which only an InstanceRaidGuide actor can ask,
+-- and only from a talk: asked from a push circle, the client answers no at
+-- once without showing it. Cutter's Cry's rule is here for its entry
+-- sentry (the client's InstanceRaidGuideCuttersCry), who isn't placed yet.
+OPEN_RAIDS = {
+	aurum	= { raid = 6, level = 45, quests = {111411, 111611, 111811} },
+	cutters	= { raid = 7, level = 45 },
+};
+
+local function mayEnterOpenRaid(player, rule)
+	if not (player:IsDiscipleOfWar() or player:IsDiscipleOfMagic()) then return false end
+	if player:GetHighestLevel() < rule.level then return false end
+	if rule.quests == nil then return true end
+	for _, id in ipairs(rule.quests) do
+		if player:IsQuestCompleted(id) then return true end
+	end
+	return false
+end
+
+-- An entrance's guide (an InstanceRaidGuide NPC, by talk) for players
+-- no quest sends in: the client's own entry prompt, then the 1.21 rules.
+function enterOpenRaid(player, key)
+	local rule = OPEN_RAIDS[key];
+	if rule ~= nil and callClientFunction(player, "askEnterInstanceRaid", rule.raid) then
+		if mayEnterOpenRaid(player, rule) then
+			player:EndEvent();
+			enterDungeon(player, key);
+			return;
+		end
+		local need = string.format("Only Disciples of War or Magic of level %d or higher", rule.level);
+		if rule.quests ~= nil then
+			need = need .. " who have completed \"Into the Dark\"";
+		end
+		player:SendMessage(MESSAGE_TYPE_SYSTEM, "", need .. " may enter.");
+	end
+	player:EndEvent();
 end
 
 -- key names the battle when its zone holds more than one (a "second").
