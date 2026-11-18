@@ -10,6 +10,11 @@
 -- hatchingtide: Hatching-tide (Spl0u1/g1/l1 The Dreamer's Gospel, Spl0u2/g2/l2 The Dreamer's Dilemma):
 --   31250-31258 the Dreamers, their helpers and hint spriggans (Ul'dah 31250-31252, Gridania 31253-31255, Limsa 31256-31258);
 --   31259-31261 the spriggan thieves Ziggy (Nanawa Mines), Twiggy (Mun-Tuy Cellars), Iggy (Cassiopeia Hollow).
+-- moonfire: the Moonfire Faire (Spl0i1 The Heat Is On, Spl102 Bombard Backlash):
+--   31270-31272 the 2011 Faire Chaperones Xheh Jakkya (Limsa), Judye (Gridania), Miette (Ul'dah); 31273-31275 the same in yukata (2012);
+--   31276-31278 the Firedancers Hildibrand (Limsa), Radolf (Gridania), Galsha Zasha (Ul'dah);
+--   31280-31287 the 2011 field sites, a Cascadier cadet and a Bombard each: Aleport, Quarrymill, the Silver Bazaar, Camp Dragonhead;
+--   31290-31298 the 2012 bomb sites, a cadet, a Bombard and a Bombard King each: Camp Bearded Rock, Camp Bentbranch, Camp Black Brush.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_location_events`;
 INSERT INTO `server_spawn_location_events` (`spawnId`, `eventName`) VALUES
@@ -56,4 +61,30 @@ INSERT INTO `server_spawn_location_events` (`spawnId`, `eventName`) VALUES
 (31258, 'hatchingtide'),
 (31259, 'hatchingtide'),
 (31260, 'hatchingtide'),
-(31261, 'hatchingtide');
+(31261, 'hatchingtide'),
+(31270, 'moonfire'),
+(31271, 'moonfire'),
+(31272, 'moonfire'),
+(31273, 'moonfire'),
+(31274, 'moonfire'),
+(31275, 'moonfire'),
+(31276, 'moonfire'),
+(31277, 'moonfire'),
+(31278, 'moonfire'),
+(31280, 'moonfire'),
+(31281, 'moonfire'),
+(31282, 'moonfire'),
+(31283, 'moonfire'),
+(31284, 'moonfire'),
+(31285, 'moonfire'),
+(31286, 'moonfire'),
+(31287, 'moonfire'),
+(31290, 'moonfire'),
+(31291, 'moonfire'),
+(31292, 'moonfire'),
+(31293, 'moonfire'),
+(31294, 'moonfire'),
+(31295, 'moonfire'),
+(31296, 'moonfire'),
+(31297, 'moonfire'),
+(31298, 'moonfire');
