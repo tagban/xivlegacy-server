@@ -5340,7 +5340,23 @@ pub async fn apply_equip_from_package(
                 continue;
             }
         };
-        let (server_item_id, _catalog_id) = resolved;
+        let (server_item_id, catalog_id) = resolved;
+        // The Lua tables name bag positions, which only hold the class's
+        // starter kit on a fresh character; skip anything else that doesn't
+        // go in this gear slot (chausses on the head, gloves as a body).
+        if let Ok(Some(point)) = db.item_equip_point(catalog_id).await
+            && crate::actor::player::gear_slot_fits(point, gear_slot) == Some(false)
+        {
+            tracing::debug!(
+                player = format!("0x{player_id:08X}"),
+                gear_slot,
+                src_position,
+                item = catalog_id,
+                point,
+                "EquipFromPackage: item doesn't go in that gear slot — skipping",
+            );
+            continue;
+        }
         // (2) Idempotence — only fill EMPTY gear slots.
         match db
             .is_gear_slot_equipped(player_id, class_id, gear_slot)
