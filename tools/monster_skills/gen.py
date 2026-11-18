@@ -268,6 +268,44 @@ for lid, fam, jobs, rx, ids in SPELL_LISTS:
         assert i not in fam_of, (i, fam)
         fam_of[i] = (lid, fam, 'name', [], i - 23507, [])
 
+# What each enemy caster spell does (lists 120/121). The generic move row
+# made them all blunt hits; these follow the 1.0 player spells and the
+# 1.23b client's own statuses: the elemental nukes deal magic damage of
+# their element, the "II" DoTs put the client's Burn/Frost/Choke/Rasp/
+# Shock/Drown on the target, the enfeebles their status, and Spikes and
+# Stoneskin II are buffs on the caster. name: (actionType, property,
+# status, seconds, chance, on the caster).
+FI, IC, WI, EA, LI, WA, UM = 5, 6, 7, 8, 9, 10, 12
+SPELL_EFFECTS = {
+    'Fire II': (2, FI, 0, 0, 0, False),
+    'Flare': (2, FI, 0, 0, 0, False),
+    'Burn II': (4, FI, 223148, 30, 0.9, False),
+    'Blizzard II': (2, IC, 0, 0, 0, False),
+    'Freeze': (2, IC, 0, 0, 0, False),
+    'Frost II': (4, IC, 223149, 30, 0.9, False),
+    'Aero II': (2, WI, 0, 0, 0, False),
+    'Tornado': (2, WI, 0, 0, 0, False),
+    'Choke II': (4, WI, 223152, 30, 0.9, False),
+    'Stone II': (2, EA, 0, 0, 0, False),
+    'Quake': (2, EA, 0, 0, 0, False),
+    'Rasp II': (4, EA, 223153, 30, 0.9, False),
+    'Thunder II': (2, LI, 0, 0, 0, False),
+    'Burst': (2, LI, 0, 0, 0, False),
+    'Shock II': (4, LI, 223150, 30, 0.9, False),
+    'Water II': (2, WA, 0, 0, 0, False),
+    'Flood': (2, WA, 0, 0, 0, False),
+    'Drown II': (4, WA, 223151, 30, 0.9, False),
+    'Blind': (4, UM, 223007, 30, 0.9, False),
+    'Sleep': (4, UM, 228001, 30, 0.9, False),
+    'Silence': (4, WI, 223006, 30, 0.9, False),
+    'Gravity': (4, WI, 228021, 30, 0.9, False),
+    'Paralyze': (4, IC, 223005, 30, 0.9, False),
+    'Slow': (4, EA, 223003, 30, 0.9, False),
+    'Stygian Spikes II': (4, UM, 223118, 180, 1.0, True),
+    'Shock Spikes II': (4, LI, 223132, 180, 1.0, True),
+    'Stoneskin II': (4, EA, 223133, 300, 1.0, True),
+}
+
 # A second command row for a move the kind already has: it plays the same
 # model motion (the bomb's two Self-destruct rows; both KO the bomb).
 SAME_ANIMATION = {23628: 23033}
@@ -344,6 +382,14 @@ for k in sorted(sheet, key=int):
     if n in PAGE_1_0:
         action_type, prop, status = PAGE_1_0[n]
         notes.append('type, element and status from its 1.0 page')
+    spell = SPELL_EFFECTS.get(n) if lid in (120, 121) else None
+    on_self = False
+    status_secs, status_chance = (15, 1.0) if status else (0, 0.0)
+    if spell:
+        action_type, prop, status, status_secs, status_chance, on_self = spell
+        if on_self:
+            aoe_type, aoe_range, cone, centered = 0, 0.0, 0.0, False
+        notes.append('effect from the 1.0 player spell and the client status')
     if i not in existing:
         anim = (19 << 24) | (slot << 12)
         is_ranged = 1 if rng > 5 else 0
@@ -351,8 +397,12 @@ for k in sorted(sheet, key=int):
         # Chimera rows (mainTarget 31, aoeTarget self); the rest aim at its
         # enemy, like player weaponskills (mainTarget 768, aoeTarget target).
         main_target = 31 if centered else 768
-        cmd_rows.append((i, snake(n), 0, 1, 0, main_target, 17152, aoe_type, aoe_range, 0.0, cone, 0.0, 1 if centered else 0,
-                         100, 1, 0, 0, rng, 0, 0, 10, 2, status, 15 if status else 0, 1.0 if status else 0.0,
+        valid_target = 17152
+        if on_self:
+            # a buff on the caster itself (SELF | SELF_ONLY)
+            main_target, valid_target = 3, 3
+        cmd_rows.append((i, snake(n), 0, 1, 0, main_target, valid_target, aoe_type, aoe_range, 0.0, cone, 0.0, 1 if centered else 0,
+                         100, 1, 0, 0, rng, 0, 0, 10, 2, status, status_secs, status_chance,
                          11 if cast else 0, cast, recast, 0, 0, 19, 0, slot, 3, anim, 0, 0, 0, 3, 0.0, 30301,
                          2, action_type, prop, is_ranged, 0, -1, 0.0, -1, 0.0,
                          # magic moves scale off the monster's hit too (no 1.0 potency data)
