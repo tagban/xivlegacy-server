@@ -422,7 +422,20 @@ impl PacketProcessor {
             Ok(Some(item)) if item.usable => item,
             _ => return self.cannot_use(player_id, catalog_id).await,
         };
-        let Some(what) = item_use(catalog_id, &item) else {
+        self.use_catalog_item(player_id, package, catalog_id, &item, target)
+            .await;
+    }
+
+    /// Use `item` (catalog id `catalog_id`, from bag `package`) on `target`.
+    pub(crate) async fn use_catalog_item(
+        &self,
+        player_id: u32,
+        package: u16,
+        catalog_id: u32,
+        item: &crate::database::UsableItem,
+        target: u32,
+    ) {
+        let Some(what) = item_use(catalog_id, item) else {
             tracing::info!(player = player_id, catalog_id, category = %item.category, "ItemCommand: no effect for this item");
             return self.cannot_use(player_id, catalog_id).await;
         };
@@ -474,7 +487,7 @@ impl PacketProcessor {
                     MSG_DRINK
                 };
                 self.use_text(player_id, target, catalog_id, text).await;
-                let buff = buff_for(catalog_id, *status, &item);
+                let buff = buff_for(catalog_id, *status, item);
                 self.give_buff(player_id, buff, catalog_id, duration).await;
             }
             ItemUse::Ailment(statuses) => {
@@ -527,7 +540,7 @@ impl PacketProcessor {
             }
             ItemUse::Manual(status) => {
                 self.use_text(player_id, target, catalog_id, MSG_USE).await;
-                let (pct, cap) = manual_bonus(&item);
+                let (pct, cap) = manual_bonus(item);
                 self.remove_statuses(player_id, &[*status], false).await;
                 self.try_status(player_id, player_id, *status, duration, cap)
                     .await;
@@ -764,7 +777,8 @@ impl PacketProcessor {
     ///
     /// Client-checked layout (1.23b): the item texts read the item from
     /// the second Int32 param and its quality (0 = normal, 1-3 = +1..+3)
-    /// from the third; an Actor-typed param there blanks the name. Log type
+    /// from the third (an Actor-typed param before them blanks the name),
+    /// and the target of "... on <target>" from a fourth, Actor param. Log type
     /// 0x1D shows the line as your own action ("You drink a potion.");
     /// 0x20 prefixes it with your name like a chat line. The message actor
     /// must be a real actor: the worldMaster id crashes the client.
@@ -774,9 +788,9 @@ impl PacketProcessor {
             LuaParam::Int32(catalog_id as i32),
             LuaParam::Int32(0),
         ];
-        // "... on <target>": not checked in the client (needs a second player).
+        // "... on <target>": the target as an Actor param after the quality.
         if matches!(text_id, MSG_USE_ON | MSG_USE_FAILED) {
-            params.push(LuaParam::Int32(target as i32));
+            params.push(LuaParam::Actor(target));
         }
         let bytes = crate::packets::send::misc::build_game_message_actor1_with_params(
             player_id,
