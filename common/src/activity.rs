@@ -147,6 +147,42 @@ pub fn combat(
     );
 }
 
+/// One `log_monster_mode` row (migration 013). `event` is `enter`, `exit`,
+/// `move`, `refused` or `verdict`; see the migration for the outcomes.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct MonsterModeRow {
+    pub chara_id: u32,
+    pub event: &'static str,
+    pub mob_class_id: u32,
+    pub level: i16,
+    pub action_id: u32,
+    pub target_class_id: u32,
+    pub outcome: String,
+    pub amount: i64,
+    pub status_id: u32,
+    pub animation_id: u32,
+    pub text_id: u32,
+    pub zone_id: u32,
+    pub note: String,
+}
+
+pub fn monster_mode(c: &Conn, r: &MonsterModeRow) {
+    write(
+        c,
+        "log_monster_mode",
+        "INSERT INTO log_monster_mode (at, characterId, event, mobClassId, level, actionId, \
+         targetClassId, outcome, amount, statusId, animationId, textId, zoneId, note) \
+         VALUES (:at, :c, :e, :m, :l, :a, :t, :o, :n, :s, :an, :tx, :z, :note)",
+        named_params! {
+            ":at": now(), ":c": r.chara_id, ":e": r.event, ":m": r.mob_class_id,
+            ":l": r.level, ":a": r.action_id, ":t": r.target_class_id,
+            ":o": truncate(&r.outcome, 16), ":n": r.amount, ":s": r.status_id,
+            ":an": r.animation_id, ":tx": r.text_id, ":z": r.zone_id,
+            ":note": truncate(&r.note, 255),
+        },
+    );
+}
+
 pub fn gm(c: &Conn, chara_id: u32, command: &str, args: &str) {
     write(
         c,

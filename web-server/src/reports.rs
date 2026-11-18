@@ -151,6 +151,7 @@ pub struct Overview {
     pub kills: i64,
     pub deaths: i64,
     pub gm_commands: i64,
+    pub monster_moves: i64,
     pub zones: Vec<(String, i64)>,
     pub sessions: Vec<(i64, String, String, String)>,
     pub commands: Vec<(i64, String, String, String)>,
@@ -177,11 +178,15 @@ pub async fn overview(
         let cls = if d == days { " class=\"on\"" } else { "" };
         let _ = write!(b, r#"<a href="/reports?days={d}"{cls}>{label}</a>"#);
     }
+    let _ = write!(
+        b,
+        r#"<a href="/reports/monster-mode?days={days}">Monster Mode</a>"#
+    );
     b.push_str(r#"</nav>"#);
     b.push_str(SEARCH_FORM);
     b.push_str("</header>");
 
-    let tiles: [(&str, String); 10] = [
+    let tiles: [(&str, String); 11] = [
         ("Logins", num(o.logins)),
         ("Characters", num(o.characters)),
         ("Gil earned", num(o.gil_in)),
@@ -192,6 +197,7 @@ pub async fn overview(
         ("Leves done", num(o.leves_done)),
         ("Monsters defeated", num(o.kills)),
         ("Deaths", num(o.deaths)),
+        ("Monster Mode moves", num(o.monster_moves)),
     ];
     b.push_str(r#"<section class="tiles">"#);
     for (label, value) in tiles {
@@ -261,6 +267,180 @@ pub async fn overview(
     }
     b.push_str("</section>");
     Html(page("Activity", &b)).into_response()
+}
+
+// ---------------------------------------------------------------------------
+// Monster Mode (log_monster_mode)
+// ---------------------------------------------------------------------------
+
+/// One monster family's Monster Mode use: (family, players, moves used,
+/// refused, marked ok, marked bad).
+pub type FamilyRow = (String, i64, i64, i64, i64, i64);
+
+/// One move's record: id, name, family, used, refused, ok, bad, last
+/// outcome, last note.
+pub struct MoveRow {
+    pub id: i64,
+    pub name: String,
+    pub family: String,
+    pub used: i64,
+    pub refused: i64,
+    pub ok: i64,
+    pub bad: i64,
+    pub last: String,
+    pub note: String,
+}
+
+/// (when, who, event, family, move, outcome, amount, note)
+pub type LatestRow = (i64, String, String, String, String, String, i64, String);
+
+#[derive(Default)]
+pub struct MonsterMode {
+    pub players: i64,
+    pub bodies: i64,
+    pub families: Vec<FamilyRow>,
+    pub moves: Vec<MoveRow>,
+    pub latest: Vec<LatestRow>,
+}
+
+pub async fn monster_mode(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(q): Query<OverviewQuery>,
+) -> Response {
+    if gm(&state, &headers).await.is_none() {
+        return Redirect::to("/reports/login").into_response();
+    }
+    let days = q.days.unwrap_or(7).clamp(1, 365);
+    let since = chrono::Utc::now().timestamp() - days as i64 * 86_400;
+    let m = match state.db.report_monster_mode(since).await {
+        Ok(m) => m,
+        Err(e) => return server_error(e),
+    };
+    let mut b = String::new();
+    b.push_str(r#"<header class="top"><h1><a href="/reports">Activity</a> › Monster Mode</h1><nav class="range">"#);
+    for (d, label) in [(1, "Day"), (7, "Week"), (30, "Month"), (365, "Year")] {
+        let cls = if d == days { " class=\"on\"" } else { "" };
+        let _ = write!(
+            b,
+            r#"<a href="/reports/monster-mode?days={d}"{cls}>{label}</a>"#
+        );
+    }
+    b.push_str("</nav></header>");
+    let used: i64 = m.moves.iter().map(|r| r.used).sum();
+    let ok: i64 = m.moves.iter().filter(|r| r.ok > 0 && r.bad == 0).count() as i64;
+    let bad: i64 = m.moves.iter().filter(|r| r.bad > 0).count() as i64;
+    let tiles = [
+        ("Players", num(m.players)),
+        ("Bodies taken", num(m.bodies)),
+        ("Moves used", num(used)),
+        ("Different moves", num(m.moves.len() as i64)),
+        ("Marked working", num(ok)),
+        ("Marked broken", num(bad)),
+    ];
+    b.push_str(r#"<section class="tiles">"#);
+    for (label, value) in tiles {
+        let _ = write!(
+            b,
+            r#"<div class="tile"><span>{label}</span><strong>{value}</strong></div>"#
+        );
+    }
+    b.push_str("</section>");
+
+    b.push_str(r#"<section><h2>By family</h2>"#);
+    if m.families.is_empty() {
+        b.push_str(r#"<p class="muted">Nobody played as a monster.</p>"#);
+    } else {
+        b.push_str(r#"<table><thead><tr><th>Family</th><th class="n">Players</th><th class="n">Moves used</th><th class="n">Refused</th><th class="n">Marked ok</th><th class="n">Marked bad</th></tr></thead><tbody>"#);
+        for (family, players, used, refused, ok, bad) in &m.families {
+            let _ = write!(
+                b,
+                r#"<tr><td>{}</td><td class="n">{}</td><td class="n">{}</td><td class="n">{}</td><td class="n">{}</td><td class="n">{}</td></tr>"#,
+                esc(family),
+                num(*players),
+                num(*used),
+                num(*refused),
+                num(*ok),
+                num(*bad)
+            );
+        }
+        b.push_str("</tbody></table>");
+    }
+    b.push_str("</section>");
+
+    b.push_str(r#"<section><h2>By move</h2>"#);
+    if m.moves.is_empty() {
+        b.push_str(r#"<p class="muted">No monster moves used.</p>"#);
+    } else {
+        b.push_str(r#"<table><thead><tr><th>Move</th><th>Family</th><th class="n">Used</th><th class="n">Refused</th><th>Last result</th><th>Marks</th><th>Last note</th></tr></thead><tbody>"#);
+        for r in &m.moves {
+            let marks = match (r.ok, r.bad) {
+                (0, 0) => String::new(),
+                (o, 0) => format!("{} ok", num(o)),
+                (0, x) => format!("{} bad", num(x)),
+                (o, x) => format!("{} ok, {} bad", num(o), num(x)),
+            };
+            let _ = write!(
+                b,
+                r#"<tr><td>{} <code>{}</code></td><td>{}</td><td class="n">{}</td><td class="n">{}</td><td>{}</td><td>{}</td><td>{}</td></tr>"#,
+                esc(&r.name),
+                r.id,
+                esc(&r.family),
+                num(r.used),
+                num(r.refused),
+                esc(&r.last),
+                marks,
+                esc(&r.note)
+            );
+        }
+        b.push_str("</tbody></table>");
+    }
+    b.push_str("</section>");
+
+    b.push_str(r#"<section><h2>Latest</h2>"#);
+    if m.latest.is_empty() {
+        b.push_str(r#"<p class="muted">Nothing yet.</p>"#);
+    } else {
+        b.push_str(r#"<table><thead><tr><th>When</th><th>Who</th><th>Event</th><th>Family</th><th>Move</th><th>Result</th><th class="n">Amount</th><th>Note</th></tr></thead><tbody>"#);
+        for (at, who, event, family, mv, outcome, amount, note) in &m.latest {
+            let _ = write!(
+                b,
+                r#"<tr><td class="t">{}</td><td>{}</td><td><span class="kind">{}</span></td><td>{}</td><td>{}</td><td>{}</td><td class="n">{}</td><td>{}</td></tr>"#,
+                when(*at),
+                who_link(who),
+                esc(event),
+                esc(family),
+                esc(mv),
+                esc(outcome),
+                if *amount != 0 {
+                    num(*amount)
+                } else {
+                    String::new()
+                },
+                esc(note)
+            );
+        }
+        b.push_str("</tbody></table>");
+    }
+    b.push_str("</section>");
+    Html(page("Monster Mode", &b)).into_response()
+}
+
+/// A monster class path's family: `/Chara/Npc/Monster/Sprite/...` -> `Sprite`.
+const FAMILY_SQL: &str = "COALESCE(NULLIF(SUBSTRING_INDEX(SUBSTRING_INDEX(a.classPath, '/', 5), '/', -1), ''), CONCAT('class ', l.mobClassId))";
+
+/// A move's name: `frenetic_flurry` -> `Frenetic Flurry`.
+fn move_name(raw: &str) -> String {
+    raw.split('_')
+        .filter(|w| !w.is_empty())
+        .map(|w| {
+            let mut c = w.chars();
+            c.next()
+                .map(|f| f.to_uppercase().chain(c).collect::<String>())
+                .unwrap_or_default()
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 // ---------------------------------------------------------------------------
@@ -407,6 +587,7 @@ impl crate::database::Database {
                     gm_commands: one("SELECT COUNT(*) FROM log_gm WHERE at >= :s")?,
                     kills: one("SELECT COUNT(*) FROM log_combat WHERE at >= :s AND kind = 'kill'")?,
                     deaths: one("SELECT COUNT(*) FROM log_combat WHERE at >= :s AND kind = 'death'")?,
+                    monster_moves: one("SELECT COUNT(*) FROM log_monster_mode WHERE at >= :s AND event = 'move'")?,
                     ..Overview::default()
                 };
                 let mut st = c.prepare(
@@ -437,6 +618,102 @@ impl crate::database::Database {
                     .query_map(named_params! { ":s": since }, |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
                     .collect::<common::sql::Result<_>>()?;
                 Ok(o)
+            })
+            .await
+    }
+
+    pub async fn report_monster_mode(&self, since: i64) -> anyhow::Result<MonsterMode> {
+        self.conn()
+            .call_db(move |c| {
+                let one = |sql: &str| -> common::sql::Result<i64> {
+                    c.query_row(sql, named_params! { ":s": since }, |r| r.get::<_, Option<i64>>(0))
+                        .map(|v| v.unwrap_or(0))
+                };
+                let mut m = MonsterMode {
+                    players: one("SELECT COUNT(DISTINCT characterId) FROM log_monster_mode WHERE at >= :s")?,
+                    bodies: one("SELECT COUNT(*) FROM log_monster_mode WHERE at >= :s AND event = 'enter'")?,
+                    ..MonsterMode::default()
+                };
+                let sql = format!(
+                    r"SELECT {FAMILY_SQL} AS fam, COUNT(DISTINCT l.characterId),
+                             SUM(l.event = 'move'), SUM(l.event = 'refused'),
+                             SUM(l.event = 'verdict' AND l.outcome = 'ok'),
+                             SUM(l.event = 'verdict' AND l.outcome = 'bad')
+                      FROM log_monster_mode l LEFT JOIN gamedata_actor_class a ON a.id = l.mobClassId
+                      WHERE l.at >= :s GROUP BY fam ORDER BY 3 DESC, fam"
+                );
+                let mut st = c.prepare(&sql)?;
+                m.families = st
+                    .query_map(named_params! { ":s": since }, |r| {
+                        Ok((
+                            r.get(0)?,
+                            r.get(1)?,
+                            r.get::<_, Option<i64>>(2)?.unwrap_or(0),
+                            r.get::<_, Option<i64>>(3)?.unwrap_or(0),
+                            r.get::<_, Option<i64>>(4)?.unwrap_or(0),
+                            r.get::<_, Option<i64>>(5)?.unwrap_or(0),
+                        ))
+                    })?
+                    .collect::<common::sql::Result<_>>()?;
+                let sql = format!(
+                    r"SELECT l.actionId, COALESCE(b.name, ''), MIN({FAMILY_SQL}),
+                             SUM(l.event = 'move'), SUM(l.event = 'refused'),
+                             SUM(l.event = 'verdict' AND l.outcome = 'ok'),
+                             SUM(l.event = 'verdict' AND l.outcome = 'bad'),
+                             (SELECT CONCAT(x.outcome, IF(x.textId > 0, CONCAT(' (text ', x.textId, ')'), ''))
+                                FROM log_monster_mode x
+                               WHERE x.actionId = l.actionId AND x.event IN ('move', 'refused') AND x.at >= :s
+                               ORDER BY x.at DESC, x.id DESC LIMIT 1),
+                             (SELECT x.note FROM log_monster_mode x
+                               WHERE x.actionId = l.actionId AND x.event = 'verdict' AND x.note <> '' AND x.at >= :s
+                               ORDER BY x.at DESC, x.id DESC LIMIT 1)
+                      FROM log_monster_mode l
+                      LEFT JOIN gamedata_actor_class a ON a.id = l.mobClassId
+                      LEFT JOIN server_battle_commands b ON b.id = l.actionId
+                      WHERE l.at >= :s AND l.actionId > 0
+                      GROUP BY l.actionId, b.name ORDER BY 4 DESC, l.actionId"
+                );
+                let mut st = c.prepare(&sql)?;
+                m.moves = st
+                    .query_map(named_params! { ":s": since }, |r| {
+                        Ok(MoveRow {
+                            id: r.get(0)?,
+                            name: move_name(&r.get::<_, String>(1)?),
+                            family: r.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                            used: r.get::<_, Option<i64>>(3)?.unwrap_or(0),
+                            refused: r.get::<_, Option<i64>>(4)?.unwrap_or(0),
+                            ok: r.get::<_, Option<i64>>(5)?.unwrap_or(0),
+                            bad: r.get::<_, Option<i64>>(6)?.unwrap_or(0),
+                            last: r.get::<_, Option<String>>(7)?.unwrap_or_default(),
+                            note: r.get::<_, Option<String>>(8)?.unwrap_or_default(),
+                        })
+                    })?
+                    .collect::<common::sql::Result<_>>()?;
+                let sql = format!(
+                    r"SELECT l.at, COALESCE(ch.name, ''), l.event, {FAMILY_SQL}, COALESCE(b.name, ''),
+                             l.outcome, l.amount, l.note
+                      FROM log_monster_mode l
+                      LEFT JOIN characters ch ON ch.id = l.characterId
+                      LEFT JOIN gamedata_actor_class a ON a.id = l.mobClassId
+                      LEFT JOIN server_battle_commands b ON b.id = l.actionId AND l.actionId > 0
+                      WHERE l.at >= :s ORDER BY l.at DESC, l.id DESC LIMIT 40"
+                );
+                let mut st = c.prepare(&sql)?;
+                m.latest = st
+                    .query_map(named_params! { ":s": since }, |r| {
+                        Ok((
+                            r.get(0)?,
+                            r.get(1)?,
+                            r.get(2)?,
+                            r.get(3)?,
+                            move_name(&r.get::<_, String>(4)?),
+                            r.get(5)?,
+                            r.get(6)?,
+                            r.get(7)?,
+                        ))
+                    })?
+                    .collect::<common::sql::Result<_>>()?;
+                Ok(m)
             })
             .await
     }
@@ -675,6 +952,49 @@ mod tests {
             texts[1].starts_with("defeated ") && texts[1].ends_with("(level 12)"),
             "{texts:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn monster_mode_moves_show_in_the_reports() {
+        use common::db::ConnCallExt;
+        let db = crate::database::Database::open(common::test_db::fresh().await.unwrap())
+            .await
+            .unwrap();
+        db.conn()
+            .call_db(|c| {
+                c.execute(
+                    "INSERT INTO characters (id, userId, slot, serverId, name) VALUES (7102, 0, 0, 0, 'Sprig')",
+                    (),
+                )?;
+                c.execute(
+                    "INSERT INTO log_monster_mode (at, characterId, event, mobClassId, level, actionId, outcome, amount, textId, note) VALUES \
+                     (100, 7102, 'enter', 2106215, 20, 0, '', 5, 0, 'SpritePurpleLesserStandard'), \
+                     (110, 7102, 'move', 2106215, 20, 23122, 'hit', 116, 0, ''), \
+                     (120, 7102, 'refused', 2106215, 20, 23122, 'refused', 0, 32546, ''), \
+                     (130, 7102, 'verdict', 2106215, 20, 23122, 'ok', 0, 0, 'hits hard'), \
+                     (140, 7102, 'exit', 2106215, 20, 0, 'off', 0, 0, '')",
+                    (),
+                )
+            })
+            .await
+            .unwrap();
+        assert_eq!(db.report_overview(0).await.unwrap().monster_moves, 1);
+        let m = db.report_monster_mode(0).await.unwrap();
+        assert_eq!((m.players, m.bodies), (1, 1));
+        assert_eq!(m.moves.len(), 1);
+        let r = &m.moves[0];
+        assert_eq!((r.id, r.used, r.refused, r.ok, r.bad), (23122, 1, 1, 1, 0));
+        assert_eq!(r.last, "refused (text 32546)");
+        assert_eq!(r.note, "hits hard");
+        assert_eq!(m.latest.len(), 5);
+        assert_eq!(m.latest[0].2, "exit");
+    }
+
+    #[test]
+    fn move_names_read_as_words() {
+        assert_eq!(move_name("frenetic_flurry"), "Frenetic Flurry");
+        assert_eq!(move_name("romp"), "Romp");
+        assert_eq!(move_name(""), "");
     }
 
     #[test]
