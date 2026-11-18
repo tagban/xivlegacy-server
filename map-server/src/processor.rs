@@ -5575,6 +5575,11 @@ impl PacketProcessor {
         command_id: u32,
         hotbar_slot: u16,
     ) {
+        // Monster Mode: the hotbar holds the monster's moves; the
+        // player's own hotbar isn't edited until they turn back.
+        if crate::runtime::monster_mode::is_transformed(player_id) {
+            return;
+        }
         const COMMAND_BORDER: u16 = 0x20;
         let zero_based_slot = hotbar_slot.saturating_sub(COMMAND_BORDER);
         if let Err(e) = self
@@ -5658,6 +5663,11 @@ impl PacketProcessor {
     /// pre-massage the slot index before calling, so we accept a raw
     /// 0-based slot.
     async fn apply_unequip_ability(&self, player_id: u32, class_id: u8, hotbar_slot: u16) {
+        // Monster Mode: the hotbar holds the monster's moves; the
+        // player's own hotbar isn't edited until they turn back.
+        if crate::runtime::monster_mode::is_transformed(player_id) {
+            return;
+        }
         // Capture the soon-to-be-dropped command_id from the in-memory
         // hotbar snapshot — needed to build the 30604 toast below.
         // C# wire format strips the `0xA0F00000` mask via XOR; we do
@@ -5741,6 +5751,11 @@ impl PacketProcessor {
         hotbar_slot_1: u16,
         hotbar_slot_2: u16,
     ) {
+        // Monster Mode: the hotbar holds the monster's moves; the
+        // player's own hotbar isn't edited until they turn back.
+        if crate::runtime::monster_mode::is_transformed(player_id) {
+            return;
+        }
         const COMMAND_BORDER: u16 = 0x20;
         let zero_1 = hotbar_slot_1.saturating_sub(COMMAND_BORDER);
         let zero_2 = hotbar_slot_2.saturating_sub(COMMAND_BORDER);
@@ -9339,6 +9354,13 @@ impl PacketProcessor {
         command: crate::gamedata::BattleCommand,
     ) {
         let actor_id = handle.actor_id;
+        // Monster Mode: the monster's moves cost TP, as they do monsters.
+        let mut command = command;
+        if let Some(cost) =
+            crate::runtime::monster_mode::move_tp_cost(actor_id, command.id, command.tp_cost)
+        {
+            command.tp_cost = cost;
+        }
 
         // Retail rides the real target in the type-6 Actor param — the
         // Int32 slot pmeteor's script signature names `targetActor` is 0
