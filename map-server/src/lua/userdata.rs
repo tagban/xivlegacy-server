@@ -638,6 +638,11 @@ pub struct PlayerSnapshot {
 
     /// Completed quest ids — keeps `IsQuestCompleted` cheap.
     pub completed_quests: Vec<u32>,
+    /// The player's party members standing in the same zone, as small
+    /// snapshots (id, name, class, level, completed quests), for NPC
+    /// scripts that check the whole party (`GetPartyMembersInZone`): the
+    /// dungeon guides' entry rules. Filled only by the NPC talk dispatch.
+    pub party_in_zone: Vec<PlayerSnapshot>,
     /// Active quest ids.
     pub active_quests: Vec<u32>,
     /// Classes of the NPCs the player's quests answer for: quest offers'
@@ -822,6 +827,7 @@ impl From<&crate::actor::Player> for PlayerSnapshot {
             current_event_name: p.player.current_event_name.clone(),
             current_event_type: p.player.current_event_type,
             completed_quests,
+            party_in_zone: Vec::new(),
             quest_npcs: p.character.quest_npc_classes(),
             active_quests,
             active_quest_states,
@@ -2198,6 +2204,20 @@ impl UserData for LuaPlayer {
         });
         methods.add_method("IsQuestCompleted", |_, this, v: Value| {
             Ok(quest_arg_to_id(&v).is_some_and(|id| this.snapshot.completed_quests.contains(&id)))
+        });
+        // `player:GetPartyMembersInZone()`: the party members in the
+        // player's zone (not the player), as players to read from: name,
+        // class, level and completed quests. Only an NPC talk fills it.
+        methods.add_method("GetPartyMembersInZone", |lua, this, _: ()| {
+            let t = lua.create_table()?;
+            for (i, m) in this.snapshot.party_in_zone.iter().enumerate() {
+                let member = LuaPlayer {
+                    snapshot: m.clone(),
+                    queue: this.queue.clone(),
+                };
+                t.set(i + 1, lua.create_userdata(member)?)?;
+            }
+            Ok(t)
         });
         // Whether one of the player's quests answers for an NPC of this
         // class (an offer it gives, or a taken quest's marker on it).

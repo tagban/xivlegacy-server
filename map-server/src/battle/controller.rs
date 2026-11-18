@@ -398,6 +398,13 @@ impl Controller {
             if !candidate.is_alive {
                 continue;
             }
+            // Monster Mode's Gestation: monsters leave a transformed
+            // player alone until attacked (retaliation still works).
+            if candidate.is_player
+                && crate::runtime::monster_mode::ignored_by_monsters(candidate.actor_id)
+            {
+                continue;
+            }
             if is_ally && !self.battle.content_group_ids.contains(&candidate.actor_id) {
                 // Allies only aggro into content group fights.
                 continue;

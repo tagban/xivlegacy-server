@@ -1,4 +1,4 @@
--- server_battle_commands: game data, 151 rows. Reloaded whole when this file changes.
+-- server_battle_commands: game data, 618 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battle_commands`;
 INSERT INTO `server_battle_commands` (`id`, `name`, `classJob`, `lvl`, `requirements`, `mainTarget`, `validTarget`, `aoeType`, `aoeRange`, `aoeMinRange`, `aoeConeAngle`, `aoeRotateAngle`, `aoeTarget`, `basePotency`, `numHits`, `positionBonus`, `procRequirement`, `range`, `minRange`, `bestRange`, `rangeHeight`, `rangeWidth`, `statusId`, `statusDuration`, `statusChance`, `castType`, `castTime`, `recastTime`, `mpCost`, `tpCost`, `animationType`, `effectAnimation`, `modelAnimation`, `animationDuration`, `battleAnimation`, `validUser`, `comboId1`, `comboId2`, `comboStep`, `accuracyMod`, `worldMasterTextId`, `commandType`, `actionType`, `actionProperty`, `isRanged`, `magicPotency`, `mainStat`, `mainStatMod`, `secondStat`, `secondStatMod`, `damageMultiplier`) VALUES
@@ -613,7 +613,7 @@ INSERT INTO `server_battle_commands` (`id`, `name`, `classJob`, `lvl`, `requirem
 (23625, 'megaflare', 0, 1, 0, 31, 17152, 1, 103.0, 0.0, 0.0, 0.0, 1, 100, 1, 0, 0, 5.0, 0, 0, 10, 2, 0, 0, 0.0, 0, 0, 10, 0, 0, 19, 0, 9, 3, 318803968, 0, 0, 0, 3, 0.0, 30301, 2, 1, 3, 0, 0, -1, 0.0, -1, 0.0, 0.0),
 (23626, 'megaflare', 0, 1, 0, 31, 17152, 1, 103.0, 0.0, 0.0, 0.0, 1, 100, 1, 0, 0, 5.0, 0, 0, 10, 2, 0, 0, 0.0, 0, 0, 10, 0, 0, 19, 0, 10, 3, 318808064, 0, 0, 0, 3, 0.0, 30301, 2, 1, 3, 0, 0, -1, 0.0, -1, 0.0, 0.0),
 (23627, 'lunar_dynamo', 0, 1, 0, 31, 17152, 1, 23.0, 0.0, 0.0, 0.0, 1, 100, 1, 0, 0, 5.0, 0, 0, 10, 2, 0, 0, 0.0, 11, 2500, 10, 0, 0, 19, 0, 1, 3, 318771200, 0, 0, 0, 3, 0.0, 30301, 2, 1, 3, 0, 0, -1, 0.0, -1, 0.0, 0.0),
-(23628, 'self_destruct', 0, 1, 0, 31, 17152, 1, 9.0, 0.0, 0.0, 0.0, 1, 100, 1, 0, 0, 5.0, 0, 0, 10, 2, 0, 0, 0.0, 11, 3000, 6, 0, 0, 19, 0, 0, 3, 318767104, 0, 0, 0, 3, 0.0, 30301, 2, 2, 5, 0, 0, -1, 0.0, -1, 0.0, 2.5),
+(23628, 'self_destruct', 0, 1, 0, 31, 17152, 1, 9.0, 0.0, 0.0, 0.0, 1, 100, 1, 0, 0, 5.0, 0, 0, 10, 2, 0, 0, 0.0, 11, 3000, 6, 0, 0, 19, 0, 2, 3, 318775296, 0, 0, 0, 3, 0.0, 30301, 2, 2, 5, 0, 0, -1, 0.0, -1, 0.0, 2.5),
 (23629, '100_tonze_swipe', 0, 1, 0, 31, 17152, 2, 9.0, 0.0, 0.5, 0.0, 1, 100, 1, 0, 0, 5.0, 0, 0, 10, 2, 0, 0, 0.0, 11, 2500, 6, 0, 0, 19, 0, 1, 3, 318771200, 0, 0, 0, 3, 0.0, 30301, 2, 1, 3, 0, 0, -1, 0.0, -1, 0.0, 0.0),
 (23630, '100_tonze_swing', 0, 1, 0, 31, 17152, 1, 11.0, 0.0, 0.0, 0.0, 1, 100, 1, 0, 0, 5.0, 0, 0, 10, 2, 0, 0, 0.0, 11, 4000, 45, 0, 0, 19, 0, 2, 3, 318775296, 0, 0, 0, 3, 0.0, 30301, 2, 1, 3, 0, 0, -1, 0.0, -1, 0.0, 0.0),
 (23631, 'fierce_ravensbeak', 0, 1, 0, 768, 17152, 0, 0.0, 0.0, 0.0, 0.0, 0, 100, 1, 0, 0, 5.0, 0, 0, 10, 2, 0, 0, 0.0, 0, 0, 10, 0, 0, 19, 0, 1, 3, 318771200, 0, 0, 0, 3, 0.0, 30301, 2, 1, 3, 0, 0, -1, 0.0, -1, 0.0, 0.0),

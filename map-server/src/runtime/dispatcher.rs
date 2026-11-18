@@ -3622,6 +3622,19 @@ async fn resolve_action(
         )
         .await;
     }
+
+    // Self-destruct spends the monster that uses it: once the blast lands,
+    // the bomb falls. Nobody gets the kill.
+    if !attacker_handle.is_player() && self_destructs(command) {
+        attacker_handle.character.write().await.chara.hp = 0;
+        die_if_defender_fell(attacker_actor_id, None, registry, world, zone, lua, db).await;
+    }
+}
+
+/// A move that KOs its own user when it lands (the bomb's Self-destruct,
+/// both of its command rows).
+pub(crate) fn self_destructs(command: &BattleCommand) -> bool {
+    command.name == "self_destruct"
 }
 
 /// pmeteor `CommandResultX01PacketCommand.Attack` — the synthetic
@@ -4654,6 +4667,12 @@ async fn recalc_stats(
         return;
     };
     let is_player = handle.is_player();
+    // Monster Mode: the player wears the monster's stats; the class,
+    // gear and level pipeline would overwrite them. The player's own
+    // stats come back from the snapshot when they turn back.
+    if is_player && crate::runtime::monster_mode::is_transformed(actor_id) {
+        return;
+    }
 
     // Resolve the active class *before* taking the write lock — the
     // lookup itself reads the character, so holding a write lock for
@@ -4965,6 +4984,15 @@ pub(crate) async fn die_if_defender_fell(
     if !is_bnpc {
         return;
     }
+    // Monster Mode: a transformed player's kills earn nothing — no leve,
+    // seal, EXP or quest credit — and neither does finishing, after
+    // letting go, a monster they fought as one.
+    let no_rewards = attacker_actor_id
+        .is_some_and(|a| crate::runtime::monster_mode::no_rewards(a, defender_actor_id));
+    if no_rewards {
+        crate::runtime::monster_mode::forget_fights(defender_actor_id);
+        return;
+    }
     // A battle leve's target counts whoever landed the blow.
     crate::leve::battle::on_death(
         defender_actor_id,
@@ -5027,6 +5055,7 @@ pub(crate) async fn die_if_defender_fell(
     // seals, the EXP (with the party modifier) and the quest kill credit,
     // as the killer does.
     let sharers = kill_sharers(&attacker_handle, defender_actor_id, registry, zone).await;
+    crate::runtime::monster_mode::forget_fights(defender_actor_id);
     let party_size = sharers.len() as u32;
     for h in &sharers {
         award_grand_company_seals(h, mob_level, db_arc).await;
@@ -5099,6 +5128,11 @@ async fn kill_sharers(
             continue;
         };
         if !h.is_player() || h.session_id == 0 || copy_of(m).await != killer_copy {
+            continue;
+        }
+        // A party member in Monster Mode, or who fought this monster as
+        // one, shares nothing.
+        if crate::runtime::monster_mode::no_rewards(m, victim_id) {
             continue;
         }
         let near = {
@@ -5723,6 +5757,14 @@ pub(crate) async fn apply_die(
         }
     }
 
+    // Monster Mode: a defeated monster body hands the player back their
+    // own, standing, with the HP they had before. Every death path (a
+    // blow, GM `!die`, a script) comes through here.
+    if handle.is_player() && crate::runtime::monster_mode::is_transformed(owner_actor_id) {
+        crate::runtime::monster_mode::on_defeat(owner_actor_id, registry, world, zone).await;
+        return;
+    }
+
     // #28 S4.1 — second gate call site: scripted deaths (`BattleEvent::
     // Die`, GM `!die`) reach `apply_die` without transiting
     // `die_if_defender_fell`, so the content kill gate fires here too —
@@ -5972,6 +6014,18 @@ pub(crate) async fn send_to_self_if_player(
         let mut bytes = bytes;
         common::subpacket::SubPacket::stamp_target_id_if_zero(&mut bytes, handle.session_id);
         client.send_bytes(bytes).await;
+    }
+}
+
+#[cfg(test)]
+mod self_destruct_tests {
+    use super::*;
+
+    #[test]
+    fn only_self_destruct_spends_its_user() {
+        assert!(self_destructs(&BattleCommand::new(23033, "self_destruct")));
+        assert!(self_destructs(&BattleCommand::new(23628, "self_destruct")));
+        assert!(!self_destructs(&BattleCommand::new(23034, "bomb_toss")));
     }
 }
 

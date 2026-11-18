@@ -103,6 +103,7 @@ despawn = 3
 sethp = 3
 settp = 3
 usemove = 3
+monstermode = 3
 leve = 3
 factioncredit = 3
 die = 3

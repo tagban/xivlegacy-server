@@ -14,8 +14,9 @@ director/occupancy in the client scripts). Entry points are inside each
 dungeon by its first door or barrier; exits put you at the nearest camp's
 aetherial gate. Retail queued you through NPCs by each entrance (Toto-Rak's
 Bloisirant in the South Shroud, for one) during the Grand Company quests;
-Sir Tristechambel at Teriggan's Stand also takes anyone who meets the 1.21
-rules into the Aurum Vale (OPEN_RAIDS). GMs use !dungeon.
+Sir Tristechambel at Teriggan's Stand and an Immortal Flames sentry at
+Cutter's Pass also take anyone who meets the 1.21 rules into the Aurum
+Vale and Cutter's Cry (OPEN_RAIDS). GMs use !dungeon.
 
 ]]
 
@@ -165,8 +166,11 @@ end
 -- through the Grand Company quests. raid is the client's raid list entry
 -- for askEnterInstanceRaid, which only an InstanceRaidGuide actor can ask,
 -- and only from a talk: asked from a push circle, the client answers no at
--- once without showing it. Cutter's Cry's rule is here for its entry
--- sentry (the client's InstanceRaidGuideCuttersCry), who isn't placed yet.
+-- once without showing it. Each entrance has its guide: Sir Tristechambel
+-- at Teriggan's Stand (Aurum Vale) and an Immortal Flames sentry at
+-- Cutter's Pass (Cutter's Cry, the client's InstanceRaidGuideCuttersCry).
+-- The whole party is checked: everyone standing in the zone comes along
+-- (DoZoneChangeContentParty), so everyone must meet the rule.
 OPEN_RAIDS = {
 	aurum	= { raid = 6, level = 45, quests = {111411, 111611, 111811} },
 	cutters	= { raid = 7, level = 45 },
@@ -183,11 +187,17 @@ local function mayEnterOpenRaid(player, rule)
 end
 
 -- An entrance's guide (an InstanceRaidGuide NPC, by talk) for players
--- no quest sends in: the client's own entry prompt, then the 1.21 rules.
+-- no quest sends in: the client's own entry prompt, then the 1.21 rules
+-- for the talker and every party member who would come along.
 function enterOpenRaid(player, key)
 	local rule = OPEN_RAIDS[key];
 	if rule ~= nil and callClientFunction(player, "askEnterInstanceRaid", rule.raid) then
-		if mayEnterOpenRaid(player, rule) then
+		local short = {};
+		if not mayEnterOpenRaid(player, rule) then table.insert(short, "you") end
+		for _, member in ipairs(player:GetPartyMembersInZone()) do
+			if not mayEnterOpenRaid(member, rule) then table.insert(short, member:GetName()) end
+		end
+		if #short == 0 then
 			player:EndEvent();
 			enterDungeon(player, key);
 			return;
@@ -196,7 +206,7 @@ function enterOpenRaid(player, key)
 		if rule.quests ~= nil then
 			need = need .. " who have completed \"Into the Dark\"";
 		end
-		player:SendMessage(MESSAGE_TYPE_SYSTEM, "", need .. " may enter.");
+		player:SendMessage(MESSAGE_TYPE_SYSTEM, "", need .. " may enter. Not yet: " .. table.concat(short, ", ") .. ".");
 	end
 	player:EndEvent();
 end
