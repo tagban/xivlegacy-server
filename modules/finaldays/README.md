@@ -18,8 +18,9 @@ spot. Only plain townsfolk fall (populace NPCs within 60 yalms): never a
 shopkeeper, guild or company NPC, never an NPC a quest, duty or director
 script names or that a quest's spawn belongs to, and never one whose own
 script does more than default talk, so quests keep working. Ending the
-event stands every one of them back up, and since the fallen state is
-never saved, a server restart brings them back too.
+event stands every one of them back up, and those who were sitting or
+leaning sit or lean again. Since the fallen state is never saved, a
+server restart brings them back too.
 
 While it runs, every zone shows the red sky of 1.0's last days: Dalamud
 overhead and lightning now and then (weather 8032). Players who log in or

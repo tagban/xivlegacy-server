@@ -172,8 +172,9 @@ pub(crate) struct WorldEnd {
     spawned: Vec<u32>,
     /// Bombard King actor id → /firedances still needed.
     kings: HashMap<u32, u32>,
-    /// Townsfolk knocked down by the event, to stand back up at its end.
-    fallen: Vec<u32>,
+    /// Townsfolk knocked down by the event, to stand back up at its end:
+    /// actor id and the idle pose (motion pack) they had.
+    fallen: Vec<(u32, u16)>,
     /// Zone → the next actor number to try.
     next: HashMap<u32, u32>,
 }
@@ -211,14 +212,14 @@ impl WorldEnd {
         }
     }
 
-    /// A townsperson the event knocked down.
-    fn fell(&mut self, actor_id: u32) {
-        self.fallen.push(actor_id);
+    /// A townsperson the event knocked down, and the pose to give back.
+    fn fell(&mut self, actor_id: u32, pose: u16) {
+        self.fallen.push((actor_id, pose));
     }
 
     /// Ends the event: every actor id it spawned, to be removed, and every
     /// townsperson it knocked down, to stand up again.
-    fn end(&mut self) -> (Vec<u32>, Vec<u32>) {
+    fn end(&mut self) -> (Vec<u32>, Vec<(u32, u16)>) {
         self.active = false;
         self.kings.clear();
         (
@@ -413,6 +414,7 @@ impl CommandProcessor {
             let (ids, fallen) = st.end();
             let n = ids.len();
             let up = self.stand_up(&fallen).await;
+            self.restream().await;
             for id in ids {
                 // gone already when it died and its corpse faded
                 crate::runtime::quest_apply::apply_despawn_actor(
@@ -493,9 +495,14 @@ impl CommandProcessor {
                     st.record(id, foe.role == Role::FiredanceOnly);
                     any = true;
                     if let Some(t) = victims.get(i)
-                        && self.fall(t.actor_id, zone).await
+                        && let Some(pose) = self.fall(t.actor_id, zone).await
                     {
-                        st.fell(t.actor_id);
+                        tracing::debug!(
+                            npc = format!("0x{:08X}", t.actor_id),
+                            monster = foe.tag,
+                            "worldend: townsperson falls"
+                        );
+                        st.fell(t.actor_id, pose);
                     }
                 }
             }
@@ -532,6 +539,7 @@ impl CommandProcessor {
             }
         }
         drop(st);
+        self.restream().await;
         let weather = self
             .world
             .set_weather_override(Some(WEATHER_DALAMUD_THUNDER));
@@ -581,10 +589,28 @@ impl CommandProcessor {
     /// Knock a townsperson down: the death a monster gets, collapse and
     /// all. Players who come by later see them lying there (the spawn
     /// bundle carries the state); nothing of it is saved.
-    async fn fall(&self, actor_id: u32, zone: u32) -> bool {
-        let Some(zone_arc) = self.world.zone(zone).await else {
-            return false;
+    ///
+    /// A posed idle (sitting at a table, leaning on a wall) holds over the
+    /// death pose on a client that already has the NPC, so a posed
+    /// townsperson is cleared of the pose, marked dead and taken off every
+    /// client instead; [`Self::restream`] then sends them again, lying down.
+    /// Hands back the pose for [`Self::stand_up`].
+    async fn fall(&self, actor_id: u32, zone: u32) -> Option<u16> {
+        let zone_arc = self.world.zone(zone).await?;
+        let h = self.registry.get(actor_id).await?;
+        let pose = {
+            let mut c = h.character.write().await;
+            let pose = std::mem::take(&mut c.chara.animation_id) as u16;
+            if pose != 0 {
+                c.base.current_main_state = crate::actor::MAIN_STATE_DEAD;
+                c.chara.new_main_state = crate::actor::MAIN_STATE_DEAD;
+            }
+            pose
         };
+        if pose != 0 {
+            self.world.forget_actor_for_all_sessions(actor_id).await;
+            return Some(pose);
+        }
         crate::runtime::dispatcher::emit_change_state_trio(
             actor_id,
             crate::actor::MAIN_STATE_DEAD,
@@ -593,13 +619,15 @@ impl CommandProcessor {
             &zone_arc,
         )
         .await;
-        true
+        Some(pose)
     }
 
-    /// Stand the fallen back up; how many got up.
-    async fn stand_up(&self, fallen: &[u32]) -> usize {
+    /// Stand the fallen back up, each in the pose they had; how many got up.
+    /// The standing play the get-up; the posed are taken off every client to
+    /// come back seated with [`Self::restream`], as they went down.
+    async fn stand_up(&self, fallen: &[(u32, u16)]) -> usize {
         let mut up = 0;
-        for &id in fallen {
+        for &(id, pose) in fallen {
             let Some(h) = self.registry.get(id).await else {
                 continue;
             };
@@ -610,8 +638,15 @@ impl CommandProcessor {
                 }
                 c.base.current_main_state = crate::actor::MAIN_STATE_PASSIVE;
                 c.chara.new_main_state = crate::actor::MAIN_STATE_PASSIVE;
+                c.chara.animation_id = u32::from(pose);
             }
             up += 1;
+            if pose != 0 {
+                // a live sub-state does not seat a standing actor again;
+                // the spawn bundle does
+                self.world.forget_actor_for_all_sessions(id).await;
+                continue;
+            }
             let Some(zone_arc) = self.world.zone(h.zone_id).await else {
                 continue;
             };
@@ -636,6 +671,19 @@ impl CommandProcessor {
             .await;
         }
         up
+    }
+
+    /// Stream every player's surroundings again, so the townsfolk taken off
+    /// their clients by [`Self::fall`] come back at once, lying down, rather
+    /// than when the player next moves.
+    async fn restream(&self) {
+        for s in self.world.all_sessions().await {
+            if let Some(h) = self.registry.by_session(s.id).await {
+                self.world
+                    .send_instance_update(&self.registry, Some(&self.lua), h.actor_id, s.id)
+                    .await;
+            }
+        }
     }
 
     /// Change the sky for everyone in the world, as it changes in place.
@@ -795,10 +843,10 @@ mod tests {
         we.record(b, true);
         we.record(c, false);
         assert!(!we.begin(), "second call ends it");
-        we.fell(0x4730_0001);
+        we.fell(0x4730_0001, 1026);
         let (mut gone, fallen) = we.end();
         gone.sort();
-        assert_eq!(fallen, vec![0x4730_0001]);
+        assert_eq!(fallen, vec![(0x4730_0001, 1026)]);
         let mut want = vec![a, b, c];
         want.sort();
         assert_eq!(gone, want);
@@ -947,7 +995,9 @@ mod tests {
                 false,
             ),
         ];
-        for t in townsfolk {
+        let seated = folk(0x4730_0006, STANDARD, -398.0, false);
+        seated.character.write().await.chara.animation_id = 1026;
+        for t in townsfolk.into_iter().chain([seated]) {
             registry.insert(t).await;
         }
         let state_of = |id: u32| {
@@ -962,6 +1012,20 @@ mod tests {
                     .await
                     .base
                     .current_main_state
+            }
+        };
+        let pose_of = |id: u32| {
+            let registry = registry.clone();
+            async move {
+                registry
+                    .get(id)
+                    .await
+                    .unwrap()
+                    .character
+                    .read()
+                    .await
+                    .chara
+                    .animation_id
             }
         };
         let mut cmd = CommandProcessor::new(world.clone(), registry.clone(), db, lua);
@@ -982,7 +1046,7 @@ mod tests {
             let on = cmd.run("worldend").await.unwrap();
             assert!(on.starts_with("worldend on"), "{on}");
             assert_eq!(world.weather_id(), WEATHER_DALAMUD_THUNDER);
-            assert!(on.contains(", 2 townsfolk down,"), "{on}");
+            assert!(on.contains(", 3 townsfolk down,"), "{on}");
             let here = registry.actors_in_zone(230).await;
             assert_eq!(here.len(), per_spot + townsfolk_n(), "{on}");
             let dead = crate::actor::MAIN_STATE_DEAD;
@@ -992,8 +1056,10 @@ mod tests {
             assert_eq!(state_of(0x4730_0003).await, up, "too far");
             assert_eq!(state_of(0x4730_0004).await, up, "quest NPCs never fall");
             assert_eq!(state_of(0x4730_0005).await, up, "shops stay open");
+            assert_eq!(state_of(0x4730_0006).await, dead, "seated folk fall too");
+            assert_eq!(pose_of(0x4730_0006).await, 0, "out of the chair to fall");
             // a monster stands on each of the fallen
-            for x in [-400.0, -380.0] {
+            for x in [-400.0, -398.0, -380.0] {
                 let mut on_top = false;
                 for h in &here {
                     let c = h.character.read().await;
@@ -1010,10 +1076,11 @@ mod tests {
             let all = per_spot + GOOBBUE.count as usize;
             assert_eq!(
                 off,
-                format!("worldend off: {all} actor(s) removed, 2 townsfolk back on their feet")
+                format!("worldend off: {all} actor(s) removed, 3 townsfolk back on their feet")
             );
             assert_eq!(registry.actors_in_zone(230).await.len(), townsfolk_n());
-            for n in 1..=5 {
+            assert_eq!(pose_of(0x4730_0006).await, 1026, "back in the chair");
+            for n in 1..=6 {
                 assert_eq!(state_of(0x4730_0000 + n).await, up, "all standing again");
             }
             assert!(registry.actors_in_zone(170).await.is_empty());
@@ -1022,7 +1089,7 @@ mod tests {
     }
 
     fn townsfolk_n() -> usize {
-        5
+        6
     }
 
     #[test]
