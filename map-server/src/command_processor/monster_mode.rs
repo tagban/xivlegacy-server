@@ -16,25 +16,23 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-//! `!monstermode`: Monster Mode. Stage 0 (spike) only swaps the
-//! player's body: with a monster targeted, the player takes that
-//! monster's model and appearance slots (0x00D6); a second
-//! `!monstermode` puts the player's own appearance back. Nothing is
-//! written to the database.
+//! `!monstermode`: Monster Mode. With a monster targeted, the player
+//! possesses it: the monster vanishes and the player takes its body,
+//! level, HP, MP and stats (see `runtime::monster_mode`). `!monstermode`
+//! again lets go (after a 4-second countdown in combat). Testers can
+//! name a monster class instead of targeting: `!monstermode <class id>`
+//! takes the nearest one.
 
-use std::collections::HashMap;
-use std::sync::{Mutex, OnceLock};
+use std::time::Duration;
 
 use super::{Args, CommandProcessor};
 use crate::runtime::actor_registry::ActorKindTag;
+use crate::runtime::monster_mode as mm;
 
-/// The player's own (model id, appearance slots) while transformed.
-type Saved = (u32, [u32; 28]);
-
-fn saved_bodies() -> &'static Mutex<HashMap<u32, Saved>> {
-    static SAVED: OnceLock<Mutex<HashMap<u32, Saved>>> = OnceLock::new();
-    SAVED.get_or_init(|| Mutex::new(HashMap::new()))
-}
+/// How far away a monster can be possessed.
+const POSSESS_RANGE: f32 = 30.0;
+/// Seconds to let go while in combat (FFXI's Relinquish countdown).
+const RELINQUISH_SECS: u64 = 4;
 
 impl CommandProcessor {
     pub(super) async fn handle_monstermode(&self, args: &Args<'_>) -> String {
@@ -48,16 +46,42 @@ impl CommandProcessor {
         if args.rest().first() == Some(&"anim") {
             return self.monster_anim(me, args).await;
         }
-        let own = saved_bodies().lock().ok().and_then(|mut m| m.remove(&me));
-        if let Some((model_id, slots)) = own {
-            {
-                let mut c = handle.character.write().await;
-                c.chara.model_id = model_id;
-                c.chara.appearance_ids = slots;
+        if let Some((_, name)) = mm::possessed_mob(me) {
+            let engaged = handle.character.read().await.ai_container.is_engaged();
+            if !engaged {
+                mm::release(me).await;
+                mm::refresh_client(&self.registry, &self.world, me).await;
+                return format!("You let go of {name} and are yourself again.");
             }
-            self.send_body(me, model_id, slots).await;
-            return "Monster Mode off: you are yourself again.".into();
+            self.relinquish_later(me);
+            return format!("Letting go of {name} in {RELINQUISH_SECS}...");
         }
+
+        // Where may it happen: the open world, not a duty or private area.
+        let (zone_id, alive, in_content) = {
+            let c = handle.character.read().await;
+            (
+                c.base.zone_id,
+                c.is_alive(),
+                !c.chara.content_area_name.is_empty(),
+            )
+        };
+        if !alive {
+            return "you can't do that while knocked out".into();
+        }
+        let in_private = self
+            .world
+            .session(handle.session_id)
+            .await
+            .is_some_and(|s| s.current_private_area_name.is_some_and(|n| !n.is_empty()));
+        let zone_name = match self.world.zone(zone_id).await {
+            Some(z) => z.read().await.core.zone_name.clone(),
+            None => String::new(),
+        };
+        if in_content || in_private || !mm::is_field_zone(&zone_name) {
+            return "Monster Mode works only out in the field.".into();
+        }
+
         let target = match args.rest().first() {
             // `!monstermode <class id>`: the nearest monster of that class.
             Some(word) => match word.parse::<u32>() {
@@ -69,31 +93,105 @@ impl CommandProcessor {
             },
             None => match self.my_target(me).await {
                 Ok(t) => t,
-                Err(_) => return "target a monster, then !monstermode".into(),
+                Err(_) => return "Target a monster, then !monstermode.".into(),
             },
         };
         let Some(mob) = self.registry.get(target).await else {
             return "your target is gone".into();
         };
-        if mob.kind != ActorKindTag::BattleNpc {
-            return "that is not a monster".into();
-        }
-        let (model_id, slots) = {
-            let c = mob.character.read().await;
-            (c.chara.model_id, c.chara.appearance_ids)
-        };
-        let label = self.actor_label(target).await;
+        if mob.kind != ActorKindTag::BattleNpc
+            || target & crate::world_manager::CONTENT_ACTOR_BAND_BIT != 0
         {
-            let mut c = handle.character.write().await;
-            if let Ok(mut m) = saved_bodies().lock() {
-                m.insert(me, (c.chara.model_id, c.chara.appearance_ids));
-            }
-            c.chara.model_id = model_id;
-            c.chara.appearance_ids = slots;
+            return "That is not a monster you can become.".into();
         }
-        self.send_body(me, model_id, slots).await;
-        tracing::info!(player = me, target, model_id, ?slots, "monstermode body swap");
-        format!("Monster Mode: you take the body of {label} (model {model_id}). !monstermode again to return.")
+        let far = {
+            let (a, b) = (
+                handle.character.read().await.base.position(),
+                mob.character.read().await.base.position(),
+            );
+            (a.x - b.x).hypot(a.z - b.z) > POSSESS_RANGE
+        };
+        if far {
+            return "That monster is too far away.".into();
+        }
+        let label = monster_name(&self.actor_label(target).await);
+        if let Err(e) = mm::possess(
+            me,
+            handle.character.clone(),
+            target,
+            mob.character.clone(),
+            label.clone(),
+        )
+        .await
+        {
+            return e;
+        }
+        self.vanish_monster(target, zone_id).await;
+        mm::refresh_client(&self.registry, &self.world, me).await;
+        let (level, hp) = {
+            let c = handle.character.read().await;
+            (c.chara.level, c.chara.hp)
+        };
+        tracing::info!(player = me, target, level, hp, "monstermode: possessed");
+        format!(
+            "Monster Mode: you are {label} (level {level}, {hp} HP). !monstermode again to let go."
+        )
+    }
+
+    /// Take a possessed monster off every client, and stop anyone who
+    /// was fighting it (as a death would, without the death).
+    async fn vanish_monster(&self, mob_id: u32, zone_id: u32) {
+        for other in self.registry.actors_in_zone(zone_id).await {
+            if other.actor_id == mob_id {
+                continue;
+            }
+            let mut oc = other.character.write().await;
+            let targeting = oc
+                .ai_container
+                .current_state()
+                .is_some_and(|s| s.target_actor_id == mob_id);
+            oc.hate.clear_hate(Some(mob_id));
+            if targeting {
+                oc.ai_container.clear_states();
+            }
+        }
+        self.world.forget_actor_for_all_sessions(mob_id).await;
+    }
+
+    /// Relinquish: in combat, letting go takes a short countdown.
+    fn relinquish_later(&self, me: u32) {
+        let (registry, world, db) = (self.registry.clone(), self.world.clone(), self.db.clone());
+        tokio::spawn(async move {
+            let tell = |msg: String| {
+                let (registry, world, db) = (registry.clone(), world.clone(), db.clone());
+                async move {
+                    use crate::social::{
+                        ChatKind, SocialEvent, SocialOutbox, dispatch_social_event,
+                    };
+                    let mut ob = SocialOutbox::new();
+                    ob.push(SocialEvent::ChatSystemToPlayer {
+                        target_actor_id: me,
+                        kind: ChatKind::System,
+                        message: msg,
+                    });
+                    for e in ob.drain() {
+                        dispatch_social_event(&e, &registry, &world, &db).await;
+                    }
+                }
+            };
+            for n in (1..RELINQUISH_SECS).rev() {
+                tokio::time::sleep(Duration::from_secs(1)).await;
+                if !mm::is_transformed(me) {
+                    return;
+                }
+                tell(format!("{n}...")).await;
+            }
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            if mm::release(me).await.is_some() {
+                mm::refresh_client(&registry, &world, me).await;
+                tell("You are yourself again.".into()).await;
+            }
+        });
     }
 
     /// Spike: `monstermode anim <command id>` plays that command's
@@ -167,25 +265,14 @@ impl CommandProcessor {
         }
         None
     }
+}
 
-    /// 0x00D6 to the player and everyone around.
-    async fn send_body(&self, actor_id: u32, model_id: u32, slots: [u32; 28]) {
-        let bytes =
-            crate::packets::send::actor::build_set_actor_appearance(actor_id, model_id, &slots)
-                .to_bytes();
-        crate::runtime::dispatcher::send_to_self_if_player(
-            &self.registry,
-            &self.world,
-            actor_id,
-            bytes.clone(),
-        )
-        .await;
-        crate::runtime::dispatcher::broadcast_to_neighbours(
-            &self.world,
-            &self.registry,
-            actor_id,
-            bytes,
-        )
-        .await;
-    }
+/// "LemmingStandard (actor 0x44038000)" -> "LemmingStandard".
+fn monster_name(label: &str) -> String {
+    label
+        .split(" (actor")
+        .next()
+        .unwrap_or(label)
+        .trim()
+        .to_string()
 }

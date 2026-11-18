@@ -4651,6 +4651,12 @@ async fn recalc_stats(
         return;
     };
     let is_player = handle.is_player();
+    // Monster Mode: the player wears the monster's stats; the class,
+    // gear and level pipeline would overwrite them. The player's own
+    // stats come back from the snapshot when they turn back.
+    if is_player && crate::runtime::monster_mode::is_transformed(actor_id) {
+        return;
+    }
 
     // Resolve the active class *before* taking the write lock — the
     // lookup itself reads the character, so holding a write lock for
@@ -4962,6 +4968,11 @@ pub(crate) async fn die_if_defender_fell(
     if !is_bnpc {
         return;
     }
+    // Monster Mode: a transformed player's kills earn nothing — no leve,
+    // seal, EXP or quest credit.
+    if attacker_actor_id.is_some_and(crate::runtime::monster_mode::is_transformed) {
+        return;
+    }
     // A battle leve's target counts whoever landed the blow.
     crate::leve::battle::on_death(
         defender_actor_id,
@@ -5096,6 +5107,10 @@ async fn kill_sharers(
             continue;
         };
         if !h.is_player() || h.session_id == 0 || copy_of(m).await != killer_copy {
+            continue;
+        }
+        // A party member in Monster Mode shares nothing.
+        if crate::runtime::monster_mode::is_transformed(m) {
             continue;
         }
         let near = {
@@ -5718,6 +5733,14 @@ pub(crate) async fn apply_die(
         for evt in status_outbox.drain() {
             dispatch_status_event(&evt, registry, world, db_ref, lua_ref.catalogs()).await;
         }
+    }
+
+    // Monster Mode: a defeated monster body hands the player back their
+    // own, standing, with the HP they had before. Every death path (a
+    // blow, GM `!die`, a script) comes through here.
+    if handle.is_player() && crate::runtime::monster_mode::is_transformed(owner_actor_id) {
+        crate::runtime::monster_mode::on_defeat(owner_actor_id, registry, world, zone).await;
+        return;
     }
 
     // #28 S4.1 — second gate call site: scripted deaths (`BattleEvent::
