@@ -11952,18 +11952,153 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
     }
   ]
 }'),
-(1001584, '', 1500030, 0, NULL),
-(1001585, '', 1000251, 0, NULL),
-(1001586, '', 2600006, 0, NULL),
+(1001584, '/Chara/Npc/Populace/PopulaceStandard', 1500030, 19, '{
+  "talkEventConditions": [
+    {
+      "unknown1": 4,
+      "unknown2": 0,
+      "conditionName": "talkDefault"
+    }
+  ],
+  "noticeEventConditions": [
+    {
+      "unknown1": 0,
+      "unknown2": 1,
+      "conditionName": "noticeEvent"
+    }
+  ]
+}'),
+(1001585, '/Chara/Npc/Populace/PopulaceStandard', 1000251, 19, '{
+  "talkEventConditions": [
+    {
+      "unknown1": 4,
+      "unknown2": 0,
+      "conditionName": "talkDefault"
+    }
+  ],
+  "noticeEventConditions": [
+    {
+      "unknown1": 0,
+      "unknown2": 1,
+      "conditionName": "noticeEvent"
+    }
+  ]
+}'),
+(1001586, '/Chara/Npc/Populace/PopulaceStandard', 2600006, 19, '{
+  "talkEventConditions": [
+    {
+      "unknown1": 4,
+      "unknown2": 0,
+      "conditionName": "talkDefault"
+    }
+  ],
+  "noticeEventConditions": [
+    {
+      "unknown1": 0,
+      "unknown2": 1,
+      "conditionName": "noticeEvent"
+    }
+  ]
+}'),
 (1001587, '', 2600004, 0, NULL),
-(1001588, '', 1900264, 0, NULL),
-(1001589, '', 1000365, 0, NULL),
+(1001588, '/Chara/Npc/Populace/PopulaceStandard', 1900264, 19, '{
+  "talkEventConditions": [
+    {
+      "unknown1": 4,
+      "unknown2": 0,
+      "conditionName": "talkDefault"
+    }
+  ],
+  "noticeEventConditions": [
+    {
+      "unknown1": 0,
+      "unknown2": 1,
+      "conditionName": "noticeEvent"
+    }
+  ]
+}'),
+(1001589, '/Chara/Npc/Populace/PopulaceStandard', 1000365, 19, '{
+  "talkEventConditions": [
+    {
+      "unknown1": 4,
+      "unknown2": 0,
+      "conditionName": "talkDefault"
+    }
+  ],
+  "noticeEventConditions": [
+    {
+      "unknown1": 0,
+      "unknown2": 1,
+      "conditionName": "noticeEvent"
+    }
+  ]
+}'),
 (1001590, '', 2600001, 0, NULL),
-(1001591, '', 2600002, 0, NULL),
-(1001592, '', 1100018, 0, NULL),
-(1001593, '', 1100128, 0, NULL),
+(1001591, '/Chara/Npc/Populace/PopulaceStandard', 2600002, 19, '{
+  "talkEventConditions": [
+    {
+      "unknown1": 4,
+      "unknown2": 0,
+      "conditionName": "talkDefault"
+    }
+  ],
+  "noticeEventConditions": [
+    {
+      "unknown1": 0,
+      "unknown2": 1,
+      "conditionName": "noticeEvent"
+    }
+  ]
+}'),
+(1001592, '/Chara/Npc/Populace/PopulaceStandard', 1100018, 19, '{
+  "talkEventConditions": [
+    {
+      "unknown1": 4,
+      "unknown2": 0,
+      "conditionName": "talkDefault"
+    }
+  ],
+  "noticeEventConditions": [
+    {
+      "unknown1": 0,
+      "unknown2": 1,
+      "conditionName": "noticeEvent"
+    }
+  ]
+}'),
+(1001593, '/Chara/Npc/Populace/PopulaceStandard', 1100128, 19, '{
+  "talkEventConditions": [
+    {
+      "unknown1": 4,
+      "unknown2": 0,
+      "conditionName": "talkDefault"
+    }
+  ],
+  "noticeEventConditions": [
+    {
+      "unknown1": 0,
+      "unknown2": 1,
+      "conditionName": "noticeEvent"
+    }
+  ]
+}'),
 (1001594, '', 2600003, 0, NULL),
-(1001595, '', 2600005, 0, NULL),
+(1001595, '/Chara/Npc/Populace/PopulaceStandard', 2600005, 19, '{
+  "talkEventConditions": [
+    {
+      "unknown1": 4,
+      "unknown2": 0,
+      "conditionName": "talkDefault"
+    }
+  ],
+  "noticeEventConditions": [
+    {
+      "unknown1": 0,
+      "unknown2": 1,
+      "conditionName": "noticeEvent"
+    }
+  ]
+}'),
 (1001596, '/Chara/Npc/Populace/PopulaceStandard', 2200003, 19, '{"talkEventConditions":[{"unknown1":4,"unknown2":0,"conditionName":"talkDefault"}],"noticeEventConditions":[{"unknown1":0,"unknown2":1,"conditionName":"noticeEvent"}],"emoteEventConditions":[{"unknown1":4,"unknown2":0,"emoteId":107,"conditionName":"emoteDefault1"}]}'),
 (1001597, '', 1400128, 0, NULL),
 (1001598, '', 1000044, 0, NULL),
@@ -13800,7 +13935,7 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
 }'),
 (1001954, '', 3310701, 0, NULL),
 (1001955, '/Chara/Npc/Populace/InstanceRaidGuide/InstanceRaidGuide', 1200223, 19, '{"talkEventConditions":[{"unknown1":4,"unknown2":0,"conditionName":"talkDefault"}],"noticeEventConditions":[{"unknown1":0,"unknown2":1,"conditionName":"noticeEvent"}]}'),
-(1001956, '', 1100221, 0, NULL),
+(1001956, '/Chara/Npc/Populace/InstanceRaidGuide/InstanceRaidGuideCuttersCry', 1100221, 19, '{"talkEventConditions":[{"unknown1":4,"unknown2":0,"conditionName":"talkDefault"}],"noticeEventConditions":[{"unknown1":0,"unknown2":1,"conditionName":"noticeEvent"}]}'),
 (1001957, '', 2480009, 0, NULL),
 (1001960, '', 3202612, 0, NULL),
 (1001961, '', 3206412, 0, NULL),
@@ -13929,9 +14064,54 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
     }
   ]
 }'),
-(1001997, '', 2600003, 0, NULL),
-(1001998, '', 2600001, 0, NULL),
-(1001999, '', 2600004, 0, NULL),
+(1001997, '/Chara/Npc/Populace/PopulaceStandard', 2600003, 19, '{
+  "talkEventConditions": [
+    {
+      "unknown1": 4,
+      "unknown2": 0,
+      "conditionName": "talkDefault"
+    }
+  ],
+  "noticeEventConditions": [
+    {
+      "unknown1": 0,
+      "unknown2": 1,
+      "conditionName": "noticeEvent"
+    }
+  ]
+}'),
+(1001998, '/Chara/Npc/Populace/PopulaceStandard', 2600001, 19, '{
+  "talkEventConditions": [
+    {
+      "unknown1": 4,
+      "unknown2": 0,
+      "conditionName": "talkDefault"
+    }
+  ],
+  "noticeEventConditions": [
+    {
+      "unknown1": 0,
+      "unknown2": 1,
+      "conditionName": "noticeEvent"
+    }
+  ]
+}'),
+(1001999, '/Chara/Npc/Populace/PopulaceStandard', 2600004, 19, '{
+  "talkEventConditions": [
+    {
+      "unknown1": 4,
+      "unknown2": 0,
+      "conditionName": "talkDefault"
+    }
+  ],
+  "noticeEventConditions": [
+    {
+      "unknown1": 0,
+      "unknown2": 1,
+      "conditionName": "noticeEvent"
+    }
+  ]
+}'),
 (1002000, '/Chara/Npc/Populace/PopulaceStandard', 1100457, 19, '{
   "talkEventConditions": [
     {
@@ -31840,16 +32020,16 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
 (2209507, '', 3209510, 0, NULL),
 (2209508, '', 3209510, 0, NULL),
 (2209509, '', 3209510, 0, NULL),
-(2209510, '', 3209504, 0, NULL),
-(2209511, '', 3209504, 0, NULL),
+(2209510, '/Chara/Npc/Monster/Garuda/GarudaFeather', 3209504, 0, NULL),
+(2209511, '/Chara/Npc/Monster/Garuda/GarudaFeather', 3209504, 0, NULL),
 (2209512, '', 3209505, 0, NULL),
 (2209513, '', 3209505, 0, NULL),
 (2209514, '', 3209506, 0, NULL),
 (2209515, '', 3209507, 0, NULL),
 (2209516, '', 3209502, 0, NULL),
 (2209517, '', 3209503, 0, NULL),
-(2209518, '', 3209504, 0, NULL),
-(2209519, '', 3209504, 0, NULL),
+(2209518, '/Chara/Npc/Monster/Garuda/GarudaFeather', 3209504, 0, NULL),
+(2209519, '/Chara/Npc/Monster/Garuda/GarudaFeather', 3209504, 0, NULL),
 (2209801, '/Chara/Npc/Monster/Wolf/WolfStandard', 3209801, 0, NULL),
 (2209901, '/Chara/Npc/Monster/WillOTheWisp/WillOTheWispStandard', 3209901, 0, NULL),
 (2209902, '/Chara/Npc/Monster/WillOTheWisp/WillOTheWispStandard', 3209902, 0, NULL),

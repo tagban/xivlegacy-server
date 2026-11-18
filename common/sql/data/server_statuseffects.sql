@@ -1,4 +1,4 @@
--- server_statuseffects: game data, 105 rows. Reloaded whole when this file changes.
+-- server_statuseffects: game data, 113 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_statuseffects`;
 INSERT INTO `server_statuseffects` (`id`, `name`, `flags`, `overwrite`, `tickMs`, `hidden`, `silentOnGain`, `silentOnLoss`, `statusGainTextId`, `statusLossTextId`) VALUES
@@ -39,9 +39,17 @@ INSERT INTO `server_statuseffects` (`id`, `name`, `flags`, `overwrite`, `tickMs`
 (223106, 'hawks_eye', 9, 2, 0, 0, 0, 0, 30328, 30331),
 (223108, 'decoy', 4113, 2, 0, 0, 0, 0, 30328, 30331),
 (223116, 'presence_of_mind', 4105, 2, 0, 0, 0, 0, 30328, 30331),
+(223118, 'stygian_spikes', 16401, 1, 0, 0, 0, 0, 30328, 30331),
 (223127, 'bloodletter', 21, 2, 0, 0, 0, 0, 30335, 30338),
 (223129, 'protect', 9, 2, 0, 0, 0, 0, 30328, 30331),
+(223132, 'shock_spikes', 16401, 1, 0, 0, 0, 0, 30328, 30331),
 (223133, 'stoneskin', 16393, 1, 0, 0, 0, 0, 30328, 30331),
+(223148, 'burn', 21, 2, 0, 0, 0, 0, 30335, 30338),
+(223149, 'frost', 21, 2, 0, 0, 0, 0, 30335, 30338),
+(223150, 'shock', 21, 2, 0, 0, 0, 0, 30335, 30338),
+(223151, 'drown', 21, 2, 0, 0, 0, 0, 30335, 30338),
+(223152, 'choke', 21, 2, 0, 0, 0, 0, 30335, 30338),
+(223153, 'rasp', 21, 2, 0, 0, 0, 0, 30335, 30338),
 (223173, 'covered', 4105, 2, 0, 0, 0, 0, 30328, 30331),
 (223180, 'regen', 9, 2, 0, 0, 0, 0, 30328, 30331),
 (223181, 'refresh', 9, 2, 0, 0, 0, 0, 30328, 30331),

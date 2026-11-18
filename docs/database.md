@@ -128,11 +128,14 @@ character and time.
 | `log_quests` | quest accepted, step, completed, removed; leve accepted, completed, abandoned, removed | map server |
 | `log_gm` | GM command run (character 0 = the console) | map server |
 | `log_combat` | kill, death, damage, heal | not yet written |
+| `log_monster_mode` | Monster Mode: body taken (`enter`), let go (`exit`, with off, ko, zone, logout, class or gear), each move as it resolved (`move`: hit, miss, heal, status) or was refused (`refused`, with the client line), and testers' marks (`verdict`: ok or bad, with a note) | map server |
 | `log_trades` | trade, bazaar or retainer sale | not yet written |
 
 The web server shows them to GMs at `/reports` (the day, week or month at a
-glance) and `/reports/character?name=` (one character's history, newest
-first). Sign in there with an account whose `users.gmLevel` is at least
+glance), `/reports/character?name=` (one character's history, newest
+first) and `/reports/monster-mode` (Monster Mode by family and by move, with
+the testers' marks). `tools/monster_mode/export_moves.py` prints the same
+per-move record as JSON for the status tracker. Sign in there with an account whose `users.gmLevel` is at least
 `[reports] gm_level` in `settings/web.toml` (default 1). Anything else is a
 SQL query away, for example the items a character lost this week:
 

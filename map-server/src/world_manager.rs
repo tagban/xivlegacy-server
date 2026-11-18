@@ -2188,6 +2188,9 @@ impl WorldManager {
         spawn: Vector3,
         rotation: f32,
     ) -> Result<()> {
+        // Monster Mode ends at any zone change; the zone-in bundle then
+        // draws the player's own body.
+        crate::runtime::monster_mode::release_for_zone_change(actor_id).await;
         // 1. Look up the destination zone.
         let Some(dest_zone) = self.zone(destination_zone_id).await else {
             tracing::warn!(
@@ -3385,7 +3388,9 @@ impl WorldManager {
         }
         // Actors a quest hid from this player stay hidden through the
         // reload (an Echo's same-zone fade-in warp).
-        neighbours.retain(|(id, _, _)| !session.hidden_actors.contains(id));
+        neighbours.retain(|(id, _, _)| {
+            !session.hidden_actors.contains(id) && !crate::runtime::monster_mode::is_hidden(*id)
+        });
         // Picked-clean gathering points stay out until they come back
         // (for everyone, or for just this player after they used one up).
         neighbours.retain(|(id, _, _)| !self.is_gather_node_resting_for(*id, actor_id));
@@ -4619,6 +4624,7 @@ impl WorldManager {
                 .map(|a| a.actor_id)
                 .filter(|id| !session.actor_instance_list.contains(id))
                 .filter(|id| !session.hidden_actors.contains(id))
+                .filter(|id| !crate::runtime::monster_mode::is_hidden(*id))
                 .filter(|id| !self.is_gather_node_resting_for(*id, actor_id))
                 .filter(|id| !quest_hidden.contains(id))
                 .collect();

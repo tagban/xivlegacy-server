@@ -54,6 +54,19 @@ pub const SUMMONS: &[Summon] = &[
         count: 2,
         cap: 4,
     },
+    // Garuda (the Howling Eye): Plumage "summons forth Razor Plumes" (the
+    // 1.0 Gamer Escape page for the move). The plume is the client's own
+    // class, named razor plume in the 1.23b name sheet; it ships with no
+    // class path, so the data gives it the client's GarudaFeather script
+    // (a white feather; inside the raid the client labels it Garuda). How
+    // many came per use isn't recorded: two, at most four alive.
+    Summon {
+        command_id: 23544,
+        class_id: 2209510,
+        level: 50,
+        count: 2,
+        cap: 4,
+    },
 ];
 
 pub fn summon_for(command_id: u16) -> Option<Summon> {
@@ -121,7 +134,9 @@ pub async fn on_move(
     }
     let (x, y, z, rot) = {
         let c = boss.character.read().await;
-        if !c.is_alive() {
+        // an add can't call more of its own kind (a forced Plumage can
+        // land on a plume)
+        if !c.is_alive() || c.chara.actor_class_id == summon.class_id {
             return;
         }
         (
@@ -266,6 +281,13 @@ mod tests {
     fn batraal_calls_purgatory_knights() {
         let s = summon_for(23302).expect("Chthonic Call summons");
         assert_eq!(s.class_id, 2301902);
+        assert!(s.count <= s.cap);
+    }
+
+    #[test]
+    fn garuda_plumage_calls_razor_plumes() {
+        let s = summon_for(23544).expect("Plumage summons");
+        assert_eq!(s.class_id, 2209510);
         assert!(s.count <= s.cap);
     }
 

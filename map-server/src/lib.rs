@@ -166,6 +166,7 @@ pub async fn run() -> Result<()> {
             return Err(e);
         }
     };
+    runtime::monster_mode::set_log_db(db.clone());
     seasonal::set_overrides(db.load_event_overrides().await.unwrap_or_default());
     command_actors::init(
         db.command_static_actors().await.unwrap_or_default(),

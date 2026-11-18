@@ -662,6 +662,28 @@ async fn dispatch_npc_event_started(
             tracing::warn!(player = snapshot.actor_id, err = %e, "NPC event: item totals failed")
         }
     }
+    // The party members by the player, for guides that check the whole
+    // party before letting it into a dungeon (dungeon.lua's OPEN_RAIDS).
+    for m in crate::parties::others(snapshot.actor_id) {
+        if let Some(h) = registry.get(m).await
+            && h.is_player()
+        {
+            let c = h.character.read().await;
+            if c.base.zone_id == snapshot.zone_id {
+                snapshot
+                    .party_in_zone
+                    .push(crate::lua::userdata::PlayerSnapshot {
+                        actor_id: m,
+                        name: c.base.actor_name.clone(),
+                        zone_id: c.base.zone_id,
+                        current_class: c.chara.class.max(0) as u8,
+                        current_level: c.chara.level,
+                        completed_quests: c.quest_journal.iter_completed().collect(),
+                        ..Default::default()
+                    });
+            }
+        }
+    }
 
     let lua_clone = Arc::clone(lua);
     let event_name_owned = event_name.to_string();

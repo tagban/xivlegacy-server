@@ -756,6 +756,9 @@ impl PacketProcessor {
     /// The spot is left alone inside a content copy (relogs there go by the
     /// copy's own rules) and mid-warp (the warp saved its destination).
     pub(crate) async fn save_on_leave(&self, handle: &ActorHandle, session_id: u32) {
+        // Monster Mode: the player's own body comes back before anything
+        // is saved, so the monster's HP never reaches the database.
+        crate::runtime::monster_mode::release(handle.actor_id, "logout").await;
         let (x, y, z, rot, hp, hp_max, mp, mp_max, statuses) = {
             let c = handle.character.read().await;
             (
@@ -5572,6 +5575,11 @@ impl PacketProcessor {
         command_id: u32,
         hotbar_slot: u16,
     ) {
+        // Monster Mode: the hotbar holds the monster's moves; the
+        // player's own hotbar isn't edited until they turn back.
+        if crate::runtime::monster_mode::is_transformed(player_id) {
+            return;
+        }
         const COMMAND_BORDER: u16 = 0x20;
         let zero_based_slot = hotbar_slot.saturating_sub(COMMAND_BORDER);
         if let Err(e) = self
@@ -5655,6 +5663,11 @@ impl PacketProcessor {
     /// pre-massage the slot index before calling, so we accept a raw
     /// 0-based slot.
     async fn apply_unequip_ability(&self, player_id: u32, class_id: u8, hotbar_slot: u16) {
+        // Monster Mode: the hotbar holds the monster's moves; the
+        // player's own hotbar isn't edited until they turn back.
+        if crate::runtime::monster_mode::is_transformed(player_id) {
+            return;
+        }
         // Capture the soon-to-be-dropped command_id from the in-memory
         // hotbar snapshot — needed to build the 30604 toast below.
         // C# wire format strips the `0xA0F00000` mask via XOR; we do
@@ -5738,6 +5751,11 @@ impl PacketProcessor {
         hotbar_slot_1: u16,
         hotbar_slot_2: u16,
     ) {
+        // Monster Mode: the hotbar holds the monster's moves; the
+        // player's own hotbar isn't edited until they turn back.
+        if crate::runtime::monster_mode::is_transformed(player_id) {
+            return;
+        }
         const COMMAND_BORDER: u16 = 0x20;
         let zero_1 = hotbar_slot_1.saturating_sub(COMMAND_BORDER);
         let zero_2 = hotbar_slot_2.saturating_sub(COMMAND_BORDER);
@@ -6371,6 +6389,15 @@ impl PacketProcessor {
     /// deviation per
     /// `feedback_meteor_decomp_authoritative_for_engine_bindings.md`.
     async fn apply_do_class_change(&self, player_id: u32, class_id: u8) {
+        // Changing gear or class ends Monster Mode first, so the change
+        // lands on the player's own body.
+        if crate::runtime::monster_mode::release(player_id, "class")
+            .await
+            .is_some()
+        {
+            crate::runtime::monster_mode::refresh_client(&self.registry, &self.world, player_id)
+                .await;
+        }
         let Some(handle) = self.registry.get(player_id).await else {
             tracing::debug!(player = player_id, class_id, "DoClassChange: actor missing");
             return;
@@ -9229,6 +9256,13 @@ impl PacketProcessor {
         command_id: u16,
         text_id: u16,
     ) {
+        if crate::runtime::monster_mode::is_transformed(actor_id) {
+            let zone_id = match self.registry.get(actor_id).await {
+                Some(h) => h.zone_id,
+                None => 0,
+            };
+            crate::runtime::monster_mode::log_refused(actor_id, command_id, text_id, zone_id);
+        }
         let Some(client) = self.world.client(session_id).await else {
             return;
         };
@@ -9327,6 +9361,13 @@ impl PacketProcessor {
         command: crate::gamedata::BattleCommand,
     ) {
         let actor_id = handle.actor_id;
+        // Monster Mode: the monster's moves cost TP, as they do monsters.
+        let mut command = command;
+        if let Some(cost) =
+            crate::runtime::monster_mode::move_tp_cost(actor_id, command.id, command.tp_cost)
+        {
+            command.tp_cost = cost;
+        }
 
         // Retail rides the real target in the type-6 Actor param — the
         // Int32 slot pmeteor's script signature names `targetActor` is 0
@@ -10520,6 +10561,8 @@ impl PacketProcessor {
         // (crate::linkshells; group packets sent during the login burst
         // were ignored).
         if !had_deferred_warp && let Some(h) = self.registry.by_session(session_id).await {
+            crate::runtime::monster_mode::after_zone_in(&self.registry, &self.world, h.actor_id)
+                .await;
             crate::linkshells::send_login(&self.registry, &self.world, &self.db, h.actor_id).await;
             // Status icons and countdowns: the zone-in rebuilt the player's
             // actor without them (effects restored at login showed none).
@@ -10769,6 +10812,28 @@ impl PacketProcessor {
             {
                 let mut c = handle.character.write().await;
                 c.base.zone_id = dest;
+            }
+            // Monster Mode carries across field-to-field crossings and
+            // ends at the edge of a town.
+            if crate::runtime::monster_mode::is_transformed(actor_id) {
+                let field = match self.world.zone(dest).await {
+                    Some(z) => {
+                        crate::runtime::monster_mode::is_field_zone(&z.read().await.core.zone_name)
+                    }
+                    None => false,
+                };
+                if !field
+                    && crate::runtime::monster_mode::release(actor_id, "zone")
+                        .await
+                        .is_some()
+                {
+                    crate::runtime::monster_mode::refresh_client(
+                        &self.registry,
+                        &self.world,
+                        actor_id,
+                    )
+                    .await;
+                }
             }
             let pa = self.world.session(session_id).await.and_then(|s| {
                 s.current_private_area_name
@@ -11566,6 +11631,7 @@ pub(crate) fn build_player_snapshot_for_login(
         // login and player.lua's opening-zone reconnect branches never ran
         // (a relog mid-opening stranded the player). (Garlemald-Server #197.)
         completed_quests: c.quest_journal.iter_completed().collect(),
+        party_in_zone: Vec::new(),
         quest_npcs: c.quest_npc_classes(),
         active_quests: c
             .quest_journal
