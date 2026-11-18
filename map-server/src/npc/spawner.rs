@@ -194,7 +194,7 @@ async fn spawn_one(
             seed.rotation,
             seed.state,
             seed.animation_id,
-            None,
+            seed.custom_name.clone(),
         );
         // Stamp per-actor-class model_id + packed appearance slots
         // from `gamedata_actor_appearance`. Populace NPCs ship with
@@ -202,7 +202,13 @@ async fn spawn_one(
         // modelId=1, body=1091, legs=9248). Without this the 0x00D6
         // goes out all zeros and the Wine client derefs nil on the
         // model-lookup path.
-        if let Some(app) = ctx.npc_appearances.get(&class.actor_class_id) {
+        // A spawn can wear another class's look (`server_spawn_looks`).
+        let look = if seed.look_class_id != 0 {
+            seed.look_class_id
+        } else {
+            class.actor_class_id
+        };
+        if let Some(app) = ctx.npc_appearances.get(&look) {
             let (model_id, slots) = app.pack();
             npc.character.chara.model_id = model_id;
             npc.character.chara.appearance_ids = slots;

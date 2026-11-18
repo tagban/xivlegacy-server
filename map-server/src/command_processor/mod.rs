@@ -58,6 +58,7 @@ const COMMAND_SYNTAX: &[&str] = &[
     "gmhelp [word]",
     "who",
     "version",
+    "mp [list | buy <number>]",
     "bug <what happened>",
     "pos [name]",
     "endevent [name]",
@@ -137,7 +138,7 @@ const COMMAND_SYNTAX: &[&str] = &[
     "dungeon <name> | dungeon leave",
     "settp <tp 0-3000> [name]",
     "usemove <command id> (target, else nearest monster)",
-    "monstermode [class id] (become your target monster; again to let go)",
+    "monstermode [class id | ok [move] | bad [move] [note]] (become your target monster; again to let go; mark a move)",
     "leve <guildleve id> [stars 1-5] | leve abandon",
     "factioncredit <faction 1-3> <amount>",
     "setgm <level 0-4> <name>",
@@ -345,7 +346,8 @@ impl CommandProcessor {
                 let name = c.split_whitespace().next().unwrap_or("");
                 (final_days || !world_end::COMMANDS.contains(&name))
                     && (name != "bug" || crate::modules::is_enabled(common::bug_reports::MODULE))
-                    && (name != "monstermode" || crate::runtime::monster_mode::enabled())
+                    && (!matches!(name, "monstermode" | "mp")
+                        || crate::runtime::monster_mode::enabled())
                     && level.is_none_or(|l| l >= perms.required(name))
             })
             .copied()
@@ -634,7 +636,8 @@ impl CommandProcessor {
                 let needed = perms.required(name);
                 let shown = (self.final_days || !world_end::COMMANDS.contains(&name))
                     && (name != "bug" || crate::modules::is_enabled(common::bug_reports::MODULE))
-                    && (name != "monstermode" || crate::runtime::monster_mode::enabled())
+                    && (!matches!(name, "monstermode" | "mp")
+                        || crate::runtime::monster_mode::enabled())
                     && level.is_none_or(|l| l >= needed)
                     && word
                         .as_ref()

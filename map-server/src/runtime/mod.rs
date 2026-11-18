@@ -38,6 +38,7 @@ pub mod dungeon_chest;
 pub mod dungeon_fight;
 pub mod gc_apply;
 pub mod monster_mode;
+pub mod monster_points;
 pub mod quest_apply;
 pub mod quest_hook;
 pub mod summon;

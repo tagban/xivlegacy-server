@@ -63,6 +63,7 @@ mod equip;
 pub(crate) mod gm_spawn;
 pub(crate) mod gm_toolkit;
 pub(crate) mod items;
+mod monster_points;
 mod quest_offers;
 
 /// `OP_RX_PARTY_CHAT`'s first u32 for linkshell chat (`/l`).
@@ -759,6 +760,8 @@ impl PacketProcessor {
         // Monster Mode: the player's own body comes back before anything
         // is saved, so the monster's HP never reaches the database.
         crate::runtime::monster_mode::release(handle.actor_id, "logout").await;
+        crate::runtime::monster_mode::settle_points(handle.actor_id, &self.registry, &self.world)
+            .await;
         let (x, y, z, rot, hp, hp_max, mp, mp_max, statuses) = {
             let c = handle.character.read().await;
             (
@@ -11005,6 +11008,12 @@ impl PacketProcessor {
                     Ok(m) => (ChatKind::System, m),
                     Err(m) => (ChatKind::SystemError, m),
                 })
+            } else if let Some(r) = self.monster_points_command(&handle, &line, level).await {
+                match r {
+                    Ok(m) if m.is_empty() => None,
+                    Ok(m) => Some((ChatKind::System, m)),
+                    Err(m) => Some((ChatKind::SystemError, m)),
+                }
             } else if let Some(r) = self.gm_talkto_offer(&handle, &line, level).await {
                 Some(match r {
                     Ok(m) => (ChatKind::System, m),
