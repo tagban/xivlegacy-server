@@ -79,7 +79,7 @@ WAKING_SANDS_AREA		= 3;	-- Minfilia and the staff
 WAKING_SANDS_OFFICE		= {-126.2, 1.2, -160, 1.6};	-- inside Minfilia's door
 WAKING_SANDS_HALL		= {-142.75, 1, -160, -1.6};	-- outside it
 ULDAH_MARKET_OUTSIDE	= {175, -216.52, 190, 30.5, 2.32};
-CONSORTIUM_DOOR			= {161, -36.0, 0.0, -2.0, 1.57};
+CONSORTIUM_DOOR			= {161, 0.0, 0.0, -34.0, 0.0};	-- inside the hall, facing the Interlocutors
 GRIDANIA_MARKET_OUTSIDE	= {206, -180.0, 22.0, -1408.0, 1.5};
 
 -- Items
