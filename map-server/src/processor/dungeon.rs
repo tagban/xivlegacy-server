@@ -24,6 +24,16 @@ const DUNGEONS: &[(&str, &str)] = &[
     ("dzemael", "enterDzemael"),
     ("aurum", "enterAurum"),
     ("cutters", "enterCutters"),
+    // The primal and raid battles, for testing their bosses: a "_hard" name
+    // first, so its prefix doesn't pick the plain battle.
+    ("embers_hard", "enterEmbersHard"),
+    ("embers", "enterEmbers"),
+    ("howling_hard", "enterHowlingHard"),
+    ("howling", "enterHowling"),
+    ("thornmarch", "enterThornmarch"),
+    ("castrum", "enterCastrum"),
+    ("rivenroad_hard", "enterRivenroadHard"),
+    ("rivenroad", "enterRivenroad"),
 ];
 
 impl PacketProcessor {
