@@ -5010,8 +5010,8 @@ INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `
 (2107, '', 30032, -209.8, 170.81, 124.3, -2.81),
 (2108, '', 30032, -210.1, 172.56, 117.7, -0.29),
 (2109, '', 30032, -152.4, 169.20, 133.7, -3.1),
-(2110, '', 30032, -147.8, 169.74, 134.0, -0.0),
-INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `groupId`, `positionX`, `positionY`, `positionZ`, `rotation`) VALUES,
+(2110, '', 30032, -147.8, 169.74, 134.0, -0.0);
+INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `groupId`, `positionX`, `positionY`, `positionZ`, `rotation`) VALUES
 (2111, '', 30032, -149.7, 169.36, 132.3, 1.06),
 (2112, '', 30032, 169.6, 164.20, 33.8, 0.81),
 (2113, '', 30032, 171.7, 164.62, 37.7, -2.2),
