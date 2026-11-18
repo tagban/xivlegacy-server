@@ -396,9 +396,9 @@ impl CommandProcessor {
         }
     }
 
-    /// `usemove <command id>` — your targeted monster uses that move on
-    /// its next combat tick, whatever its TP (for checking moves one by
-    /// one in the client). The move joins that monster's list.
+    /// `usemove <command id>` — your targeted monster uses that move once
+    /// on its next combat tick, whatever its TP (for checking moves one by
+    /// one in the client).
     async fn handle_usemove(&self, args: &Args<'_>) -> String {
         let usage = "usage: usemove <command id> (your target, else the nearest monster)";
         let Some(id) = args.rest().first().and_then(|t| t.parse::<u16>().ok()) else {

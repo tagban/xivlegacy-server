@@ -1,4 +1,4 @@
--- server_battlenpc_groups: game data, 894 rows. Reloaded whole when this file changes.
+-- server_battlenpc_groups: game data, 897 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_groups`;
 INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLevel`, `maxLevel`, `respawnTime`, `hp`, `mp`, `dropListId`, `allegiance`, `spawnType`, `animationId`, `actorState`, `privateAreaName`, `privateAreaLevel`, `zoneId`) VALUES
@@ -894,6 +894,9 @@ INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLe
 (31622, 31622, 'sum6m0_mog_debuffer', 50, 50, 0, 3000, 0, 0, 0, 1, 0, 0, '', 0, 238),
 (31623, 31623, 'sum6m0_moggle_mog', 52, 52, 0, 36000, 0, 0, 0, 1, 0, 0, '', 0, 238),
 (31624, 31624, 'sum6w0_nael_van_darnus_hard', 52, 52, 0, 40000, 0, 0, 0, 1, 0, 0, '', 0, 257),
+(31193, 30053, 'bastard_mite', 39, 39, 0, 1725, 0, 0, 0, 1, 0, 0, '', 0, 159),
+(31194, 30054, 'widow_s_suitor', 39, 39, 0, 1725, 0, 0, 0, 1, 0, 0, '', 0, 159),
+(31195, 30055, 'horde_mite', 39, 39, 0, 1725, 0, 0, 0, 1, 0, 0, '', 0, 159),
 (31650, 31650, 'hatch_sprinting_spriggan', 30, 30, 120, 900, 0, 0, 0, 0, 0, 0, '', 0, 178),
 (31651, 31650, 'hatch_sprinting_spriggan', 30, 30, 120, 900, 0, 0, 0, 0, 0, 0, '', 0, 158),
 (31652, 31650, 'hatch_sprinting_spriggan', 30, 30, 120, 900, 0, 0, 0, 0, 0, 0, '', 0, 131);

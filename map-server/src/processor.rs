@@ -8724,17 +8724,37 @@ impl PacketProcessor {
         event_type: u8,
         lua_params: Vec<common::luaparam::LuaParam>,
     ) {
-        let Some(active) = self
+        let active = self
             .world
             .session(session_id)
             .await
             .and_then(|s| s.active_content_script)
-        else {
+            .filter(|a| a.director_actor_id == owner_actor_id);
+        // The answer to the raid-UI notice event a copy's way out kicked
+        // (quest_apply::close_raid_ui_on_client). Its director runs it as
+        // usual while the copy lives; once the copy is gone, nothing would
+        // end it, so end it here.
+        let raid_ui_kick =
+            crate::runtime::quest_apply::take_raid_ui_close_kick(handle.actor_id, owner_actor_id);
+        let Some(active) = active else {
+            if raid_ui_kick && let Some(client) = self.world.client(session_id).await {
+                let mut sub = crate::packets::send::events::build_end_event(
+                    handle.actor_id,
+                    owner_actor_id,
+                    &event_name,
+                    event_type,
+                );
+                sub.set_target_id(session_id);
+                client.send_bytes(sub.to_bytes()).await;
+                tracing::info!(
+                    player = handle.actor_id,
+                    director = format!("0x{owner_actor_id:08X}"),
+                    ty = event_type,
+                    "raid-UI notice event ended for a copy already gone",
+                );
+            }
             return;
         };
-        if owner_actor_id != active.director_actor_id {
-            return;
-        }
         let Some(lua) = self.lua.as_ref() else {
             return;
         };

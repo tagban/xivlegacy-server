@@ -23,10 +23,10 @@ Cutter's Cry is the server's dungeon copy (dungeon.lua). Retail let you in
 through the Immortal Flames at the cave mouth; the client script has no
 event for that, so a spot by Cutter's Pass (where the dungeon's exit sets
 you down) takes quest holders who are Disciples of War or Magic at the
-quest's level inside. The resting place is a spot in the last chamber,
-past the sand basilisks (SimpleContentDungeonCuttersCry spawns it in every
-copy; its place is an estimate, the chimera isn't placed yet). Laying the
-flowers takes you back out to Cutter's Pass.
+quest's level inside. The resting place is a spot by the Chimera's
+chamber (SimpleContentDungeonCuttersCry spawns it in every copy; its place
+is an estimate, as the layout's chimera room is walled off in the client).
+Laying the flowers takes you back out to Cutter's Pass.
 
 Client script etc200: processEventSIBOLDStart (offer), processEvent000
 (Sibold while you go), processEvent005 (laying the bouquet),
@@ -122,6 +122,11 @@ function onPush(player, quest, npc)
 			attentionMessage(player, 25225, quest:GetQuestId()); -- Objectives complete!
 			player:EndEvent();
 			quest:StartSequence(SEQ_005);
+			-- Out only once the client has closed the push: the copy's way
+			-- out closes its raid UI through an event of its own, and a
+			-- client still inside this one answers it in a way nothing ends,
+			-- and then talks to no NPC until a relog.
+			wait(1);
 			leaveDungeon(player);
 			return;
 		end

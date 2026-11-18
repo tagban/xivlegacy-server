@@ -7,7 +7,10 @@ require ("dungeon")
 function onCreate(player, contentArea, director)
 	spawnDungeon(player, contentArea, director, 246);
 	-- Members of the copy's content group, or the client won't push them.
-	director:AddMember(contentArea:SpawnActor(1090616, "cutters_raiders_tomb", -1490.0, 251.5, -1832.0, 0.0));
+	-- By the Chimera's chamber: the layout's own chimerabeya room, west of
+	-- it, is walled off in the client (STUCK.md), so the tomb stands just
+	-- outside the boss room, where players can reach it.
+	director:AddMember(contentArea:SpawnActor(1090616, "cutters_raiders_tomb", -1330.0, 249.3, -1840.0, 0.0));
 end
 
 function onZoneIn(player, contentArea, director)

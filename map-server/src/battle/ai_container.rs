@@ -653,7 +653,8 @@ impl AIContainer {
                 else {
                     return;
                 };
-                // A `usemove` queued move is used now: clear it.
+                // A `usemove` queued move is used now: clear it, and take it
+                // back off the list if it only went on to be used.
                 if let Some(ctrl) = self.controller.as_mut()
                     && ctrl
                         .battle
@@ -662,6 +663,15 @@ impl AIContainer {
                         .is_some_and(|f| f.id == cmd.id)
                 {
                     ctrl.battle.forced_skill = None;
+                    if std::mem::take(&mut ctrl.battle.forced_added)
+                        && ctrl
+                            .battle
+                            .skills
+                            .get(skill_index)
+                            .is_some_and(|s| s.id == cmd.id)
+                    {
+                        ctrl.battle.skills.remove(skill_index);
+                    }
                 }
                 tracing::debug!(
                     owner = format!("0x{owner_id:08X}"),
@@ -1169,13 +1179,11 @@ mod tests {
             }
         }
         assert!(seen, "queued move never readied");
+        let battle = &ai.controller.as_ref().unwrap().battle;
+        assert!(battle.forced_skill.is_none());
         assert!(
-            ai.controller
-                .as_ref()
-                .unwrap()
-                .battle
-                .forced_skill
-                .is_none()
+            !battle.skills.iter().any(|s| s.id == 23226),
+            "a forced move the monster didn't have is used once, not kept"
         );
     }
 

@@ -68,7 +68,7 @@ KINDS = [
     (13, 'Cactuar', [13], '', [], [(23146, 23150, 'zam', [2100910, 2100901])], ['Cactuar']),
     (102, 'Elemental', [54, 55, 56, 57, 58, 59], '', [], [(23151, 23153, 'name', []), (23178, 23182, 'name', [])], ['Elemental']),
     (9, 'Boar', [9], '', [], [(23154, 23157, 'ge', [])], ['Boar']),
-    (19, 'Salamander', [19], '', [], [(23158, 23159, 'zam', [2101317])], ['Salamander']),
+    (19, 'Salamander', [19], '', [], [(23158, 23159, 'zam', [2101317]), (23160, 23165, 'ge', [])], ['Salamander']),
     (27, 'Kobold', [27], r'kobold', [], [(23183, 23187, 'ge', []), (23394, 23398, 'ge', [])], ['Kobold']),
     (28, 'Sylph', [28], '', [], [(23189, 23190, 'name', [])], ['Sylph']),
     (24, 'Ixal', [24], r'ixal', [], [(23192, 23196, 'modern', [])], ['Ixal']),
@@ -81,7 +81,7 @@ KINDS = [
     (106, 'Fomor', [], '', [], [(23230, 23232, 'ge', [])], ['Fomor']),
     (41, 'Vulture', [41], '', [], [(23233, 23237, 'zam', [2101204, 2101205])], ['Vulture']),
     (7, 'Sheep', [7], '', [], [(23238, 23240, 'zam', [2106011])], ['Ram', 'Sheep']),
-    (48, 'Wight', [48], '', [], [(23244, 23247, 'zam', [2101903, 2201901])], ['Wight', 'Skeleton']),
+    (48, 'Wight', [48], r'wight|skeleton|magicked_bones|hellsbound|purgatory', [], [(23244, 23247, 'zam', [2101903, 2201901])], ['Wight', 'Skeleton']),
     (14, 'Funguar', [14], '', [], [(23250, 23256, 'zam', [2105901, 2105903, 2105915])], ['Funguar']),
     (34, 'Swarm', [34], '', [], [(23257, 23257, 'zam', [2105302, 2105301, 2105202])], ['Swarm']),
     (53, 'Wisp', [53], '', [], [(23258, 23261, 'zam', [2105801, 2105803])], ['Firefly', 'Wisp']),
@@ -96,7 +96,7 @@ KINDS = [
     (107, 'Gargoyle', [], '', [], [(23350, 23354, 'modern', [])], ['Gargoyle']),
     (103, 'Golem', [], r'golem', [], [(23385, 23393, 'modern', []), (23638, 23641, 'modern', [])], ['Golem']),
     (108, 'Moogle', [], r'moogle|mog', [], [(23410, 23424, 'ge', []), (23451, 23453, 'ge', [])], ['Moogle']),
-    (109, 'Treant', [], r'treant', [], [(23438, 23450, 'ge', []), (23642, 23643, 'modern', [])], ['Treant']),
+    (109, 'Treant', [], r'treant|great oak', [], [(23438, 23450, 'ge', []), (23642, 23643, 'modern', [])], ['Treant']),
     (110, 'Chimera', [], r'chimera', [], [(23456, 23464, 'modern', [])], ['Chimera', 'Chimera Genus']),
     (111, 'Bahamut', [], '', [], [(23596, 23596, 'name', []), (23617, 23626, 'name', [])], []),
     (112, 'Cyclops', [], r'cyclops', [], [(23476, 23482, 'modern', []), (23629, 23630, 'name', [])], ['Cyclops']),
@@ -127,6 +127,23 @@ BOSS_LISTS = {k[0] for k in KINDS if k[4]}
 # Pools whose move and spell lists were set by hand (quest enemies picked
 # for a scene): the generator keeps whatever their rows say.
 PINNED = {30133, 30134, 30135, 30136, 30227, 30228}  # Man406's Imperials (Garlean list 104); Gla306's tourney bout (no moves)
+# Thornmarch's court (Sum6m0): each moogle has its own list, its signature
+# move plus Mogdive (1.0 Gamer Escape move pages: "only used by <moogle>",
+# Mogdive "used by all moogles"); the Healer and Nuker models also cast.
+# The king takes up a fallen moogle's move and opens with Memento Moogle
+# (scripts/lua/content/SimpleContentThornmarch.lua).
+HAND_LISTS = {
+    31616: [(23410, 'block'), (23414, 'ge'), (23415, 'block')],  # Tanker: Whisker Bash
+    31617: [(23411, 'block'), (23413, 'block'), (23414, 'ge')],  # Attacker: 100 Needles
+    31618: [(23414, 'ge'), (23420, 'block')],                    # Sniper: Moogle Eye Shot
+    31619: [(23414, 'ge'), (23417, 'block')],                    # Healer: Moogle-Go-Round
+    31620: [(23414, 'ge'), (23421, 'ge')],                       # Nuker: Pom Flare
+    31621: [(23414, 'ge'), (23422, 'ge')],                       # Buffer: Maximoogle
+    31622: [(23414, 'ge'), (23423, 'ge')],                       # Debuffer: Mognesia
+    31623: [(23412, 'block'), (23414, 'ge')],                    # Good King Moggle Mog XII
+}
+PINNED |= set(HAND_LISTS)  # their rows hold the list and the Healer/Nuker spells
+BOSS_LISTS |= set(HAND_LISTS)
 # Class move lists for human and beastman enemies with no kind list,
 # matched by the pool's currentJob or its name: (list id, family, jobs,
 # pool-name regex, blocks). The client keeps these copies of player class
@@ -139,7 +156,7 @@ JOB_LISTS = [
 # Spell lists (pool spellListId) for casters, matched the same way. The
 # client's monster spell block 23508-23534 holds the "II" tier of the 1.0
 # thaumaturge and conjurer spells.
-THM_SPELLS = [23508, 23509, 23510, 23511, 23512, 23513, 23520, 23521, 23522, 23526, 23527, 23530, 23531, 23532, 23534]
+THM_SPELLS = [23508, 23509, 23510, 23511, 23512, 23513, 23520, 23521, 23522, 23526, 23527, 23530, 23531, 23532, 23534, 23584]
 CNJ_SPELLS = [23514, 23515, 23516, 23517, 23518, 23519, 23523, 23524, 23525, 23528, 23529, 23533]
 SPELL_LISTS = [
     (120, 'Enemy thaumaturge', {22, 26}, r'divinator|stargazer|signifer|thunder_mage|zombie mage|transfigurator', THM_SPELLS),
@@ -202,6 +219,7 @@ def modern_match(name):
 # They win over the modern match and the name guess.
 FIRE, ICE, WIND, EARTH, LIGHTNING, WATER, ASTRAL, UMBRAL = 5, 6, 7, 8, 9, 10, 11, 12
 POISON, SLOW, STUN, SLEEP, BIND = 223011, 223003, 223015, 228001, 228011
+SILENCE, AMNESIA = 223006, 223014
 PAGE_1_0 = {
     'Aural Vacuum': (2, WIND, 0), 'Bone Breaker': (1, 3, 0), 'Booming Bellow': (2, LIGHTNING, STUN),
     'Cloud of Pestilence': (2, WATER, POISON), 'Corrosive Spit': (2, WATER, BIND),
@@ -211,7 +229,7 @@ PAGE_1_0 = {
     'Bombardier': (1, 4, 0), 'Cermet Drill': (1, 2, 0), 'Cliff Cry': (1, 4, 0),
     'Flames of Defiance': (2, FIRE, 0), 'Frenetic Flurry': (1, 3, 0), 'Gale Switch': (2, WIND, 0),
     'Hair Ball': (1, 3, 0), 'Impish Incantations': (2, UMBRAL, 0), 'Memento Moogle': (2, UMBRAL, 0),
-    'Mogdive': (1, 3, 0), 'Mognesia': (2, UMBRAL, 0), 'Mortal Mist': (2, WATER, 0),
+    'Kinetic Pulse': (2, WATER, BIND), 'Magnetic Pulse': (2, WATER, BIND), 'Mogdive': (1, 3, 0), 'Mognesia': (2, UMBRAL, SILENCE), 'Whisker Bash': (1, 1, AMNESIA), 'Moogle Eye Shot': (1, 2, 0), 'Mortal Mist': (2, WATER, 0),
     'Pom Flare': (2, UMBRAL, 0), 'Prickle': (1, 2, 0), 'Sand Breath': (2, EARTH, 0),
     'Seismic Scream': (2, EARTH, 0), 'Snort': (2, WIND, 0), 'Soil Smear': (2, EARTH, 0),
     'Sphere of Cold': (2, ICE, 0), 'Stellar Flame': (2, FIRE, 0), 'Tendril Spines': (1, 4, 0),
@@ -376,6 +394,9 @@ for l in open(f'{REPO}/common/sql/data/server_battle_commands.sql'):
             list_rows.append([lid, cid, clvl, 'class', 'class'])
             stats['player_ws'] += 1
 POOL_RE = re.compile(r"^(\((\d+), (\d+), '((?:[^']|'')*)', (\d+), (\d+), .*, )(\d+), (\d+)\)([,;])$", re.M)
+for lid, moves in HAND_LISTS.items():
+    for mid, ev in moves:
+        list_rows.append([lid, mid, 1, '', ev])
 for boss, fams in BOSS_SHARES.items():
     for r in [r for r in list_rows if r[0] in fams]:
         list_rows.append([boss, r[1], 1, '', r[4]])

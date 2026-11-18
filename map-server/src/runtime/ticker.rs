@@ -869,7 +869,9 @@ pub(crate) async fn build_content_rosters(
                 let actor = crate::lua::userdata::LuaActor {
                     actor_id: mid,
                     name: c.base.actor_name.clone(),
-                    class_name: String::new(),
+                    // The model class (e.g. "MoogleDarkKing"), so content
+                    // scripts can tell monsters apart.
+                    class_name: c.base.class_name.clone(),
                     class_path: String::new(),
                     unique_id: String::new(),
                     zone_id: handle.zone_id,
