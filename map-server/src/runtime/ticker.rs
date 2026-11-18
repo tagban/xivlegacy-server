@@ -683,8 +683,6 @@ impl GameTicker {
                     } else if !matches!(handle.kind, ActorKindTag::Player)
                         && !chara.chara.respawn_disabled
                         && chara.chara.time_of_death_utc != 0
-                        // Not while a player holds it in Monster Mode.
-                        && crate::runtime::monster_mode::may_respawn(handle.actor_id)
                         // `time_of_death_utc` is wall-clock (apply_die
                         // stamps `unix_timestamp()`), so the comparison
                         // must read wall-clock too — never the ticker's
@@ -701,7 +699,6 @@ impl GameTicker {
                     } else if !matches!(handle.kind, ActorKindTag::Player)
                         && chara.chara.respawn_disabled
                         && chara.chara.time_of_death_utc != 0
-                        && crate::runtime::monster_mode::may_respawn(handle.actor_id)
                         && common::utils::unix_timestamp() as u32
                             >= chara
                                 .chara
@@ -722,7 +719,6 @@ impl GameTicker {
             match action {
                 DeathTickAction::None => {}
                 DeathTickAction::Despawn => {
-                    crate::runtime::monster_mode::on_respawn(handle.actor_id);
                     crate::runtime::quest_apply::apply_despawn_actor(
                         zone_id,
                         handle.actor_id,
@@ -764,7 +760,6 @@ impl GameTicker {
                     )
                     .await;
                     if respawn {
-                        crate::runtime::monster_mode::on_respawn(handle.actor_id);
                         // Clients faded the corpse; a state flip alone
                         // never brings it back. Drop it from their actor
                         // tables so streaming spawns it afresh, alive.
