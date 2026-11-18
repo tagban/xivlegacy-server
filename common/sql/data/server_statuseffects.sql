@@ -1,4 +1,4 @@
--- server_statuseffects: game data, 113 rows. Reloaded whole when this file changes.
+-- server_statuseffects: game data, 120 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_statuseffects`;
 INSERT INTO `server_statuseffects` (`id`, `name`, `flags`, `overwrite`, `tickMs`, `hidden`, `silentOnGain`, `silentOnLoss`, `statusGainTextId`, `statusLossTextId`) VALUES
@@ -42,6 +42,7 @@ INSERT INTO `server_statuseffects` (`id`, `name`, `flags`, `overwrite`, `tickMs`
 (223118, 'stygian_spikes', 16401, 1, 0, 0, 0, 0, 30328, 30331),
 (223127, 'bloodletter', 21, 2, 0, 0, 0, 0, 30335, 30338),
 (223129, 'protect', 9, 2, 0, 0, 0, 0, 30328, 30331),
+(223130, 'shell', 9, 2, 0, 0, 0, 0, 30328, 30331),
 (223132, 'shock_spikes', 16401, 1, 0, 0, 0, 0, 30328, 30331),
 (223133, 'stoneskin', 16393, 1, 0, 0, 0, 0, 30328, 30331),
 (223148, 'burn', 21, 2, 0, 0, 0, 0, 30335, 30338),
@@ -55,6 +56,8 @@ INSERT INTO `server_statuseffects` (`id`, `name`, `flags`, `overwrite`, `tickMs`
 (223181, 'refresh', 9, 2, 0, 0, 0, 0, 30328, 30331),
 (223182, 'regain', 9, 2, 0, 0, 0, 0, 30328, 30331),
 (223183, 'tp_bleed', 21, 2, 0, 0, 0, 0, 30335, 30338),
+(223198, 'crafters_prime', 0, 2, 0, 0, 0, 0, 30328, 30331),
+(223199, 'gatherers_prime', 0, 2, 0, 0, 0, 0, 30328, 30331),
 (223205, 'combo', 21, 2, 0, 0, 1, 0, 0, 30331),
 (223206, 'goring_blade', 21, 2, 0, 0, 0, 0, 30335, 30338),
 (223207, 'berserk2', 537936145, 1, 0, 0, 0, 0, 30328, 30331),
@@ -107,6 +110,10 @@ INSERT INTO `server_statuseffects` (`id`, `name`, `flags`, `overwrite`, `tickMs`
 (223259, 'goldbile', 22, 1, 0, 0, 0, 0, 30335, 30338),
 (223262, 'flare2', 21, 2, 0, 0, 0, 0, 30335, 30338),
 (223264, 'divine_regen', 9, 2, 0, 0, 0, 0, 30328, 30331),
+(223265, 'bloodwall', 9, 2, 0, 0, 0, 0, 30328, 30331),
+(223266, 'manawall', 9, 2, 0, 0, 0, 0, 30328, 30331),
+(223273, 'lunar_curtain', 9, 2, 0, 0, 0, 0, 30328, 30331),
+(223992, 'sanction', 0, 2, 0, 0, 0, 0, 30328, 30331),
 (228001, 'sleep', 264273941, 2, 0, 0, 0, 0, 30335, 30338),
 (228011, 'bind', 67108885, 2, 0, 0, 0, 0, 30335, 30338),
 (228021, 'heavy', 21, 2, 0, 0, 0, 0, 30335, 30338),

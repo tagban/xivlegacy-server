@@ -4278,6 +4278,9 @@ pub async fn apply_add_exp(
             let rested_before = c.chara.rest_bonus_exp_rate;
             let (effective_gain, rested_after) = consume_rested_xp(exp, rested_before);
             c.chara.rest_bonus_exp_rate = rested_after;
+            // Food's EXP bonus and the company-issue manuals.
+            let effective_gain =
+                crate::processor::items::item_exp_bonus(&mut c, class_id, effective_gain);
             let prior_sp = c.battle_save.skill_point[class_slot];
             let combined = prior_sp.saturating_add(effective_gain).max(0);
             let prior_level = c
@@ -6423,10 +6426,12 @@ pub(crate) async fn send_inventory_package_update(
 /// `quantity` of `catalog_id` from `item_package`, walking the matching
 /// stacks back-to-front (highest slot first, mirroring
 /// `ItemPackage::remove`): a stack larger than the remaining count is
-/// decremented in place (`db.set_quantity`, emits an updated `ListX01`); a
-/// stack that fully drains frees its slot (`db.remove_item`, emits a
-/// `RemoveX01` for the freed slot). The updates + removes ship in one
-/// no-wipe bracket stamped to the owning client.
+/// decremented in place (`db.set_quantity`); a stack that fully drains is
+/// deleted (`db.remove_item`). The stacks after an emptied one then move
+/// down to close the hole (`realign_after_remove`, saved with
+/// `db.update_item_positions`), as the bag itself does. The client gets a
+/// `ListX01` for each stack with a new count or slot and a `RemoveX01` for
+/// each slot past the new end, in one no-wipe bracket.
 ///
 /// `world: None` keeps the DB-only behaviour for callers without a live
 /// zone (integration tests, batch tooling).
@@ -6458,6 +6463,7 @@ pub async fn apply_remove_item(
     let mut remaining = quantity;
     let mut updated: Vec<crate::data::InventoryItem> = Vec::new();
     let mut freed_slots: Vec<u16> = Vec::new();
+    let mut removed_ids: Vec<u64> = Vec::new();
     // Back-to-front: drain the tail stacks before the head so the head
     // (lowest slot) stack is the last to shrink/disappear.
     for row in rows.iter().rev() {
@@ -6493,6 +6499,7 @@ pub async fn apply_remove_item(
                 return;
             }
             freed_slots.push(row.slot);
+            removed_ids.push(row.unique_id);
             remaining -= row.quantity;
         }
     }
@@ -6512,19 +6519,83 @@ pub async fn apply_remove_item(
         removed = quantity - remaining.max(0),
         "RemoveItem applied",
     );
+    let packed = realign_after_remove(&rows, &updated, &removed_ids);
+    if !packed.moved.is_empty()
+        && let Err(e) = db.update_item_positions(&packed.moved).await
+    {
+        tracing::warn!(
+            actor = actor_id,
+            item = catalog_id,
+            err = %e,
+            "RemoveItem: update_item_positions failed",
+        );
+    }
     if let Some(world) = world {
         use crate::packets::send::actor_inventory as inv;
         let mut middle: Vec<common::subpacket::SubPacket> =
-            Vec::with_capacity(updated.len() + freed_slots.len());
-        for r in &updated {
+            Vec::with_capacity(packed.changed.len() + packed.tail_slots.len());
+        for r in &packed.changed {
             middle.push(inv::build_inventory_list_x01(actor_id, r));
         }
-        for slot in &freed_slots {
+        for slot in &packed.tail_slots {
             middle.push(inv::build_inventory_remove_x01(actor_id, *slot));
         }
         let cap = crate::inventory::default_capacity(item_package);
         send_inventory_bracket(actor_id, cap, item_package, middle, registry, world).await;
     }
+}
+
+/// What `apply_remove_item` has to tell the DB and the client once the
+/// emptied stacks are gone.
+#[derive(Debug, Default)]
+pub(crate) struct PackedAfterRemove {
+    /// Stacks that changed slot: their new positions for the DB.
+    pub moved: Vec<crate::data::InventoryItem>,
+    /// Stacks the client must hear about again (a new slot or a new
+    /// quantity), at their final slot and quantity.
+    pub changed: Vec<crate::data::InventoryItem>,
+    /// Slots past the end of the packed list that held a stack before.
+    pub tail_slots: Vec<u16>,
+}
+
+/// Close the holes emptied stacks leave, as the bag itself does
+/// (`ItemPackage::realign`, the C# `DoRealign`). The client keeps its list
+/// packed: a hole hides the last stacks of the bag from it (a trade window
+/// shows them as 0) even after a zone change. Old holes are closed too.
+pub(crate) fn realign_after_remove(
+    rows: &[crate::data::InventoryItem],
+    updated: &[crate::data::InventoryItem],
+    removed_ids: &[u64],
+) -> PackedAfterRemove {
+    let mut live: Vec<crate::data::InventoryItem> = rows
+        .iter()
+        .filter(|r| !removed_ids.contains(&r.unique_id))
+        .map(|r| {
+            updated
+                .iter()
+                .find(|u| u.unique_id == r.unique_id)
+                .cloned()
+                .unwrap_or_else(|| r.clone())
+        })
+        .collect();
+    live.sort_by_key(|r| r.slot);
+    let mut out = PackedAfterRemove::default();
+    for (i, r) in live.iter_mut().enumerate() {
+        let quantity_changed = updated.iter().any(|u| u.unique_id == r.unique_id);
+        if r.slot != i as u16 {
+            r.slot = i as u16;
+            out.moved.push(r.clone());
+            out.changed.push(r.clone());
+        } else if quantity_changed {
+            out.changed.push(r.clone());
+        }
+    }
+    let end = live.len() as u16;
+    let mut tail: Vec<u16> = rows.iter().map(|r| r.slot).filter(|s| *s >= end).collect();
+    tail.sort_unstable();
+    tail.dedup();
+    out.tail_slots = tail;
+    out
 }
 
 // ---------------------------------------------------------------------------
@@ -9990,4 +10061,75 @@ pub(crate) async fn apply_set_pool(
         tp,
         "SetPool applied + broadcast"
     );
+}
+
+#[cfg(test)]
+mod realign_after_remove_tests {
+    use super::realign_after_remove;
+    use crate::data::InventoryItem;
+
+    fn stack(unique_id: u64, item_id: u32, quantity: i32, slot: u16) -> InventoryItem {
+        InventoryItem {
+            unique_id,
+            item_id,
+            quantity,
+            slot,
+            ..Default::default()
+        }
+    }
+
+    fn slots(items: &[InventoryItem]) -> Vec<(u64, u16, i32)> {
+        items
+            .iter()
+            .map(|i| (i.unique_id, i.slot, i.quantity))
+            .collect()
+    }
+
+    // Two stacks emptied in the middle of the bag (an egg set handed in):
+    // the stacks after them move down and the two last slots are cleared.
+    #[test]
+    fn emptied_stacks_close_up() {
+        let rows = vec![
+            stack(1, 10, 2, 0),
+            stack(2, 11, 3, 1),
+            stack(3, 12, 1, 2),
+            stack(4, 13, 1, 3),
+            stack(5, 14, 3, 4),
+        ];
+        let updated = vec![stack(5, 14, 2, 4)];
+        let packed = realign_after_remove(&rows, &updated, &[2, 4]);
+        assert_eq!(slots(&packed.moved), vec![(3, 1, 1), (5, 2, 2)]);
+        assert_eq!(slots(&packed.changed), vec![(3, 1, 1), (5, 2, 2)]);
+        assert_eq!(packed.tail_slots, vec![3, 4]);
+    }
+
+    // A stack only shrinks: nothing moves, the client hears the new count.
+    #[test]
+    fn a_shrunk_stack_stays_put() {
+        let rows = vec![stack(1, 10, 4, 0), stack(2, 11, 3, 1)];
+        let updated = vec![stack(1, 10, 2, 0)];
+        let packed = realign_after_remove(&rows, &updated, &[]);
+        assert!(packed.moved.is_empty());
+        assert_eq!(slots(&packed.changed), vec![(1, 0, 2)]);
+        assert!(packed.tail_slots.is_empty());
+    }
+
+    // The last stack emptied: no move, only its slot cleared.
+    #[test]
+    fn the_last_stack_emptied() {
+        let rows = vec![stack(1, 10, 4, 0), stack(2, 11, 3, 1)];
+        let packed = realign_after_remove(&rows, &[], &[2]);
+        assert!(packed.moved.is_empty());
+        assert!(packed.changed.is_empty());
+        assert_eq!(packed.tail_slots, vec![1]);
+    }
+
+    // A bag that already has holes (left by the old code) is packed too.
+    #[test]
+    fn old_holes_close_as_well() {
+        let rows = vec![stack(1, 10, 1, 0), stack(2, 11, 1, 2), stack(3, 12, 2, 5)];
+        let packed = realign_after_remove(&rows, &[], &[1]);
+        assert_eq!(slots(&packed.moved), vec![(2, 0, 1), (3, 1, 2)]);
+        assert_eq!(packed.tail_slots, vec![2, 5]);
+    }
 }

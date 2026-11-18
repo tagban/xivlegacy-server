@@ -5027,6 +5027,14 @@ pub(crate) async fn die_if_defender_fell(
         .is_some_and(|a| crate::runtime::monster_mode::no_rewards(a, defender_actor_id));
     if no_rewards {
         crate::runtime::monster_mode::forget_fights(defender_actor_id);
+        // The one reward of a monster's kill: Monster Points.
+        if let (Some(killer), Some(db)) = (attacker_actor_id, db) {
+            let now = common::utils::unix_timestamp() as u32;
+            let points =
+                crate::runtime::monster_mode::kill_reward(killer, bnpc_class_id, mob_level, now);
+            crate::runtime::monster_points::award(killer, points, "kill", registry, world, db)
+                .await;
+        }
         return;
     }
     // A battle leve's target counts whoever landed the blow.

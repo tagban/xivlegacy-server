@@ -58,6 +58,7 @@ const COMMAND_SYNTAX: &[&str] = &[
     "gmhelp [word]",
     "who",
     "version",
+    "mp [list | buy <number>]",
     "bug <what happened>",
     "pos [name]",
     "endevent [name]",
@@ -92,6 +93,7 @@ const COMMAND_SYNTAX: &[&str] = &[
     "delquest <quest id> [name]",
     "addtitle <title id> [name]",
     "addeffect <status id> [seconds] [magnitude] [name | 0x<actor id>]",
+    "resetrecast <name>",
     "addallaetherytes [name]",
     "setmusic <music id> [name]",
     "setweather <weather id>",
@@ -137,7 +139,7 @@ const COMMAND_SYNTAX: &[&str] = &[
     "dungeon <name> | dungeon leave",
     "settp <tp 0-3000> [name]",
     "usemove <command id> (target, else nearest monster)",
-    "monstermode [class id] (become your target monster; again to let go)",
+    "monstermode [class id | ok [move] | bad [move] [note]] (become your target monster; again to let go; mark a move)",
     "leve <guildleve id> [stars 1-5] | leve abandon",
     "factioncredit <faction 1-3> <amount>",
     "setgm <level 0-4> <name>",
@@ -294,6 +296,7 @@ impl CommandProcessor {
             "setmusic" => self.handle_setmusic(&args).await,
             "setweather" => self.handle_setweather(&args).await,
             "revive" => self.handle_revive(&args).await,
+            "resetrecast" => self.handle_resetrecast(&args).await,
             "home" => self.handle_home(&args).await,
             "sethome" => self.handle_set_home(&args).await,
             "die" => self.handle_die(&args).await,
@@ -336,7 +339,7 @@ impl CommandProcessor {
     }
 
     /// The commands `level` may use (all of them on the console), leaving
-    /// out the finaldays module's while it's off.
+    /// out the commands of modules that are off.
     fn help(level: Option<u8>, final_days: bool) -> String {
         let perms = crate::command_permissions::get();
         let mine: Vec<&str> = COMMAND_SYNTAX
@@ -345,6 +348,8 @@ impl CommandProcessor {
                 let name = c.split_whitespace().next().unwrap_or("");
                 (final_days || !world_end::COMMANDS.contains(&name))
                     && (name != "bug" || crate::modules::is_enabled(common::bug_reports::MODULE))
+                    && (!matches!(name, "monstermode" | "mp")
+                        || crate::runtime::monster_mode::enabled())
                     && level.is_none_or(|l| l >= perms.required(name))
             })
             .copied()
@@ -373,6 +378,21 @@ impl CommandProcessor {
                 )
                 .await;
                 format!("revived {name} (actor {actor_id})")
+            }
+            TargetLookup::Err(e) => e,
+        }
+    }
+
+    /// `resetrecast <name>` — make every item ready to use again for a
+    /// player (item recast groups), for testing items back to back.
+    async fn handle_resetrecast(&self, args: &Args<'_>) -> String {
+        let Some(name) = args.rest_joined(0) else {
+            return "usage: resetrecast <name>".into();
+        };
+        match self.resolve_live_target(&name).await {
+            TargetLookup::Ok { actor_id, .. } => {
+                crate::processor::items::reset_recasts(actor_id);
+                format!("item recasts reset for {name}")
             }
             TargetLookup::Err(e) => e,
         }
@@ -633,6 +653,8 @@ impl CommandProcessor {
                 let needed = perms.required(name);
                 let shown = (self.final_days || !world_end::COMMANDS.contains(&name))
                     && (name != "bug" || crate::modules::is_enabled(common::bug_reports::MODULE))
+                    && (!matches!(name, "monstermode" | "mp")
+                        || crate::runtime::monster_mode::enabled())
                     && level.is_none_or(|l| l >= needed)
                     && word
                         .as_ref()

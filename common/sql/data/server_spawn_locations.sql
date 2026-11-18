@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 2063 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 2066 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -2068,4 +2068,7 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (31295, 2201612, 'moon_king_bentbranch', 150, '', 0, 302.0, 4, -544.0, 0.0, 0, 0, NULL),
 (31296, 1002078, 'moon_cadet_blackbrush', 170, '', 0, 39.0, 201, -482.0, 0.0, 0, 0, NULL),
 (31297, 2201611, 'moon_bombard_blackbrush', 170, '', 0, 43.0, 201, -478.0, 0.0, 0, 0, NULL),
-(31298, 2201612, 'moon_king_blackbrush', 170, '', 0, 47.0, 201, -482.0, 0.0, 0, 0, NULL);
+(31298, 2201612, 'moon_king_blackbrush', 170, '', 0, 47.0, 201, -482.0, 0.0, 0, 0, NULL),
+(31901, 1000159, 'mp_nibbles', 175, '', 0, -64.5, 195.2, 75.0, 2.88, 0, 0, 'Nibbles Coinwhisker'),
+(31902, 1000159, 'mp_mogsley', 155, '', 0, 58.5, 4.0, -1193.5, 1.67, 0, 0, 'Mogsley Pompomtrade'),
+(31903, 1000159, 'mp_gobbie', 133, '', 0, -436.0, 39.6, 190.0, -1.37, 0, 0, 'Gobbie Grubtrader');

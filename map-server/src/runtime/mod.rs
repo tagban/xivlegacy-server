@@ -38,6 +38,7 @@ pub mod dungeon_chest;
 pub mod dungeon_fight;
 pub mod gc_apply;
 pub mod monster_mode;
+pub mod monster_points;
 pub mod quest_apply;
 pub mod quest_hook;
 pub mod summon;
@@ -52,6 +53,8 @@ mod integration_tests;
 mod battle_audit_tests;
 #[cfg(test)]
 mod battle_behavior_tests;
+#[cfg(test)]
+mod item_use_tests;
 
 pub use actor_registry::{ActorHandle, ActorKindTag, ActorRegistry};
 pub use broadcast::broadcast_around_actor;

@@ -34,6 +34,15 @@
 //! (migration 013): taking and letting go of a body, each move and how it
 //! resolved or why it was refused, and testers' ok/bad marks on a move.
 
+/// The module that switches Monster Mode on (modules/monstermode). Off, no
+/// one can take a body, so nothing else here ever runs.
+pub const MODULE: &str = "monstermode";
+
+/// Whether this server runs Monster Mode.
+pub fn enabled() -> bool {
+    crate::modules::is_enabled(MODULE)
+}
+
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
@@ -183,6 +192,12 @@ pub struct Possession {
     /// The monster's actor class and level, for the log.
     pub mob_class_id: u32,
     pub mob_level: i16,
+    /// Whether this body earns Monster Points (not the tester form).
+    pub earns_points: bool,
+    /// When the body was taken (unix seconds), and the minutes since then
+    /// in which a move was used: the session bonus on letting go.
+    pub started_at: u32,
+    pub active_minutes: std::collections::HashSet<u32>,
     pub own: OwnBody,
     /// The monster's moves, on the player's hotbar.
     pub moves: Vec<u16>,
@@ -273,6 +288,11 @@ pub fn log_move(
         return;
     };
     last_move().insert(player_id, (mob_class_id, level, command_id));
+    if let Some(p) = possessions().get_mut(&player_id) {
+        let now = common::utils::unix_timestamp() as u32;
+        p.active_minutes
+            .insert(now.saturating_sub(p.started_at) / 60);
+    }
     for h in hits {
         log(MonsterModeRow {
             chara_id: player_id,
@@ -342,6 +362,73 @@ pub fn log_verdict(
         zone_id,
         ..Default::default()
     });
+}
+
+/// Monster Points granted (`why` = kill or session), for the log.
+pub fn log_points(player_id: u32, why: &'static str, granted: i32) {
+    let (mob_class_id, level) = body_of(player_id).unwrap_or((0, 0));
+    log(MonsterModeRow {
+        chara_id: player_id,
+        event: "points",
+        mob_class_id,
+        level,
+        outcome: why.into(),
+        amount: i64::from(granted),
+        ..Default::default()
+    });
+}
+
+/// Monster Points for a transformed player's kill of a monster of
+/// `prey_class` at `prey_level` (0 if the body earns none).
+pub fn kill_reward(player_id: u32, prey_class: u32, prey_level: i16, now: u32) -> i32 {
+    let Some(level) = possessions()
+        .get(&player_id)
+        .filter(|p| p.earns_points)
+        .map(|p| p.mob_level)
+    else {
+        return 0;
+    };
+    let points = crate::runtime::monster_points::kill_points(level, prey_level);
+    if crate::runtime::monster_points::note_kill(player_id, prey_class, now) {
+        points / 2
+    } else {
+        points
+    }
+}
+
+/// The session bonus of a body let go: a point per minute with a move
+/// used, up to [`SESSION_MAX`](crate::runtime::monster_points::SESSION_MAX),
+/// if the session lasted long enough.
+pub fn session_bonus(
+    earns_points: bool,
+    started_at: u32,
+    ended_at: u32,
+    active_minutes: usize,
+) -> i32 {
+    use crate::runtime::monster_points::{SESSION_MAX, SESSION_MIN_SECS};
+    if !earns_points || ended_at.saturating_sub(started_at) < SESSION_MIN_SECS {
+        return 0;
+    }
+    (active_minutes as i32).min(SESSION_MAX)
+}
+
+/// player id -> session bonus earned on letting go, not yet paid.
+fn pending_bonus() -> MutexGuard<'static, HashMap<u32, i32>> {
+    static MAP: OnceLock<Mutex<HashMap<u32, i32>>> = OnceLock::new();
+    MAP.get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+}
+
+/// Pay the session bonus of the body the player let go, if any.
+pub async fn settle_points(player_id: u32, registry: &ActorRegistry, world: &WorldManager) {
+    let Some(points) = pending_bonus().remove(&player_id) else {
+        return;
+    };
+    if let Some(db) = LOG_DB.get() {
+        crate::runtime::monster_points::award(player_id, points, "session", registry, world, db)
+            .await;
+    }
 }
 
 /// player id -> possession.
@@ -443,6 +530,7 @@ pub async fn possess(
     mob_id: u32,
     mob: Arc<RwLock<Character>>,
     mob_name: String,
+    earns_points: bool,
 ) -> Result<(), String> {
     if is_transformed(player_id) {
         return Err("you are already in Monster Mode".into());
@@ -488,6 +576,9 @@ pub async fn possess(
                 mob_name,
                 mob_class_id,
                 mob_level,
+                earns_points,
+                started_at: common::utils::unix_timestamp() as u32,
+                active_minutes: Default::default(),
                 own,
                 moves,
                 player,
@@ -504,6 +595,15 @@ pub async fn possess(
 /// to the log: `off`, `ko`, `zone`, `logout`, `class` or `gear`.
 pub async fn release(player_id: u32, reason: &'static str) -> Option<Possession> {
     let p = possessions().remove(&player_id)?;
+    let bonus = session_bonus(
+        p.earns_points,
+        p.started_at,
+        common::utils::unix_timestamp() as u32,
+        p.active_minutes.len(),
+    );
+    if bonus > 0 {
+        pending_bonus().insert(player_id, bonus);
+    }
     {
         let mut c = p.player.write().await;
         log(MonsterModeRow {
@@ -613,6 +713,7 @@ pub async fn refresh_client(registry: &ActorRegistry, world: &WorldManager, play
         )
         .await;
     }
+    settle_points(player_id, registry, world).await;
 }
 
 /// The transformed player's monster body was defeated: they stand up in
@@ -647,6 +748,14 @@ mod tests {
             (23177, "forbidden_magicks"),
         ];
         assert_eq!(best_tiers(moves.into_iter()), vec![23172, 23122, 23177]);
+    }
+
+    #[test]
+    fn the_session_bonus_counts_active_minutes() {
+        assert_eq!(session_bonus(true, 1000, 1000 + 119, 1), 0);
+        assert_eq!(session_bonus(true, 1000, 1000 + 120, 2), 2);
+        assert_eq!(session_bonus(true, 1000, 1000 + 3600, 45), 20);
+        assert_eq!(session_bonus(false, 1000, 1000 + 3600, 45), 0);
     }
 
     #[test]
@@ -742,9 +851,16 @@ mod tests {
             let mut m = mob.write().await;
             m.chara = chara(10502, 90, 120, 5);
         }
-        possess(900_001, player.clone(), 900_002, mob.clone(), "rat".into())
-            .await
-            .unwrap();
+        possess(
+            900_001,
+            player.clone(),
+            900_002,
+            mob.clone(),
+            "rat".into(),
+            true,
+        )
+        .await
+        .unwrap();
         assert!(is_transformed(900_001));
         assert!(is_hidden(900_002));
         assert!(!may_respawn(900_002));
@@ -756,7 +872,7 @@ mod tests {
         // A second possession of the same monster is refused.
         let other = Arc::new(RwLock::new(Character::new(900_003)));
         assert!(
-            possess(900_003, other, 900_002, mob.clone(), "rat".into())
+            possess(900_003, other, 900_002, mob.clone(), "rat".into(), true)
                 .await
                 .is_err()
         );
