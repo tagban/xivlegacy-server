@@ -177,8 +177,9 @@ function onEventStarted(player, commandActor, triggerName, arg1, arg2, arg3, arg
         player:EndEvent();
         return;
     end
-    -- A fieldcraft leve's marked point: the visit counts for the leve, and
-    -- the point doesn't rest afterwards (the leve moves its marker on).
+    -- A fieldcraft leve's marked point: the visit counts for the leve (at
+    -- its first item, or at the end if it gave none; the leve then moves
+    -- its marker on).
     levePoint = player:IsLeveGatherPoint(nodeZoneId, nodeUniqueId);
     harvestNode = resolver:BuildAimSlots(harvestNodeId);  -- [1-11] = {itemCatalogId, remainder, sweetspot, maxYield}
     harvestGained = 0;   -- items obtained this visit (EXP is per item kind gathered)
@@ -221,6 +222,7 @@ function onEventStarted(player, commandActor, triggerName, arg1, arg2, arg3, arg
 
 
 
+        local windowClosed = false;
         while harvestAttempts > 0 do
 
             -- "Aim", 0 = Top of bar, 100 = Bottom.
@@ -269,6 +271,12 @@ function onEventStarted(player, commandActor, triggerName, arg1, arg2, arg3, arg
                     chosenCommand, powerCurrent = callClientFunction(player, "delegateCommand", harvestJudge, "askInputWidget", commandActor, harvestType, 2, showTutorial, canWait, canJig, nil, false); -- Strike
 
                     if debugMsg then player:SendMessage(0x20, "", tostring(chosenCommand).." Power: "..tostring(powerCurrent)); end
+
+                    -- The window closed on the client (Escape): no answer will come.
+                    if chosenCommand == nil then
+                        windowClosed = true;
+                        break;
+                    end
 
 
                     if chosenCommand == ui.cancel then      -- Cancel.
@@ -327,6 +335,13 @@ function onEventStarted(player, commandActor, triggerName, arg1, arg2, arg3, arg
 
                             HarvestReward(player, nodeItem, nodeYield);
                             harvestGained = harvestGained + 1;
+                            -- a fieldcraft leve's point counts with its first
+                            -- item (the items, for a procure leve), so the
+                            -- tracker moves on while the window is still open
+                            if levePoint then
+                                player:LeveGatherVisit(nodeZoneId, nodeUniqueId, nodeYield);
+                                levePoint = false;
+                            end
                             GatherExp(player, harvestType, harvestGrade);
                             nodeRemainder = 0;
                         else
@@ -392,6 +407,13 @@ function onEventStarted(player, commandActor, triggerName, arg1, arg2, arg3, arg
                 break;
             elseif menuResult == 22710 then -- "Aim" Tutorial.
                 SendTutorial(player, harvestJudge, 1);
+            else
+                -- The window closed on the client (Escape): asking again would
+                -- loop forever and keep the player from gathering anywhere.
+                break;
+            end
+            if windowClosed then
+                break;
             end
         end
 
@@ -401,7 +423,8 @@ function onEventStarted(player, commandActor, triggerName, arg1, arg2, arg3, arg
 
 
     if levePoint and harvestAttempts < attemptsAtStart then
-        player:LeveGatherVisit(nodeZoneId, nodeUniqueId, harvestGained);
+        -- worked without an item: the point still counts for a locate leve
+        player:LeveGatherVisit(nodeZoneId, nodeUniqueId, 0);
     elseif harvestAttempts == 0 then
         player:SendGameMessage(player, worldMaster, 40310, 0x20); -- "The deposit has been exhausted."
         -- The point leaves only this gatherer's world and comes back for
