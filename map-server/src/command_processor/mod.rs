@@ -336,7 +336,7 @@ impl CommandProcessor {
     }
 
     /// The commands `level` may use (all of them on the console), leaving
-    /// out the finaldays module's while it's off.
+    /// out the commands of modules that are off.
     fn help(level: Option<u8>, final_days: bool) -> String {
         let perms = crate::command_permissions::get();
         let mine: Vec<&str> = COMMAND_SYNTAX
@@ -345,6 +345,7 @@ impl CommandProcessor {
                 let name = c.split_whitespace().next().unwrap_or("");
                 (final_days || !world_end::COMMANDS.contains(&name))
                     && (name != "bug" || crate::modules::is_enabled(common::bug_reports::MODULE))
+                    && (name != "monstermode" || crate::runtime::monster_mode::enabled())
                     && level.is_none_or(|l| l >= perms.required(name))
             })
             .copied()
@@ -633,6 +634,7 @@ impl CommandProcessor {
                 let needed = perms.required(name);
                 let shown = (self.final_days || !world_end::COMMANDS.contains(&name))
                     && (name != "bug" || crate::modules::is_enabled(common::bug_reports::MODULE))
+                    && (name != "monstermode" || crate::runtime::monster_mode::enabled())
                     && level.is_none_or(|l| l >= needed)
                     && word
                         .as_ref()
