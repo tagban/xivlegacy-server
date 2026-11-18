@@ -34,6 +34,15 @@
 //! (migration 013): taking and letting go of a body, each move and how it
 //! resolved or why it was refused, and testers' ok/bad marks on a move.
 
+/// The module that switches Monster Mode on (modules/monstermode). Off, no
+/// one can take a body, so nothing else here ever runs.
+pub const MODULE: &str = "monstermode";
+
+/// Whether this server runs Monster Mode.
+pub fn enabled() -> bool {
+    crate::modules::is_enabled(MODULE)
+}
+
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
