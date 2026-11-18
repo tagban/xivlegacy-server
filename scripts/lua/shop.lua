@@ -4,12 +4,21 @@ Shop Buy/Sell Functions
 
 --]]
 
+-- What each shop visit has spent so far, by currency. The balance HasItem
+-- reads is the one the visit started with, so without this a second buy
+-- in the same visit passed the check on money already spent (and
+-- RemoveItem only takes what is there). Keyed weakly by the visit's player
+-- object, so a new visit starts from zero.
+local spentThisVisit = setmetatable({}, { __mode = "k" });
+
 function purchaseItem(player, location, itemId, quantity, quality, price, currency)
     
     local worldMaster = GetWorldMaster();          
     local invCheck = -1;
+    local spent = spentThisVisit[player] or {};
+    spentThisVisit[player] = spent;
 
-    if (player:GetItemPackage(INVENTORY_CURRENCY):HasItem(currency, price)) then
+    if (player:GetItemPackage(INVENTORY_CURRENCY):HasItem(currency, price + (spent[currency] or 0))) then
         invCheck = player:GetItemPackage(location):AddItem(itemId, quantity, quality); 
     
         if (invCheck == INV_ERROR_FULL) then
@@ -22,6 +31,7 @@ function purchaseItem(player, location, itemId, quantity, quality, price, curren
             player:SendMessage(0x20, "", "[DEBUG] Server Error on adding item.");
         elseif (invCheck == INV_ERROR_SUCCESS) then
             player:GetItemPackage(INVENTORY_CURRENCY):RemoveItem(currency, price);
+            spent[currency] = (spent[currency] or 0) + price;
             
             if (currency == 1000001) then  -- If Gil
                 -- You purchase <quantity> <itemId> <quality> for <price> gil.

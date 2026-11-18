@@ -6809,5 +6809,19 @@ mod shop_purchase_tests {
             )),
             "the price wasn't taken: {cmds:?}"
         );
+
+        // A second dagger in the same visit costs 5,400 in all, more than
+        // the 5,000 the visit started with: refused, nothing added or taken.
+        lua.load("purchaseItem(player, INVENTORY_NORMAL, 4030110, 1, 1, 2700, 1000001)")
+            .exec()
+            .unwrap();
+        let cmds = CommandQueue::drain(&queue);
+        assert!(
+            !cmds.iter().any(|c| matches!(
+                c,
+                LuaCommand::AddItem { .. } | LuaCommand::RemoveItem { .. }
+            )),
+            "a second buy spent money the visit already spent: {cmds:?}"
+        );
     }
 }
