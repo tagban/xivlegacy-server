@@ -13935,7 +13935,7 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
 }'),
 (1001954, '', 3310701, 0, NULL),
 (1001955, '/Chara/Npc/Populace/InstanceRaidGuide/InstanceRaidGuide', 1200223, 19, '{"talkEventConditions":[{"unknown1":4,"unknown2":0,"conditionName":"talkDefault"}],"noticeEventConditions":[{"unknown1":0,"unknown2":1,"conditionName":"noticeEvent"}]}'),
-(1001956, '', 1100221, 0, NULL),
+(1001956, '/Chara/Npc/Populace/InstanceRaidGuide/InstanceRaidGuideCuttersCry', 1100221, 19, '{"talkEventConditions":[{"unknown1":4,"unknown2":0,"conditionName":"talkDefault"}],"noticeEventConditions":[{"unknown1":0,"unknown2":1,"conditionName":"noticeEvent"}]}'),
 (1001957, '', 2480009, 0, NULL),
 (1001960, '', 3202612, 0, NULL),
 (1001961, '', 3206412, 0, NULL),
