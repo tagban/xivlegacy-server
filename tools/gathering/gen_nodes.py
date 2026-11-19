@@ -36,6 +36,7 @@ POOL_GAP = 20
 BLOCKED = [
     (130, 1177.28, -939.18), (154, 765.55, 1080.95), (172, -1261.04, -160.76),
     (143, 204.56, -204.2), (143, 163.69, -241.0), (150, -127.93, -586.5),
+    (172, -1365.59, -164.41),
 ]
 BLOCKED_GAP = 8
 # place -> (region, aetheryte id, grade). Grades per camp from Gamer Escape 1.0 item pages (2010-12;
