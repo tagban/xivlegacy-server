@@ -9,6 +9,8 @@ World chat for small servers, where players are spread thin over many zones.
 - **Discord, both ways (optional):** world chat and login lines go to a
   Discord channel, and what people write in that channel comes into the game
   as say from "[Discord] Name".
+- **Players online on Discord (optional):** the bot's status shows how many
+  are playing, "Watching 3 players online".
 
 Off by default: the core stays 1.0's local `/say`.
 
@@ -58,7 +60,7 @@ never held up.
 ### Discord to game: a bot reading the channel
 
 The server reads the channel every `poll_seconds` (5) with Discord's REST
-API; it doesn't connect to Discord's gateway.
+API; reading needs no gateway connection (the bot's status below does).
 
 1. <https://discord.com/developers/applications>, **New Application**; under
    **Bot**, **Reset Token** and copy it, and switch on **Message Content
@@ -93,15 +95,46 @@ A failed read is logged once (without the token) and retried every 30
 seconds: check the token, the channel id, the bot's permissions in that
 channel and the Message Content intent.
 
+### The bot's status: players online
+
+With a bot token, the bot's status in the member list shows the players
+online: **Watching 3 players online**, "1 player online" for one, and
+"0 players online" when nobody is on (the bot stays online). It works with
+the token alone; `channel_id` isn't needed for it.
+
+```toml
+# settings/worldchat.toml
+[discord]
+presence = true                          # false: leave the status alone
+presence_text = "{online} players online" # after "Watching"
+```
+
+`{online}` is the count, and "{online} players" reads "1 player" for one.
+It's counted as the status module's `GET /status` counts it (characters in
+the world), every 10 seconds; the status is set when the bot connects and
+then when the count changes, at most once every 20 seconds (Discord allows
+only a few status changes a minute).
+
+A bot's status can only be set over Discord's gateway, so the map server
+keeps one small websocket connection to it open, on its own thread, for the
+status and nothing else. It asks for no intents, so the bot needs no extra
+intents or permissions for it. If the connection drops, it reconnects after
+5 seconds, waiting longer each time up to 5 minutes; the game is never held
+up. A rejected token (HTTP 401, close code 4004) is logged once, without
+the token, and the status stays off until the map server restarts.
+
 ### Using the bot you already have
 
 If a bot already bridges another game's chat (an FFXI server's, say), you
 can reuse it instead of making a new one: give its token as
 `XIVLEGACY_WORLDCHAT_DISCORD_BOT_TOKEN`, make sure it can see the new
 channel (View Channels, Read Message History) and that its application has
-the Message Content intent on, and set `channel_id` to the new channel. This
-server only reads with the token over REST, so it doesn't disturb that bot's
-own gateway connection. Use a webhook of the new channel for the other
+the Message Content intent on, and set `channel_id` to the new channel.
+Reading the channel uses REST and doesn't disturb that bot's own gateway
+connection. The status is different: this server opens a second gateway
+session for the same bot, and if the other bridge sets a status too, the two
+will overwrite each other. Set `presence = false` there, or give this server
+its own bot. Use a webhook of the new channel for the other
 direction, and keep world chat in its own channel: the other bridge's posts
 are skipped here as bot messages, but a shared channel would mix both games.
 

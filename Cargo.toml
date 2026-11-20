@@ -44,6 +44,8 @@ argon2 = "0.5"
 http = "1"
 percent-encoding = "2"
 ureq = { version = "2", features = ["json"] }
+# the worldchat module's Discord gateway (bot presence): blocking, rustls
+tungstenite = { version = "0.29", default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
 
 [profile.release]
 lto = "thin"
