@@ -6473,6 +6473,134 @@ async fn level_up_fires_attain_level_and_learn_command_messages() {
     );
 }
 
+/// A level-up on the class being played fills HP and MP to the new
+/// level's max (retail 1.0) and sends the bars at once. A gain on a
+/// parked class, or one that stays inside the level, leaves the pools
+/// alone.
+#[tokio::test]
+async fn level_up_refills_hp_and_mp_to_the_new_max() {
+    use common::db::ConnCallExt;
+
+    let world = Arc::new(WorldManager::new());
+    let registry = Arc::new(ActorRegistry::new());
+    let db = Arc::new(
+        crate::database::Database::open(tempdb())
+            .await
+            .expect("db stub"),
+    );
+    let zone = Zone::new(
+        200,
+        "test",
+        1,
+        "/Area/Zone/Test",
+        0,
+        0,
+        0,
+        false,
+        false,
+        false,
+        false,
+        false,
+        Some(&StubNavmeshLoader),
+    );
+    world.register_zone(zone).await;
+    db.conn_for_test()
+        .call_db(|c| {
+            c.execute(
+                r"INSERT INTO characters (id, userId, slot, serverId, name)
+                  VALUES (910, 0, 0, 0, 'Refills')",
+                [],
+            )?;
+            c.execute(
+                r"INSERT INTO characters_class_levels (characterId) VALUES (910)",
+                [],
+            )?;
+            c.execute(
+                r"INSERT INTO characters_class_exp (characterId) VALUES (910)",
+                [],
+            )?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+    let thm = crate::gamedata::CLASSID_THM;
+    let mut chara = Character::new(910);
+    chara.chara.class = thm as i16;
+    chara.chara.level = 1;
+    chara.battle_save.skill_level[thm as usize] = 1;
+    // Hurt and drained mid-fight at level 1.
+    chara.chara.max_hp = crate::battle::utils::player_base_hp(1) as i16;
+    chara.chara.hp = 20;
+    chara.chara.max_mp = 100;
+    chara.chara.mp = 5;
+    registry
+        .insert(ActorHandle::new(910, ActorKindTag::Player, 200, 910, chara))
+        .await;
+    let (tx, mut rx) = mpsc::channel::<Vec<u8>>(256);
+    world.register_client(910, ClientHandle::new(910, tx)).await;
+
+    // Inside level 1: no refill.
+    crate::runtime::quest_apply::apply_add_exp(910, thm, 100, &registry, &db, Some(&world), None)
+        .await;
+    {
+        let h = registry.get(910).await.unwrap();
+        let c = h.character.read().await;
+        assert_eq!(c.chara.level, 1);
+        assert_eq!((c.chara.hp, c.chara.mp), (20, 5), "no level, no refill");
+    }
+    while rx.try_recv().is_ok() {}
+
+    // 100 + 500 crosses 570: level 2.
+    crate::runtime::quest_apply::apply_add_exp(910, thm, 500, &registry, &db, Some(&world), None)
+        .await;
+    let h = registry.get(910).await.unwrap();
+    let (hp, max_hp, mp, max_mp) = {
+        let c = h.character.read().await;
+        assert_eq!(c.chara.level, 2);
+        (c.chara.hp, c.chara.max_hp, c.chara.mp, c.chara.max_mp)
+    };
+    assert_eq!(
+        max_hp,
+        crate::battle::utils::player_base_hp(2) as i16,
+        "max HP is the new level's",
+    );
+    assert!(max_mp > 0, "a caster has an MP pool");
+    assert_eq!((hp, mp), (max_hp, max_mp), "HP and MP fill on level-up");
+
+    // The bars go out: the last stateAtQuicklyForAll carries the full pools.
+    let marker = b"charaWork/stateAtQuicklyForAll";
+    let mut saw_bars = false;
+    while let Ok(frame) = rx.try_recv() {
+        if frame.windows(marker.len()).any(|w| w == marker) {
+            saw_bars = true;
+        }
+    }
+    assert!(saw_bars, "the HP/MP bars must be sent on level-up");
+
+    // A gain on a parked class levels it but leaves the pools alone.
+    {
+        let mut c = h.character.write().await;
+        c.chara.hp = 30;
+        c.chara.mp = 7;
+    }
+    crate::runtime::quest_apply::apply_add_exp(
+        910,
+        crate::gamedata::CLASSID_GLA,
+        600,
+        &registry,
+        &db,
+        Some(&world),
+        None,
+    )
+    .await;
+    let c = h.character.read().await;
+    assert_eq!(
+        c.battle_save.skill_level[crate::gamedata::CLASSID_GLA as usize],
+        2
+    );
+    assert_eq!((c.chara.hp, c.chara.mp), (30, 7), "parked class: no refill");
+}
+
 // ---------------------------------------------------------------------------
 // Death-state ticker passes — Tier 1 #7 follow-up
 //   * Modifier::Raise auto-revive
@@ -15477,6 +15605,77 @@ async fn set_target_auto_attack_draws_weapon_from_passive() {
             == crate::packets::opcodes::OP_SET_ACTOR_TARGET_ANIMATED),
         "reticle broadcast goes out",
     );
+}
+
+/// A hostile hotbar action (Thunder on slot 1) pressed in passive mode
+/// switches to active mode the way F does and starts auto-attack on the
+/// monster; the client's "auto-attack off" 0x00CD that follows the press
+/// used to drop the Attack state, so the player cast and then stood there.
+/// Once the press's window has passed, auto-attack off works as before.
+#[tokio::test]
+async fn hostile_action_from_passive_engages_auto_attack() {
+    use crate::battle::state::BattleStateKind;
+
+    let scene = sheathe_scene().await;
+    let handle = scene.registry.get(1).await.expect("player handle");
+    let thunder = crate::gamedata::BattleCommand {
+        id: 27313,
+        name: "thunder".into(),
+        main_target: crate::battle::target_find::ValidTarget::ENEMY.0,
+        valid_target: crate::battle::target_find::ValidTarget::ENEMY.0,
+        command_type: crate::battle::CommandType::SPELL.bits() as i16,
+        range: 20.0,
+        range_height: 10,
+        cast_time_ms: 2000,
+        cast_type: 2,
+        ..Default::default()
+    };
+    scene
+        .processor
+        .dispatch_hotbar_command(
+            &handle,
+            42,
+            &[common::luaparam::LuaParam::Actor(2)],
+            thunder,
+        )
+        .await;
+    let kinds = |c: &crate::actor::Character| -> Vec<BattleStateKind> {
+        c.ai_container
+            .state_stack()
+            .iter()
+            .map(|s| s.kind)
+            .collect()
+    };
+    {
+        let c = handle.character.read().await;
+        assert_eq!(
+            c.base.current_main_state,
+            crate::actor::MAIN_STATE_ACTIVE,
+            "the press switches to active mode",
+        );
+        assert_eq!(
+            kinds(&c),
+            vec![BattleStateKind::Attack, BattleStateKind::Magic],
+            "auto-attack on the wolf, Thunder casting on top",
+        );
+    }
+
+    // The client leaves targeting with auto-attack off: swings go on.
+    scene.processor.apply_player_set_target(42, 2, false).await;
+    {
+        let c = handle.character.read().await;
+        assert_eq!(
+            kinds(&c),
+            vec![BattleStateKind::Attack, BattleStateKind::Magic],
+            "the follow-up auto-attack off must not stop the swings",
+        );
+    }
+
+    // Later, auto-attack off is the player's own toggle again.
+    handle.character.write().await.keep_attack_until_ms = 0;
+    scene.processor.apply_player_set_target(42, 2, false).await;
+    let c = handle.character.read().await;
+    assert_eq!(kinds(&c), vec![BattleStateKind::Magic], "auto-attack off");
 }
 
 /// A townsperson or quest giver (`Npc`) is never an auto-attack target,

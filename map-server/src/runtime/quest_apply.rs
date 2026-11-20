@@ -4448,6 +4448,10 @@ pub async fn apply_add_exp(
         .await;
     }
 
+    if levels_gained > 0 && is_active_class {
+        refill_pools_on_level_up(actor_id, &handle, registry, db, world, lua).await;
+    }
+
     tracing::info!(
         actor = actor_id,
         class = class_id,
@@ -4459,6 +4463,43 @@ pub async fn apply_add_exp(
         rested_after,
         "AddExp applied",
     );
+}
+
+/// A level-up on the class being played fills HP and MP (retail 1.0).
+///
+/// The stat pipeline is rebuilt first so max HP/MP are the new level's,
+/// then both pools are set to their max and the HP/MP bars go out
+/// (`charaWork/stateAtQuicklyForAll`, the same update every HP/MP change
+/// uses). Without a `WorldManager` (unit tests) the pools still fill at
+/// the current max. A KO'd player stays down.
+async fn refill_pools_on_level_up(
+    actor_id: u32,
+    handle: &ActorHandle,
+    registry: &ActorRegistry,
+    db: &Database,
+    world: Option<&WorldManager>,
+    lua: Option<&Arc<LuaEngine>>,
+) {
+    if let Some(world) = world {
+        let catalogs = lua
+            .map(|l| l.catalogs().clone())
+            .unwrap_or_else(|| Arc::new(crate::lua::Catalogs::new()));
+        crate::runtime::dispatcher::recalc_stats_now(registry, world, &catalogs, db, actor_id)
+            .await;
+    }
+    let refilled = {
+        let mut c = handle.character.write().await;
+        if c.base.current_main_state == crate::actor::MAIN_STATE_DEAD || c.chara.hp <= 0 {
+            false
+        } else {
+            c.chara.hp = c.chara.max_hp;
+            c.chara.mp = c.chara.max_mp;
+            true
+        }
+    };
+    if refilled && let Some(world) = world {
+        crate::runtime::dispatcher::sync_pools_after_tick(registry, world, actor_id).await;
+    }
 }
 
 /// Apply rested-XP bonus to an incoming gain.

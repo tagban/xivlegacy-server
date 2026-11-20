@@ -46,7 +46,7 @@ use tokio::time::interval;
 use crate::actor::Character;
 use crate::actor::modifier::ModifierMap;
 use crate::battle::controller::{ControllerOwnerView, LEASH_DISTANCE};
-use crate::battle::outbox::BattleOutbox;
+use crate::battle::outbox::{BattleEvent, BattleOutbox};
 use crate::battle::target_find::{ActorArena, ActorView};
 use crate::database::Database;
 use crate::lua::LuaEngine;
@@ -55,7 +55,7 @@ use crate::world_manager::WorldManager;
 use crate::zone::outbox::AreaOutbox;
 use crate::zone::zone::Zone;
 
-use super::actor_registry::{ActorKindTag, ActorRegistry};
+use super::actor_registry::{ActorHandle, ActorKindTag, ActorRegistry};
 use super::dispatcher::{dispatch_area_event, dispatch_battle_event, dispatch_status_event};
 
 /// Inn rested-XP accrual rate: 1 percentage point per N seconds while
@@ -546,6 +546,9 @@ impl GameTicker {
                 let chara = handle.character.read().await;
                 chara.base.current_main_state == crate::actor::MAIN_STATE_DEAD
             };
+            if !is_dead_actor && matches!(handle.kind, ActorKindTag::Ally) {
+                ally_heal_pass(&self.registry, zone, &handle, now_ms, &mut battle_outbox).await;
+            }
             let movement = if is_dead_actor {
                 let mut chara = handle.character.write().await;
                 chara.ai_container.pending_movement = None;
@@ -1124,6 +1127,122 @@ fn compute_passive_regen(chara: &Character) -> crate::status::PassiveRegen {
     crate::status::PassiveRegen { hp, mp: 0, tp }
 }
 
+/// A healer ally's cure (`battle.heal_spell`, set at spawn for the
+/// opening fights' Papalymo, Y'shtola and Niellefresne and any conjurer
+/// ally). While it fights, every tick it looks at itself and the players
+/// and allies within the spell's range in its instance, and starts a
+/// cast on the one with the lowest HP under
+/// [`crate::battle::controller::ALLY_HEAL_BELOW_HPP`] — at most once per
+/// [`crate::battle::controller::ALLY_HEAL_GAP_MS`], never mid-cast, and
+/// only with the MP for it (an ally with no MP pool casts freely). The
+/// cast runs through the usual Magic state: `CastStart` shows the chant,
+/// completion's `ResolveAction` lands the heal and its HP number.
+async fn ally_heal_pass(
+    registry: &ActorRegistry,
+    zone: &Arc<RwLock<Zone>>,
+    handle: &ActorHandle,
+    now_ms: u64,
+    battle_outbox: &mut BattleOutbox,
+) {
+    use crate::battle::controller::{ALLY_HEAL_GAP_MS, HealCandidate, pick_heal_target};
+
+    let (spell, origin) = {
+        let c = handle.character.read().await;
+        let Some(ctrl) = c.ai_container.controller.as_ref() else {
+            return;
+        };
+        let Some(spell) = ctrl.battle.heal_spell.clone() else {
+            return;
+        };
+        if !ctrl.casting_enabled
+            || now_ms < ctrl.battle.next_heal_ms
+            || !c.ai_container.is_engaged()
+            || !c.ai_container.can_change_state()
+            || c.status_effects
+                .has_by_flag(crate::status::StatusEffectFlags::PREVENT_SPELL)
+        {
+            return;
+        }
+        if c.chara.max_mp > 0
+            && i32::from(c.chara.mp) < i32::from(spell.calculate_mp_cost(c.chara.level, 0.0))
+        {
+            return;
+        }
+        (spell, c.base.position())
+    };
+
+    let nearby: Vec<u32> = {
+        let z = zone.read().await;
+        z.core
+            .actors_around(handle.actor_id, spell.range.max(1.0))
+            .into_iter()
+            .map(|a| a.actor_id)
+            .filter(|id| *id != handle.actor_id)
+            .collect()
+    };
+    let mut candidates = Vec::new();
+    for id in std::iter::once(handle.actor_id).chain(nearby) {
+        let Some(h) = registry.get(id).await else {
+            continue;
+        };
+        if !matches!(h.kind, ActorKindTag::Player | ActorKindTag::Ally)
+            || !crate::runtime::dungeon_fight::may_interact(handle.actor_id, id)
+        {
+            continue;
+        }
+        let c = h.character.read().await;
+        if !c.is_alive() {
+            continue;
+        }
+        let p = c.base.position();
+        candidates.push(HealCandidate {
+            actor_id: id,
+            hp: c.chara.hp,
+            max_hp: c.chara.max_hp,
+            distance: ((p.x - origin.x).powi(2) + (p.z - origin.z).powi(2)).sqrt(),
+        });
+    }
+    let Some(target) = pick_heal_target(&candidates, spell.range) else {
+        return;
+    };
+
+    let mut c = handle.character.write().await;
+    let (id, cast_ms, recast_ms, cast_type) = (
+        spell.id,
+        spell.cast_time_ms,
+        spell.recast_time_ms,
+        spell.cast_type,
+    );
+    let mp_cost = spell.calculate_mp_cost(c.chara.level, 0.0);
+    if !c.ai_container.internal_cast(target, spell, now_ms) {
+        return;
+    }
+    if c.chara.max_mp > 0 && mp_cost != 0 {
+        c.add_mp(-i32::from(mp_cost));
+    }
+    if let Some(ctrl) = c.ai_container.controller.as_mut() {
+        ctrl.battle.next_heal_ms = now_ms + ALLY_HEAL_GAP_MS;
+        // The attack spell waits for the cure to finish and recast.
+        ctrl.battle.next_cast_ms = ctrl
+            .battle
+            .next_cast_ms
+            .max(now_ms + u64::from(cast_ms) + u64::from(recast_ms));
+    }
+    battle_outbox.push(BattleEvent::CastStart {
+        owner_actor_id: handle.actor_id,
+        target_actor_id: target,
+        command_id: id,
+        cast_time_ms: cast_ms,
+        cast_type,
+    });
+    tracing::debug!(
+        ally = format!("0x{:08X}", handle.actor_id),
+        target = format!("0x{target:08X}"),
+        spell = id,
+        "healer ally casts its cure",
+    );
+}
+
 pub(crate) fn build_owner_view(
     chara: &Character,
     actor_id: u32,
@@ -1228,7 +1347,6 @@ fn _zone_is_actor_arena(z: &Zone) -> &dyn ActorArena {
 mod tests {
     use super::*;
     use crate::actor::Character;
-    use crate::runtime::actor_registry::{ActorHandle, ActorKindTag};
     use crate::zone::area::{ActorKind, StoredActor};
     use crate::zone::navmesh::StubNavmeshLoader;
     use common::Vector3;
@@ -2097,6 +2215,202 @@ mod tests {
         assert_eq!(
             chant_ons, 2,
             "exactly two casts in 8 s (recast = cast 2 s + 6 s); got {substates:?}",
+        );
+    }
+
+    /// A healer ally (Papalymo's shape: caster, no swings) fighting
+    /// beside a hurt player casts Cure on them: the chant and begin-cast
+    /// go out, the heal lands, MP is spent, and the next cure waits out
+    /// the gap even while the player stays low. A healthy player gets
+    /// no cure.
+    #[tokio::test]
+    async fn healer_ally_cures_the_hurt_player() {
+        let world = Arc::new(WorldManager::new());
+        let registry = Arc::new(ActorRegistry::new());
+        let db = Arc::new(Database::open(tempdb()).await.expect("database stub"));
+        let mut zone = Zone::new(
+            100,
+            "test",
+            1,
+            "/Area/Zone/Test",
+            0,
+            0,
+            0,
+            false,
+            false,
+            false,
+            false,
+            false,
+            Some(&StubNavmeshLoader),
+        );
+        let mut ob = AreaOutbox::new();
+        for (id, kind, x) in [
+            (1, ActorKind::Player, 0.0),
+            (2, ActorKind::Ally, 5.0),
+            (3, ActorKind::BattleNpc, 8.0),
+        ] {
+            zone.core.add_actor(
+                StoredActor {
+                    actor_id: id,
+                    kind,
+                    position: Vector3::new(x, 0.0, 0.0),
+                    grid: (0, 0),
+                    is_alive: true,
+                },
+                &mut ob,
+            );
+        }
+        world.register_zone(zone).await;
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<Vec<u8>>(1024);
+        world
+            .register_client(42, crate::data::ClientHandle::new(42, tx))
+            .await;
+        world
+            .upsert_session(crate::data::Session {
+                id: 42,
+                current_zone_id: 100,
+                ..crate::data::Session::default()
+            })
+            .await;
+
+        let (catalog, _) = db
+            .load_global_battle_command_list()
+            .await
+            .expect("battle command catalog");
+        let cure = catalog
+            .get(&crate::battle::controller::ALLY_HEAL_SPELL_ID)
+            .expect("cure 27346 seeded")
+            .to_battle_command();
+
+        // The player is at 40% and fighting the monster from out of reach
+        // (no swings, no out-of-combat regen to muddy the HP read).
+        let mut player = Character::new(1);
+        player.chara.hp = 400;
+        player.chara.max_hp = 1000;
+        player.chara.level = 10;
+        player.hate.update_hate(3, 1);
+        player.ai_container.internal_engage(3, 0, 2500);
+        registry
+            .insert(ActorHandle::new(1, ActorKindTag::Player, 100, 42, player))
+            .await;
+
+        let mut ally = Character::new(2);
+        ally.chara.hp = 1000;
+        ally.chara.max_hp = 1000;
+        ally.chara.mp = 500;
+        ally.chara.max_mp = 500;
+        ally.chara.level = 10;
+        ally.base.position_x = 5.0;
+        let mut ctrl = crate::battle::controller::AllyController::new_for(2);
+        ctrl.auto_attack_enabled = false;
+        ctrl.battle.is_caster = true;
+        ctrl.battle.heal_spell = Some(cure);
+        ally.ai_container.controller = Some(ctrl);
+        ally.hate.update_hate(3, 10);
+        ally.ai_container.internal_engage(3, 0, 2500);
+        registry
+            .insert(ActorHandle::new(2, ActorKindTag::Ally, 100, 0, ally))
+            .await;
+
+        let mut monster = Character::new(3);
+        monster.chara.hp = 1000;
+        monster.chara.max_hp = 1000;
+        monster.chara.level = 10;
+        monster.base.position_x = 8.0;
+        registry
+            .insert(ActorHandle::new(
+                3,
+                ActorKindTag::BattleNpc,
+                100,
+                0,
+                monster,
+            ))
+            .await;
+
+        let ticker = GameTicker::new(TickerConfig::default(), world.clone(), registry, db);
+        // Cure: 2 s cast. 4 s of ticks lands it.
+        for i in 1..=40u64 {
+            ticker.tick_once(i * 100).await;
+        }
+        let (hp, ally_mp, next_heal) = {
+            let p = ticker.registry.get(1).await.unwrap();
+            let a = ticker.registry.get(2).await.unwrap();
+            let hp = p.character.read().await.chara.hp;
+            let a = a.character.read().await;
+            let next = a
+                .ai_container
+                .controller
+                .as_ref()
+                .unwrap()
+                .battle
+                .next_heal_ms;
+            (hp, a.chara.mp, next)
+        };
+        assert!(hp > 400, "the cure must land on the player (HP {hp})");
+        assert!(ally_mp < 500, "the cure costs the ally MP ({ally_mp})");
+        assert_eq!(next_heal, 100 + crate::battle::controller::ALLY_HEAL_GAP_MS);
+
+        let subs = drain_subpackets(&mut rx);
+        let begin_casts: Vec<(u16, u32)> = subs
+            .iter()
+            .filter(|s| {
+                s.game_message.opcode == crate::packets::opcodes::OP_COMMAND_RESULT_X01
+                    && s.header.source_id == 2
+            })
+            .map(|s| {
+                let cmd = u16::from_le_bytes(s.data[0x24..0x26].try_into().unwrap());
+                let target = u32::from_le_bytes(s.data[0x28..0x2C].try_into().unwrap());
+                (cmd, target)
+            })
+            .collect();
+        assert!(
+            begin_casts.contains(&(27346, 1)),
+            "the client sees Cure cast on the player; got {begin_casts:?}",
+        );
+
+        // Still hurt, but inside the gap: no second cure.
+        {
+            let p = ticker.registry.get(1).await.unwrap();
+            p.character.write().await.chara.hp = 100;
+        }
+        for i in 41..=90u64 {
+            ticker.tick_once(i * 100).await;
+        }
+        let hp = ticker
+            .registry
+            .get(1)
+            .await
+            .unwrap()
+            .character
+            .read()
+            .await
+            .chara
+            .hp;
+        assert_eq!(hp, 100, "one cure per gap");
+
+        // Healthy: past the gap, nothing to cure.
+        {
+            let p = ticker.registry.get(1).await.unwrap();
+            p.character.write().await.chara.hp = 900;
+        }
+        let mp_before = ticker
+            .registry
+            .get(2)
+            .await
+            .unwrap()
+            .character
+            .read()
+            .await
+            .chara
+            .mp;
+        for i in 91..=160u64 {
+            ticker.tick_once(i * 100).await;
+        }
+        let a = ticker.registry.get(2).await.unwrap();
+        assert_eq!(
+            a.character.read().await.chara.mp,
+            mp_before,
+            "no cure at 90%"
         );
     }
 

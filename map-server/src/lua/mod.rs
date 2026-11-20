@@ -4835,11 +4835,13 @@ mod tests {
     }
 
     /// Tutorial kill EXP (opening quests): the three REAL SEQ_005
-    /// content scripts award retail's per-kill EXP from `onUpdate` by
-    /// watching the live-hostile count — 1000/kill for the Gridania
-    /// wolves and Limsa aurelias, 3000 for the Ul'dah goobbue
-    /// (FFXIVenturer era guides + open-beta footage OCR; 3000 total per
-    /// city). Per script: arming ticks never grant; a hostile dropping
+    /// content scripts award per-kill EXP from `onUpdate` by watching
+    /// the live-hostile count — the 1.23b kill formula for a level-1
+    /// player on a same-level monster for each Gridania wolf and Limsa
+    /// aurelia, three times that for the lone Ul'dah goobbue. Every city
+    /// leaves a new character at level 2 (the old 1000/3000 were
+    /// pre-1.18 physical-level EXP and made it level 4). Per script:
+    /// arming ticks never grant; a hostile dropping
     /// off the live roster lands exactly one `AddExp(per_kill, current
     /// class)` per kill; an empty-ally roster (pre-onCreate window)
     /// never touches the counter; and a SECOND session interleaved on
@@ -4878,11 +4880,27 @@ mod tests {
                 })
                 .collect::<Vec<_>>()
         };
+        let kill = i32::from(crate::battle::exp::base_kill_exp(1, 1, 1));
         for (script, hostiles, per_kill) in [
-            ("content/SimpleContent30010.lua", 3u32, 1000i32), // Gridania wolves
-            ("content/SimpleContent30002.lua", 3, 1000),       // Limsa aurelias
-            ("content/SimpleContent30079.lua", 1, 3000),       // Ul'dah goobbue
+            ("content/SimpleContent30010.lua", 3u32, kill), // Gridania wolves
+            ("content/SimpleContent30002.lua", 3, kill),    // Limsa aurelias
+            ("content/SimpleContent30079.lua", 1, 3 * kill), // Ul'dah goobbue
         ] {
+            // The whole fight (every hostile down, no rested bonus) takes
+            // a level-1 character to level 2, not past it.
+            let total = per_kill * hostiles as i32;
+            let mut level = 1i16;
+            let mut sp = 0i32;
+            for _ in 0..hostiles {
+                let (l, s, _) =
+                    crate::battle::save::level_up_if_threshold_crossed(level, sp + per_kill);
+                (level, sp) = (l, s);
+            }
+            assert_eq!(
+                level, 2,
+                "{script}: {total} EXP must end the fight at level 2"
+            );
+
             let script_path = root.join(script);
             assert!(script_path.exists(), "{script} missing");
             // Fresh engine per script = fresh VM, like a server boot;

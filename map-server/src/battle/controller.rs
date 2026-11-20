@@ -158,6 +158,14 @@ pub struct BattleNpcControllerState {
     /// xorshift state for move and spell picks; seeded from the actor id
     /// on first use so each monster rolls its own sequence.
     pub rng: u64,
+    /// A healer ally's cure (the opening fights' Papalymo, Y'shtola and
+    /// Niellefresne): cast on the player, a fellow ally or itself when
+    /// HP falls below [`ALLY_HEAL_BELOW_HPP`]. Resolved at spawn
+    /// (`runtime::bnpc_spawn`); the ticker's ally heal pass reads it.
+    pub heal_spell: Option<BattleCommand>,
+    /// Earliest `now_ms` the next cure may start ([`ALLY_HEAL_GAP_MS`]
+    /// after the last one began).
+    pub next_heal_ms: u64,
 }
 
 impl Controller {
@@ -303,6 +311,44 @@ pub const MONSTER_SKILL_TP: u16 = 1000;
 pub const CHASE_SLACK: f32 = 0.1;
 /// Least time between two TP moves from one monster.
 pub const MONSTER_SKILL_GAP_MS: u64 = 10_000;
+/// A healer ally cures someone whose HP is below this percentage.
+pub const ALLY_HEAL_BELOW_HPP: u8 = 60;
+/// Least time between two cures from one healer ally.
+pub const ALLY_HEAL_GAP_MS: u64 = 10_000;
+/// Cure, the level-1 CNJ spell healer allies cast
+/// (`server_battle_commands` 27346).
+pub const ALLY_HEAL_SPELL_ID: u16 = 27346;
+
+/// Does a player-side battle NPC heal? The client marks the opening
+/// fights' healers with the `FighterAllyOpeningHealer` actor class
+/// (Papalymo is a THM but cures in the Gridania opening); any other
+/// conjurer ally (job 23) heals too.
+pub fn ally_is_healer(class_path: &str, current_job: u32) -> bool {
+    class_path.ends_with("Healer") || current_job == 23
+}
+
+/// Someone a healer ally might cure, as the ticker sees them.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct HealCandidate {
+    pub actor_id: u32,
+    pub hp: i16,
+    pub max_hp: i16,
+    /// Ground-plane distance from the healer.
+    pub distance: f32,
+}
+
+/// Who a healer ally cures: the alive candidate in `range` with the
+/// lowest HP percentage below [`ALLY_HEAL_BELOW_HPP`], if any.
+pub fn pick_heal_target(candidates: &[HealCandidate], range: f32) -> Option<u32> {
+    candidates
+        .iter()
+        .filter(|c| c.hp > 0 && c.max_hp > 0 && c.distance <= range)
+        .map(|c| (c.actor_id, i32::from(c.hp) * 100 / i32::from(c.max_hp)))
+        .filter(|(_, hpp)| *hpp < i32::from(ALLY_HEAL_BELOW_HPP))
+        .min_by_key(|(id, hpp)| (*hpp, *id))
+        .map(|(id, _)| id)
+}
+
 /// Maximum detection distance regardless of detection type.
 pub const MAX_DETECT_DISTANCE: f32 = 20.0;
 /// Max vertical gap for detection.
@@ -851,6 +897,49 @@ mod tests {
 
     fn arena_with(actors: &[ActorView]) -> HashMap<u32, ActorView> {
         actors.iter().map(|a| (a.actor_id, *a)).collect()
+    }
+
+    #[test]
+    fn healers_are_the_opening_healers_and_conjurers() {
+        let healer = "/Chara/Npc/Monster/Fighter/FighterAllyOpeningHealer";
+        assert!(ally_is_healer(healer, 22), "Papalymo: THM, healer class");
+        assert!(ally_is_healer(healer, 23), "Y'shtola / Niellefresne");
+        assert!(ally_is_healer("/Chara/Npc/Monster/Fighter/Fighter", 23));
+        assert!(!ally_is_healer(
+            "/Chara/Npc/Monster/Fighter/FighterAllyOpeningAttacker",
+            2
+        ));
+        assert!(!ally_is_healer("/Chara/Npc/Monster/Fighter/Fighter", 22));
+    }
+
+    #[test]
+    fn heal_target_is_the_lowest_hurt_one_in_range() {
+        let c = |actor_id, hp, max_hp, distance| HealCandidate {
+            actor_id,
+            hp,
+            max_hp,
+            distance,
+        };
+        // Nobody under 60%: no cure.
+        assert_eq!(
+            pick_heal_target(&[c(1, 70, 100, 5.0), c(2, 600, 1000, 0.0)], 20.0),
+            None
+        );
+        // The player at 59% is cured.
+        assert_eq!(
+            pick_heal_target(&[c(1, 59, 100, 5.0), c(2, 900, 1000, 0.0)], 20.0),
+            Some(1)
+        );
+        // The healer itself, lower than the player, comes first.
+        assert_eq!(
+            pick_heal_target(&[c(1, 50, 100, 5.0), c(2, 300, 1000, 0.0)], 20.0),
+            Some(2)
+        );
+        // Out of range or KO'd: skipped.
+        assert_eq!(
+            pick_heal_target(&[c(1, 10, 100, 25.0), c(3, 0, 100, 1.0)], 20.0),
+            None
+        );
     }
 
     #[test]
