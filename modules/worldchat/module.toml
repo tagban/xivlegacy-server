@@ -1,0 +1,3 @@
+name = "worldchat"
+version = "1.0"
+description = "World chat: /say reaches every player online in every zone, everyone sees a line when someone logs in, and both can go to a Discord channel (a webhook) with that channel's messages coming back into the game (a bot token reading the channel)"

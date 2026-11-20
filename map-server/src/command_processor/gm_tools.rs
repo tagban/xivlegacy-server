@@ -732,18 +732,41 @@ impl CommandProcessor {
     }
 
     /// `posfix <name>`: to their home city's spawn point; works offline too
-    /// (for a character who can't log in where they are).
+    /// (for a character who can't log in where they are). Below
+    /// `target_others` only a character of the invoker's own account (the
+    /// same `users` row), and never one held in Mordion Gaol.
     pub(super) async fn handle_posfix(&self, args: &Args<'_>) -> String {
-        let Some(name) = args.rest_joined(0) else {
-            return if args.was_refused() {
-                String::new()
-            } else {
-                "usage: posfix <name>".into()
-            };
+        let name = if args.self_only {
+            // a player may name their other characters, not just themself
+            match args.invoker {
+                Some(me) if args.len() == 0 => me.to_string(),
+                Some(_) => args.tokens.join(" "),
+                None => return "usage: posfix <name>".into(),
+            }
+        } else {
+            match args.rest_joined(0) {
+                Some(name) => name,
+                None => return "usage: posfix <name>".into(),
+            }
         };
         let Some(id) = self.lookup_character_id(&name).await else {
             return format!("unknown character: {name}");
         };
+        if args.self_only {
+            let mine = match self.invoker_id(args).await {
+                Ok(me) => self.db.user_of_character(me).await.ok().flatten(),
+                Err(e) => return e,
+            };
+            let theirs = self.db.user_of_character(id).await.ok().flatten();
+            if mine.is_none() || mine != theirs {
+                return format!(
+                    "!posfix works only on characters of your own account; {name} isn't one"
+                );
+            }
+            if matches!(self.db.jail_of_character(id).await, Ok(Some(_))) {
+                return format!("{name} is in Mordion Gaol: only a GM can move them");
+            }
+        }
         let zone = home_city(self.db.initial_town_of_character(id).await.unwrap_or(0));
         let Ok(Some((x, y, z))) = self.db.zone_landing(zone).await else {
             return format!("no spawn point known in zone {zone}");

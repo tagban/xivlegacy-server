@@ -71,7 +71,7 @@ const COMMAND_SYNTAX: &[&str] = &[
     "return [name]",
     "up [yalms] [name]",
     "down [yalms] [name]",
-    "posfix <name>",
+    "posfix <name of a character>",
     "jail <name> [cell] [reason]",
     "pardon <name>",
     "togglegm [name]",
@@ -96,7 +96,7 @@ const COMMAND_SYNTAX: &[&str] = &[
     "addeffect <status id> [seconds] [magnitude] [name | 0x<actor id>]",
     "resetrecast <name>",
     "addallaetherytes [name]",
-    "setmusic <music id or name | list | off> [name]",
+    "setmusic <music id or name | list | off> [name | world]",
     "myweather <weather id | clear | snow | dalamud | off>",
     "setweather <weather id>",
     "worldend",
@@ -150,6 +150,32 @@ const COMMAND_SYNTAX: &[&str] = &[
     "talkto <actor_class_id> [name]",
     "pushtrigger <actor_class_id> [name]",
     "setseq <quest_id> <sequence> [name]",
+];
+
+/// The zones `!zone` takes a player (below `target_others`) to: the three
+/// cities, the open fields and the open-world dungeons. Left out: the GM
+/// Cottage (201), Mordion Gaol (177), duty and battle copies (164-168,
+/// 184-188, 192-198), dungeon copies and raids (Tam-Tara, Toto-Rak,
+/// U'Ghamaro, Dzemael, Aurum Vale, Cutter's Cry, Shposhae, Thornmarch, the
+/// Howling Eye, the Bowl of Embers, the Transmission Tower), the copies of
+/// cities and fields the story uses (the `…a` maps), inn rooms, market
+/// wards, Grand Company offices, ships and zones the client can't load.
+pub(crate) const PLAYER_ZONES: &[u32] = &[
+    // cities
+    133, 155, 175, //
+    // La Noscea
+    128, 129, 130, 135, //
+    // Coerthas
+    143, 144, 145, 147, 148, //
+    // the Black Shroud
+    150, 151, 152, 153, 154, //
+    // Thanalan
+    170, 171, 172, 173, 174, //
+    // Mor Dhona
+    190, //
+    // open-world dungeons: Mistbeard Cove, Cassiopeia Hollow, the Mun-Tuy
+    // Cellars, Nanawa Mines, Copperbell Mines
+    131, 132, 157, 176, 178,
 ];
 
 /// How far `!usemove` looks for a monster when nothing is targeted.
@@ -557,7 +583,11 @@ impl CommandProcessor {
     ///   client's death-overlay menu network.
     async fn handle_home(&self, args: &Args<'_>) -> String {
         let Some(name) = args.rest_joined(0) else {
-            return "usage: home <name>".into();
+            return if args.was_refused() {
+                String::new()
+            } else {
+                "usage: home <name>".into()
+            };
         };
         match self.resolve_live_target(&name).await {
             TargetLookup::Ok { actor_id, zone } => {
@@ -1341,11 +1371,23 @@ impl CommandProcessor {
         // name that is online: try the longest zone query first
         for split in (1..=args.len()).rev() {
             let query = args.rest()[..split].join(" ");
-            let Ok(zones) = self.db.zones_matching(&query).await else {
+            let Ok(mut zones) = self.db.zones_matching(&query).await else {
                 return "zone lookup failed".into();
             };
             if zones.is_empty() {
                 continue;
+            }
+            // below target_others, only the places a player could walk to
+            if args.self_only {
+                let closed = zones.clone();
+                zones.retain(|(id, _)| PLAYER_ZONES.contains(id));
+                if zones.is_empty() {
+                    let (id, place) = &closed[0];
+                    return format!(
+                        "{place} (zone {id}) is closed to !zone: players can go to the \
+                         cities, the open fields and the open-world dungeons"
+                    );
+                }
             }
             let Some(name) = args.rest_joined(split) else {
                 return if args.was_refused() {
@@ -1418,7 +1460,10 @@ impl CommandProcessor {
         match self.db.zones_matching("").await {
             Ok(all) => match closest(
                 &typed,
-                all.iter().map(|(_, p)| p.as_str()).filter(|p| p.len() > 1),
+                all.iter()
+                    .filter(|(id, _)| !args.self_only || PLAYER_ZONES.contains(id))
+                    .map(|(_, p)| p.as_str())
+                    .filter(|p| p.len() > 1),
             ) {
                 Some(best) => format!("no zone matches \"{typed}\"; did you mean {best}?"),
                 None => format!("no zone matches \"{typed}\""),
@@ -2062,7 +2107,7 @@ enum TargetLookup {
 /// command works only on whoever typed it, so its ` [name]` is left out.
 fn syntax_for(syntax: &str, self_only: bool) -> String {
     if self_only {
-        syntax.replace(" [name]", "")
+        syntax.replace(" [name | world]", "").replace(" [name]", "")
     } else {
         syntax.to_string()
     }
@@ -2428,7 +2473,17 @@ mod tests {
     fn shipped_player_commands_are_harmless() {
         let perms = shipped_levels();
         assert_eq!(perms.target_others, 2);
-        for name in ["help", "pos", "setmusic", "myweather", "dismount", "wake"] {
+        for name in [
+            "help",
+            "pos",
+            "setmusic",
+            "myweather",
+            "dismount",
+            "wake",
+            "home",
+            "zone",
+            "posfix",
+        ] {
             assert_eq!(perms.required(name), 0, "{name}");
         }
         // what moves you, speeds you up, gives you things, or reaches
@@ -2436,11 +2491,9 @@ mod tests {
         for name in [
             "setweather",
             "warp",
-            "zone",
             "camp",
             "goto",
             "bring",
-            "home",
             "gmcottage",
             "return",
             "up",
@@ -2471,7 +2524,245 @@ mod tests {
             "{player}"
         );
         let gm = CommandProcessor::help(Some(2), false, &perms);
-        assert!(gm.contains("setmusic <music id or name | list | off> [name]"));
+        assert!(gm.contains("setmusic <music id or name | list | off> [name | world]"));
+        assert!(gm.contains("zone <zone id or name> [name]") && gm.contains("home [name]"));
+        assert!(player.contains("zone <zone id or name>,") && player.contains("home,"));
+    }
+
+    /// Players (character id, account id, name), in the registry and the
+    /// world with a session in `zone`, and a client for each.
+    async fn online_players(
+        cmd: &CommandProcessor,
+        db: &Database,
+        players: &[(u32, u32, &'static str, u32)],
+    ) -> Vec<tokio::sync::mpsc::Receiver<Vec<u8>>> {
+        use crate::data::{ClientHandle, Session};
+        use crate::runtime::actor_registry::{ActorHandle, ActorKindTag};
+        let rows: Vec<(u32, u32, String)> = players
+            .iter()
+            .map(|(id, user, name, _)| (*id, *user, name.to_string()))
+            .collect();
+        db.conn_for_test()
+            .call_db(move |c| {
+                for (id, user, name) in rows {
+                    c.execute(
+                        r"INSERT INTO characters (id, userId, slot, serverId, name)
+                          VALUES (:i, :u, 0, 0, :n)",
+                        named_params! { ":i": id, ":u": user, ":n": name },
+                    )?;
+                }
+                Ok(())
+            })
+            .await
+            .unwrap();
+        let mut clients = Vec::new();
+        for &(id, _, _, zone) in players {
+            let mut character = crate::actor::Character::new(id);
+            character.base.zone_id = zone;
+            cmd.registry
+                .insert(ActorHandle::new(
+                    id,
+                    ActorKindTag::Player,
+                    zone,
+                    id,
+                    character,
+                ))
+                .await;
+            cmd.world
+                .upsert_session(Session {
+                    id,
+                    current_zone_id: zone,
+                    ..Default::default()
+                })
+                .await;
+            let (tx, rx) = tokio::sync::mpsc::channel(256);
+            cmd.world
+                .register_client(id, ClientHandle::new(id, tx))
+                .await;
+            clients.push(rx);
+        }
+        clients
+    }
+
+    #[tokio::test]
+    async fn players_move_only_themselves_and_only_to_open_places() {
+        let (cmd, db) = fixture().await;
+        let _clients = online_players(
+            &cmd,
+            &db,
+            &[(60, 9, "Walker Hero", 155), (61, 10, "Other Walker", 155)],
+        )
+        .await;
+        let perms = shipped_levels();
+        let run = |line: &'static str, level: u8| {
+            let cmd = &cmd;
+            let perms = &perms;
+            async move {
+                Box::pin(cmd.run_with_levels(line, Some("Walker Hero"), Some(level), perms))
+                    .await
+                    .unwrap()
+            }
+        };
+        for (line, name) in [
+            ("home Other Walker", "home"),
+            ("zone gridania Other Walker", "zone"),
+            ("zone 175 Other Walker", "zone"),
+        ] {
+            assert_eq!(
+                run(line, 0).await,
+                format!("!{name} works only on yourself at your GM level"),
+                "{line}"
+            );
+        }
+        // the GM Cottage, the gaol, a duty copy and a raid stay closed
+        for line in [
+            "zone 201",
+            "zone gm cottage",
+            "zone 177",
+            "zone 164",
+            "zone 238",
+            "zone 244",
+        ] {
+            let out = run(line, 0).await;
+            assert!(out.contains("is closed to !zone"), "{line}: {out}");
+        }
+        assert!(PLAYER_ZONES.contains(&155) && !PLAYER_ZONES.contains(&201));
+        // a player's own trip is let through (this fixture has no zones
+        // loaded, so it stops at the teleport)
+        let out = run("zone gridania", 0).await;
+        assert!(
+            !out.contains("closed") && !out.contains("works only"),
+            "{out}"
+        );
+        // a GM may send others, and anywhere
+        let out = run("zone 201 Other Walker", 2).await;
+        assert!(
+            !out.contains("closed") && !out.contains("works only"),
+            "{out}"
+        );
+        let out = run("home Other Walker", 2).await;
+        assert!(!out.contains("works only"), "{out}");
+    }
+
+    #[tokio::test]
+    async fn posfix_reaches_your_own_account_only() {
+        let (cmd, db) = fixture().await;
+        db.conn_for_test()
+            .call_db(|c| {
+                c.execute(
+                    r"INSERT INTO characters (id, userId, slot, serverId, name)
+                      VALUES (70, 11, 0, 0, 'Main Hero'), (71, 11, 1, 0, 'Alt Hero'),
+                             (72, 11, 2, 0, 'Jailed Alt'), (73, 12, 0, 0, 'Stranger Hero')",
+                    [],
+                )?;
+                Ok(())
+            })
+            .await
+            .unwrap();
+        db.set_jail_of_character(72, Some((1, "test".into())))
+            .await
+            .unwrap();
+        let perms = shipped_levels();
+        let run = |line: &'static str, level: u8| {
+            let cmd = &cmd;
+            let perms = &perms;
+            async move {
+                Box::pin(cmd.run_with_levels(line, Some("Main Hero"), Some(level), perms))
+                    .await
+                    .unwrap()
+            }
+        };
+        assert_eq!(
+            run("posfix Stranger Hero", 0).await,
+            "!posfix works only on characters of your own account; Stranger Hero isn't one"
+        );
+        assert_eq!(
+            run("posfix Jailed Alt", 0).await,
+            "Jailed Alt is in Mordion Gaol: only a GM can move them"
+        );
+        assert_eq!(
+            run("posfix Nobody Here", 0).await,
+            "unknown character: Nobody Here"
+        );
+        let out = run("posfix Alt Hero", 0).await;
+        assert!(
+            out.starts_with("Alt Hero will log in at their home city"),
+            "{out}"
+        );
+        // a GM names anyone
+        let out = run("posfix Stranger Hero", 2).await;
+        assert!(
+            out.starts_with("Stranger Hero will log in at their home city"),
+            "{out}"
+        );
+    }
+
+    #[tokio::test]
+    async fn gm_setmusic_reaches_the_zone_or_the_world() {
+        let (cmd, db) = fixture().await;
+        let mut clients = online_players(
+            &cmd,
+            &db,
+            &[
+                (80, 13, "Music Master", 155),
+                (81, 14, "Zone Mate", 155),
+                (82, 15, "Far Away", 175),
+            ],
+        )
+        .await;
+        let perms = shipped_levels();
+        let run = |line: &'static str, level: u8, me: &'static str| {
+            let cmd = &cmd;
+            let perms = &perms;
+            async move {
+                Box::pin(cmd.run_with_levels(line, Some(me), Some(level), perms))
+                    .await
+                    .unwrap()
+            }
+        };
+        let choices = || {
+            let world = cmd.world.clone();
+            async move {
+                let mut v = Vec::new();
+                for id in [80, 81, 82] {
+                    v.push(world.session(id).await.unwrap().music_choice);
+                }
+                v
+            }
+        };
+
+        // a GM with no name: everyone in the GM's zone
+        let out = run("setmusic 59", 2, "Music Master").await;
+        assert_eq!(out, "playing 59 Limsa Lominsa for 2 player(s) in zone 155");
+        assert_eq!(choices().await, vec![Some(59), Some(59), None]);
+        assert!(clients[1].try_recv().is_ok(), "the zone mate heard it");
+        assert!(clients[2].try_recv().is_err(), "nobody elsewhere did");
+
+        // world: everyone online
+        let out = run("setmusic gridania world", 2, "Music Master").await;
+        assert_eq!(out, "playing 51 Gridania for 3 player(s) online");
+        assert_eq!(choices().await, vec![Some(51), Some(51), Some(51)]);
+        assert!(clients[2].try_recv().is_ok(), "the far player heard it");
+
+        // one player by name
+        let out = run("setmusic 59 Far Away", 2, "Music Master").await;
+        assert_eq!(out, "playing 59 Limsa Lominsa for Far Away");
+        assert_eq!(choices().await, vec![Some(51), Some(51), Some(59)]);
+
+        // off, everywhere
+        let out = run("setmusic off world", 2, "Music Master").await;
+        assert_eq!(out, "back to the zone's music for 3 player(s) online");
+        assert_eq!(choices().await, vec![None, None, None]);
+
+        // a player still picks only their own
+        let out = run("setmusic 59", 0, "Zone Mate").await;
+        assert!(out.contains("for you"), "{out}");
+        assert_eq!(choices().await, vec![None, Some(59), None]);
+        assert_eq!(
+            run("setmusic 59 world", 0, "Zone Mate").await,
+            "!setmusic works only on yourself at your GM level"
+        );
+        assert_eq!(choices().await, vec![None, Some(59), None]);
     }
 
     #[tokio::test]

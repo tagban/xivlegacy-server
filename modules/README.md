@@ -22,6 +22,7 @@ starting, so a typo never quietly switches a feature off.
 | [welcome](welcome/) | off | A welcome message when a player enters the world; an example to copy |
 | [finaldays](finaldays/) | off | GM event commands recreating the end of 1.0 (`!worldend`) |
 | [bugreport](bugreport/) | off | `!bug` and the client's bug-report key: player bug reports with place, screenshot and logs, published to a private GitHub repository and Discord |
+| [worldchat](worldchat/) | off | `/say` to everyone online in every zone, login lines, and a Discord channel bridge both ways |
 | [monstermode](monstermode/) | off | `!monstermode`: players take over the monster they target and fight as it (Monster Mode) |
 
 ## Lua hooks

@@ -30,3 +30,5 @@ byteorder.workspace = true
 clap.workspace = true
 bytes.workspace = true
 rand.workspace = true
+# the worldchat module's Discord webhook and channel reads
+ureq.workspace = true

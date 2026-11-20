@@ -187,6 +187,26 @@ impl CommandProcessor {
             MusicPick::Play(id, from) => (Some(id), from),
             MusicPick::Off => (None, 1),
         };
+        // GMs (and the console): `world` is everyone online, and no name is
+        // everyone in the GM's zone
+        if !args.self_only {
+            let rest = args.rest().get(from..).unwrap_or_default();
+            if let [word] = rest
+                && word.eq_ignore_ascii_case("world")
+            {
+                return self.music_for_many(pick, None).await;
+            }
+            if rest.is_empty()
+                && args.invoker.is_some()
+                && let Ok(me) = self.invoker_id(args).await
+                && let Some(handle) = self.registry.get(me).await
+                && let Some(session) = self.world.session(handle.session_id).await
+            {
+                return self
+                    .music_for_many(pick, Some(session.current_zone_id))
+                    .await;
+            }
+        }
         let Some(name) = args.rest_joined(from) else {
             return if args.was_refused() {
                 String::new()
@@ -224,6 +244,49 @@ impl CommandProcessor {
             (Some(_), false) => format!("playing {} for {name}", music_label(music)),
             (None, true) => "back to the zone's music".into(),
             (None, false) => format!("{name} is back to the zone's music"),
+        }
+    }
+
+    /// `setmusic <id> world` / `setmusic <id>` from a GM: the music (or,
+    /// with `None`, each player's zone music again) for everyone online, or
+    /// everyone in `zone`. It stays with each player as their own pick, as
+    /// if they had typed it, until they (or a GM) turn it off or log out.
+    async fn music_for_many(&self, pick: Option<u16>, zone: Option<u32>) -> String {
+        let mut cmds = Vec::new();
+        let mut n = 0;
+        for s in self.world.all_sessions().await {
+            if zone.is_some_and(|z| z != s.current_zone_id) {
+                continue;
+            }
+            let Some(handle) = self.registry.by_session(s.id).await else {
+                continue;
+            };
+            if !handle.is_player() {
+                continue;
+            }
+            let Some(session) = self.world.set_music_choice(s.id, pick).await else {
+                continue;
+            };
+            let music = match pick {
+                Some(m) => m,
+                None => self.world.area_music(&session).await,
+            };
+            n += 1;
+            if music != 0 {
+                cmds.push(LC::ChangeMusic {
+                    player_id: handle.actor_id,
+                    music_id: music,
+                });
+            }
+        }
+        self.run_lua(cmds).await;
+        let whom = match zone {
+            Some(z) => format!("{n} player(s) in zone {z}"),
+            None => format!("{n} player(s) online"),
+        };
+        match pick {
+            Some(m) => format!("playing {} for {whom}", music_label(m)),
+            None => format!("back to the zone's music for {whom}"),
         }
     }
 

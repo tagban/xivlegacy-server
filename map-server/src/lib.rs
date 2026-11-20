@@ -77,6 +77,7 @@ mod terrain;
 #[cfg(feature = "testkit")]
 pub mod testkit;
 mod world_manager;
+mod worldchat;
 mod zone;
 
 use crate::command_processor::CommandProcessor;
@@ -135,6 +136,7 @@ pub async fn run() -> Result<()> {
         modules::init(&m);
         command_permissions::init()?;
         seasonal::init()?;
+        worldchat::init()?;
         jail::init()
     }) {
         Ok(()) => {}
@@ -454,6 +456,10 @@ pub async fn run() -> Result<()> {
                 "regional-leve catalog load failed: fieldcraft/battlecraft leve progress will no-op",
             );
         }
+    }
+
+    if !smoke {
+        worldchat::start(world.clone(), registry.clone());
     }
 
     let cmd = Arc::new(CommandProcessor::new(
