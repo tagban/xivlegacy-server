@@ -10029,8 +10029,13 @@ impl PacketProcessor {
                 if extra.is_empty() {
                     // pmeteor's C# pads at least one Nil when the unpacked
                     // table is empty, so the client's reader always sees a
-                    // tail param.
-                    params.push(LuaParam::Nil);
+                    // tail param. Not for `qtmap`: the client counts the
+                    // tail params as markers, so a Nil becomes marker "nil"
+                    // and the journal's map window goes blank. With no tail
+                    // it keeps the map it already has open.
+                    if tag == "qtdata" {
+                        params.push(LuaParam::Nil);
+                    }
                 } else {
                     params.extend(extra);
                 }
