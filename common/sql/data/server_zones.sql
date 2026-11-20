@@ -66,7 +66,7 @@ INSERT INTO `server_zones` (`id`, `regionId`, `zoneName`, `placeName`, `serverIp
 (196, 112, 'ocn1Battle05', 'Rhotano Sea', '127.0.0.1', 1989, '/Area/Zone/ZoneMasterBattleOcnO1', 0, 0, 0, 0, 0, 0, 0, 0, 0),
 (198, 112, 'ocn1Battle06', 'Rhotano Sea', '127.0.0.1', 1989, '/Area/Zone/ZoneMasterBattleOcnO1', 0, 0, 0, 0, 0, 0, 0, 0, 0),
 (200, 805, 'sea1Cruise01', 'Strait of Merlthor', '127.0.0.1', 1989, '/Area/Zone/ZoneMasterCruiseSeaS1', 65, 0, 0, 0, 0, 0, 0, 0, 0),
-(201, 208, 'prv0Cottage00', '-', '127.0.0.1', 1989, '/Area/Zone/ZoneMasterCottagePrv00', 0, 0, 0, 0, 0, 0, 0, 0, 0),
+(201, 208, 'prv0Cottage00', 'GM Cottage', '127.0.0.1', 1989, '/Area/Zone/ZoneMasterCottagePrv00', 0, 0, 0, 0, 0, 0, 0, 0, 0),
 (204, 101, 'sea0Field02a', 'Western La Noscea', '127.0.0.1', 1989, '/Area/Zone/ZoneMasterSeaS0', 60, 60, 21, 0, 0, 0, 0, 0, 0),
 (205, 101, 'sea0Field03a', 'Eastern La Noscea', '127.0.0.1', 1989, '/Area/Zone/ZoneMasterSeaS0', 60, 60, 21, 0, 0, 0, 0, 0, 0),
 (206, 103, 'fst0Town01a', 'Gridania', '127.0.0.1', 1989, '/Area/Zone/ZoneMasterFstF0', 51, 51, 13, 0, 0, 0, 0, 0, 0),
