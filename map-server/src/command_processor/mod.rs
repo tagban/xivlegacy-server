@@ -111,6 +111,7 @@ const COMMAND_SYNTAX: &[&str] = &[
     "camp [camp name] [name]",
     "warp <x> <y> <z> [name] | warp <zone> <x> <y> <z> [name]",
     "home [name]",
+    "gmcottage [name]",
     "revive [name]",
     "speed <multiplier> [name]",
     "dismount [name]",
@@ -235,6 +236,7 @@ impl CommandProcessor {
             "givekeyitem" => "addkeyitem",
             "fixspeed" => "speed",
             "music" => "setmusic",
+            "gmhome" => "gmcottage",
             other => other,
         }
         .to_string();
@@ -314,6 +316,7 @@ impl CommandProcessor {
             "revive" => self.handle_revive(&args).await,
             "resetrecast" => self.handle_resetrecast(&args).await,
             "home" => self.handle_home(&args).await,
+            "gmcottage" => self.handle_gmcottage(&args).await,
             "sethome" => self.handle_set_home(&args).await,
             "die" => self.handle_die(&args).await,
             "settp" => self.handle_settp(&args).await,
@@ -517,6 +520,33 @@ impl CommandProcessor {
             }
         }
         None
+    }
+
+    /// `gmcottage [name]` (also `gmhome`): to the GM Cottage, zone 201's
+    /// sunken living room (its `server_zones_spawnlocations` row).
+    async fn handle_gmcottage(&self, args: &Args<'_>) -> String {
+        const GM_COTTAGE_ZONE: u32 = 201;
+        let Some(name) = args.rest_joined(0) else {
+            return if args.was_refused() {
+                String::new()
+            } else {
+                "usage: gmcottage <name>".into()
+            };
+        };
+        match self.db.zone_landing(GM_COTTAGE_ZONE).await {
+            Ok(Some((x, y, z))) => {
+                let r = self
+                    .teleport(&name, Some(GM_COTTAGE_ZONE), None, 0, (x, y, z))
+                    .await;
+                if r.starts_with("warped") {
+                    format!("{name} → GM Cottage (zone {GM_COTTAGE_ZONE})")
+                } else {
+                    r
+                }
+            }
+            Ok(None) => format!("no known spot in zone {GM_COTTAGE_ZONE} (GM Cottage)"),
+            Err(e) => format!("zone lookup failed: {e}"),
+        }
     }
 
     /// `home <name>` — server-driven home-point revive. Restores HP/MP
@@ -2411,6 +2441,7 @@ mod tests {
             "goto",
             "bring",
             "home",
+            "gmcottage",
             "return",
             "up",
             "down",
@@ -2934,6 +2965,20 @@ mod tests {
         let out2 = cmd.run("sethome 999999 Limsa Resident").await.unwrap();
         assert!(out2.contains("homepoint to 999999"), "got {out2}");
         assert!(out2.contains("unknown aetheryte"), "got {out2}");
+    }
+
+    #[tokio::test]
+    async fn gmcottage_and_gmhome_are_one_command() {
+        let (cmd, _db) = fixture().await;
+        assert_eq!(
+            cmd.run("gmcottage").await.unwrap(),
+            "usage: gmcottage <name>"
+        );
+        let a = cmd.run("gmcottage Phantom").await.unwrap();
+        let b = cmd.run("gmhome Phantom").await.unwrap();
+        assert_eq!(a, b);
+        assert!(a.contains("Phantom"), "got {a}");
+        assert!(!a.starts_with("unknown command"), "got {a}");
     }
 
     #[tokio::test]

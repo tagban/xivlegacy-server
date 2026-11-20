@@ -44,7 +44,7 @@ account may use is its GM level against `settings/commands.toml`:
 | --- | --- | --- |
 | 0 | player | `!help`, `!gmhelp`, `!who`, `!version` |
 | 1 | helper | the same (give helpers commands by lowering them to 1) |
-| 2 | GM | moving players: `!zone`, `!camp`, `!warp`, `!home`, `!revive`, `!speed` |
+| 2 | GM | moving players: `!zone`, `!camp`, `!warp`, `!home`, `!gmcottage` (`!gmhome`), `!revive`, `!speed` |
 | 3 | senior GM | changing characters: `!givegil`, `!giveexp`, `!setclass`, `!setlevel`, `!setjob`, `!gearset`, `!equip`, grand companies, retainers |
 | 4 | administrator | `!setgm`, `!reload`, quest debugging; and any command not listed |
 
