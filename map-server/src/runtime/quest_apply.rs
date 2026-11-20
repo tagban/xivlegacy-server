@@ -935,6 +935,10 @@ pub async fn apply_runtime_lua_command(
             apply_change_music(player_id, music_id, registry, world).await;
             true
         }
+        LC::ResetMusic { player_id } => {
+            apply_reset_music(player_id, registry, world).await;
+            true
+        }
         LC::ChangeSpeed {
             player_id,
             stop,
@@ -1790,6 +1794,24 @@ async fn apply_change_music(
         music_id,
         "ChangeMusic applied",
     );
+}
+
+/// `player:ResetMusic()`: the music the player hears when nothing scripted
+/// plays — their `!setmusic` pick, else their area's own
+/// (`WorldManager::own_music`).
+async fn apply_reset_music(player_id: u32, registry: &ActorRegistry, world: &WorldManager) {
+    let Some(handle) = registry.get(player_id).await else {
+        return;
+    };
+    if handle.session_id == 0 {
+        return;
+    }
+    let Some(music_id) = world.own_music(handle.session_id).await else {
+        return;
+    };
+    if music_id != 0 {
+        apply_change_music(player_id, music_id, registry, world).await;
+    }
 }
 
 /// `player:ChangeSpeed(stop, walk, run, active)` — port of C#

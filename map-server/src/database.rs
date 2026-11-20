@@ -1010,6 +1010,41 @@ impl Database {
         Ok(row)
     }
 
+    /// A spawn's stat modifier layers (`isMobMod = 0` rows) from
+    /// `server_battlenpc_genus_mods`, `server_battlenpc_pool_mods` and
+    /// `server_battlenpc_spawn_mods`, as `[genus, pool, spawn]` lists of
+    /// `(modId, modVal)`. Elemental resistances live here (#333).
+    pub async fn load_battle_npc_mod_layers(
+        &self,
+        genus_id: u32,
+        pool_id: u32,
+        bnpc_id: u32,
+    ) -> Result<[Vec<(u32, f64)>; 3]> {
+        let layers = self
+            .conn
+            .call_db(move |c| {
+                let mut out: [Vec<(u32, f64)>; 3] = Default::default();
+                let queries = [
+                    ("server_battlenpc_genus_mods", "genusId", genus_id),
+                    ("server_battlenpc_pool_mods", "poolId", pool_id),
+                    ("server_battlenpc_spawn_mods", "bnpcId", bnpc_id),
+                ];
+                for (slot, (table, key, id)) in queries.into_iter().enumerate() {
+                    let mut stmt = c.prepare(&format!(
+                        "SELECT modId, modVal FROM {table} WHERE {key} = ?1 AND isMobMod = 0"
+                    ))?;
+                    out[slot] = stmt
+                        .query_map([id], |r| {
+                            Ok((r.get::<_, u32>(0)?, r.get::<_, i64>(1)? as f64))
+                        })?
+                        .collect::<common::sql::Result<_>>()?;
+                }
+                Ok(out)
+            })
+            .await?;
+        Ok(layers)
+    }
+
     pub async fn load_seamless_boundaries(&self) -> Result<HashMap<u32, Vec<SeamlessBoundary>>> {
         let rows = self
             .conn
@@ -7776,4 +7811,132 @@ pub struct GearRow {
     pub tribe: u16,
     /// `(paramBonusType, value)` pairs.
     pub bonuses: Vec<(i64, i64)>,
+}
+
+#[cfg(test)]
+mod monster_element_tests {
+    use super::*;
+    use crate::actor::modifier::{Modifier, ModifierMap};
+    use crate::battle::command::CommandResult;
+    use crate::battle::effects::ActionProperty;
+    use crate::battle::utils::{CombatView, calculate_spell_damage_taken};
+    use crate::npc::actor_class::ActorClass;
+    use crate::npc::battle_npc::BattleNpc;
+    use common::db::ConnCallExt;
+
+    const LEVEL: i16 = 30;
+
+    /// The first spawn of `pool_id` in the seed data.
+    async fn spawn_of_pool(db: &Database, pool_id: u32) -> u32 {
+        db.conn_for_test()
+            .call_db(move |c| {
+                c.query_row(
+                    "SELECT bsl.bnpcId FROM server_battlenpc_spawn_locations bsl
+                     JOIN server_battlenpc_groups bgr ON bsl.groupId = bgr.groupId
+                     WHERE bgr.poolId = ?1 ORDER BY bsl.bnpcId LIMIT 1",
+                    [pool_id],
+                    |r| r.get::<_, u32>(0),
+                )
+            })
+            .await
+            .unwrap_or_else(|e| panic!("no spawn of pool {pool_id}: {e}"))
+    }
+
+    /// A level-30 monster's mods from its real genus / pool / spawn rows,
+    /// folded the way the spawner does it.
+    async fn monster_mods(db: &Database, pool_id: u32) -> (u32, ModifierMap) {
+        let bnpc_id = spawn_of_pool(db, pool_id).await;
+        let spawn = db.load_battle_npc_spawn(bnpc_id).await.unwrap().unwrap();
+        let [genus, pool, spawn_rows] = db
+            .load_battle_npc_mod_layers(spawn.genus_id, spawn.pool_id, bnpc_id)
+            .await
+            .unwrap();
+        let class = ActorClass::new(1, "/Chara/Npc/Mob/Test", 0, 0, "", 0, 0, 0);
+        let mut bnpc = BattleNpc::new(7, &class, "t", 100, 0.0, 0.0, 0.0, 0.0, 0, 0, None);
+        bnpc.npc.character.chara.level = LEVEL;
+        for (k, v) in genus {
+            bnpc.genus_mods.set_raw(k, v);
+        }
+        for (k, v) in pool {
+            bnpc.pool_mods.set_raw(k, v);
+        }
+        for (k, v) in spawn_rows {
+            bnpc.spawn_mods.set_raw(k, v);
+        }
+        bnpc.merge_modifier_layers();
+        (spawn.genus_id, bnpc.npc.character.chara.mods)
+    }
+
+    /// A 300-point spell of `element` from a level-30 caster.
+    fn cast(element: ActionProperty, defender: &ModifierMap) -> u16 {
+        let none = ModifierMap::default();
+        let view = |id, mods| CombatView {
+            actor_id: id,
+            level: LEVEL,
+            max_hp: 1000,
+            mods,
+            status: &none,
+            has_aegis_boon: false,
+            has_protect: false,
+            has_shell: false,
+            has_stoneskin: false,
+        };
+        let mut a = CommandResult::for_target(2, 0, 0);
+        a.amount = 300;
+        a.action_property = element;
+        calculate_spell_damage_taken(&view(1, &none), &view(2, defender), &mut a);
+        a.amount
+    }
+
+    /// Seed rows (#333): a fire-aligned bomb takes less from Fire and
+    /// more from wind; an ice-aligned skeleton takes more from Fire.
+    /// Pool rows override the genus: a yarzon filed under the rodent
+    /// genus is ice, a wolf in the mixed genus 3 is lightning and a
+    /// bandit in it has no element.
+    #[tokio::test]
+    async fn seed_genus_elements_change_spell_damage() {
+        let db = Database::open(common::test_db::fresh().await.unwrap())
+            .await
+            .unwrap();
+
+        let (genus, bomb) = monster_mods(&db, 10109).await;
+        assert_eq!(genus, 64, "pool 10109 is a gas bomb");
+        assert!(cast(ActionProperty::Fire, &bomb) < 300);
+        assert!(cast(ActionProperty::Wind, &bomb) > 300);
+        assert_eq!(cast(ActionProperty::Water, &bomb), 300);
+
+        let (genus, skeleton) = monster_mods(&db, 31071).await;
+        assert_eq!(genus, 47, "pool 31071 is a skeleton");
+        assert!(cast(ActionProperty::Fire, &skeleton) > 300);
+        assert!(cast(ActionProperty::Ice, &skeleton) < 300);
+        // A weak genus takes more from Fire than a resistant one.
+        assert!(cast(ActionProperty::Fire, &skeleton) > cast(ActionProperty::Fire, &bomb));
+
+        let (genus, marmot) = monster_mods(&db, 10006).await;
+        assert_eq!(genus, 12);
+        assert!(cast(ActionProperty::Water, &marmot) > 300);
+        assert_eq!(cast(ActionProperty::Fire, &marmot), 300);
+        let (genus, yarzon) = monster_mods(&db, 30230).await;
+        assert_eq!(genus, 12, "yarzons are filed under the rodent genus");
+        assert!(cast(ActionProperty::Fire, &yarzon) > 300);
+        assert_eq!(cast(ActionProperty::Water, &yarzon), 300);
+        assert_eq!(yarzon.get(Modifier::EarthResistance), 0.0);
+
+        let (genus, wolf) = monster_mods(&db, 10131).await;
+        assert_eq!(genus, 3);
+        assert!(cast(ActionProperty::Lightning, &wolf) < 300);
+        assert!(cast(ActionProperty::Earth, &wolf) > 300);
+        let (genus, bandit) = monster_mods(&db, 10022).await;
+        assert_eq!(genus, 3);
+        for e in [
+            ActionProperty::Fire,
+            ActionProperty::Ice,
+            ActionProperty::Wind,
+            ActionProperty::Earth,
+            ActionProperty::Lightning,
+            ActionProperty::Water,
+        ] {
+            assert_eq!(cast(e, &bandit), 300);
+        }
+    }
 }

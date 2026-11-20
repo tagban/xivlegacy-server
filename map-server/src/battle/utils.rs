@@ -210,6 +210,27 @@ pub fn elemental_resistance(defender: &CombatView<'_>, property: ActionProperty)
     defender.get_mod(m)
 }
 
+/// The six elemental resistance modifiers.
+pub const ELEMENTAL_RESISTANCES: [Modifier; 6] = [
+    Modifier::FireResistance,
+    Modifier::IceResistance,
+    Modifier::WindResistance,
+    Modifier::EarthResistance,
+    Modifier::LightningResistance,
+    Modifier::WaterResistance,
+];
+
+/// A monster's resistance to one element from its mod tables. The tables
+/// hold a percent: how much of a same-level base spell
+/// ([`skill_level_base`]) the element takes off (negative = weakness, extra
+/// damage). The spell formula subtracts `levelMod x resistance` and
+/// `levelMod` is 0.225 at equal level, so the percent becomes resistance
+/// points for the monster's level. A monster above the caster's level
+/// resists (and suffers) more, as with Defense.
+pub fn monster_elemental_resistance(percent: f64, level: i16) -> f64 {
+    (percent / 100.0 * skill_level_base(level) / calculate_dlvl_modifier(0)).round()
+}
+
 /// Random source abstraction. The real game loop uses `rand::thread_rng`
 /// wrapped; tests hand over a fixed-sequence implementation.
 pub trait Rng {

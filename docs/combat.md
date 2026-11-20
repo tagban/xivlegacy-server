@@ -76,7 +76,7 @@ for later.
 |---|---|---|---|
 | Level modifier | `dlvl ≥ 0: 0.35 × dlvl + 0.225`, else `0.01 × dlvl + 0.25`; clamped 0–1 | pmeteor | `calculate_dlvl_modifier` |
 | Physical damage taken | `(amount − levelMod × Defense) × (1 − DamageTakenDown / 100)` | pmeteor | `calculate_physical_damage_taken` |
-| Spell damage taken | `(amount − levelMod × (Defense + 0.67 × VIT + element resistance)) × (1 − DamageTakenDown / 100)` | pmeteor; elemental resistance term ours (#128). After patch 1.19, elements reduce damage taken. Negative resistance adds damage | `calculate_spell_damage_taken`, `elemental_resistance` |
+| Spell damage taken | `(amount − levelMod × (Defense + 0.67 × VIT + element resistance)) × (1 − DamageTakenDown / 100)` | pmeteor; elemental resistance term ours (#128). After patch 1.19, elements reduce damage taken. Negative resistance adds damage. Monster values: [Monster elements](#monster-elements-333) | `calculate_spell_damage_taken`, `elemental_resistance` |
 | Crit | `amount × clamp(0.04 × dlvl² − 2 × dlvl + 1.20, 1.15, 1.75)` | pmeteor | `calculate_crit_damage` |
 | Block | blocks `0.2% × Block + 0.1% × VIT` of the damage (all of it under Aegis Boon) | pmeteor | `calculate_block_damage` |
 | Parry | deals 75% | pmeteor | `calculate_parry_damage` |
@@ -174,6 +174,44 @@ HealingMagicPotency:
   Cure ×2.6.
 
 The scale is clamped to 0.25–4. Source: **ours**.
+
+### Monster elements (#333)
+
+Each monster family has an element. It resists that element and is weak to
+the one that overcomes it, on the FFXIV wheel: wind beats fire, fire beats
+ice, ice beats wind, water beats earth, earth beats lightning and lightning
+beats water. A fire-aligned bomb takes less from Fire and more from Aero.
+
+- **Rows:** `server_battlenpc_genus_mods` holds one resistance and one
+  weakness row per family (modifier ids 9–14). `server_battlenpc_pool_mods`
+  overrides the genus where a genus mixes families: wolves and dogs in
+  genus 3 (which also holds bandits and pirates), yarzons filed under the
+  rodent genus, mites under the crab genus, the lightning and water
+  elementals under the earth elemental genus, a few earth-aligned basilisks,
+  peistes and fungi, and Man2g0's Spirit of the Wood (no element; its aspect
+  does the work). Layers fold genus, then pool, then spawn; the more
+  specific one wins per modifier (`BattleNpc::merge_modifier_layers`, loaded
+  by `Database::load_battle_npc_mod_layers`; only `isMobMod = 0` rows).
+- **Units:** monster rows hold a percent of a same-level base spell
+  (`skill_level_base`, `4 × level + 20`). At spawn it becomes resistance
+  points for the monster's level: `percent / 100 × (4 × level + 20) / 0.225`
+  (`monster_elemental_resistance`). An equal-level caster's spell loses (or
+  gains) about that percent before INT. The level modifier scales it like
+  Defense: against a monster 1, 2, or 3+ levels above the caster it counts
+  about 2.6, 4.1 or 4.4 times; against one 1–10 levels below, 1.07 down
+  to 0.67 times.
+- **Values:** ordinary families +5 / −5. Elementals, primals (Ifrit,
+  Garuda) and bombs +15 / −10. For comparison, Protect II at potency 25 is
+  166.75 points to every element, about 17% of a level 50 base spell.
+- **Which element:** archived 1.0 Gamer Escape monster pages (2011–2012)
+  give each monster an Element (Bomb: Fire; Wight Warrior, Revenant,
+  Devilet, Forest Funguar: Ice). Families whose pages disagree take the
+  majority. The weakness direction follows 1.0 forum tests (Feb 2012: every
+  yarzon weak to fire, every marmot weak to water) and the FFXIV wheel. The
+  magnitudes are guesses. Flytraps (15), people (29) and puddings (63) are
+  mixed or unknown and have no rows.
+
+Source: element per family **1.0 wiki archive**; magnitudes **ours**.
 
 ## Stats and pools
 

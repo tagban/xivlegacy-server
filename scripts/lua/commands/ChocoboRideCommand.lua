@@ -25,7 +25,7 @@ function onEventStarted(player, actor, triggerName, isGoobbue)
 		player:ChangeSpeed(0.0, 5.0, 10.0, 10.0);
 		player:ChangeState(15);
 	else
-		player:ChangeMusic(player:GetZone().bgmDay);
+		player:ResetMusic(); -- your !setmusic pick, else the zone's music
 		
 		worldMaster = GetWorldMaster();
 		

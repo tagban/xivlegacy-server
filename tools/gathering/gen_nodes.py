@@ -64,10 +64,9 @@ HAND_SPOTS = {("Mine", "Nanawa Mines"): [(58.0, 168.0, -1232.0), (118.0, 168.0, 
 POINTS_PER_POOL = 3
 ATTEMPTS = 3
 # Fishing spots, hand-picked per camp: a dry standing point on the shore and the water it faces,
-# (x, y, z, water_x, water_z). Each was checked in the 1.23b client: standing there, the client
-# lights the Fish command (it knows the water). Candidates came from the client's own water
-# (La Noscea's sea plane at y=0, the `attr_*_w` river/pond surfaces in the layouts) and were
-# kept only when the Fish icon lit up.
+# (x, y, z, water_x, water_z). The camps' first spots were checked by hand in the 1.23b client;
+# candidates came from the client's own water (La Noscea's sea plane at y=0, the `attr_*_w`
+# river/pond surfaces in the layouts).
 FISH_SPOTS = {
     "Bearded Rock": [(-213.67, 0.51, 19.27, -457.3, 74.0)],
     "Cedarwood": [(772.0, 2.03, 9.0, 961.5, 19.2)],
@@ -83,12 +82,50 @@ FISH_SPOTS = {
     "Horizon's Edge": [(-1092.7, 58.4, -65.7, -871.5, 14.2), (-1154.5, 58.4, 123.7, -995.1, 393.0)],
     "Nophica's Wells": [(-834.6, 90.4, 324.3, -804.2, 273.4), (-1019.3, 90.4, 321.6, -1173.6, 268.0)],
     "The Fields of Glory": [(2117.3, 121.65, 405.3, 2733.8, 43.1), (2053.3, 121.65, 277.3, 2605.8, -212.9), (2117.3, 121.65, 341.3, 2733.8, -84.9)],
+    "Bentbranch": [(332.0, -1.01, -451.93, 317.9, -437.8), (360.0, 0.87, -451.93, 380.0, -451.9)],
+    "Cassiopeia Hollow": [(1308.0, -93.26, -741.0, 1328.0, -741.0), (1155.0, -94.02, -894.0, 1140.9, -908.1)],
+    "Drybone": [(1026.9, 251.0, -272.2, 1026.9, -252.2), (1038.9, 250.31, -248.2, 1018.9, -248.2)],
+    "Mistbeard Cove": [(-2245.0, 31.61, -1594.0, -2259.1, -1579.9), (-2248.0, 45.71, -1558.0, -2262.1, -1543.9)],
+    "The Mun Tuy Cellars": [(-848.0, -32.11, -2162.0, -828.0, -2162.0), (-818.0, -24.6, -2267.0, -798.0, -2267.0)],
+    "The Tam Tara Deepcroft": [(173.0, -36.1, -92.0, 158.9, -77.9), (260.0, -36.17, 13.0, 280.0, 13.0)],
     "Riversmeet": [(-1952.0, 251.85, 0.0, -2143.6, 194.7), (-1888.0, 251.85, 192.0, -2015.6, 578.7), (-2080.0, 267.85, 64.0, -2399.6, 322.7)],
 }
-# Spearfishing pools (folded into Fish): a shore spot of their own, POOL_GAP+ from the Fish spot.
-SPEAR_SPOTS = {}
-# No spot found yet (client never lit Fish at the candidates): Bentbranch, Black Brush, Drybone,
-# Broken Water, Dragonhead.
+# Spearfishing pools (folded into Fish): spots of their own, POOL_GAP+ from the Fish spots.
+# These, and the FISH_SPOTS of Bentbranch, Drybone and the dungeons, came from fish_water.py:
+# a level floor standing at one of the client's water meshes, 20+ yalms from other pools.
+# The fishing window opens at any fishing point, dry ground too (client test 2026-11-20), so
+# the water rule is ours. Of these, Bearded Rock's (-267.67, -34.73) and Cedarwood's
+# (793.0, 6.0) were walked to from dry ground in the client and the window opened; the rest
+# are terrain-checked only.
+SPEAR_SPOTS = {
+    "Bearded Rock": [(-267.67, 0.0, -34.73, -247.7, -34.7), (-222.67, 0.0, -1.73, -202.7, -1.7)],
+    "Bentbranch": [(316.0, -4.0, -439.93, 330.1, -454.1), (428.0, -0.7, -455.93, 448.0, -455.9)],
+    "Bloodshore": [(1288.3, 0.0, -869.4, 1308.3, -869.4), (1282.3, 0.0, -842.4, 1302.3, -842.4)],
+    "Cedarwood": [(793.0, 0.0, 6.0, 813.0, 6.0), (772.0, 0.0, 30.0, 752.0, 30.0)],
+    "Drybone": [(1342.9, 258.86, -144.2, 1357.0, -130.1), (1198.9, 258.92, -136.2, 1218.9, -136.2)],
+    "Emerald Moss": [(-1402.3, 28.0, -1953.3, -1382.3, -1953.3), (-1377.3, 28.0, -2014.3, -1377.3, -1994.3)],
+    "Halatali": [(1668.3, 258.73, -272.3, 1668.3, -252.3), (1710.3, 259.12, -200.3, 1730.3, -200.3)],
+    "Horizon's Edge": [(-1145.5, 58.68, 141.7, -1159.6, 127.6), (-1074.7, 58.15, -56.7, -1094.7, -56.7)],
+    "Humblehearth": [(-117.3, -5.92, -437.2, -117.3, -417.2), (-108.3, -6.2, -413.2, -88.3, -413.2)],
+    "Iron Lake": [(-40.5, 63.95, -1951.6, -20.5, -1951.6), (-31.5, 63.41, -1924.6, -45.6, -1910.5)],
+    "Nine Ivies": [(1596.1, 15.2, -763.1, 1610.2, -777.2), (1596.1, 14.93, -727.1, 1582.0, -713.0)],
+    "Nophica's Wells": [(-825.6, 91.04, 306.3, -825.6, 326.3), (-1037.3, 90.19, 312.6, -1017.3, 312.6)],
+    "Skull Valley": [(-1071.0, 0.0, -688.1, -1051.0, -688.1), (-1086.0, 0.0, -733.1, -1066.0, -733.1)],
+    "The Fields of Glory": [(2135.3, 120.15, 414.3, 2155.3, 414.3), (2117.3, 120.15, 320.3, 2137.3, 320.3)],
+    "Tranquil Paths": [(-1560.4, -14.87, -644.24, -1546.3, -630.1), (-1584.4, -15.09, -635.24, -1604.4, -635.2)],
+}
+# Fish pools of the open dungeons: place -> (zone, layout offset). Their spots are in
+# FISH_SPOTS; the pools keep their own grade.
+DUNGEON_PLACES = {
+    "Mistbeard Cove": (131, (-1730.0, 4.0, -1599.0)),
+    "Cassiopeia Hollow": (132, (1184.0, -19.9, -767.0)),
+    "The Mun Tuy Cellars": (157, (-864.0, -24.0, -2208.0)),
+    "The Tam Tara Deepcroft": (158, (224.0, -35.9, -97.0)),
+}
+# No Fish point: Black Brush, Broken Water and Dragonhead (no water mesh in reach of the
+# camp; Broken Water's river bed is dry), and the towns (Limsa Lominsa, Gridania, Ul'dah:
+# tools/terrain's town layouts do not line up with server coordinates). Their fish all
+# come from other pools.
 
 
 def aetherytes():
@@ -97,6 +134,13 @@ def aetherytes():
     for m in re.finditer(r"aetheryte_id: ([\d_]+),\s*zone_id: (\d+),\s*x: ([-\d.]+),\s*y: ([-\d.]+),\s*z: ([-\d.]+)", src):
         out[int(m.group(1).replace("_", ""))] = (int(m.group(2)), float(m.group(3)), float(m.group(4)), float(m.group(5)))
     return out
+
+
+def placed_points():
+    """(zone, x, y, z) of every point in server_gather_node_spawns.sql."""
+    text = open(os.path.join(DATA, "server_gather_node_spawns.sql"), encoding="utf8").read()
+    return [(int(m.group(1)), float(m.group(2)), float(m.group(3)), float(m.group(4))) for m in re.finditer(
+        r"^\(\d+, \d+, '[^']*', (\d+), '[^']*', -?\d+, ([-\d.]+), ([-\d.]+), ([-\d.]+),", text, re.M)]
 
 
 def place(terrain, zone, ax, ay, az, n, seed, taken=()):
@@ -148,20 +192,25 @@ def main():
     grades, spawns, sid = {}, [], 100
     taken = collections.defaultdict(list)  # zone -> points placed so far
     for name, spots in list(FISH_SPOTS.items()) + list(SPEAR_SPOTS.items()):
-        if name in PLACES and PLACES[name][1] in aeth:  # hand-picked shore spots come first
+        if name in DUNGEON_PLACES:  # hand-picked water spots come first
+            taken[DUNGEON_PLACES[name][0]] += [(x, y, z) for x, y, z, _, _ in spots]
+        elif name in PLACES and PLACES[name][1] in aeth:
             taken[aeth[PLACES[name][1]][0]] += [(x, y, z) for x, y, z, _, _ in spots]
     for p in pools:
         tid, cmd, name = int(p["template"]), p["command"], p["place"]
-        if name not in PLACES:
+        if name in DUNGEON_PLACES and cmd == "Fish":
+            region, zone, grade, ax, ay, az = "dungeon", DUNGEON_PLACES[name][0], "own", 0.0, 0.0, 0.0
+        elif name in PLACES:
+            region, aid, grade = PLACES[name]
+            grades[tid] = grade
+            if aid not in aeth:
+                print(f"warning: {name}: aetheryte {aid} has no spawn", file=sys.stderr)
+                continue
+            zone, ax, ay, az = aeth[aid]
+        else:
             continue
-        region, aid, grade = PLACES[name]
-        grades[tid] = grade
         if only and f"{cmd}:{region}" not in only and f"{cmd}:{name}" not in only:
             continue
-        if aid not in aeth:
-            print(f"warning: {name}: aetheryte {aid} has no spawn", file=sys.stderr)
-            continue
-        zone, ax, ay, az = aeth[aid]
         harvest, cls = COMMANDS[cmd]
         if cmd in ("Fish", "Spearfish"):
             spots = (FISH_SPOTS if cmd == "Fish" else SPEAR_SPOTS).get(name, [])

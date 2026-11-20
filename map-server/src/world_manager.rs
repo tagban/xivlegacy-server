@@ -2041,9 +2041,11 @@ impl WorldManager {
                 Some(z) => z.read().await.core.bgm_day,
                 None => continue,
             };
-            let music = crate::seasonal::zone_look(s.current_zone_id)
-                .1
-                .unwrap_or(zone_music);
+            let music = s.music_choice.unwrap_or(
+                crate::seasonal::zone_look(s.current_zone_id)
+                    .1
+                    .unwrap_or(zone_music),
+            );
             let weather = self.zone_weather(s.current_zone_id);
             for mut sub in [
                 tx::misc::build_set_weather(h.actor_id, weather, WEATHER_FADE),
@@ -2055,6 +2057,44 @@ impl WorldManager {
             n += 1;
         }
         n
+    }
+
+    /// Keep (or with `None` drop) `session_id`'s `!setmusic` pick, in
+    /// place so nothing else in the session is overwritten; the session
+    /// after the change, or `None` when it has ended.
+    pub async fn set_music_choice(&self, session_id: u32, choice: Option<u16>) -> Option<Session> {
+        let mut sessions = self.sessions.write().await;
+        let s = sessions.get_mut(&session_id)?;
+        s.music_choice = choice;
+        Some(s.clone())
+    }
+
+    /// The music `session`'s area plays on its own: a private area's
+    /// track, else a running seasonal event's for the zone, else the
+    /// zone's day music (0 when the zone isn't loaded).
+    pub async fn area_music(&self, session: &Session) -> u16 {
+        let Some(zone) = self.zone(session.current_zone_id).await else {
+            return 0;
+        };
+        let z = zone.read().await;
+        if let Some(name) = session.current_private_area_name.as_ref()
+            && let Some(pa) = z.get_private_area(name, session.current_private_area_level)
+        {
+            return pa.core.bgm_day;
+        }
+        crate::seasonal::zone_look(session.current_zone_id)
+            .1
+            .unwrap_or(z.core.bgm_day)
+    }
+
+    /// What `session_id` hears when nothing scripted is playing: their
+    /// `!setmusic` pick, else their area's own music.
+    pub async fn own_music(&self, session_id: u32) -> Option<u16> {
+        let s = self.session(session_id).await?;
+        match s.music_choice {
+            Some(m) => Some(m),
+            None => Some(self.area_music(&s).await),
+        }
     }
 
     pub async fn session(&self, id: u32) -> Option<Session> {
@@ -2730,7 +2770,7 @@ impl WorldManager {
             if main_state == crate::actor::MAIN_STATE_MOUNTED as u8 && mount_state_char != 0 {
                 if rental_expire != 0 { 64 } else { 83 }
             } else {
-                bgm_day
+                session.music_choice.unwrap_or(bgm_day)
             };
         subpackets.push(tx::actor::build_set_actor_is_zoning(actor_id, false));
         // Dalamud/Music/Weather/SetMap — the shared destination-zone
@@ -4125,6 +4165,8 @@ impl WorldManager {
         // AddActor is immediately followed by its fresh ScriptBind, so
         // it ends the crossing event-ready even on repeated back-and-
         // forth flips. (Garlemald-Server #46, round 4.)
+        // A `!setmusic` pick carries over the border.
+        let music_choice = self.session(session_id).await.and_then(|s| s.music_choice);
         if let Some(client) = self.client(session_id).await {
             let (
                 zone_actor_id,
@@ -4160,9 +4202,11 @@ impl WorldManager {
                 &mut subpackets,
                 actor_id,
                 self.world_settings.dalamud_phase,
-                crate::seasonal::zone_look(destination_zone_id)
-                    .1
-                    .unwrap_or(bgm_day),
+                music_choice.unwrap_or(
+                    crate::seasonal::zone_look(destination_zone_id)
+                        .1
+                        .unwrap_or(bgm_day),
+                ),
                 0x04,
                 self.zone_weather(destination_zone_id),
                 self.world_settings.weather_transition,

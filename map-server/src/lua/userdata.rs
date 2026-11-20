@@ -1438,13 +1438,15 @@ impl UserData for LuaPlayer {
         methods.add_method("GetActorInInstance", |_, _this, _actor_id: u32| {
             Ok(Value::Nil)
         });
-        // `player:ResetMusic()` — clear scripted zone music
-        // override + revert to default. 1 site (CraftCommand.lua
-        // after a craft round). Real impl emits OP_SET_MUSIC.
+        // `player:ResetMusic()` — end a scripted track (crafting, a
+        // ride): back to the player's `!setmusic` pick, else their
+        // area's own music.
         methods.add_method("ResetMusic", |_, this, _: ()| {
-            tracing::debug!(
-                player = this.snapshot.actor_id,
-                "ResetMusic captured (OP_SET_MUSIC builder not wired)",
+            push(
+                &this.queue,
+                LuaCommand::ResetMusic {
+                    player_id: this.snapshot.actor_id,
+                },
             );
             Ok(())
         });

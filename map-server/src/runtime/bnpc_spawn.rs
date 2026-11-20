@@ -185,6 +185,29 @@ pub(crate) async fn spawn_battle_npc_as(
         return false;
     }
 
+    // Stat rows from the genus / pool / spawn mod tables (elemental
+    // resistances, #333); `apply_spawn_metadata` (inside
+    // `equip_battle_npc`) folds them in.
+    match db
+        .load_battle_npc_mod_layers(spawn.genus_id, spawn.pool_id, bnpc_id)
+        .await
+    {
+        Ok([genus, pool, spawn_rows]) => {
+            for (k, v) in genus {
+                bnpc.genus_mods.set_raw(k, v);
+            }
+            for (k, v) in pool {
+                bnpc.pool_mods.set_raw(k, v);
+            }
+            for (k, v) in spawn_rows {
+                bnpc.spawn_mods.set_raw(k, v);
+            }
+        }
+        Err(e) => {
+            tracing::warn!(bnpc_id, error = %e, "SpawnBattleNpcById: mod rows not loaded");
+        }
+    }
+
     // 4b. Combat metadata, the AI controller and its moves
     //     (`equip_battle_npc`).
     equip_battle_npc(

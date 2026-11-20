@@ -268,12 +268,10 @@ impl BattleNpc {
     /// `catalogs.battle_commands` because this sync path has no catalog
     /// access. Ignored for non-casters.
     ///
-    /// Pool / genus / spawn modifier-layer merging (the
-    /// `server_battlenpc_pool_mods` / `genus_mods` / `spawn_mods`
-    /// rows) is intentionally NOT done here — it's a separate
-    /// follow-up (`merge_modifier_layers` already exists; the loader
-    /// just isn't wired). Without it, BattleNpcs spawn with baseline
-    /// stats; combat math works but harder mobs are under-leveled.
+    /// The genus / pool / spawn modifier layers (the
+    /// `server_battlenpc_*_mods` stat rows) are folded in here, before
+    /// the level-scaled fallback stats: the spawner fills `genus_mods`,
+    /// `pool_mods` and `spawn_mods` first (see `merge_modifier_layers`).
     pub fn apply_spawn_metadata(
         &mut self,
         spawn: &crate::database::BattleNpcSpawn,
@@ -335,9 +333,11 @@ impl BattleNpc {
             .chara
             .mods
             .set(crate::actor::modifier::Modifier::MovementSpeed, 5.0);
+        // Stat rows from the genus / pool / spawn mod tables (elemental
+        // resistances, #333).
+        self.merge_modifier_layers();
         // Level-scaled fallback combat stats. The genus/pool mod seed
-        // tables carry no stat rows (016_server_battlenpc_genus_mods.sql
-        // is empty), so without these every BNpc melee swing read all
+        // tables carry no general stat rows, so without these every BNpc melee swing read all
         // zeros and clamped to 1 damage (Garlemald-Server #28). Only stats
         // the seed layers left at zero are filled. Sizes: see
         // `battle::utils::monster_melee_stats` (fitted to retail hits).
@@ -385,12 +385,28 @@ impl BattleNpc {
         self.respawn_time_seconds = seconds;
     }
 
-    /// Fold pool → genus → spawn modifier layers into the underlying
-    /// `Character.chara.mods`. Later layers overwrite earlier ones on
-    /// key conflicts. Called at spawn time by the spawner.
+    /// Fold genus → pool → spawn modifier layers into
+    /// `Character.chara.mods`. The more specific layer wins on a key
+    /// conflict (a pool row overrides its genus, a spawn row its pool);
+    /// keys no layer sets are left alone. Elemental resistances are
+    /// stored as percents and become points for this monster's level
+    /// (`battle::utils::monster_elemental_resistance`). Called at spawn
+    /// time from `apply_spawn_metadata`, after the level is set.
     pub fn merge_modifier_layers(&mut self) {
-        let merged = merge_modifier_map(&self.pool_mods, &self.genus_mods, &self.spawn_mods);
-        self.npc.character.chara.mods = merged;
+        let merged = merge_modifier_map(&self.genus_mods, &self.pool_mods, &self.spawn_mods);
+        let level = self.npc.character.chara.level;
+        let mods = &mut self.npc.character.chara.mods;
+        for (k, v) in merged.iter() {
+            let elemental = crate::battle::utils::ELEMENTAL_RESISTANCES
+                .iter()
+                .any(|m| m.as_u32() == k);
+            let v = if elemental {
+                crate::battle::utils::monster_elemental_resistance(v, level)
+            } else {
+                v
+            };
+            mods.set_raw(k, v);
+        }
     }
 
     /// Port of `ForceRespawn()`. Restores spawn position + HP, clears
@@ -442,9 +458,9 @@ impl BattleNpc {
     }
 }
 
-fn merge_modifier_map(pool: &ModifierMap, genus: &ModifierMap, spawn: &ModifierMap) -> ModifierMap {
-    let mut out = pool.clone();
-    for (k, v) in genus.iter() {
+fn merge_modifier_map(genus: &ModifierMap, pool: &ModifierMap, spawn: &ModifierMap) -> ModifierMap {
+    let mut out = genus.clone();
+    for (k, v) in pool.iter() {
         out.set_raw(k, v);
     }
     for (k, v) in spawn.iter() {
@@ -514,6 +530,24 @@ mod tests {
         bnpc.merge_modifier_layers();
         assert_eq!(bnpc.npc.character.chara.mods.get(Modifier::Defense), 30.0);
         assert_eq!(bnpc.npc.character.chara.mods.get(Modifier::Strength), 5.0);
+    }
+
+    #[test]
+    fn pool_layer_overrides_genus_and_elements_scale_with_level() {
+        use crate::actor::modifier::Modifier;
+        let mut bnpc = BattleNpc::new(7, &class(), "dodo_7", 100, 0.0, 0.0, 0.0, 0.0, 0, 0, None);
+        bnpc.npc.character.chara.level = 50;
+        bnpc.npc.character.chara.mods.set(Modifier::Defense, 50.0);
+        bnpc.genus_mods.set(Modifier::FireResistance, 5.0);
+        bnpc.genus_mods.set(Modifier::WindResistance, -5.0);
+        bnpc.pool_mods.set(Modifier::FireResistance, 15.0);
+        bnpc.merge_modifier_layers();
+        let mods = &bnpc.npc.character.chara.mods;
+        // 15% of a level-50 base spell (220) over the 0.225 level mod.
+        assert_eq!(mods.get(Modifier::FireResistance), 147.0);
+        assert_eq!(mods.get(Modifier::WindResistance), -49.0);
+        // Keys no layer sets stay.
+        assert_eq!(mods.get(Modifier::Defense), 50.0);
     }
 
     #[test]

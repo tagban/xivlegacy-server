@@ -165,6 +165,19 @@ function onEventStarted(player, commandActor, triggerName, arg1, arg2, arg3, arg
         return;
     end
 
+    -- The point decides the minigame, so the command and the class must
+    -- match it: a miner who reaches a fishing point with Mine would
+    -- otherwise fish there and earn Fisher EXP. Retired commands
+    -- (Quarry/Harvest/Spearfish) are folded into Mine/Log/Fish points.
+    local usedCommand = (commandActor:GetActorClassId() or 0) % 0x10000;
+    local needClass = GATHER_CLASS[harvestType];
+    if (GATHER_CLASS[usedCommand] ~= nil and GATHER_CLASS[usedCommand] ~= needClass)
+        or (needClass ~= nil and player:GetCurrentClassOrJob() ~= needClass) then
+        player:SendMessage(MESSAGE_TYPE_SYSTEM, "", GATHER_WRONG_TOOL[needClass] or GATHER_WRONG_TOOL[39]);
+        player:EndEvent();
+        return;
+    end
+
     local resolver = GetGatherResolver();
     if resolver == nil then
         -- No catalog loaded — abort gracefully so a boot misconfig
@@ -457,6 +470,14 @@ HARVEST_UI = {
 
 -- Class that gathers each command's points.
 GATHER_CLASS = {[22002] = 39, [22006] = 39, [22003] = 40, [22007] = 40, [22004] = 41, [22008] = 41};
+
+-- Said when the point needs another class's tool (our text: no 1.23b
+-- sheet line found for it).
+GATHER_WRONG_TOOL = {
+    [39] = "You need a pickaxe in hand to mine here.",
+    [40] = "You need a hatchet in hand to log here.",
+    [41] = "You need a fishing rod in hand to fish here.",
+};
 
 -- An aim spot with nothing in it gives what lies nearest to it.
 function NearestAimSlot(slots, aimSlot)
