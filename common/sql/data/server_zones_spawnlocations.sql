@@ -1,4 +1,5 @@
--- server_zones_spawnlocations: game data, 20 rows. Reloaded whole when this file changes.
+-- server_zones_spawnlocations: game data, 21 rows. Reloaded whole when this file changes.
+-- 21: where !zone 201 (prv0Cottage00, the sunken living room) lands.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_zones_spawnlocations`;
 INSERT INTO `server_zones_spawnlocations` (`id`, `zoneId`, `privateAreaName`, `spawnType`, `spawnX`, `spawnY`, `spawnZ`, `spawnRotation`) VALUES
@@ -21,4 +22,5 @@ INSERT INTO `server_zones_spawnlocations` (`id`, `zoneId`, `privateAreaName`, `s
 (17, 184, NULL, 16, -24.34, 192.0, 34.22, 0.78),
 (18, 184, NULL, 15, -24.34, 192.0, 34.22, 0.78),
 (19, 184, NULL, 15, -22.0, 196.0, 87.0, 1.8),
-(20, 177, NULL, 15, 2.0, 2.0, 2.0, 0.0);
+(20, 177, NULL, 15, 2.0, 2.0, 2.0, 0.0),
+(21, 201, NULL, 15, 0.36, -0.5, 0.25, 0.0);
