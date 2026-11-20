@@ -31,12 +31,17 @@
 /// player level 6, all with no "(+%)" bonus suffix — i.e. base-table
 /// rows at dlvl 0, not dlvl variants (pmeteor's ±20%/level steps cannot
 /// connect 601 to 625). Calibration: rows 5/6 pinned at 625/601, rows
-/// 1-4 flat at the level-5 value (mirroring pmeteor's flat low-band
-/// shape), rows 7-18 linearly interpolated from 601 down to the
-/// attested 160 at level 19. Refine from more correlated footage
-/// (youtube-watcher OCR "experience points" samples) as it lands.
+/// 7-18 linearly interpolated from 601 down to the attested 160 at
+/// level 19. Rows 1-4 have no retail sample; they hold the attested
+/// level-5 pace of 2.4 same-level kills a level (1500 / 625), i.e.
+/// `LEVEL_THRESHOLDS[l-1] / 2.4`. They used to copy the level-5 value
+/// flat, and 625 against level 1's 570 made every kill below level 5 a
+/// level (a new character went 1 to 4 in the opening fight). Refine from
+/// more correlated footage (youtube-watcher OCR "experience points"
+/// samples) as it lands.
 pub const BASE_EXP: [u16; 50] = [
-    625, 625, 625, 625, 625, // 1-5 (5 pinned: retail 625 @ player lvl 5)
+    238, 292, 367, 458, // 1-4 (level-5 pace: threshold / 2.4)
+    625, // 5 (pinned: retail 625 @ player lvl 5)
     601, // 6 (pinned: retail 601 x3 @ player lvl 6)
     567, 533, 499, 465, // 7-10 (interpolated 601 → 160)
     431, 397, 364, 330, 296, 262, 228, 194, // 11-18 (interpolated)
@@ -140,6 +145,22 @@ mod tests {
         // level 6, no (+%) suffix (dlvl 0 base rows).
         assert_eq!(base_kill_exp(5, 5, 1), 625);
         assert_eq!(base_kill_exp(6, 6, 1), 601);
+    }
+
+    /// Below level 5 a same-level kill is a share of a level, at the
+    /// attested level-5 pace (2.4 kills a level), never a whole level.
+    #[test]
+    fn low_levels_keep_the_level_5_pace() {
+        use crate::battle::save::LEVEL_THRESHOLDS;
+        for level in 1..=5i16 {
+            let exp = i32::from(base_kill_exp(level, level, 1));
+            let threshold = LEVEL_THRESHOLDS[(level - 1) as usize];
+            let kills = f64::from(threshold) / f64::from(exp);
+            assert!(
+                (2.35..=2.45).contains(&kills),
+                "level {level}: {exp} EXP a kill is {kills:.2} kills a level",
+            );
+        }
     }
 
     #[test]

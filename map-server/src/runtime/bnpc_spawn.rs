@@ -237,6 +237,34 @@ pub(crate) async fn spawn_battle_npc_as(
         }
     }
 
+    // A healer ally (the opening fights' Papalymo, Y'shtola and
+    // Niellefresne, any conjurer ally) cures the player, other allies
+    // and itself; the ticker's ally heal pass casts it.
+    if spawn.allegiance == 1
+        && crate::battle::controller::ally_is_healer(&actor_class.class_path, spawn.current_job)
+    {
+        let cure = lua.as_ref().and_then(|l| {
+            l.catalogs()
+                .battle_commands
+                .read()
+                .ok()
+                .and_then(|m| {
+                    m.get(&crate::battle::controller::ALLY_HEAL_SPELL_ID)
+                        .cloned()
+                })
+                .map(|gd| gd.to_battle_command())
+        });
+        if cure.is_none() {
+            tracing::warn!(
+                bnpc_id,
+                "SpawnBattleNpcById: healer ally but Cure is not in the catalog",
+            );
+        }
+        if let Some(ctrl) = bnpc.npc.character.ai_container.controller.as_mut() {
+            ctrl.battle.heal_spell = cure;
+        }
+    }
+
     // 5. Insert the spatial projection into the parent zone's grid.
     let Some(zone_arc) = world.zone(parent_zone_id).await else {
         tracing::warn!(

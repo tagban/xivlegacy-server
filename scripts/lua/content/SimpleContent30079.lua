@@ -13,6 +13,9 @@ require ("ally")
 -- gate. BNpc seed rows live in
 -- common/sql/seed/055_uldah_seq005_tutorial.sql (spawn ids 13-15).
 
+-- EXP a tutorial kill pays (see the onUpdate note on tutorial kill EXP).
+local TUTORIAL_KILL_EXP = 3 * 238
+
 function onCreate(starterPlayer, contentArea, director)
 	-- Reset the engagement latch: the engine caches ONE VM per script
 	-- path for the whole server process, so the top-level
@@ -96,12 +99,20 @@ function onUpdate(tick, area)
 		end
 	end
 
-	-- Tutorial kill EXP: retail granted 3000 EXP for downing the goobbue
-	-- (single hostile, vs Limsa/Gridania's 1000-per-mob trio) — enough to
-	-- clear level 2 (570 SP) in one grant. (FFXIVenturer "Flowers for
-	-- All" guide: "You will receive 3000 EXP and a Velodyna Cosmos
-	-- (quest item) for completing the sequence".) `mobs` is live-only, so
-	-- a drop in the count since the last tick = the kill. Granted to the
+	-- Tutorial kill EXP: paid when the goobbue goes down.
+	-- The old 1000-per-kill figure came from 2010 open-beta footage and
+	-- launch-era guides ("You gain 1000 experience points."), when kills
+	-- paid physical-level EXP separately from class skill points. Patch
+	-- 1.18 dropped physical level; the 1.23b EXP bar is the old skill-point
+	-- pool, where 1000 a kill took a new character from level 1 to 4
+	-- (570 + 700 + 880 = 2150). What a kill pays now is the 1.23b kill
+	-- formula for a level-1 player on a same-level monster
+	-- (`battle::exp::base_kill_exp(1, 1, 1)`, pinned by the
+	-- `real_seq005_content_scripts_grant_tutorial_kill_exp` test), so the
+	-- fight ends at level 2. The goobbue is the only hostile, so it pays
+	-- what the other cities' trios do (3 kills' worth) in one grant.
+	-- `mobs` is live-only, so a drop in the count since the last tick =
+	-- the kill. Granted to the
 	-- player regardless of who landed the blow — retail pays the full
 	-- amount on ally killing blows too, which the onKillBNpc quest hook's
 	-- player-only attacker gate would miss. The `#allies > 0` gate is
@@ -115,7 +126,7 @@ function onUpdate(tick, area)
 			local prev = tutorialLiveHostiles[owner.actorId]
 			if prev ~= nil and #mobs < prev then
 				for _ = 1, prev - #mobs do
-					owner:AddExp(3000, owner.charaWork.parameterSave.state_mainSkill[0], 0)
+					owner:AddExp(TUTORIAL_KILL_EXP, owner.charaWork.parameterSave.state_mainSkill[0], 0)
 				end
 			end
 			tutorialLiveHostiles[owner.actorId] = #mobs

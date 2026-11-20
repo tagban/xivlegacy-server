@@ -183,6 +183,9 @@ impl crate::group::GroupResolver for RetainerMeetingResolver {
 /// `server_battle_commands.requirements` bit for "needs a shield" (pmeteor
 /// `BattleCommandRequirements.Shield`): Shield Bash.
 const BATTLE_REQUIRES_SHIELD: u16 = 16;
+/// How long after a hostile action pressed in passive mode (past its cast
+/// time) the client's follow-up "auto-attack off" 0x00CD is ignored.
+const KEEP_ATTACK_AFTER_PASSIVE_PRESS_MS: u64 = 1_500;
 
 impl PacketProcessor {
     pub async fn process_packet(
@@ -9600,6 +9603,15 @@ impl PacketProcessor {
                 // entry for downstream reads. (#28.)
                 c.hate.update_hate(target_id, 1);
             }
+            // Pressed from passive mode, the action switches to active
+            // mode the way F does, auto-attack included. The client still
+            // thinks it is sheathed and follows the press with an
+            // "auto-attack off" 0x00CD as it leaves targeting; that one
+            // must not stop the swings the press just started.
+            if draw_first {
+                c.keep_attack_until_ms =
+                    now_ms + u64::from(command.cast_time_ms) + KEEP_ATTACK_AFTER_PASSIVE_PRESS_MS;
+            }
             let mut bc = command.to_battle_command();
             crate::runtime::dispatcher::apply_combo_cast_time(self.lua.as_ref(), &mut bc, &c);
             match command.command_type {
@@ -9796,12 +9808,21 @@ impl PacketProcessor {
                         "player auto-attack engage (0x00CD)",
                     );
                 }
+            } else if !auto_attack
+                && crate::runtime::clock::server_now_ms() < c.keep_attack_until_ms
+            {
+                // The client's "auto-attack off" right after a hostile
+                // action pressed from passive mode (see
+                // `dispatch_hotbar_command`): the press switched to active
+                // mode with auto-attack on, as F does, so keep swinging.
+                tracing::debug!(
+                    player = format!("0x{actor_id:08X}"),
+                    "auto-attack off after a passive-mode press ignored (0x00CD)",
+                );
             } else if !auto_attack {
                 // Auto-attack toggled off (attackTarget == 0xE0000000) — stop
                 // swinging but keep the soft target so the reticle stays. A
-                // cast in progress is left alone: the client sends this as
-                // it leaves targeting right after a spell pressed from
-                // passive mode, which would otherwise cancel the spell.
+                // cast in progress is left alone.
                 c.ai_container.stop_attacking();
             } else if !in_active_mode {
                 tracing::debug!(

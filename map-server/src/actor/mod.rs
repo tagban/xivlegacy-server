@@ -563,6 +563,11 @@ pub struct Character {
     /// When a knockback's sped-up run ends (`server_now_ms`): the ticker
     /// sends the usual speed again (`speed_sent`). 0 = none pending.
     pub knockback_speed_until_ms: u64,
+    /// A hostile hotbar action pressed in passive mode drew the weapon and
+    /// started auto-attack; until this time (`server_now_ms`) the client's
+    /// "auto-attack off" 0x00CD, which it sends as it leaves targeting
+    /// after that press, is not a request to stop swinging. 0 = none.
+    pub keep_attack_until_ms: u64,
     /// The commands that continue the player's combo
     /// (`playerWork.comboNextCommandId`), 0 when no combo is going.
     pub combo_next: [i32; 2],
@@ -613,6 +618,7 @@ impl Character {
             status_mods: Default::default(),
             speed_sent: 1.0,
             knockback_speed_until_ms: 0,
+            keep_attack_until_ms: 0,
             combo_next: [0, 0],
             traits: Vec::new(),
             trait_mods: Vec::new(),

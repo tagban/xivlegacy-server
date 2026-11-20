@@ -12,6 +12,9 @@ require ("ally")
 -- HP model, no kill gate, lying-down spawn states. BNpc seed rows live
 -- in common/sql/seed/054_limsa_seq005_tutorial.sql (spawn ids 8-12).
 
+-- EXP a tutorial kill pays (see the onUpdate note on tutorial kill EXP).
+local TUTORIAL_KILL_EXP = 238
+
 function onCreate(starterPlayer, contentArea, director)
 	-- Reset the engagement latch: the engine caches ONE VM per script
 	-- path for the whole server process, so the top-level
@@ -98,11 +101,18 @@ function onUpdate(tick, area)
 		end
 	end
 
-	-- Tutorial kill EXP: retail granted 1000 EXP per aurelia — 3000 for
-	-- the trio, enough to clear level 2 (570 SP) on the first kill.
-	-- (FFXIVenturer "Shapeless Melody" guide: "You will receive 1000 EXP
-	-- from each monster"; 2010-09 open-beta footage OCRs "You gain 1000
-	-- experience points." per kill.) `mobs` is live-only, so a drop in
+	-- Tutorial kill EXP: paid per kill of the three aurelias.
+	-- The old 1000-per-kill figure came from 2010 open-beta footage and
+	-- launch-era guides ("You gain 1000 experience points."), when kills
+	-- paid physical-level EXP separately from class skill points. Patch
+	-- 1.18 dropped physical level; the 1.23b EXP bar is the old skill-point
+	-- pool, where 1000 a kill took a new character from level 1 to 4
+	-- (570 + 700 + 880 = 2150). What a kill pays now is the 1.23b kill
+	-- formula for a level-1 player on a same-level monster
+	-- (`battle::exp::base_kill_exp(1, 1, 1)`, pinned by the
+	-- `real_seq005_content_scripts_grant_tutorial_kill_exp` test), so the
+	-- fight ends at level 2. Three kills, one grant each.
+	-- `mobs` is live-only, so a drop in
 	-- the count since the last tick = that many kills. Granted to the
 	-- player regardless of who landed the blow — retail pays the full
 	-- amount on ally killing blows too, which the onKillBNpc quest hook's
@@ -120,7 +130,7 @@ function onUpdate(tick, area)
 				-- multi-kill tick still produces retail's per-kill
 				-- chat lines.
 				for _ = 1, prev - #mobs do
-					owner:AddExp(1000, owner.charaWork.parameterSave.state_mainSkill[0], 0)
+					owner:AddExp(TUTORIAL_KILL_EXP, owner.charaWork.parameterSave.state_mainSkill[0], 0)
 				end
 			end
 			tutorialLiveHostiles[owner.actorId] = #mobs
