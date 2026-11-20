@@ -130,6 +130,12 @@ pub struct Session {
     /// to `Some(dreamId)` and emits the fade-in packet; `EndDream()`
     /// clears it. `IsDreaming()` reads this via the snapshot.
     pub current_dream_id: Option<u8>,
+    /// The music the player picked with `!setmusic`, played in place of
+    /// their area's own wherever the server would play that (zone-in,
+    /// zone border crossings, after a ride or a craft) until `!setmusic
+    /// off` or logout. Scripted tracks (mount, craft, leve, duty) still
+    /// play over it while they run.
+    pub music_choice: Option<u16>,
     /// Per-session transient party-member list — accumulates as
     /// `currentParty:AddMember(actor_id)` fires from content scripts
     /// (e.g. `SimpleContent30010.lua::onCreate` adds the tutorial

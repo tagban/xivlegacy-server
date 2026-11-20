@@ -39,6 +39,7 @@ use crate::world_manager::WorldManager;
 mod events;
 mod gm_tools;
 mod monster_mode;
+mod self_tools;
 pub(crate) mod world_end;
 
 pub struct CommandProcessor {
@@ -95,7 +96,8 @@ const COMMAND_SYNTAX: &[&str] = &[
     "addeffect <status id> [seconds] [magnitude] [name | 0x<actor id>]",
     "resetrecast <name>",
     "addallaetherytes [name]",
-    "setmusic <music id> [name]",
+    "setmusic <music id or name | list | off> [name]",
+    "myweather <weather id | clear | snow | dalamud | off>",
     "setweather <weather id>",
     "worldend",
     "event [name] [on|off|auto] | event auto",
@@ -200,6 +202,19 @@ impl CommandProcessor {
         invoker: Option<&str>,
         level: Option<u8>,
     ) -> Result<String> {
+        self.run_with_levels(line, invoker, level, crate::command_permissions::get())
+            .await
+    }
+
+    /// `run_checked` with the command levels given (tests use the shipped
+    /// `settings/default/commands.toml`).
+    async fn run_with_levels(
+        &self,
+        line: &str,
+        invoker: Option<&str>,
+        level: Option<u8>,
+        perms: &crate::command_permissions::CommandSettings,
+    ) -> Result<String> {
         let trimmed = line.trim();
         if trimmed.is_empty() {
             return Ok(String::new());
@@ -219,6 +234,7 @@ impl CommandProcessor {
             "giveitem" => "additem",
             "givekeyitem" => "addkeyitem",
             "fixspeed" => "speed",
+            "music" => "setmusic",
             other => other,
         }
         .to_string();
@@ -231,7 +247,6 @@ impl CommandProcessor {
                 ),
             });
         }
-        let perms = crate::command_permissions::get();
         if let Some(level) = level
             && level < perms.required(&cmd)
         {
@@ -248,8 +263,8 @@ impl CommandProcessor {
             Args::new(rest, invoker).self_only(level.is_some_and(|l| l < perms.target_others));
 
         let response = match cmd.as_str() {
-            "help" => Self::help(level, self.final_days),
-            "gmhelp" => self.handle_gmhelp(&args, level).await,
+            "help" => Self::help(level, self.final_days, perms),
+            "gmhelp" => self.handle_gmhelp(&args, level, perms).await,
             "finditem" => self.handle_finditem(&args).await,
             "version" => format!("map-server {}", env!("CARGO_PKG_VERSION")),
             "who" => format!("{} zone(s) loaded", self.world.zone_count().await),
@@ -294,6 +309,7 @@ impl CommandProcessor {
             "addeffect" => self.handle_addeffect(&args).await,
             "addallaetherytes" => self.handle_addallaetherytes(&args).await,
             "setmusic" => self.handle_setmusic(&args).await,
+            "myweather" => self.handle_myweather(&args).await,
             "setweather" => self.handle_setweather(&args).await,
             "revive" => self.handle_revive(&args).await,
             "resetrecast" => self.handle_resetrecast(&args).await,
@@ -340,9 +356,13 @@ impl CommandProcessor {
 
     /// The commands `level` may use (all of them on the console), leaving
     /// out the commands of modules that are off.
-    fn help(level: Option<u8>, final_days: bool) -> String {
-        let perms = crate::command_permissions::get();
-        let mine: Vec<&str> = COMMAND_SYNTAX
+    fn help(
+        level: Option<u8>,
+        final_days: bool,
+        perms: &crate::command_permissions::CommandSettings,
+    ) -> String {
+        let self_only = level.is_some_and(|l| l < perms.target_others);
+        let mine: Vec<String> = COMMAND_SYNTAX
             .iter()
             .filter(|c| {
                 let name = c.split_whitespace().next().unwrap_or("");
@@ -352,7 +372,7 @@ impl CommandProcessor {
                         || crate::runtime::monster_mode::enabled())
                     && level.is_none_or(|l| l >= perms.required(name))
             })
-            .copied()
+            .map(|c| syntax_for(c, self_only))
             .collect();
         match level {
             Some(l) => format!(
@@ -643,10 +663,15 @@ impl CommandProcessor {
     /// it, one per line in their chat log, grouped by the GM level each
     /// needs. A word shows only the commands it's part of. (One chat line
     /// holds 512 bytes, too few for `help`'s list with all the syntax.)
-    async fn handle_gmhelp(&self, args: &Args<'_>, level: Option<u8>) -> String {
-        let perms = crate::command_permissions::get();
+    async fn handle_gmhelp(
+        &self,
+        args: &Args<'_>,
+        level: Option<u8>,
+        perms: &crate::command_permissions::CommandSettings,
+    ) -> String {
         let word = args.tokens.first().map(|w| w.to_ascii_lowercase());
-        let mut mine: Vec<(u8, &str)> = COMMAND_SYNTAX
+        let self_only = level.is_some_and(|l| l < perms.target_others);
+        let mut mine: Vec<(u8, String)> = COMMAND_SYNTAX
             .iter()
             .filter_map(|c| {
                 let name = c.split_whitespace().next().unwrap_or("");
@@ -659,7 +684,7 @@ impl CommandProcessor {
                     && word
                         .as_ref()
                         .is_none_or(|w| c.to_ascii_lowercase().contains(w.as_str()));
-                shown.then_some((needed, *c))
+                shown.then(|| (needed, syntax_for(c, self_only)))
             })
             .collect();
         mine.sort_by_key(|(needed, _)| *needed);
@@ -690,10 +715,17 @@ impl CommandProcessor {
                 for line in lines {
                     self.tell_player(actor_id, line).await;
                 }
-                format!(
-                    "{} commands. [name] is optional: without it a command is for you (or your target, where it says so). !gmhelp <word> narrows the list.",
-                    mine.len()
-                )
+                if self_only {
+                    format!(
+                        "{} commands, each for you only. !gmhelp <word> narrows the list.",
+                        mine.len()
+                    )
+                } else {
+                    format!(
+                        "{} commands. [name] is optional: without it a command is for you (or your target, where it says so). !gmhelp <word> narrows the list.",
+                        mine.len()
+                    )
+                }
             }
             _ => lines.join("\n"),
         }
@@ -1996,6 +2028,16 @@ enum TargetLookup {
 /// The name in `names` closest to `typed` (edit distance, ignoring case,
 /// apostrophes and a leading "camp "), if it's close enough to be a typo:
 /// two letters wrong (a swapped pair is two), or a third of a long name.
+/// A command's syntax as `level` may use it: below `target_others` a
+/// command works only on whoever typed it, so its ` [name]` is left out.
+fn syntax_for(syntax: &str, self_only: bool) -> String {
+    if self_only {
+        syntax.replace(" [name]", "")
+    } else {
+        syntax.to_string()
+    }
+}
+
 fn closest<'n>(typed: &str, names: impl Iterator<Item = &'n str>) -> Option<&'n str> {
     let norm = |t: &str| {
         t.to_lowercase()
@@ -2268,9 +2310,10 @@ mod tests {
     #[test]
     fn help_lists_only_what_the_level_may_use() {
         // without settings every command needs administrator
-        let player = CommandProcessor::help(Some(0), false);
+        let perms = crate::command_permissions::get();
+        let player = CommandProcessor::help(Some(0), false, perms);
         assert!(player.starts_with("your level: player (0)") && !player.contains("givegil"));
-        let console = CommandProcessor::help(None, false);
+        let console = CommandProcessor::help(None, false, perms);
         assert!(console.contains("givegil") && console.contains("zone <zone id or name>"));
     }
 
@@ -2345,6 +2388,163 @@ mod tests {
         let c = handle.character.read().await;
         assert_eq!(c.battle_save.skill_level[29], 15);
         assert_eq!(c.chara.level, 15, "active class level follows");
+    }
+
+    fn shipped_levels() -> crate::command_permissions::CommandSettings {
+        toml::from_str(include_str!("../../../settings/default/commands.toml")).unwrap()
+    }
+
+    #[test]
+    fn shipped_player_commands_are_harmless() {
+        let perms = shipped_levels();
+        assert_eq!(perms.target_others, 2);
+        for name in ["help", "pos", "setmusic", "myweather", "dismount", "wake"] {
+            assert_eq!(perms.required(name), 0, "{name}");
+        }
+        // what moves you, speeds you up, gives you things, or reaches
+        // other players stays with GMs
+        for name in [
+            "setweather",
+            "warp",
+            "zone",
+            "camp",
+            "goto",
+            "bring",
+            "home",
+            "return",
+            "up",
+            "down",
+            "speed",
+            "revive",
+            "endevent",
+            "additem",
+            "givegil",
+            "giveexp",
+            "setlevel",
+            "announce",
+        ] {
+            assert!(perms.required(name) >= 2, "{name}");
+        }
+    }
+
+    #[test]
+    fn player_help_has_no_name_argument() {
+        let perms = shipped_levels();
+        let player = CommandProcessor::help(Some(0), false, &perms);
+        assert!(
+            player.contains("setmusic <music id or name | list | off>")
+                && player.contains("myweather <weather id")
+                && !player.contains("[name]")
+                && !player.contains("setweather")
+                && !player.contains("warp"),
+            "{player}"
+        );
+        let gm = CommandProcessor::help(Some(2), false, &perms);
+        assert!(gm.contains("setmusic <music id or name | list | off> [name]"));
+    }
+
+    #[tokio::test]
+    async fn player_commands_work_on_yourself_only() {
+        use crate::data::{ClientHandle, Session};
+        use crate::runtime::actor_registry::{ActorHandle, ActorKindTag};
+        let (cmd, db) = fixture().await;
+        db.conn_for_test()
+            .call_db(|c| {
+                c.execute(
+                    r"INSERT INTO characters (id, userId, slot, serverId, name)
+                      VALUES (45, 0, 0, 0, 'Music Fan'), (46, 0, 0, 0, 'Other Player')",
+                    [],
+                )?;
+                Ok(())
+            })
+            .await
+            .unwrap();
+        for id in [45, 46] {
+            let handle = ActorHandle::new(
+                id,
+                ActorKindTag::Player,
+                100,
+                id,
+                crate::actor::Character::new(id),
+            );
+            cmd.registry.insert(handle).await;
+            cmd.world
+                .upsert_session(Session {
+                    id,
+                    current_zone_id: 100,
+                    ..Default::default()
+                })
+                .await;
+        }
+        let (tx, mut rx) = tokio::sync::mpsc::channel(64);
+        cmd.world
+            .register_client(45, ClientHandle::new(45, tx))
+            .await;
+        let perms = shipped_levels();
+        let me = Some("Music Fan");
+        let run = |line: &'static str, level: u8| {
+            let cmd = &cmd;
+            let perms = &perms;
+            async move {
+                // boxed: the dispatcher's future is too big for a test
+                // thread's stack
+                Box::pin(cmd.run_with_levels(line, me, Some(level), perms))
+                    .await
+                    .unwrap()
+            }
+        };
+        let choice = |id: u32| {
+            let world = cmd.world.clone();
+            async move { world.session(id).await.unwrap().music_choice }
+        };
+
+        let out = run("setmusic gridania", 0).await;
+        assert!(out.contains("51 Gridania for you"), "{out}");
+        assert_eq!(choice(45).await, Some(51));
+        assert!(rx.try_recv().is_ok(), "the music packet reached the player");
+        let out = run("music limsa lominsa", 0).await;
+        assert!(out.contains("59 Limsa Lominsa"), "{out}");
+        assert_eq!(choice(45).await, Some(59));
+        let out = run("setmusic off", 0).await;
+        assert_eq!(out, "back to the zone's music");
+        assert_eq!(choice(45).await, None);
+
+        // never on someone else below GM
+        for (line, name) in [
+            ("setmusic 59 Other Player", "setmusic"),
+            ("setmusic off Other Player", "setmusic"),
+            ("pos Other Player", "pos"),
+            ("dismount Other Player", "dismount"),
+            ("wake Other Player", "wake"),
+        ] {
+            assert_eq!(
+                run(line, 0).await,
+                format!("!{name} works only on yourself at your GM level"),
+                "{line}"
+            );
+        }
+        assert_eq!(choice(46).await, None);
+
+        assert!(run("pos", 0).await.starts_with("Music Fan: zone "));
+        assert_eq!(run("dismount", 0).await, "dismounted Music Fan");
+        assert_eq!(run("wake", 0).await, "cleared dream state on Music Fan");
+        while rx.try_recv().is_ok() {}
+        let out = run("myweather snow", 0).await;
+        assert!(out.starts_with("weather 8027 for you"), "{out}");
+        assert!(
+            rx.try_recv().is_ok(),
+            "the weather packet reached the player"
+        );
+
+        // the zone-wide and moving commands stay hidden from players
+        for line in ["setweather 1", "warp 1 2 3", "speed 2", "givegil 100"] {
+            assert!(run(line, 0).await.starts_with("unknown command"), "{line}");
+        }
+
+        // a GM may still pick music for someone else
+        let out = run("setmusic 59 Other Player", 2).await;
+        assert_eq!(out, "playing 59 Limsa Lominsa for Other Player");
+        assert_eq!(choice(46).await, Some(59));
     }
 
     #[tokio::test]
