@@ -33,15 +33,20 @@ setmusic = 0
 myweather = 0
 dismount = 0
 wake = 0
+# getting around, on yourself only: !home (back to your home point, the
+# same as Return), !zone to a city, an open field or an open-world dungeon
+# (GM-only, duty, raid and test zones stay closed to players), and !posfix
+# for a character of your own account who can't log in where they stand
+home = 0
+zone = 0
+posfix = 0
 
 # GMs: moving players around, looking after them
 endevent = 2
-zone = 2
 camp = 2
 warp = 2
 # entering a 1.0 dungeon in your own copy, until its queue NPCs are scripted
 dungeon = 2
-home = 2
 gmcottage = 2
 revive = 2
 speed = 2
@@ -52,7 +57,6 @@ send = 2
 return = 2
 up = 2
 down = 2
-posfix = 2
 getid = 2
 # saving a monster's or NPC's spot to the world database
 setpos = 3

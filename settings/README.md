@@ -5,7 +5,7 @@
 | `settings/default/<name>.toml` | Shipped defaults: one machine, localhost. Tracked; don't edit them |
 | `settings/<name>.toml` | Your overrides: only what differs. Not tracked, so updates never touch them |
 
-`<name>` is `web`, `lobby`, `world`, `map` or `servers`. Tables in an override
+`<name>` is `web`, `lobby`, `world`, `map` or `servers` (and a module's own, such as `worldchat` or `bugreport`). Tables in an override
 are merged key by key over the defaults; anything else, such as the
 `[[servers]]` list, replaces the default outright. `--config <file>` on a
 service names a different override file, and `XIVLEGACY_SETTINGS` a different
@@ -42,9 +42,9 @@ account may use is its GM level against `settings/commands.toml`:
 
 | Level | Name | Gets, by default |
 | --- | --- | --- |
-| 0 | player | `!help`, `!gmhelp`, `!who`, `!version` |
+| 0 | player | `!help`, `!gmhelp`, `!who`, `!version`; on themselves: `!pos`, `!setmusic`, `!myweather`, `!dismount`, `!wake`, `!home`, `!zone` (open places only), `!posfix` (their own account's characters) |
 | 1 | helper | the same (give helpers commands by lowering them to 1) |
-| 2 | GM | moving players: `!zone`, `!camp`, `!warp`, `!home`, `!gmcottage` (`!gmhome`), `!revive`, `!speed` |
+| 2 | GM | moving players: `!zone`, `!home` and `!posfix` on anyone, `!camp`, `!warp`, `!gmcottage` (`!gmhome`), `!revive`, `!speed`; `!setmusic` for a zone or everyone |
 | 3 | senior GM | changing characters: `!givegil`, `!giveexp`, `!setclass`, `!setlevel`, `!setjob`, `!gearset`, `!equip`, grand companies, retainers |
 | 4 | administrator | `!setgm`, `!reload`, quest debugging; and any command not listed |
 
@@ -76,11 +76,12 @@ camp = 0
 | --- | --- |
 | `!bug <what happened>` | Everyone, with the `bugreport` module on: file a bug report with your place (and the client's screenshot and logs); see [modules/bugreport](../modules/bugreport/) |
 | `!pos [name]` | Everyone, on themselves: where someone is: zone, coordinates, and the `!warp` that comes back there |
-| `!setmusic <music id or name> [name]` / `!setmusic list` / `!setmusic off [name]` | Everyone, on themselves: music only that player hears (`!setmusic gridania`, `!setmusic 59`, `!music list`). It stays through zoning, border crossings, chocobo rides and crafting (which play their own track while they run, then come back to it) until `!setmusic off` or logout. Battle music is the client's own |
+| `!setmusic <music id or name> [name \| world]` / `!setmusic list` / `!setmusic off [name \| world]` | Everyone, on themselves: music only that player hears (`!setmusic gridania`, `!setmusic 59`, `!music list`). It stays through zoning, border crossings, chocobo rides and crafting (which play their own track while they run, then come back to it) until `!setmusic off` or logout. Battle music is the client's own. GMs: with no name, everyone in the GM's zone; `world`, everyone online; a name, that player (`!setmusic off world` puts everyone back). Each player keeps it as their own pick and can `!setmusic off` |
 | `!myweather <weather id \| clear \| snow \| dalamud \| off>` | Everyone: a sky only you see, until you zone or the server's weather changes |
 | `!dismount [name]` / `!wake [name]` | Everyone, on themselves: clear the server's mount state (and any rental) when it is stuck / a stuck bed or dream state |
 | `!endevent [name]` | Free someone held by a conversation, cutscene or menu |
-| `!zone <zone id or name> [name]` | To a zone's spawn point, or beside its aetheryte (`!zone central shroud`, `!zone 155`, `!zone mordion`) |
+| `!zone <zone id or name> [name]` | To a zone's spawn point, or beside its aetheryte (`!zone central shroud`, `!zone 155`, `!zone mordion`). Players: themselves only, and only to the three cities, the open fields and the open-world dungeons (Mistbeard Cove, Cassiopeia Hollow, the Mun-Tuy Cellars, Nanawa Mines, Copperbell Mines); the GM Cottage, Mordion Gaol, duty, dungeon and raid copies, story copies of cities and fields, inn rooms, market wards and offices are GM-only |
+| `!home [name]` | Back to the home point aetheryte, revived if fallen (as Return does). Players: themselves only |
 | `!camp [camp name] [name]` | To an aetheryte camp or gate by part of its name (`!camp bearded rock`); alone, lists the camps |
 | `!setgm <level> <name>` | Set the GM level of a character's account |
 | `!gmgear [name]` | The Judge's set, 1.0's GM outfit (all races) |
@@ -89,7 +90,7 @@ camp = 0
 | `!goto <name>` / `!bring <name>` / `!bringall` | To someone / someone to you / everyone online to you |
 | `!send <name> to <name>` / `!return [name]` | One player to another / back to where the last command moved them from |
 | `!up [yalms] [name]` / `!down [yalms] [name]` | Straight up or down (5 yalms by default) |
-| `!posfix <name>` | To their home city; works offline, for someone who can't log in where they are |
+| `!posfix <name>` | To their home city; works offline, for someone who can't log in where they are. Players: any character of their own account (log in on another character to free a stuck one), never one in Mordion Gaol |
 | `!logoff <name>` / `!announce <message>` | Disconnect someone / a message to everyone online |
 | `!getid` | What you have targeted: actor id, class, name, position |
 | `!additem` `!delitem` `!hasitem <item id> [qty] [name]` | Items (catalog ids). `!additem <id> [qty] [hq\|+1\|+2\|+3] [name]` gives a high quality one |
@@ -125,6 +126,15 @@ The FFXI server's names work too: `!where`, `!ver`, `!raise`, `!kill <name>`,
 **Chat:** leading spaces are ignored, so ` !help` is a command. Start a line
 with `!!` to say a command without running it: `!!zone gridania` shows
 "!zone gridania" to everyone, for telling players what to type.
+
+### World chat
+
+With the `worldchat` module on (off by default; [modules/worldchat](../modules/worldchat/)),
+`/say` reaches everyone online in every zone, everyone sees "Name has
+logged in.", and both can go to a Discord channel with that channel's
+messages coming back into the game. Its settings are in
+`settings/worldchat.toml` (defaults in
+[`settings/default/worldchat.toml`](default/worldchat.toml)).
 
 ### Seasonal events
 

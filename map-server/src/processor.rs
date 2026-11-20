@@ -1133,6 +1133,19 @@ impl PacketProcessor {
                 }
             }
             self.run_module_hooks(&handle, session_id, "on_login").await;
+            // the worldchat module's "<name> has logged in." (not from the gaol)
+            if let Some(wc) = crate::worldchat::get()
+                && !matches!(self.db.jail_of_character(session_id).await, Ok(Some(_)))
+            {
+                let name = handle
+                    .character
+                    .read()
+                    .await
+                    .base
+                    .display_name()
+                    .to_string();
+                wc.login(&self.registry, &self.world, &name).await;
+            }
 
             // C# `WorldManager.DoZoneIn` ends with
             // `LuaEngine.CallLuaFunction(player, playerArea, "onZoneIn", true)`
@@ -10984,7 +10997,8 @@ impl PacketProcessor {
         };
 
         // In Mordion Gaol (crate::jail): no commands, and only /say.
-        if let Ok(Some(_)) = self.db.jail_of_character(session_id).await {
+        let jailed = matches!(self.db.jail_of_character(session_id).await, Ok(Some(_)));
+        if jailed {
             let kind = message_type_from_u32(pkt.log_type);
             if (!literal && pkt.message.starts_with('!')) || !matches!(kind, ChatKind::Say) {
                 let mut ob = SocialOutbox::new();
@@ -11100,6 +11114,21 @@ impl PacketProcessor {
             c.base.display_name().to_string()
         };
         let kind = message_type_from_u32(pkt.log_type);
+        // /say, world-wide with the worldchat module on (never from the gaol)
+        if matches!(kind, ChatKind::Say) {
+            let world_chat = crate::worldchat::get().filter(|_| !jailed);
+            crate::worldchat::route_say(
+                world_chat,
+                &self.registry,
+                &self.world,
+                &self.db,
+                &handle,
+                &sender_name,
+                &pkt.message,
+            )
+            .await;
+            return Ok(());
+        }
         let mut ob = SocialOutbox::new();
         match kind {
             ChatKind::Say | ChatKind::Shout | ChatKind::Yell => {

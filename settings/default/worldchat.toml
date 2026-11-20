@@ -1,0 +1,38 @@
+# XIVLegacy Server: world chat (the worldchat module, modules/worldchat),
+# shipped defaults. Don't edit this file: put what differs in
+# settings/worldchat.toml (see settings/README.md). The module is off until
+# "worldchat" is in settings/modules.toml's enabled list.
+
+# "<name> has logged in." to everyone online (and Discord).
+announce_logins = true
+
+# World lines one character may say a minute; past it they're told to wait
+# and the line goes nowhere.
+max_per_minute = 12
+
+# The longest line (characters) /say carries world-wide.
+max_length = 300
+
+[discord]
+# Game to Discord: a webhook of the channel (Channel settings, Integrations,
+# Webhooks, New Webhook). Empty: off. Better kept out of files: the
+# environment variable XIVLEGACY_WORLDCHAT_DISCORD_WEBHOOK wins over this.
+webhook = ""
+# The name the webhook posts under (empty: the webhook's own name).
+username = ""
+
+# Discord to game: a bot token and the id of the channel to read. Either
+# empty: off. XIVLEGACY_WORLDCHAT_DISCORD_BOT_TOKEN wins over the token.
+bot_token = ""
+channel_id = ""
+# How often the channel is read (seconds, at least 2).
+poll_seconds = 5
+# Discord messages brought into the game per read; the rest are skipped.
+max_per_poll = 5
+# The longest Discord message (characters) brought into the game.
+max_length = 200
+# Shown before a Discord name in the game: "[Discord] Name".
+prefix = "[Discord]"
+# Game lines waiting for Discord; past it new ones are dropped.
+queue = 100
+api = "https://discord.com/api/v10"
