@@ -4641,6 +4641,201 @@ async fn gather_spawns_attach_to_zones_and_metadata() {
     );
 }
 
+/// Fishing pools placed by tools/gathering/gen_nodes.py since the Fish points
+/// of the 15 camps: Fish pools of camps whose spot was found later, Fish pools
+/// of the open dungeons, and the retired Spearfish pools (folded into Fish).
+const NEW_FISH_POOLS: &[u32] = &[
+    2043, 2044, 2046, 2051, 2052, 2054, // Fish
+    2097, 2098, 2099, 2100, 2101, 2102, 2103, 2104, 2105, 2106, 2108, 2109, 2110, 2111,
+    2113, // Spearfish
+];
+
+/// `commands/DummyCommand.lua` with the client round trips answered in
+/// place: the fishing window casts (Wait) at the middle depth, waits until
+/// a fish bites, then jigs at the sweet spot of the slot it aimed at, and
+/// cancels once something is caught. `wait` returns at once.
+fn fish_cast_probe(script_root: &std::path::Path) -> std::path::PathBuf {
+    let real = std::fs::read_to_string(script_root.join("commands/DummyCommand.lua"))
+        .expect("DummyCommand.lua");
+    let probe = common::test_tmp::dir().join("fish_cast_probe.lua");
+    std::fs::write(
+        &probe,
+        real + r#"
+local realOnEventStarted = onEventStarted;
+function onEventStarted(...)
+    caught = false;
+    return realOnEventStarted(...);
+end
+function wait() end
+function callClientFunction(player, functionName, target, method, commandActor, ...)
+    if method ~= "askInputWidget" then
+        return nil;
+    end
+    local harvestType, phase, tutorial, canWait, canJig = ...;
+    if phase == 1 then
+        if caught then
+            return HARVEST_UI[harvestType].cancel;
+        end
+        return HARVEST_UI[harvestType].begin, 50;
+    end
+    if canWait and not canJig then
+        return HARVEST_UI[harvestType].wait, 0;
+    end
+    caught = true;
+    return HARVEST_UI[harvestType].strike, NearestAimSlot(harvestNode, 6)[3];
+end
+"#,
+    )
+    .unwrap();
+    probe
+}
+
+/// Every fishing pool with a point in the world (the camps' Fish pools, the
+/// dungeon pools and the folded Spearfish pools) spawns in its zone, and a
+/// Fisher casting there catches one of that pool's items and earns Fisher
+/// EXP. A Miner at the same point, or the Mine command there, gets nothing.
+#[tokio::test]
+async fn every_fishing_pool_spawns_and_a_cast_catches_its_fish() {
+    use crate::lua::LuaEngine;
+    use crate::lua::command::LuaCommand;
+    use crate::lua::userdata::PlayerSnapshot;
+    use crate::world_manager::GatherNodeMetadata;
+    use std::collections::{BTreeMap, HashMap};
+
+    let db = crate::database::Database::open(tempdb())
+        .await
+        .expect("db stub");
+    let world = Arc::new(WorldManager::new());
+    world
+        .load_from_database(&db, "127.0.0.1", 1989)
+        .await
+        .expect("world boot-load");
+    let spawns = db.load_gather_node_spawns().await.expect("gather spawns");
+    let catalog = db.load_gather_resolver().await.expect("gather catalog");
+
+    // One point per fishing pool (quest-only points aside).
+    let mut points: BTreeMap<u32, (u32, String)> = BTreeMap::new();
+    let mut metadata: HashMap<(u32, String), GatherNodeMetadata> = HashMap::new();
+    for s in &spawns {
+        metadata.insert(
+            (s.zone_id, s.unique_id.clone()),
+            GatherNodeMetadata {
+                harvest_node_id: s.harvest_node_id,
+                harvest_type: s.harvest_type,
+            },
+        );
+        if s.harvest_type == crate::gathering::HARVEST_TYPE_FISH
+            && !QUEST_GATHER_IDS.contains(&s.id)
+        {
+            assert_eq!(
+                s.actor_class_id, 1_200_056,
+                "{} is a fishing point",
+                s.unique_id
+            );
+            points
+                .entry(s.harvest_node_id)
+                .or_insert((s.zone_id, s.unique_id.clone()));
+        }
+    }
+    for pool in NEW_FISH_POOLS {
+        assert!(
+            points.contains_key(pool),
+            "fishing pool {pool} has no point"
+        );
+    }
+    assert!(points.len() >= 15 + NEW_FISH_POOLS.len());
+
+    let script_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("workspace root")
+        .join("scripts/lua");
+    let engine = LuaEngine::new(&script_root);
+    engine
+        .catalogs()
+        .install_gather_resolver(db.load_gather_resolver().await.expect("gather catalog"));
+    engine.catalogs().install_gather_node_metadata(metadata);
+    let probe = fish_cast_probe(&script_root);
+    let fish_command = 0xA0F0_0000 | crate::gathering::HARVEST_TYPE_FISH;
+    let cast = |class: u8, command: u32, zone: u32, unique: &str| {
+        let snapshot = PlayerSnapshot {
+            actor_id: 0x1234_5678,
+            current_class: class,
+            ..Default::default()
+        };
+        engine.call_command_on_event_started(
+            &probe,
+            snapshot,
+            command,
+            "commandRequest".to_string(),
+            0,
+            Vec::new(),
+            Some((zone, unique.to_string())),
+        )
+    };
+
+    for (pool, (zone, unique)) in &points {
+        // The point is a live actor in its zone.
+        let z = world.zone(*zone).await.expect("zone of a fishing point");
+        assert!(
+            z.read()
+                .await
+                .spawn_locations
+                .iter()
+                .any(|s| &s.unique_id == unique),
+            "{unique} is not spawned in zone {zone}",
+        );
+
+        let node = catalog.get_node(*pool).expect("pool in the catalog");
+        let fish: Vec<u32> = node
+            .active_item_keys()
+            .filter_map(|k| catalog.get_item(k))
+            .map(|i| i.item_catalog_id)
+            .collect();
+        let result = cast(41, fish_command, *zone, unique);
+        assert!(result.error.is_none(), "{unique}: {:?}", result.error);
+        let caught: Vec<u32> = result
+            .commands
+            .iter()
+            .filter_map(|c| match c {
+                LuaCommand::AddItem {
+                    item_id, quantity, ..
+                } if *quantity > 0 => Some(*item_id),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(caught.len(), 1, "{unique}: one catch, got {caught:?}");
+        assert!(
+            fish.contains(&caught[0]),
+            "{unique}: {} is not in pool {pool} {fish:?}",
+            caught[0],
+        );
+        assert!(
+            result.commands.iter().any(|c| matches!(
+                c,
+                LuaCommand::AddExp { class_id: 41, exp, .. } if *exp > 0
+            )),
+            "{unique}: no Fisher EXP",
+        );
+    }
+
+    // A Miner can't fish, and Mine doesn't work a fishing point.
+    let (zone, unique) = points.values().next().unwrap();
+    for (class, command) in [
+        (39, fish_command),
+        (41, 0xA0F0_0000 | crate::gathering::HARVEST_TYPE_MINE),
+    ] {
+        let result = cast(class, command, *zone, unique);
+        assert!(result.error.is_none(), "{:?}", result.error);
+        assert!(
+            !result
+                .commands
+                .iter()
+                .any(|c| matches!(c, LuaCommand::AddItem { .. } | LuaCommand::AddExp { .. })),
+            "class {class} command 0x{command:08X} must not gather at {unique}",
+        );
+    }
+}
+
 /// Parse-all smoke: the rewritten `DummyCommand.lua` still loads
 /// without a syntax error. Guards against future accidental
 /// reintroduction of the lowercase `getItemPackage` / `addItem` /
