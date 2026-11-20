@@ -32,3 +32,5 @@ bytes.workspace = true
 rand.workspace = true
 # the worldchat module's Discord webhook and channel reads
 ureq.workspace = true
+# the worldchat module's Discord bot presence (gateway websocket)
+tungstenite.workspace = true

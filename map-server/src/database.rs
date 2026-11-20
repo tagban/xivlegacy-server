@@ -313,6 +313,24 @@ impl Database {
             .context("ping")
     }
 
+    /// Players in the world now, counted as the status module's `GET
+    /// /status` does (web-server `Database::status`): `world_sessions` rows
+    /// the world server refreshed in the last 90 seconds (it refreshes them
+    /// every 30, so older ones are left over from a crash).
+    pub async fn players_online(&self) -> Result<u32> {
+        self.conn
+            .call_db(|c| {
+                let since = chrono::Utc::now().timestamp() - 90;
+                c.query_row(
+                    "SELECT COUNT(*) FROM world_sessions WHERE last_seen_at >= :since",
+                    named_params! { ":since": since },
+                    |r| r.get(0),
+                )
+            })
+            .await
+            .context("players online")
+    }
+
     #[cfg(test)]
     pub fn conn_for_test(&self) -> &Connection {
         &self.conn

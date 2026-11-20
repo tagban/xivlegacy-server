@@ -36,3 +36,12 @@ prefix = "[Discord]"
 # Game lines waiting for Discord; past it new ones are dropped.
 queue = 100
 api = "https://discord.com/api/v10"
+
+# The bot's status shows the players online: "Watching 3 players online".
+# Needs only bot_token (no channel, no extra intents); it keeps a small
+# connection to Discord's gateway open for it. Updated when the count
+# changes, at most every 20 seconds.
+presence = true
+# The status after "Watching". {online} is the count; "{online} players"
+# reads "1 player" for one.
+presence_text = "{online} players online"

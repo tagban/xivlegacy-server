@@ -459,7 +459,7 @@ pub async fn run() -> Result<()> {
     }
 
     if !smoke {
-        worldchat::start(world.clone(), registry.clone());
+        worldchat::start(world.clone(), registry.clone(), db.clone());
     }
 
     let cmd = Arc::new(CommandProcessor::new(

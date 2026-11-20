@@ -13,10 +13,15 @@
 //! channel's messages come back into the game (`settings/worldchat.toml`).
 //!
 //! Discord out is a webhook; Discord in is a bot token polling the channel
-//! with the REST API (no gateway connection). Each side is off while its
-//! settings are empty. Tokens and webhook URLs are never logged.
+//! with the REST API. With a bot token the bot's status shows the players
+//! online ("Watching 3 players online"), over a small gateway connection
+//! used for nothing else (`presence`). Each side is off while its settings
+//! are empty. Tokens and webhook URLs are never logged.
+
+mod presence;
 
 use std::collections::{HashMap, VecDeque};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc::{SyncSender, TrySendError};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -85,6 +90,11 @@ pub struct DiscordSettings {
     /// Game lines waiting for Discord; past it new ones are dropped.
     pub queue: usize,
     pub api: String,
+    /// The bot's status shows the players online (needs `bot_token`).
+    pub presence: bool,
+    /// That status, after "Watching": `{online}` is the count ("1 player"
+    /// when it is one).
+    pub presence_text: String,
 }
 
 impl Default for DiscordSettings {
@@ -100,6 +110,8 @@ impl Default for DiscordSettings {
             prefix: "[Discord]".into(),
             queue: 100,
             api: "https://discord.com/api/v10".into(),
+            presence: true,
+            presence_text: presence::DEFAULT_TEXT.into(),
         }
     }
 }
@@ -127,6 +139,11 @@ impl DiscordSettings {
     pub fn inbound(&self) -> bool {
         !self.bot_token.trim().is_empty() && !self.channel_id.trim().is_empty()
     }
+
+    /// The bot's status line: on with a bot token, unless `presence` is off.
+    pub fn presence_on(&self) -> bool {
+        self.presence && !self.bot_token.trim().is_empty()
+    }
 }
 
 /// The module's state while it is on.
@@ -149,6 +166,7 @@ pub fn init() -> anyhow::Result<()> {
         announce_logins = settings.announce_logins,
         discord_out = settings.discord.outbound(),
         discord_in = settings.discord.inbound(),
+        discord_status = settings.discord.presence_on(),
         "world chat on"
     );
     let _ = STATE.set(WorldChat::new(settings));
@@ -161,7 +179,11 @@ pub fn get() -> Option<&'static WorldChat> {
 }
 
 /// Start the Discord side (if it is set up).
-pub fn start(world: Arc<WorldManager>, registry: Arc<ActorRegistry>) {
+pub fn start(
+    world: Arc<WorldManager>,
+    registry: Arc<ActorRegistry>,
+    db: Arc<crate::database::Database>,
+) {
     let Some(wc) = get() else {
         return;
     };
@@ -177,6 +199,9 @@ pub fn start(world: Arc<WorldManager>, registry: Arc<ActorRegistry>) {
             .spawn(move || discord::post_loop(&d, rx))
             .ok();
     }
+    if d.presence_on() {
+        start_presence(d.clone(), db);
+    }
     if d.inbound() {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(String, String)>();
         std::thread::Builder::new()
@@ -191,6 +216,40 @@ pub fn start(world: Arc<WorldManager>, registry: Arc<ActorRegistry>) {
             }
         });
     }
+}
+
+/// The bot's status: the players online, counted every 10 seconds as `GET
+/// /status` counts them, shown by the gateway thread (`presence`), which
+/// starts once the first count is in.
+fn start_presence(d: DiscordSettings, db: Arc<crate::database::Database>) {
+    let online = Arc::new(AtomicU32::new(0));
+    tokio::spawn(async move {
+        let mut gateway = false;
+        let mut failing = false;
+        loop {
+            match db.players_online().await {
+                Ok(n) => {
+                    online.store(n, Ordering::Relaxed);
+                    failing = false;
+                }
+                Err(e) => {
+                    if !failing {
+                        tracing::warn!(error = %e, "world chat: counting the players online failed");
+                        failing = true;
+                    }
+                }
+            }
+            if !gateway {
+                gateway = true;
+                let (d, online) = (d.clone(), online.clone());
+                std::thread::Builder::new()
+                    .name("worldchat-discord-status".into())
+                    .spawn(move || presence::run(&d, &online))
+                    .ok();
+            }
+            tokio::time::sleep(Duration::from_secs(10)).await;
+        }
+    });
 }
 
 /// What became of a player's /say.
@@ -568,7 +627,7 @@ pub mod discord {
             .to_string()
     }
 
-    fn agent() -> ureq::Agent {
+    pub(super) fn agent() -> ureq::Agent {
         ureq::AgentBuilder::new()
             .timeout(Duration::from_secs(20))
             .user_agent("xivlegacy-server world chat")
@@ -576,7 +635,7 @@ pub mod discord {
     }
 
     /// Why a request failed, without its URL (a webhook URL is a secret).
-    fn why(e: &ureq::Error) -> String {
+    pub(super) fn why(e: &ureq::Error) -> String {
         match e {
             ureq::Error::Status(code, _) => format!("HTTP {code}"),
             ureq::Error::Transport(t) => format!("{:?}", t.kind()),
@@ -1066,6 +1125,37 @@ mod tests {
         assert_eq!(relay_of(&long, 50).unwrap().1.len(), 50);
     }
 
+    #[tokio::test]
+    async fn the_status_counts_players_as_the_status_page_does() {
+        use common::db::ConnCallExt;
+        let db = crate::database::Database::open(common::test_db::fresh_blocking())
+            .await
+            .unwrap();
+        assert_eq!(db.players_online().await.unwrap(), 0);
+        let now = chrono::Utc::now().timestamp();
+        db.conn_for_test()
+            .call_db(move |c| {
+                // two in the world (one zoning), one left behind by a crash
+                for (acct, seen, state) in [
+                    (1, now, "in_world"),
+                    (2, now - 30, "zoning"),
+                    (3, now - 600, "in_world"),
+                ] {
+                    c.execute(
+                        r"INSERT INTO world_sessions (account_id, character_id, world_id,
+                            zone_id, map_server, client_ip, conn_seq, started_at,
+                            last_seen_at, state)
+                          VALUES (:a, :a, 1, 100, '', '', 1, :t, :t, :s)",
+                        common::sql::named_params! { ":a": acct, ":t": seen, ":s": state },
+                    )?;
+                }
+                Ok(())
+            })
+            .await
+            .unwrap();
+        assert_eq!(db.players_online().await.unwrap(), 2);
+    }
+
     #[test]
     fn discord_sides_need_their_settings() {
         let d = DiscordSettings::default();
@@ -1075,6 +1165,16 @@ mod tests {
             ..DiscordSettings::default()
         };
         assert!(!d.inbound(), "a token alone reads no channel");
+        assert!(d.presence_on(), "a token alone shows the bot's status");
+        let d = DiscordSettings {
+            presence: false,
+            ..d
+        };
+        assert!(!d.presence_on());
+        assert!(
+            !DiscordSettings::default().presence_on(),
+            "no token: no status"
+        );
     }
 
     #[test]
@@ -1083,6 +1183,8 @@ mod tests {
             toml::from_str(include_str!("../../settings/default/worldchat.toml")).unwrap();
         assert!(s.announce_logins);
         assert!(!s.discord.outbound() && !s.discord.inbound());
+        assert!(s.discord.presence && !s.discord.presence_on());
+        assert_eq!(s.discord.presence_text, "{online} players online");
         let modules: toml::Value =
             toml::from_str(include_str!("../../settings/default/modules.toml")).unwrap();
         let on = modules["enabled"].as_array().unwrap();
