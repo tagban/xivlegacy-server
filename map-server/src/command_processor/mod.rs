@@ -522,12 +522,6 @@ impl CommandProcessor {
         None
     }
 
-    /// `home <name>` — server-driven home-point revive. Restores HP/MP
-    /// + state via `apply_revive`, then warps the player to their
-    ///   stored homepoint aetheryte. Mirrors the "bandaid fix for
-    ///   returning while dead" branch in `TeleportCommand.lua` so we
-    ///   can verify the death/revive flow without standing up the
-    ///   client's death-overlay menu network.
     /// `gmcottage [name]` (also `gmhome`): to the GM Cottage, zone 201's
     /// sunken living room (its `server_zones_spawnlocations` row).
     async fn handle_gmcottage(&self, args: &Args<'_>) -> String {
@@ -555,6 +549,12 @@ impl CommandProcessor {
         }
     }
 
+    /// `home <name>` — server-driven home-point revive. Restores HP/MP
+    /// + state via `apply_revive`, then warps the player to their
+    ///   stored homepoint aetheryte. Mirrors the "bandaid fix for
+    ///   returning while dead" branch in `TeleportCommand.lua` so we
+    ///   can verify the death/revive flow without standing up the
+    ///   client's death-overlay menu network.
     async fn handle_home(&self, args: &Args<'_>) -> String {
         let Some(name) = args.rest_joined(0) else {
             return "usage: home <name>".into();
