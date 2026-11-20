@@ -218,6 +218,27 @@ pub(crate) async fn spawn_battle_npc_as(
              caster will stand back without casting",
         );
     }
+    // Stat rows from the genus / pool / spawn mod tables (elemental
+    // resistances, #333); `apply_spawn_metadata` folds them in.
+    match db
+        .load_battle_npc_mod_layers(spawn.genus_id, spawn.pool_id, bnpc_id)
+        .await
+    {
+        Ok([genus, pool, spawn_rows]) => {
+            for (k, v) in genus {
+                bnpc.genus_mods.set_raw(k, v);
+            }
+            for (k, v) in pool {
+                bnpc.pool_mods.set_raw(k, v);
+            }
+            for (k, v) in spawn_rows {
+                bnpc.spawn_mods.set_raw(k, v);
+            }
+        }
+        Err(e) => {
+            tracing::warn!(bnpc_id, error = %e, "SpawnBattleNpcById: mod rows not loaded");
+        }
+    }
     bnpc.apply_spawn_metadata(&spawn, bnpc_id, actor_id, caster_spell);
 
     // Monster moves and spells (`server_battlenpc_skill_list`): what
