@@ -75,7 +75,10 @@ camp = 0
 | Command | Does |
 | --- | --- |
 | `!bug <what happened>` | Everyone, with the `bugreport` module on: file a bug report with your place (and the client's screenshot and logs); see [modules/bugreport](../modules/bugreport/) |
-| `!pos [name]` | Where someone is: zone, coordinates, and the `!warp` that comes back there |
+| `!pos [name]` | Everyone, on themselves: where someone is: zone, coordinates, and the `!warp` that comes back there |
+| `!setmusic <music id or name> [name]` / `!setmusic list` / `!setmusic off [name]` | Everyone, on themselves: music only that player hears (`!setmusic gridania`, `!setmusic 59`, `!music list`). It stays through zoning, border crossings, chocobo rides and crafting (which play their own track while they run, then come back to it) until `!setmusic off` or logout. Battle music is the client's own |
+| `!myweather <weather id \| clear \| snow \| dalamud \| off>` | Everyone: a sky only you see, until you zone or the server's weather changes |
+| `!dismount [name]` / `!wake [name]` | Everyone, on themselves: clear the server's mount state (and any rental) when it is stuck / a stuck bed or dream state |
 | `!endevent [name]` | Free someone held by a conversation, cutscene or menu |
 | `!zone <zone id or name> [name]` | To a zone's spawn point, or beside its aetheryte (`!zone central shroud`, `!zone 155`, `!zone mordion`) |
 | `!camp [camp name] [name]` | To an aetheryte camp or gate by part of its name (`!camp bearded rock`); alone, lists the camps |
@@ -101,7 +104,7 @@ camp = 0
 | `!setgil` `!takegil <amount> [name]` / `!givegil <qty> [name]` | Gil: set it, take some / add some |
 | `!addquest` `!completequest` `!delquest <quest id> [name]` | Quests |
 | `!addtitle <id>` `!addeffect <status id> [seconds]` `!addallaetherytes` | Titles, status effects, every aetheryte |
-| `!setmusic <id> [name]` / `!setweather <id>` | Music for someone / weather for your zone |
+| `!setweather <id>` | Weather for everyone in your zone |
 | `!spawn <class id> [level] [count] [path=…] [genus=…]` / `!despawn` | Monsters around you for testing (up to 8, never respawn; `path=` tries a class path, `genus=` a family) / remove them |
 | `!sethp <hp>` | Your current HP (up to your max), for testing potions and healing |
 | `!kill` / `!kill all` | Defeat your target or the nearest monster / every monster within 20 yalms, as if you'd won the fight (EXP, quest and leve kills count) |
@@ -112,9 +115,12 @@ camp = 0
 With no name, `!setclass`, `!setlevel`, `!maxall`, `!setjob`, `!gearset`, `!equip` and `!unequip`
 work on the player you have targeted, else on you.
 
+Below GM level 2 (`target_others`) a command works only on whoever typed it,
+and `!help` / `!gmhelp` show players their commands without the `[name]`.
+
 The FFXI server's names work too: `!where`, `!ver`, `!raise`, `!kill <name>`,
 `!release`, `!promote`, `!homepoint`, `!giveitem`, `!givekeyitem`,
-`!fixspeed`, `!reloadglobal`.
+`!fixspeed`, `!reloadglobal`, and `!music` for `!setmusic`.
 
 **Chat:** leading spaces are ignored, so ` !help` is a command. Start a line
 with `!!` to say a command without running it: `!!zone gridania` shows

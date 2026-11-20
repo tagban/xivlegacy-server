@@ -106,6 +106,11 @@ pub enum LuaCommand {
         player_id: u32,
         music_id: u16,
     },
+    /// `player:ResetMusic()` — back to what the player hears when nothing
+    /// scripted plays: their `!setmusic` pick, else their area's music.
+    ResetMusic {
+        player_id: u32,
+    },
     /// `player:ChangeSpeed(stop, walk, run, active)` — port of C#
     /// `Actor::ChangeSpeed`. Emits `0x00D0 SetActorSpeed` with the four
     /// movement bands to the player's own client. Drives the `!speed` GM

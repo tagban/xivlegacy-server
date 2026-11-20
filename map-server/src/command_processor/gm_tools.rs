@@ -82,7 +82,7 @@ impl CommandProcessor {
             .ok_or_else(|| format!("unknown character: {me}"))
     }
 
-    async fn run_lua(&self, cmds: Vec<LC>) {
+    pub(super) async fn run_lua(&self, cmds: Vec<LC>) {
         crate::runtime::quest_apply::apply_runtime_lua_commands(
             cmds,
             &self.registry,
@@ -93,7 +93,7 @@ impl CommandProcessor {
         .await;
     }
 
-    async fn online_id(&self, name: &str) -> Result<u32, String> {
+    pub(super) async fn online_id(&self, name: &str) -> Result<u32, String> {
         let id = self
             .lookup_character_id(name)
             .await
@@ -1354,30 +1354,6 @@ impl CommandProcessor {
     }
 
     // --- the world around you -----------------------------------------------------------------------
-
-    /// `setmusic <music id> [name]`.
-    pub(super) async fn handle_setmusic(&self, args: &Args<'_>) -> String {
-        let Some(music) = args.tokens.first().and_then(|t| t.parse::<u16>().ok()) else {
-            return "usage: setmusic <music id> [name]".into();
-        };
-        let Some(name) = args.rest_joined(1) else {
-            return if args.was_refused() {
-                String::new()
-            } else {
-                "usage: setmusic <music id> <name>".into()
-            };
-        };
-        let id = match self.online_id(&name).await {
-            Ok(id) => id,
-            Err(e) => return e,
-        };
-        self.run_lua(vec![LC::ChangeMusic {
-            player_id: id,
-            music_id: music,
-        }])
-        .await;
-        format!("playing music {music} for {name}")
-    }
 
     /// `setweather <weather id>`: the weather for everyone in your zone.
     pub(super) async fn handle_setweather(&self, args: &Args<'_>) -> String {
