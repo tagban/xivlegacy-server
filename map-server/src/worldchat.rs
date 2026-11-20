@@ -307,8 +307,9 @@ impl WorldChat {
 }
 
 /// One chat line to every player online; `source` is the sender's session
-/// (None: each recipient's own, for system lines and Discord). Returns how
-/// many players it went to.
+/// (None: each recipient's own, for system lines and Discord). The sender
+/// isn't sent their own line: the client already prints what it says, so
+/// sending it back showed it twice. Returns how many players it went to.
 async fn send_to_all(
     registry: &ActorRegistry,
     world: &WorldManager,
@@ -324,7 +325,7 @@ async fn send_to_all(
         let Some(handle) = registry.by_session(s.id).await else {
             continue;
         };
-        if !handle.is_player() || handle.session_id == 0 {
+        if !handle.is_player() || handle.session_id == 0 || source == Some(handle.session_id) {
             continue;
         }
         let Some(client) = world.client(handle.session_id).await else {
