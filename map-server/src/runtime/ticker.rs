@@ -547,7 +547,7 @@ impl GameTicker {
                 chara.base.current_main_state == crate::actor::MAIN_STATE_DEAD
             };
             if !is_dead_actor && matches!(handle.kind, ActorKindTag::Ally) {
-                ally_heal_pass(&self.registry, zone, &handle, now_ms, &mut battle_outbox).await;
+                ally_support_pass(&self.registry, zone, &handle, now_ms, &mut battle_outbox).await;
             }
             let movement = if is_dead_actor {
                 let mut chara = handle.character.write().await;
@@ -1127,85 +1127,416 @@ fn compute_passive_regen(chara: &Character) -> crate::status::PassiveRegen {
     crate::status::PassiveRegen { hp, mp: 0, tp }
 }
 
-/// A healer ally's cure (`battle.heal_spell`, set at spawn for the
-/// opening fights' Papalymo, Y'shtola and Niellefresne and any conjurer
-/// ally). While it fights, every tick it looks at itself and the players
-/// and allies within the spell's range in its instance, and starts a
-/// cast on the one with the lowest HP under
-/// [`crate::battle::controller::ALLY_HEAL_BELOW_HPP`] — at most once per
-/// [`crate::battle::controller::ALLY_HEAL_GAP_MS`], never mid-cast, and
-/// only with the MP for it (an ally with no MP pool casts freely). The
-/// cast runs through the usual Magic state: `CastStart` shows the chant,
-/// completion's `ResolveAction` lands the heal and its HP number.
-async fn ally_heal_pass(
+/// What an ally's support pass (#334) can do this tick, read from its
+/// controller.
+struct AllySupportSnapshot {
+    role: crate::battle::ally_ai::AllyRole,
+    heal: Option<crate::battle::BattleCommand>,
+    buffs: Vec<crate::battle::BattleCommand>,
+    raise: Option<crate::battle::BattleCommand>,
+    enmity: Option<crate::battle::BattleCommand>,
+    /// Spells may start: casting on, no Silence, heal/buff/raise gates
+    /// are checked per spell.
+    can_cast: bool,
+    can_ability: bool,
+    heal_due: bool,
+    buff_due: bool,
+    raise_due: bool,
+    enmity_due: bool,
+    mp: Option<(i16, i16)>,
+    origin: common::Vector3,
+}
+
+/// Someone near an ally: a player or another ally to help, or a foe.
+struct NearbyActor {
+    actor_id: u32,
+    kind: ActorKindTag,
+    alive: bool,
+    hp: i16,
+    max_hp: i16,
+    distance: f32,
+    statuses: Vec<u32>,
+    /// A foe's top enmity, if it is fighting someone.
+    top_hate: Option<u32>,
+}
+
+/// An ally's support pass (#334): what its role does beside the
+/// controller's swings, spells and TP moves. While it fights, every tick:
+///
+/// * a **healer** raises a fallen player or ally ([`ALLY_RAISE_GAP_MS`]),
+///   else cures the one lowest under
+///   [`crate::battle::controller::ALLY_HEAL_BELOW_HPP`]
+///   ([`crate::battle::controller::ALLY_HEAL_GAP_MS`]), else puts its
+///   first missing buff (Protect, Stoneskin) on whoever lacks it
+///   ([`crate::battle::controller::ALLY_BUFF_GAP_MS`]);
+/// * a **tank** uses its enmity move (Flash, Provoke, Taunt) on the
+///   nearest foe whose top enmity isn't on a tank, at the move's recast.
+///   Like 1.20's Provoke it puts the tank one point over the foe's top
+///   enmity, and the move's own enmity lands on top when it resolves.
+///
+/// Spells run through the usual Magic state (`CastStart` shows the chant,
+/// completion's `ResolveAction` lands them); the enmity move is an
+/// Ability that resolves on the next tick. Never mid-action, and spells
+/// only with the MP for them (an ally with no MP pool casts freely).
+///
+/// [`ALLY_RAISE_GAP_MS`]: crate::battle::controller::ALLY_RAISE_GAP_MS
+async fn ally_support_pass(
     registry: &ActorRegistry,
     zone: &Arc<RwLock<Zone>>,
     handle: &ActorHandle,
     now_ms: u64,
     battle_outbox: &mut BattleOutbox,
 ) {
-    use crate::battle::controller::{ALLY_HEAL_GAP_MS, HealCandidate, pick_heal_target};
+    use crate::battle::ally_ai::{AllyRole, pick_buff, pick_enmity_target};
+    use crate::battle::controller::{HealCandidate, pick_heal_target};
+    use crate::status::StatusEffectFlags;
 
-    let (spell, origin) = {
+    let snap = {
         let c = handle.character.read().await;
         let Some(ctrl) = c.ai_container.controller.as_ref() else {
             return;
         };
-        let Some(spell) = ctrl.battle.heal_spell.clone() else {
+        let b = &ctrl.battle;
+        if !c.ai_container.is_engaged() {
+            // Idle with nothing to fight: help with a fight its side is in.
+            if b.ally_role != AllyRole::Escortee && c.hate.most_hated().is_none() {
+                drop(c);
+                ally_assist(registry, zone, handle).await;
+            }
             return;
-        };
-        if !ctrl.casting_enabled
-            || now_ms < ctrl.battle.next_heal_ms
-            || !c.ai_container.is_engaged()
+        }
+        if (b.heal_spell.is_none()
+            && b.buff_spells.is_empty()
+            && b.raise_spell.is_none()
+            && b.enmity_move.is_none())
             || !c.ai_container.can_change_state()
-            || c.status_effects
-                .has_by_flag(crate::status::StatusEffectFlags::PREVENT_SPELL)
         {
             return;
         }
-        if c.chara.max_mp > 0
-            && i32::from(c.chara.mp) < i32::from(spell.calculate_mp_cost(c.chara.level, 0.0))
-        {
-            return;
+        AllySupportSnapshot {
+            role: b.ally_role,
+            heal: b.heal_spell.clone(),
+            buffs: b.buff_spells.clone(),
+            raise: b.raise_spell.clone(),
+            enmity: b.enmity_move.clone(),
+            can_cast: ctrl.casting_enabled
+                && !c
+                    .status_effects
+                    .has_by_flag(StatusEffectFlags::PREVENT_SPELL),
+            can_ability: !c
+                .status_effects
+                .has_by_flag(StatusEffectFlags::PREVENT_ABILITY),
+            heal_due: now_ms >= b.next_heal_ms,
+            buff_due: now_ms >= b.next_buff_ms,
+            raise_due: now_ms >= b.next_raise_ms,
+            enmity_due: now_ms >= b.next_enmity_ms,
+            mp: (c.chara.max_mp > 0).then_some((c.chara.mp, c.chara.level)),
+            origin: c.base.position(),
         }
-        (spell, c.base.position())
+    };
+    let affordable = |spell: &crate::battle::BattleCommand| match snap.mp {
+        Some((mp, level)) => i32::from(mp) >= i32::from(spell.calculate_mp_cost(level, 0.0)),
+        None => true,
     };
 
-    let nearby: Vec<u32> = {
+    let reach = [&snap.heal, &snap.raise, &snap.enmity]
+        .into_iter()
+        .flatten()
+        .chain(snap.buffs.iter())
+        .map(|c| c.range)
+        .fold(1.0f32, f32::max);
+    let nearby_ids: Vec<u32> = {
         let z = zone.read().await;
         z.core
-            .actors_around(handle.actor_id, spell.range.max(1.0))
+            .actors_around(handle.actor_id, reach)
             .into_iter()
             .map(|a| a.actor_id)
             .filter(|id| *id != handle.actor_id)
             .collect()
     };
-    let mut candidates = Vec::new();
-    for id in std::iter::once(handle.actor_id).chain(nearby) {
+    let mut nearby = Vec::new();
+    for id in std::iter::once(handle.actor_id).chain(nearby_ids) {
         let Some(h) = registry.get(id).await else {
             continue;
         };
-        if !matches!(h.kind, ActorKindTag::Player | ActorKindTag::Ally)
-            || !crate::runtime::dungeon_fight::may_interact(handle.actor_id, id)
+        if !matches!(
+            h.kind,
+            ActorKindTag::Player | ActorKindTag::Ally | ActorKindTag::BattleNpc
+        ) || !crate::runtime::dungeon_fight::may_interact(handle.actor_id, id)
         {
             continue;
         }
         let c = h.character.read().await;
-        if !c.is_alive() {
-            continue;
-        }
         let p = c.base.position();
-        candidates.push(HealCandidate {
+        nearby.push(NearbyActor {
             actor_id: id,
+            kind: h.kind,
+            alive: c.is_alive(),
             hp: c.chara.hp,
             max_hp: c.chara.max_hp,
-            distance: ((p.x - origin.x).powi(2) + (p.z - origin.z).powi(2)).sqrt(),
+            distance: ((p.x - snap.origin.x).powi(2) + (p.z - snap.origin.z).powi(2)).sqrt(),
+            statuses: c.status_effects.iter().map(|s| s.id).collect(),
+            top_hate: if h.kind == ActorKindTag::BattleNpc {
+                c.hate.most_hated()
+            } else {
+                None
+            },
         });
     }
-    let Some(target) = pick_heal_target(&candidates, spell.range) else {
-        return;
+    let friends = || {
+        nearby
+            .iter()
+            .filter(|a| matches!(a.kind, ActorKindTag::Player | ActorKindTag::Ally))
     };
 
+    // A healer kit (any of cure, buffs, Raise) makes a healer.
+    let healer = snap.role == AllyRole::Healer
+        || snap.heal.is_some()
+        || !snap.buffs.is_empty()
+        || snap.raise.is_some();
+    if healer && snap.can_cast {
+        // Raise: the nearest fallen player or ally.
+        if let Some(raise) = snap
+            .raise
+            .as_ref()
+            .filter(|r| snap.raise_due && affordable(r))
+            && let Some(target) = friends()
+                .filter(|a| !a.alive && a.distance <= raise.range)
+                .min_by(|a, b| a.distance.total_cmp(&b.distance))
+                .map(|a| a.actor_id)
+            && start_ally_cast(handle, target, raise.clone(), now_ms, battle_outbox).await
+        {
+            set_ally_gate(handle, |b| {
+                b.next_raise_ms = now_ms + crate::battle::controller::ALLY_RAISE_GAP_MS;
+            })
+            .await;
+            return;
+        }
+        // Cure: the lowest under the threshold.
+        if let Some(heal) = snap
+            .heal
+            .as_ref()
+            .filter(|h| snap.heal_due && affordable(h))
+        {
+            let candidates: Vec<HealCandidate> = friends()
+                .filter(|a| a.alive)
+                .map(|a| HealCandidate {
+                    actor_id: a.actor_id,
+                    hp: a.hp,
+                    max_hp: a.max_hp,
+                    distance: a.distance,
+                })
+                .collect();
+            if let Some(target) = pick_heal_target(&candidates, heal.range) {
+                if start_ally_cast(handle, target, heal.clone(), now_ms, battle_outbox).await {
+                    set_ally_gate(handle, |b| {
+                        b.next_heal_ms = now_ms + crate::battle::controller::ALLY_HEAL_GAP_MS;
+                    })
+                    .await;
+                }
+                // Someone needs a cure: no buffing until it is cast.
+                return;
+            }
+        }
+        // Buffs: the first one someone in reach is missing.
+        if snap.buff_due {
+            let targets: Vec<(u32, f32)> = friends()
+                .filter(|a| a.alive)
+                .map(|a| (a.actor_id, a.distance))
+                .collect();
+            let missing = |b: &crate::battle::BattleCommand, id: u32| {
+                b.status_id != 0
+                    && affordable(b)
+                    && nearby
+                        .iter()
+                        .find(|a| a.actor_id == id)
+                        .is_some_and(|a| !a.statuses.contains(&b.status_id))
+            };
+            if let Some((i, target)) = pick_buff(&snap.buffs, &targets, missing)
+                && start_ally_cast(handle, target, snap.buffs[i].clone(), now_ms, battle_outbox)
+                    .await
+            {
+                set_ally_gate(handle, |b| {
+                    b.next_buff_ms = now_ms + crate::battle::controller::ALLY_BUFF_GAP_MS;
+                })
+                .await;
+            }
+        }
+        return;
+    }
+
+    if !healer
+        && snap.can_ability
+        && snap.enmity_due
+        && let Some(enmity) = snap.enmity.as_ref()
+    {
+        // A foe is held when its top enmity is on this ally or another tank.
+        let mut foes = Vec::new();
+        for a in nearby
+            .iter()
+            .filter(|a| a.kind == ActorKindTag::BattleNpc && a.alive)
+        {
+            let Some(top) = a.top_hate else {
+                continue;
+            };
+            let on_tank = if top == handle.actor_id {
+                true
+            } else {
+                match registry.get(top).await {
+                    Some(h) if h.kind == ActorKindTag::Ally => {
+                        let c = h.character.read().await;
+                        c.ai_container
+                            .controller
+                            .as_ref()
+                            .is_some_and(|ctrl| ctrl.battle.ally_role == AllyRole::Tank)
+                    }
+                    Some(h) => h.kind != ActorKindTag::Player && h.kind != ActorKindTag::Ally,
+                    None => true,
+                }
+            };
+            foes.push((a.actor_id, a.distance, on_tank));
+        }
+        let Some(target) = pick_enmity_target(&foes, enmity.range.max(1.0)) else {
+            return;
+        };
+        let started = {
+            let mut c = handle.character.write().await;
+            let ok = c
+                .ai_container
+                .internal_ability(target, enmity.clone(), now_ms);
+            if ok {
+                // Turn to the foe it just pulled.
+                let top = c
+                    .hate
+                    .entries()
+                    .map(|e| e.cumulative_enmity)
+                    .max()
+                    .unwrap_or(0);
+                let mine = c.hate.get(target).map_or(0, |e| e.cumulative_enmity);
+                c.hate
+                    .update_hate(target, (top.saturating_sub(mine) + 1) as i32);
+                if let Some(ctrl) = c.ai_container.controller.as_mut() {
+                    ctrl.battle.next_enmity_ms = now_ms
+                        + u64::from(enmity.recast_time_ms)
+                            .clamp(1_000, crate::battle::controller::ALLY_ENMITY_GAP_MS);
+                }
+            }
+            ok
+        };
+        if !started {
+            return;
+        }
+        // 1.20 Provoke: one point over the foe's top enmity.
+        if let Some(h) = registry.get(target).await {
+            let mut c = h.character.write().await;
+            let top = c
+                .hate
+                .entries()
+                .filter(|e| e.is_active)
+                .map(|e| e.cumulative_enmity)
+                .max()
+                .unwrap_or(0);
+            let mine = c
+                .hate
+                .get(handle.actor_id)
+                .map_or(0, |e| e.cumulative_enmity);
+            c.hate.update_hate(
+                handle.actor_id,
+                (top.saturating_sub(mine) + 1).min(i32::MAX as u32) as i32,
+            );
+        }
+        tracing::debug!(
+            ally = format!("0x{:08X}", handle.actor_id),
+            target = format!("0x{target:08X}"),
+            command = enmity.id,
+            "tank ally pulls a foe off the player",
+        );
+    }
+}
+
+/// An idle ally joins its side's fight (the Lua `allyGlobal.HelpPlayers`
+/// idea): the nearest live foe within
+/// [`crate::battle::controller::ALLY_ASSIST_RANGE`] whose top enmity is
+/// on a player or an ally goes on its hate list, and its controller
+/// engages it next tick. Without this an ally whose foe died stood idle
+/// for the rest of the fight unless a script engaged it again. Escort
+/// charges don't (the escort loop moves them).
+async fn ally_assist(registry: &ActorRegistry, zone: &Arc<RwLock<Zone>>, handle: &ActorHandle) {
+    let around: Vec<(u32, common::Vector3)> = {
+        let z = zone.read().await;
+        z.core
+            .actors_around(
+                handle.actor_id,
+                crate::battle::controller::ALLY_ASSIST_RANGE,
+            )
+            .into_iter()
+            .filter(|a| a.actor_id != handle.actor_id)
+            .map(|a| (a.actor_id, a.position))
+            .collect()
+    };
+    let origin = handle.character.read().await.base.position();
+    let mut best: Option<(u32, f32)> = None;
+    for (id, pos) in around {
+        let Some(h) = registry.get(id).await else {
+            continue;
+        };
+        if h.kind != ActorKindTag::BattleNpc
+            || !crate::runtime::dungeon_fight::may_interact(handle.actor_id, id)
+        {
+            continue;
+        }
+        let top = {
+            let c = h.character.read().await;
+            if !c.is_alive() {
+                continue;
+            }
+            c.hate.most_hated()
+        };
+        let Some(top) = top else {
+            continue;
+        };
+        let on_our_side = match registry.get(top).await {
+            Some(t) => matches!(t.kind, ActorKindTag::Player | ActorKindTag::Ally),
+            None => false,
+        };
+        let d = ((pos.x - origin.x).powi(2) + (pos.z - origin.z).powi(2)).sqrt();
+        if on_our_side
+            && d <= crate::battle::controller::ALLY_ASSIST_RANGE
+            && best.is_none_or(|(_, bd)| d < bd)
+        {
+            best = Some((id, d));
+        }
+    }
+    if let Some((foe, _)) = best {
+        handle.character.write().await.hate.update_hate(foe, 1);
+        tracing::debug!(
+            ally = format!("0x{:08X}", handle.actor_id),
+            foe = format!("0x{foe:08X}"),
+            "idle ally joins the fight",
+        );
+    }
+}
+
+/// Write one of an ally's support gates.
+async fn set_ally_gate(
+    handle: &ActorHandle,
+    f: impl FnOnce(&mut crate::battle::controller::BattleNpcControllerState),
+) {
+    let mut c = handle.character.write().await;
+    if let Some(ctrl) = c.ai_container.controller.as_mut() {
+        f(&mut ctrl.battle);
+    }
+}
+
+/// Start an ally's support spell: the Magic state, its MP, the attack
+/// spell's wait and the `CastStart` fan-out. False when it can't start.
+async fn start_ally_cast(
+    handle: &ActorHandle,
+    target: u32,
+    spell: crate::battle::BattleCommand,
+    now_ms: u64,
+    battle_outbox: &mut BattleOutbox,
+) -> bool {
     let mut c = handle.character.write().await;
     let (id, cast_ms, recast_ms, cast_type) = (
         spell.id,
@@ -1215,14 +1546,13 @@ async fn ally_heal_pass(
     );
     let mp_cost = spell.calculate_mp_cost(c.chara.level, 0.0);
     if !c.ai_container.internal_cast(target, spell, now_ms) {
-        return;
+        return false;
     }
     if c.chara.max_mp > 0 && mp_cost != 0 {
         c.add_mp(-i32::from(mp_cost));
     }
     if let Some(ctrl) = c.ai_container.controller.as_mut() {
-        ctrl.battle.next_heal_ms = now_ms + ALLY_HEAL_GAP_MS;
-        // The attack spell waits for the cure to finish and recast.
+        // The attack spell waits for this one to finish and recast.
         ctrl.battle.next_cast_ms = ctrl
             .battle
             .next_cast_ms
@@ -1239,8 +1569,9 @@ async fn ally_heal_pass(
         ally = format!("0x{:08X}", handle.actor_id),
         target = format!("0x{target:08X}"),
         spell = id,
-        "healer ally casts its cure",
+        "ally casts a support spell",
     );
+    true
 }
 
 pub(crate) fn build_owner_view(

@@ -25,6 +25,7 @@
 #![allow(dead_code, unused_imports)]
 
 pub mod ai_container;
+pub mod ally_ai;
 pub mod command;
 pub mod controller;
 pub mod effects;

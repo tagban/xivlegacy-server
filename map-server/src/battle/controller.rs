@@ -161,11 +161,27 @@ pub struct BattleNpcControllerState {
     /// A healer ally's cure (the opening fights' Papalymo, Y'shtola and
     /// Niellefresne): cast on the player, a fellow ally or itself when
     /// HP falls below [`ALLY_HEAL_BELOW_HPP`]. Resolved at spawn
-    /// (`runtime::bnpc_spawn`); the ticker's ally heal pass reads it.
+    /// (`runtime::bnpc_spawn`); the ticker's ally support pass reads it.
     pub heal_spell: Option<BattleCommand>,
     /// Earliest `now_ms` the next cure may start ([`ALLY_HEAL_GAP_MS`]
     /// after the last one began).
     pub next_heal_ms: u64,
+    /// An ally's role (#334, `battle::ally_ai`): tank, healer, damage or
+    /// escort charge. Set at spawn; `Damage` for monsters.
+    pub ally_role: super::ally_ai::AllyRole,
+    /// A tank ally's enmity move (Flash, Provoke, Taunt), used by the
+    /// ticker's ally support pass on foes that are on the player.
+    pub enmity_move: Option<BattleCommand>,
+    /// Earliest `now_ms` the enmity move may be used again (its recast).
+    pub next_enmity_ms: u64,
+    /// A healer ally's buffs (Protect, Stoneskin) by level.
+    pub buff_spells: Vec<BattleCommand>,
+    /// Earliest `now_ms` the next buff may start ([`ALLY_BUFF_GAP_MS`]).
+    pub next_buff_ms: u64,
+    /// A healer ally's Raise, from level 18.
+    pub raise_spell: Option<BattleCommand>,
+    /// Earliest `now_ms` the next raise may start ([`ALLY_RAISE_GAP_MS`]).
+    pub next_raise_ms: u64,
 }
 
 impl Controller {
@@ -319,13 +335,19 @@ pub const ALLY_HEAL_GAP_MS: u64 = 10_000;
 /// (`server_battle_commands` 27346).
 pub const ALLY_HEAL_SPELL_ID: u16 = 27346;
 
-/// Does a player-side battle NPC heal? The client marks the opening
-/// fights' healers with the `FighterAllyOpeningHealer` actor class
-/// (Papalymo is a THM but cures in the Gridania opening); any other
-/// conjurer ally (job 23) heals too.
-pub fn ally_is_healer(class_path: &str, current_job: u32) -> bool {
-    class_path.ends_with("Healer") || current_job == 23
-}
+pub use super::ally_ai::ally_is_healer;
+/// Least time between two buffs from one healer ally.
+pub const ALLY_BUFF_GAP_MS: u64 = 6_000;
+/// Least time between two enmity moves from one tank ally. Like a
+/// monster's TP moves ([`MONSTER_SKILL_GAP_MS`]), an NPC helper runs on
+/// its own clock: the move's player recast (Provoke's 30 s) is the cap,
+/// this the usual gap, so one tank can keep a pack off the player.
+pub const ALLY_ENMITY_GAP_MS: u64 = 6_000;
+/// How far an idle ally looks for a foe fighting its side.
+pub const ALLY_ASSIST_RANGE: f32 = 30.0;
+/// Least time between two raises from one healer ally (Raise's own
+/// 300 s recast is for players; a duty would be over by then).
+pub const ALLY_RAISE_GAP_MS: u64 = 30_000;
 
 /// Someone a healer ally might cure, as the ticker sees them.
 #[derive(Debug, Clone, Copy, PartialEq)]
