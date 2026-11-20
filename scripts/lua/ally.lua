@@ -91,6 +91,13 @@ function allyGlobal.tryAggro(ally, contentGroupCharas)
     end
 end
 
+-- Healing, buffs, Raise and tanking run in the server, not here (#334):
+-- map-server/src/battle/ally_ai.rs picks each ally's role and kit from its
+-- actor class, job and level (tanks: Flash/Provoke/Taunt; healers: Cure or
+-- Cura, Protect, Stoneskin, Raise; everyone: the job's weaponskills), and
+-- the ticker's ally support pass uses it every tick. An idle ally also
+-- joins any fight its side is in. These two hooks stay for content that
+-- wants something extra; the server never calls them.
 function allyGlobal.HealPlayer(ally, player)
 
 end

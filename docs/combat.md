@@ -219,6 +219,37 @@ Auto-attack range is the AttackRange modifier when set. Otherwise it is
 | TP while sheathed | −90 per 3 s tick, down to 0 | pmeteor's comment on Regain ("−90 out of combat"); wired by us |
 | Enmity | damage dealt × the command's `enmityModifier`; hooks can change the modifier (Shroud of Saints halves it) | pmeteor |
 
+## NPC helpers (allies)
+
+Allies (`allegiance` 1 battle NPCs: the opening fights' helpers, MSQ duty
+helpers, escort charges) run the monster controller for swings, spells and
+TP moves. On top of that, each one gets a role and a kit at spawn
+(`battle/ally_ai.rs`, #334) from its actor class, pool job, script name and
+level, out of the real `server_battle_commands` rows:
+
+| Role | Who | What it does (ticker `ally_support_pass`) |
+|---|---|---|
+| Healer | `FighterAllyOpeningHealer` class or CNJ (23) | Raise (18) on a fallen player or ally, else its best cure (Cure; Cura from 30) on the lowest under 60% HP, else Protect (6) / Stoneskin (26) on whoever lacks them |
+| Tank | PGL, GLA, MRD, LNC (2, 3, 4, 8) | its enmity move (GLA Flash 14, PGL Taunt 42, else Provoke) on the nearest foe whose top enmity isn't on a tank; like 1.20 Provoke it lands one point over the foe's top enmity, plus the move's own enmity |
+| Damage | ARC, THM and anything else | the job's moves only |
+| Escortee | script `escort_*` or Sisipu | the job's moves; never pulls foes, never joins a fight on its own |
+
+Everyone also gets its job's weaponskills at its level as TP moves (and a
+caster with no spell list its job's attack spells). An idle ally (not an
+escortee) joins the nearest fight within 30 y whose foe is on a player or
+an ally.
+
+| Gate | Value | Source |
+|---|---|---|
+| Cure | at most every 10 s (`ALLY_HEAL_GAP_MS`) | ours (#330) |
+| Buff | at most every 6 s (`ALLY_BUFF_GAP_MS`) | ours |
+| Raise | at most every 30 s (`ALLY_RAISE_GAP_MS`) | ours; Raise's 300 s player recast is too long for a duty |
+| Enmity move | the move's recast, capped at 6 s (`ALLY_ENMITY_GAP_MS`) | ours, like monsters' own TP-move gap |
+| Floors | a healer always has Cure, a tank always has an enmity move (Provoke below its own) | ours: the opening helpers are level 1 |
+
+`cargo test -p map-server ally_behavior -- --nocapture` runs each ally fight
+and prints who the foes went after and what the helpers used.
+
 ## Ticks: regen, poison and onTick
 
 Every 3 s (`COMBAT_TICK_INTERVAL_MS`), `regen_tick` moves the pools:

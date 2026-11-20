@@ -185,86 +185,16 @@ pub(crate) async fn spawn_battle_npc_as(
         return false;
     }
 
-    // 4b. Phase C1 — apply combat metadata from the joined DTO
-    //     (detection / neutral / kindred / pool / genus / drop-list /
-    //     respawn) and attach the AI Controller so the ticker drives
-    //     aggro and engagement. See `BattleNpc::apply_spawn_metadata`
-    //     for the full per-field mapping + the Meteor parity notes.
-    //
-    //     #28 S2.4 — pool-job casters (currentJob 22 THM / 23 CNJ)
-    //     get their loop spell pre-resolved out of the boot-time
-    //     battle-command catalog. The seed pools carry no spellListId,
-    //     so the tutorial caster (Papalymo) uses THM lvl-1 `thunder`
-    //     27313 (range 20, cast 2000 ms, recast 6 s) — report C §5.
-    const CASTER_DEFAULT_SPELL_ID: u16 = 27313;
-    let caster_spell = if matches!(spawn.current_job, 22 | 23) {
-        lua.as_ref()
-            .and_then(|l| {
-                l.catalogs()
-                    .battle_commands
-                    .read()
-                    .ok()
-                    .and_then(|m| m.get(&CASTER_DEFAULT_SPELL_ID).cloned())
-            })
-            .map(|gd| gd.to_battle_command())
-    } else {
-        None
-    };
-    if matches!(spawn.current_job, 22 | 23) && caster_spell.is_none() {
-        tracing::warn!(
-            bnpc_id,
-            spell_id = CASTER_DEFAULT_SPELL_ID,
-            "SpawnBattleNpcById: caster pool job but spell not in catalog — \
-             caster will stand back without casting",
-        );
-    }
-    bnpc.apply_spawn_metadata(&spawn, bnpc_id, actor_id, caster_spell);
-
-    // Monster moves and spells (`server_battlenpc_skill_list`): what
-    // the pool's lists allow at this spawn's level. A pool with a spell
-    // list fights as a caster (stands back, casts, no swings).
-    if let Some(l) = lua.as_ref() {
-        let level = bnpc.npc.character.chara.level;
-        let skills = l.catalogs().monster_commands(spawn.skill_list_id, level);
-        let spells = l.catalogs().monster_commands(spawn.spell_list_id, level);
-        if let Some(ctrl) = bnpc.npc.character.ai_container.controller.as_mut() {
-            if !spells.is_empty() {
-                ctrl.battle.is_caster = true;
-                ctrl.auto_attack_enabled = false;
-            }
-            ctrl.battle.skills = skills;
-            ctrl.battle.spells = spells;
-        }
-    }
-
-    // A healer ally (the opening fights' Papalymo, Y'shtola and
-    // Niellefresne, any conjurer ally) cures the player, other allies
-    // and itself; the ticker's ally heal pass casts it.
-    if spawn.allegiance == 1
-        && crate::battle::controller::ally_is_healer(&actor_class.class_path, spawn.current_job)
-    {
-        let cure = lua.as_ref().and_then(|l| {
-            l.catalogs()
-                .battle_commands
-                .read()
-                .ok()
-                .and_then(|m| {
-                    m.get(&crate::battle::controller::ALLY_HEAL_SPELL_ID)
-                        .cloned()
-                })
-                .map(|gd| gd.to_battle_command())
-        });
-        if cure.is_none() {
-            tracing::warn!(
-                bnpc_id,
-                "SpawnBattleNpcById: healer ally but Cure is not in the catalog",
-            );
-        }
-        if let Some(ctrl) = bnpc.npc.character.ai_container.controller.as_mut() {
-            ctrl.battle.heal_spell = cure;
-        }
-    }
-
+    // 4b. Combat metadata, the AI controller and its moves
+    //     (`equip_battle_npc`).
+    equip_battle_npc(
+        &mut bnpc,
+        &spawn,
+        bnpc_id,
+        actor_id,
+        &actor_class.class_path,
+        lua.map(|l| l.catalogs().as_ref()),
+    );
     // 5. Insert the spatial projection into the parent zone's grid.
     let Some(zone_arc) = world.zone(parent_zone_id).await else {
         tracing::warn!(
@@ -417,4 +347,107 @@ pub(crate) async fn spawn_battle_npc_as(
          content-area NPCs out of the player's pre-warp view",
     );
     true
+}
+
+/// Pool-job casters' loop spell when the pool has no spell list: THM
+/// level-1 `thunder` 27313 (range 20, cast 2000 ms, recast 6 s).
+const CASTER_DEFAULT_SPELL_ID: u16 = 27313;
+
+/// Apply the spawn row's combat metadata to a freshly built battle NPC
+/// (detection, neutral, kindred, pool, genus, drop list, respawn; see
+/// [`crate::npc::battle_npc::BattleNpc::apply_spawn_metadata`]), attach its
+/// AI controller and give it its moves: the pool-job caster spell (THM 22 /
+/// CNJ 23), the pool's monster move and spell lists at its level, and a
+/// healer ally's cure. `catalogs` is the boot-time catalog (`None` in bare
+/// test harnesses: no moves). Shared by the spawn path and the ally tests.
+pub(crate) fn equip_battle_npc(
+    bnpc: &mut crate::npc::battle_npc::BattleNpc,
+    spawn: &crate::database::BattleNpcSpawn,
+    bnpc_id: u32,
+    actor_id: u32,
+    class_path: &str,
+    catalogs: Option<&crate::lua::Catalogs>,
+) {
+    let command = |id: u16| {
+        catalogs.and_then(|c| {
+            c.battle_commands
+                .read()
+                .ok()
+                .and_then(|m| m.get(&id).cloned())
+                .map(|gd| gd.to_battle_command())
+        })
+    };
+    let caster_spell = if matches!(spawn.current_job, 22 | 23) {
+        command(CASTER_DEFAULT_SPELL_ID)
+    } else {
+        None
+    };
+    if matches!(spawn.current_job, 22 | 23) && caster_spell.is_none() {
+        tracing::warn!(
+            bnpc_id,
+            spell_id = CASTER_DEFAULT_SPELL_ID,
+            "SpawnBattleNpcById: caster pool job but spell not in catalog — \
+             caster will stand back without casting",
+        );
+    }
+    bnpc.apply_spawn_metadata(spawn, bnpc_id, actor_id, caster_spell);
+
+    // Monster moves and spells (`server_battlenpc_skill_list`): what
+    // the pool's lists allow at this spawn's level. A pool with a spell
+    // list fights as a caster (stands back, casts, no swings).
+    if let Some(c) = catalogs {
+        let level = bnpc.npc.character.chara.level;
+        let skills = c.monster_commands(spawn.skill_list_id, level);
+        let spells = c.monster_commands(spawn.spell_list_id, level);
+        if let Some(ctrl) = bnpc.npc.character.ai_container.controller.as_mut() {
+            if !spells.is_empty() {
+                ctrl.battle.is_caster = true;
+                ctrl.auto_attack_enabled = false;
+            }
+            ctrl.battle.skills = skills;
+            ctrl.battle.spells = spells;
+        }
+    }
+
+    // An ally's role and kit (#334, `battle::ally_ai`): a tank's enmity
+    // move, a healer's cure, buffs and Raise, and the job's own
+    // weaponskills and attack spells at its level. The ticker's ally
+    // support pass uses the first three; the controller's TP-move and
+    // spell picks use the job moves.
+    if spawn.allegiance == 1 {
+        let role =
+            crate::battle::ally_ai::ally_role(class_path, spawn.current_job, &spawn.script_name);
+        let catalog: std::collections::HashMap<u16, crate::battle::BattleCommand> = catalogs
+            .and_then(|c| {
+                c.battle_commands.read().ok().map(|m| {
+                    m.iter()
+                        .map(|(id, gd)| (*id, gd.to_battle_command()))
+                        .collect()
+                })
+            })
+            .unwrap_or_default();
+        let level = bnpc.npc.character.chara.level;
+        let kit = crate::battle::ally_ai::ally_kit(role, spawn.current_job, level, &catalog);
+        if role == crate::battle::ally_ai::AllyRole::Healer && kit.heal.is_none() {
+            tracing::warn!(
+                bnpc_id,
+                "SpawnBattleNpcById: healer ally but Cure is not in the catalog",
+            );
+        }
+        if let Some(ctrl) = bnpc.npc.character.ai_container.controller.as_mut() {
+            ctrl.battle.ally_role = role;
+            ctrl.battle.heal_spell = kit.heal;
+            ctrl.battle.buff_spells = kit.buffs;
+            ctrl.battle.raise_spell = kit.raise;
+            ctrl.battle.enmity_move = kit.enmity;
+            for s in kit.skills {
+                if !ctrl.battle.skills.iter().any(|k| k.id == s.id) {
+                    ctrl.battle.skills.push(s);
+                }
+            }
+            if ctrl.battle.is_caster && ctrl.battle.spells.is_empty() {
+                ctrl.battle.spells = kit.spells;
+            }
+        }
+    }
 }

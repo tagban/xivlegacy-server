@@ -50,6 +50,8 @@ mod gear_stats_tests;
 mod integration_tests;
 
 #[cfg(test)]
+mod ally_behavior_tests;
+#[cfg(test)]
 mod battle_audit_tests;
 #[cfg(test)]
 mod battle_behavior_tests;
