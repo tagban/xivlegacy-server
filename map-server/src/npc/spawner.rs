@@ -222,7 +222,8 @@ async fn spawn_one(
         let id = npc.actor_id();
         (id, npc.character, ActorKindTag::Npc, ActorKind::Npc)
     };
-    character.base.spawn_quest_ids = seed.quest_ids.clone();
+    character.base.spawn_quest_ids = seed.quest_gates.iter().map(|g| g.quest_id).collect();
+    crate::quest_cast::tag_actor(actor_id, seed.class_id, &seed.quest_gates);
     if let Some(event) = &seed.event {
         crate::seasonal::tag_actor(actor_id, event, seed.class_id);
     }
@@ -435,7 +436,7 @@ mod tests {
             npc_appearances: &std::collections::HashMap::new(),
         };
         let mut s = seed(42, "echo_npc", 0.0, 0.0);
-        s.quest_ids = vec![110_010, 110_081];
+        s.quest_gates = crate::quest_cast::parse_gates("110010:quest,110081:step");
         let actor_id = spawn_from_location(&ctx, 100, 1, &s).await.unwrap();
         let handle = registry.get(actor_id).await.unwrap();
         assert_eq!(

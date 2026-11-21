@@ -40,10 +40,10 @@ pub struct SpawnLocation {
     /// LEFT JOINed by the spawn loader). 0/0 for regular NPCs.
     pub mapobj_layout_id: u32,
     pub mapobj_instance_id: u32,
-    /// Quests this spawn belongs to (`server_spawn_location_quests`):
-    /// in a private area several Echoes share, only a player holding one
-    /// of them is sent the actor. Empty = everyone.
-    pub quest_ids: Vec<u32>,
+    /// Quests this spawn belongs to (`server_spawn_location_quests`): only
+    /// a player one of whose gates opens is sent the actor (see
+    /// `crate::quest_cast`). Empty = everyone.
+    pub quest_gates: Vec<crate::quest_cast::SpawnQuestGate>,
     /// Seasonal event this spawn belongs to (`server_spawn_location_events`):
     /// sent to players only while the event runs. None = always.
     pub event: Option<String>,
@@ -85,7 +85,7 @@ impl SpawnLocation {
             mapobj_instance_id: 0,
             custom_name: None,
             look_class_id: 0,
-            quest_ids: Vec::new(),
+            quest_gates: Vec::new(),
             event: None,
         }
     }
