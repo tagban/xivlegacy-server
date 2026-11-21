@@ -20952,7 +20952,11 @@ async fn gate_of_nald_lets_a_player_walk_back_in_from_the_field() {
 
     let world = Arc::new(WorldManager::new());
     let registry = Arc::new(ActorRegistry::new());
-    let db = Arc::new(crate::database::Database::open(tempdb()).await.expect("db stub"));
+    let db = Arc::new(
+        crate::database::Database::open(tempdb())
+            .await
+            .expect("db stub"),
+    );
     world
         .register_zone(Zone::new(
             ULDAH,
@@ -20973,10 +20977,18 @@ async fn gate_of_nald_lets_a_player_walk_back_in_from_the_field() {
     let mut player = Character::new(PLAYER_ID);
     player.base.zone_id = ULDAH;
     registry
-        .insert(ActorHandle::new(PLAYER_ID, ActorKindTag::Player, ULDAH, PLAYER_ID, player))
+        .insert(ActorHandle::new(
+            PLAYER_ID,
+            ActorKindTag::Player,
+            ULDAH,
+            PLAYER_ID,
+            player,
+        ))
         .await;
     let (tx, mut rx) = mpsc::channel::<Vec<u8>>(256);
-    world.register_client(PLAYER_ID, ClientHandle::new(PLAYER_ID, tx)).await;
+    world
+        .register_client(PLAYER_ID, ClientHandle::new(PLAYER_ID, tx))
+        .await;
     let mut session = MapSession::new(PLAYER_ID);
     session.current_zone_id = ULDAH;
     world.upsert_session(session).await;
@@ -21004,7 +21016,12 @@ async fn gate_of_nald_lets_a_player_walk_back_in_from_the_field() {
     };
     let walk = |x: f32, y: f32, z: f32| {
         let processor = &processor;
-        async move { processor.handle_update_position(PLAYER_ID, &position_report(x, y, z)).await.unwrap() }
+        async move {
+            processor
+                .handle_update_position(PLAYER_ID, &position_report(x, y, z))
+                .await
+                .unwrap()
+        }
     };
 
     crate::town_gates::reset(PLAYER_ID);
@@ -21012,12 +21029,23 @@ async fn gate_of_nald_lets_a_player_walk_back_in_from_the_field() {
     for (y, z) in [(192.0, 6.0), (192.0, -1.0), (192.0, -3.6), (191.5, -8.0)] {
         walk(-52.5, y, z).await;
     }
-    assert!(moves(&mut rx).is_empty(), "walking out must not move the player");
+    assert!(
+        moves(&mut rx).is_empty(),
+        "walking out must not move the player"
+    );
 
     // Back from the field: stopped at the outer face, then put inside.
     walk(-52.0, 191.5, -8.0).await;
     walk(-51.2, 192.0, -3.7).await;
     assert_eq!(moves(&mut rx), vec![(-51.2, 1.5)], "moved through the gate");
-    let pos = registry.get(PLAYER_ID).await.unwrap().character.read().await.base.position();
+    let pos = registry
+        .get(PLAYER_ID)
+        .await
+        .unwrap()
+        .character
+        .read()
+        .await
+        .base
+        .position();
     assert_eq!((pos.x, pos.y, pos.z), (-51.2, 192.0, 1.5));
 }

@@ -10953,13 +10953,32 @@ impl PacketProcessor {
         //      the gate's open schedule when the player walks up to it, and
         //      move a player coming in from the field through the field
         //      layout's copy of the gate, which the client keeps shut.
-        if let Some(zone_id) = self.world.session(session_id).await.map(|s| s.current_zone_id) {
+        if let Some(zone_id) = self
+            .world
+            .session(session_id)
+            .await
+            .map(|s| s.current_zone_id)
+        {
             if let Some((y, z)) = crate::town_gates::passage(actor_id, zone_id, pkt.x, pkt.z) {
-                tracing::info!(actor = actor_id, zone = zone_id, x = pkt.x, z = pkt.z, "town gate: walked in from the field");
-                self.apply_warp_to_position(actor_id, pkt.x, y, z, pkt.rot, 0x11).await;
+                tracing::info!(
+                    actor = actor_id,
+                    zone = zone_id,
+                    x = pkt.x,
+                    z = pkt.z,
+                    "town gate: walked in from the field"
+                );
+                self.apply_warp_to_position(actor_id, pkt.x, y, z, pkt.rot, 0x11)
+                    .await;
             }
-            crate::town_gates::on_position(&self.world, &self.registry, actor_id, zone_id, pkt.x, pkt.z)
-                .await;
+            crate::town_gates::on_position(
+                &self.world,
+                &self.registry,
+                actor_id,
+                zone_id,
+                pkt.x,
+                pkt.z,
+            )
+            .await;
         }
 
         // 3c. On a seamless zone CHANGE, re-establish the active quests' ENPC

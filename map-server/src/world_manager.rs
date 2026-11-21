@@ -5355,8 +5355,14 @@ mod uldah_gate_tests {
         let tail = lua
             .call_unique_npc_init("wil0Town01", "DoorServer", "uldah_gate_of_nald")
             .expect("unique init");
-        assert!(matches!(tail.get(4), Some(LuaParam::Int32(421))), "{tail:?}");
-        assert!(matches!(tail.get(5), Some(LuaParam::Int32(2836))), "{tail:?}");
+        assert!(
+            matches!(tail.get(4), Some(LuaParam::Int32(421))),
+            "{tail:?}"
+        );
+        assert!(
+            matches!(tail.get(5), Some(LuaParam::Int32(2836))),
+            "{tail:?}"
+        );
         assert!(matches!(tail.get(6), Some(LuaParam::True)), "{tail:?}");
 
         let mut c = crate::actor::Character::new((4 << 28) | (175 << 19) | 0x60001);
@@ -5381,7 +5387,10 @@ mod uldah_gate_tests {
     #[test]
     fn gate_of_nald_has_a_seam_on_both_sides() {
         let sql = include_str!("../../common/sql/data/server_seamless_zonechange_bounds.sql");
-        let row = sql.lines().find(|l| l.starts_with("(15, ")).expect("row 15");
+        let row = sql
+            .lines()
+            .find(|l| l.starts_with("(15, "))
+            .expect("row 15");
         let v: Vec<f32> = row
             .trim_start_matches('(')
             .trim_end_matches([',', ';', ')'])
@@ -5391,9 +5400,21 @@ mod uldah_gate_tests {
         assert_eq!(&v[1..4], &[104.0, 170.0, 175.0], "{row}");
         let inside = crate::data::check_pos_in_bounds;
         // Columns: zone1 x1 y1 x2 y2, zone2 x1 x2 y1 y2, merge x1 y1 x2 y2.
-        assert!(inside(-52.5, -28.0, v[4], v[5], v[6], v[7]), "the ramp below is 170");
-        assert!(inside(-52.5, -6.0, v[8], v[10], v[9], v[11]), "the arch is 175");
-        assert!(inside(-52.5, 4.0, v[8], v[10], v[9], v[11]), "inside is 175");
-        assert!(inside(-52.5, -18.0, v[12], v[13], v[14], v[15]), "in between merges");
+        assert!(
+            inside(-52.5, -28.0, v[4], v[5], v[6], v[7]),
+            "the ramp below is 170"
+        );
+        assert!(
+            inside(-52.5, -6.0, v[8], v[10], v[9], v[11]),
+            "the arch is 175"
+        );
+        assert!(
+            inside(-52.5, 4.0, v[8], v[10], v[9], v[11]),
+            "inside is 175"
+        );
+        assert!(
+            inside(-52.5, -18.0, v[12], v[13], v[14], v[15]),
+            "in between merges"
+        );
     }
 }

@@ -114,7 +114,10 @@ pub fn passage(player: u32, zone_id: u32, x: f32, z: f32) -> Option<(f32, f32)> 
     let mut l = tracks().lock().unwrap_or_else(|e| e.into_inner());
     let t = l.entry(player).or_default();
     let i = GATES.iter().position(|g| {
-        g.zones.contains(&zone_id) && (x - g.x).abs() <= g.half_width && z <= g.face_z && z > g.outside_z - 20.0
+        g.zones.contains(&zone_id)
+            && (x - g.x).abs() <= g.half_width
+            && z <= g.face_z
+            && z > g.outside_z - 20.0
     });
     let Some(i) = i else {
         t.outside = None;
@@ -190,7 +193,10 @@ mod tests {
         assert_eq!(gate_near(175, -75.0, 81.0), None, "Momodi is far away");
         assert_eq!(gate_near(209, -52.5, 0.0), None);
         assert!(arrive(p, gate_near(175, -52.5, 6.0)));
-        assert!(!arrive(p, gate_near(175, -52.5, 2.0)), "already open for them");
+        assert!(
+            !arrive(p, gate_near(175, -52.5, 2.0)),
+            "already open for them"
+        );
         assert!(!arrive(p, gate_near(175, -52.5, 80.0)));
         assert!(arrive(p, gate_near(170, -50.0, -24.0)), "back again");
         reset(p);
