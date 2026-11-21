@@ -5342,6 +5342,8 @@ mod uldah_gate_tests {
     #[test]
     fn gate_of_nald_spawns_as_an_open_door_server() {
         let sql = include_str!("../../common/sql/data/server_spawn_locations.sql");
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../scripts/lua");
+        let lua = Arc::new(crate::lua::LuaEngine::new(root));
         let row = sql
             .lines()
             .find(|l| l.contains("'uldah_gate_of_nald'"))
@@ -5350,9 +5352,6 @@ mod uldah_gate_tests {
         assert_eq!(f[1], crate::dungeon_gates::DOOR_CLASS.to_string(), "{row}");
         assert_eq!(f[3], "175", "{row}");
         assert_eq!(&f[6..9], &["-52.5", "192.0", "-2.3"], "{row}");
-
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../scripts/lua");
-        let lua = Arc::new(crate::lua::LuaEngine::new(root));
         let tail = lua
             .call_unique_npc_init("wil0Town01", "DoorServer", "uldah_gate_of_nald")
             .expect("unique init");
@@ -5374,5 +5373,27 @@ mod uldah_gate_tests {
             .expect("bound to its background object");
         assert_eq!(&bg.data[..4], &2836u32.to_le_bytes());
         assert_eq!(&bg.data[4..8], &421u32.to_le_bytes());
+    }
+
+    /// Walking back in through the gate must hand the player to zone 175
+    /// (Momodi and the rest of the city live there). The old 170/175 rows
+    /// only switch to 170 on the way out; row 15 adds the city side.
+    #[test]
+    fn gate_of_nald_has_a_seam_on_both_sides() {
+        let sql = include_str!("../../common/sql/data/server_seamless_zonechange_bounds.sql");
+        let row = sql.lines().find(|l| l.starts_with("(15, ")).expect("row 15");
+        let v: Vec<f32> = row
+            .trim_start_matches('(')
+            .trim_end_matches([',', ';', ')'])
+            .split(", ")
+            .map(|x| x.parse().unwrap())
+            .collect();
+        assert_eq!(&v[1..4], &[104.0, 170.0, 175.0], "{row}");
+        let inside = crate::data::check_pos_in_bounds;
+        // Columns: zone1 x1 y1 x2 y2, zone2 x1 x2 y1 y2, merge x1 y1 x2 y2.
+        assert!(inside(-52.5, -28.0, v[4], v[5], v[6], v[7]), "the ramp below is 170");
+        assert!(inside(-52.5, -6.0, v[8], v[10], v[9], v[11]), "the arch is 175");
+        assert!(inside(-52.5, 4.0, v[8], v[10], v[9], v[11]), "inside is 175");
+        assert!(inside(-52.5, -18.0, v[12], v[13], v[14], v[15]), "in between merges");
     }
 }

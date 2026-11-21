@@ -20901,3 +20901,123 @@ fn job_fight_director_credits_the_duty_quest() {
     // Not a job quest duty: nothing either.
     assert_eq!(route(Some("Etc3l101")), (None, true));
 }
+
+/// #356: the Central Thanalan layout keeps its own copy of the Gate of Nald
+/// shut on the outside face, so a player walking back to Ul'dah stopped
+/// there for good. Walking up to it from the field now moves the player
+/// through, a few steps inside the city; walking out moves no one.
+#[tokio::test]
+async fn gate_of_nald_lets_a_player_walk_back_in_from_the_field() {
+    use crate::actor::Character;
+    use crate::data::{ClientHandle, Session as MapSession};
+    use crate::runtime::actor_registry::{ActorHandle, ActorKindTag};
+    use crate::zone::area::{ActorKind, StoredActor};
+    use crate::zone::outbox::AreaOutbox;
+    use crate::zone::zone::Zone;
+    use common::Vector3;
+    use std::sync::Arc;
+    use tokio::sync::mpsc;
+
+    const PLAYER_ID: u32 = 1;
+    const ULDAH: u32 = 175; // wil0Town01
+
+    fn position_report(x: f32, y: f32, z: f32) -> Vec<u8> {
+        let mut v = Vec::with_capacity(26);
+        v.extend_from_slice(&0u64.to_le_bytes());
+        v.extend_from_slice(&x.to_le_bytes());
+        v.extend_from_slice(&y.to_le_bytes());
+        v.extend_from_slice(&z.to_le_bytes());
+        v.extend_from_slice(&0f32.to_le_bytes());
+        v.extend_from_slice(&0u16.to_le_bytes());
+        v
+    }
+    fn moves(rx: &mut mpsc::Receiver<Vec<u8>>) -> Vec<(f32, f32)> {
+        let mut out = Vec::new();
+        while let Ok(bytes) = rx.try_recv() {
+            let mut offset = 0;
+            while offset < bytes.len() {
+                let Ok(sub) = common::subpacket::SubPacket::parse(&bytes, &mut offset) else {
+                    break;
+                };
+                if sub.game_message.opcode == crate::packets::opcodes::OP_SET_ACTOR_POSITION
+                    && sub.header.source_id == PLAYER_ID
+                {
+                    let f = |o: usize| f32::from_le_bytes(sub.data[o..o + 4].try_into().unwrap());
+                    out.push((f(0x08), f(0x10)));
+                }
+            }
+        }
+        out
+    }
+
+    let world = Arc::new(WorldManager::new());
+    let registry = Arc::new(ActorRegistry::new());
+    let db = Arc::new(crate::database::Database::open(tempdb()).await.expect("db stub"));
+    world
+        .register_zone(Zone::new(
+            ULDAH,
+            "wil0Town01".to_string(),
+            104,
+            String::new(),
+            0,
+            0,
+            0,
+            false,
+            false,
+            false,
+            false,
+            false,
+            None,
+        ))
+        .await;
+    let mut player = Character::new(PLAYER_ID);
+    player.base.zone_id = ULDAH;
+    registry
+        .insert(ActorHandle::new(PLAYER_ID, ActorKindTag::Player, ULDAH, PLAYER_ID, player))
+        .await;
+    let (tx, mut rx) = mpsc::channel::<Vec<u8>>(256);
+    world.register_client(PLAYER_ID, ClientHandle::new(PLAYER_ID, tx)).await;
+    let mut session = MapSession::new(PLAYER_ID);
+    session.current_zone_id = ULDAH;
+    world.upsert_session(session).await;
+    {
+        let zone_arc = world.zone(ULDAH).await.unwrap();
+        let mut z = zone_arc.write().await;
+        let mut out = AreaOutbox::new();
+        z.core.add_actor(
+            StoredActor {
+                actor_id: PLAYER_ID,
+                kind: ActorKind::Player,
+                position: Vector3::new(-52.5, 192.0, 6.0),
+                grid: (0, 0),
+                is_alive: true,
+            },
+            &mut out,
+        );
+    }
+    let processor = crate::processor::PacketProcessor {
+        db: db.clone(),
+        world: world.clone(),
+        registry: registry.clone(),
+        lua: None,
+        cmd: None,
+    };
+    let walk = |x: f32, y: f32, z: f32| {
+        let processor = &processor;
+        async move { processor.handle_update_position(PLAYER_ID, &position_report(x, y, z)).await.unwrap() }
+    };
+
+    crate::town_gates::reset(PLAYER_ID);
+    // Out through the open town gate: nobody is moved.
+    for (y, z) in [(192.0, 6.0), (192.0, -1.0), (192.0, -3.6), (191.5, -8.0)] {
+        walk(-52.5, y, z).await;
+    }
+    assert!(moves(&mut rx).is_empty(), "walking out must not move the player");
+
+    // Back from the field: stopped at the outer face, then put inside.
+    walk(-52.0, 191.5, -8.0).await;
+    walk(-51.2, 192.0, -3.7).await;
+    assert_eq!(moves(&mut rx), vec![(-51.2, 1.5)], "moved through the gate");
+    let pos = registry.get(PLAYER_ID).await.unwrap().character.read().await.base.position();
+    assert_eq!((pos.x, pos.y, pos.z), (-51.2, 192.0, 1.5));
+}
