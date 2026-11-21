@@ -86,20 +86,23 @@ FISH_SPOTS = {
     "Cassiopeia Hollow": [(1364.0, -61.6, -1029.0, 1349.9, -1043.1), (1298.0, -68.72, -687.0, 1318.0, -687.0)],
     "Drybone": [(1026.9, 251.0, -272.2, 1026.9, -252.2), (1006.9, 251.01, -264.2, 1026.9, -264.2)],
     "Mistbeard Cove": [(-2245.0, 31.61, -1594.0, -2259.1, -1579.9), (-2248.0, 45.71, -1558.0, -2262.1, -1543.9)],
-    "The Mun Tuy Cellars": [(-848.0, -32.11, -2162.0, -828.0, -2162.0), (-826.0, -36.81, -2228.0, -811.9, -2242.1)],
-    "The Tam Tara Deepcroft": [(173.0, -36.1, -92.0, 158.9, -77.9), (246.0, -36.67, -117.0, 266.0, -117.0)],
+    "The Mun Tuy Cellars": [(-848.0, -32.11, -2162.0, -828.0, -2162.0)],
+    "The Tam Tara Deepcroft": [(173.0, -36.1, -92.0, 158.9, -77.9)],
+    "Gridania": [(-84.3, 16.76, -1475.8, -104.3, -1475.8)],
+    "Ul'dah": [(-177.44, 229.0, 236.03, -163.3, 221.9)],
     "Limsa Lominsa": [(-640.0, 1.0, 405.0, -654.1, 419.1), (-586.0, 0.26, 375.0, -566.0, 375.0)],
     "Riversmeet": [(-1952.0, 251.85, 0.0, -2143.6, 194.7), (-1888.0, 251.85, 192.0, -2015.6, 578.7), (-2080.0, 267.85, 64.0, -2399.6, 322.7)],
 }
 # Spearfishing pools (folded into Fish): spots of their own, POOL_GAP+ from the Fish spots.
-# These, and the FISH_SPOTS of Bentbranch, Drybone, the dungeons and Limsa Lominsa, came from
-# fish_water.py: a level floor standing at one of the client's water meshes, 20+ yalms from
-# other pools. All of them were walked to in the 1.23b client from dry ground 4-6 yalms
-# away and fished as a Fisher (client test 2026-11-21: each gave its own pool's fish and
-# Fisher EXP), except Limsa Lominsa's, where the character logged in on the point.
-# Mistbeard Cove's stand on ledges over the sea, which its layout does not carry. The fishing window opens at any fishing point, dry ground too, so the
-# water rule is ours. Skull Valley has one: its other sea-shore spots sink to the
-# undecoded sea bed.
+# These, and the FISH_SPOTS of Bentbranch, Drybone, the dungeons and Limsa Lominsa, came
+# from fish_water.py: a level floor standing at one of the client's water meshes, 20+ yalms
+# from other pools (Gridania's and Ul'dah's were found by hand, see TOWN_PLACES). All of
+# them were walked to in the 1.23b client from dry ground 4-15 yalms away and fished as a
+# Fisher (client test 2026-11-21: each gave its own pool's fish and Fisher EXP), except
+# Limsa Lominsa's, where the character logged in on the point. Mistbeard Cove's stand on
+# ledges over the sea, which its layout does not carry. The fishing window opens at any
+# fishing point, dry ground too, so the water rule is ours. Skull Valley has one: its
+# other sea-shore spots sink to the undecoded sea bed.
 SPEAR_SPOTS = {
     "Bearded Rock": [(-46.03, 1.9, 216.53, -26.0, 216.5), (-302.03, 1.66, -87.47, -282.0, -87.5)],
     "Bentbranch": [(316.0, -4.0, -439.93, 330.1, -454.1), (428.0, -0.7, -455.93, 448.0, -455.9)],
@@ -127,16 +130,23 @@ DUNGEON_PLACES = {
 }
 # Fish pools of the towns: place -> (zone, layout zone, layout offset, (x, z, radius) to search).
 # Zone 230 (Limsa Lominsa's lower decks) stands on zone 133's layout moved by (-448, 0, 192):
-# there 96 of the zone's NPC spawns stand on the layout's floors. Its spots are in FISH_SPOTS;
-# the pool keeps its own grade.
+# there 96 of the zone's NPC spawns stand on the layout's floors. Zone 209 (Ul'dah's
+# lower city) stands on wil_w0_twn01 moved by (-96, 188, 160), as zone 175 does.
+# Gridania's layout fits neither of its zones (layout None): its spot, by the mill pond
+# west of the Whistling Miller, and Ul'dah's, at a fountain basin, were found by walking in
+# the client and reading the position the server logged. The spots are in FISH_SPOTS; the
+# pools keep their own grade.
 TOWN_PLACES = {
     "Limsa Lominsa": (230, 133, (-448.0, 0.0, 192.0), (-610.0, 390.0, 80.0)),
+    "Ul'dah": (209, 175, (-96.0, 188.0, 160.0), (-150.0, 200.0, 120.0)),
+    "Gridania": (206, None, None, None),
 }
-# No Fish point: Black Brush, Broken Water and Dragonhead (no water mesh in reach of the
-# camp; Broken Water's river bed is dry; Dragonhead's flat "b2_w" squares are stone floors,
-# client test 2026-11-21), Gridania (its town layout does not line up with server
-# coordinates) and Ul'dah (zone 175 fits its layout moved by (-96, 188, 160), but a player
-# sent to the fountain there lands under the town). Their fish all come from other pools.
+# No Fish point: Black Brush, Broken Water and Dragonhead. No water mesh is in reach of the
+# camps, and a look in the client (2026-11-21) found none at either Thanalan camp nor at
+# Black Brush's "a0_w" basins by the Ul'dah gate; Dragonhead's flat "b2_w" squares are
+# stone floors. Their fish all come from other pools.
+# The Mun Tuy Cellars and The Tam Tara Deepcroft have one point each: the client shows no
+# open water there (their "p0_w" meshes are puddles), but the pools need a point.
 
 
 def aetherytes():

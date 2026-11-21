@@ -175,7 +175,11 @@ def main():
             cx, cz, radius = f.middle()
             spots = f.scan(cx, cz, radius)
         elif name in G.TOWN_PLACES:
-            zone, layout, offset, (cx, cz, radius) = G.TOWN_PLACES[name]
+            zone, layout, offset, area = G.TOWN_PLACES[name]
+            if layout is None:
+                print(f"{name} (zone {zone}): no layout; spots found by hand")
+                continue
+            cx, cz, radius = area
             f = Finder(terrain, layout, offset)
             spots = f.scan(cx, cz, radius)
         else:
