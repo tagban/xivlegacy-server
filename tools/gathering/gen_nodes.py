@@ -70,18 +70,18 @@ ATTEMPTS = 3
 FISH_SPOTS = {
     "Bearded Rock": [(-213.67, 0.51, 19.27, -457.3, 74.0)],
     "Cedarwood": [(772.0, 2.03, 9.0, 961.5, 19.2)],
-    "Bald Knoll": [(-1973.77, -0.25, -1234.35, -2064.1, -1096.0)],
-    "Skull Valley": [(-1080.0, 1.5, -706.1, -1168.1, -291.4)],
+    "Bald Knoll": [(-2027.47, 1.91, -1204.68, -2007.5, -1204.7)],
+    "Skull Valley": [(-1370.0, 0.92, -600.0, -1370.0, -580.0)],
     "Bloodshore": [(1303.3, 1.5, -890.4, 1483.3, -852.1)],
     "Iron Lake": [(-64.0, 62.85, -1949.9, 150.2, -1639.0), (-22.5, 63.75, -1942.6, 233.2, -1624.4)],
     "Emerald Moss": [(-1381.3, 28.1, -1953.3, -1710.6, -2146.6), (-1377.3, 28.1, -1993.3, -1702.6, -2226.6), (-1426.7, 28.1, -1954.7, -1801.4, -2149.4)],
     "Nine Ivies": [(1605.1, 15.91, -745.1, 1508.2, -628.2)],
     "Tranquil Paths": [(-1551.4, -12.3, -626.24, -1536.8, -702.0)],
     "Humblehearth": [(-135.3, -3.74, -446.2, -176.5, -349.2)],
-    "Halatali": [(1659.3, 258.5, -254.3, 1719.6, -275.6)],
-    "Horizon's Edge": [(-1092.7, 58.4, -65.7, -871.5, 14.2), (-1154.5, 58.4, 123.7, -995.1, 393.0)],
+    "Halatali": [(1679.0, 258.56, -253.0, 1659.0, -253.0), (1719.0, 258.4, -181.0, 1739.0, -181.0)],
+    "Horizon's Edge": [(-1077.91, 58.99, -77.6, -1077.9, -57.6), (-1154.5, 58.4, 123.7, -995.1, 393.0)],
     "Nophica's Wells": [(-834.6, 90.4, 324.3, -804.2, 273.4), (-1019.3, 90.4, 321.6, -1173.6, 268.0)],
-    "The Fields of Glory": [(2117.3, 121.65, 405.3, 2733.8, 43.1), (2053.3, 121.65, 277.3, 2605.8, -212.9), (2117.3, 121.65, 341.3, 2733.8, -84.9)],
+    "The Fields of Glory": [(1124.78, 217.36, 1447.55, 1144.8, 1447.5), (2088.78, 122.57, 243.55, 2108.8, 243.6)],
     "Bentbranch": [(332.0, -1.01, -451.93, 317.9, -437.8), (360.0, 0.87, -451.93, 380.0, -451.9)],
     "Cassiopeia Hollow": [(1364.0, -61.6, -1029.0, 1349.9, -1043.1), (1298.0, -68.72, -687.0, 1318.0, -687.0)],
     "Drybone": [(1026.9, 251.0, -272.2, 1026.9, -252.2), (1006.9, 251.01, -264.2, 1026.9, -264.2)],
@@ -93,6 +93,14 @@ FISH_SPOTS = {
     "Limsa Lominsa": [(-640.0, 1.0, 405.0, -654.1, 419.1), (-586.0, 0.26, 375.0, -566.0, 375.0)],
     "Riversmeet": [(-1952.0, 251.85, 0.0, -2143.6, 194.7), (-1888.0, 251.85, 192.0, -2015.6, 578.7), (-2080.0, 267.85, 64.0, -2399.6, 322.7)],
 }
+# The other camps' spots were walked to and fished in the client too (2026-11-21). Moved after
+# that test: Skull Valley's and Bald Knoll's (the old ones sank through beach floors that
+# aren't solid; Skull Valley's is now on the sand beach west of the spearfishing islet),
+# Halatali's and Horizon's Edge's first (the walk couldn't reach them), and The Fields of
+# Glory's (they stood on the lake flat, which has no floor).
+# Fishing spots that were moved: their old places stay taken so the client-tested points of
+# the other pools around them don't move. zone -> [(x, y, z)]
+KEEP_CLEAR = {171: [(1659.3, 258.5, -254.3)]}  # Halatali's first fish spot
 # Spearfishing pools (folded into Fish): spots of their own, POOL_GAP+ from the Fish spots.
 # These, and the FISH_SPOTS of Bentbranch, Drybone, the dungeons and Limsa Lominsa, came
 # from fish_water.py: a level floor standing at one of the client's water meshes, 20+ yalms
@@ -218,6 +226,8 @@ def main():
             taken[own[0]] += [(x, y, z) for x, y, z, _, _ in spots]
         elif name in PLACES and PLACES[name][1] in aeth:
             taken[aeth[PLACES[name][1]][0]] += [(x, y, z) for x, y, z, _, _ in spots]
+    for zone, pts in KEEP_CLEAR.items():
+        taken[zone] += pts
     for p in pools:
         tid, cmd, name = int(p["template"]), p["command"], p["place"]
         if name in DUNGEON_PLACES and cmd == "Fish":
