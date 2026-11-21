@@ -4645,7 +4645,7 @@ async fn gather_spawns_attach_to_zones_and_metadata() {
 /// of the 15 camps: Fish pools of camps whose spot was found later, Fish pools
 /// of the open dungeons, and the retired Spearfish pools (folded into Fish).
 const NEW_FISH_POOLS: &[u32] = &[
-    2043, 2044, 2046, 2051, 2052, 2054, // Fish
+    2042, 2043, 2044, 2046, 2051, 2052, 2054, // Fish
     2097, 2098, 2099, 2100, 2101, 2102, 2103, 2104, 2105, 2106, 2108, 2109, 2110, 2111,
     2113, // Spearfish
 ];

@@ -8,7 +8,7 @@ stands at water is our rule. The hand-checked spots of FISH_SPOTS (gen_nodes.py)
 on, or wade in, one of the layouts' water meshes: the La Noscea sea plane ("f0_s"), lakes
 ("lak_", "c0_l"), river and swamp surfaces ("ris0", "rif_", "rif0", "sw0_", "swf0"), the
 Thanalan pools ("mi_h", "mizu") and the Coerthas flats ("fla0", "fla1"); the dungeons' are
-"la_h" and "p0_w". The mesh names are the part after the 6-character hash and the area code.
+"lak_" and "p0_w". The mesh names are the part after the 6-character hash and the area code.
 A spot is a level floor (3 of 4 sides within 2
 yalms of it, nothing solid 0.3-6 yalms over it) with one of those surfaces from 2.6
 yalms under its feet to 1.8 over them, at the point or 3 yalms around it.
@@ -25,10 +25,20 @@ sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(HERE)), "tools", "terrain"))
 import xivterrain as X  # noqa: E402
 
+# "la_h" is not one: it is the rock floor of Mistbeard Cove and Cassiopeia Hollow (client
+# test 2026-11-21); Cassiopeia's water is its "lak_" lake.
 SURFACES = {"f0_s", "c0_l", "lak_", "ris0", "rif0", "rif_", "sw0_", "swf0", "mi_h", "mizu", "fla0", "fla1",
-            "la_h", "p0_w"}
-# Water surfaces the player passes through (not a floor to stand on).
-NOT_FLOOR = {"ris0", "rif0", "rif_", "sw0_", "swf0", "c0_l", "mizu"}
+            "p0_w"}
+# Water surfaces the player passes through (not a floor to stand on). The sea is one too:
+# in the client a player there walks down to a sea bed the layouts don't have, up to 7
+# yalms under water (Bloodshore, client test 2026-11-21).
+# Coerthas' lake flats too: a player walking onto "fla0" sinks to the lake bed under it, or,
+# where the bed is far down, floats at the height they came in at (The Fields of Glory,
+# client test 2026-11-21).
+NOT_FLOOR = {"ris0", "rif0", "rif_", "sw0_", "swf0", "c0_l", "mizu", "f0_s", "fla0", "fla1"}
+# In the La Noscea zones (the ones with an "f0_s" sea plane) other meshes also carry the sea
+# at y=0 ("f0_h" in 129/130); any floor at sea level there is sea.
+SEA_LEVEL = 0.05
 
 
 def kind(key):
@@ -60,11 +70,18 @@ class Finder:
     def __init__(self, terrain, zone, offset=(0.0, 0.0, 0.0)):
         """offset: server = layout + offset (dungeons; tools/terrain/README.md)."""
         self.area = terrain.area(zone)
+        self.layout = zone
         self.off = offset
+        self.sea = bool(self.area) and any(kind(p[2]) == "f0_s" for p in self.area.placements)
 
     def at(self, x, z):
         ox, oy, oz = self.off
-        return [(h + oy, k) for h, k in floors(self.area, x - ox, z - oz)] if self.area else []
+        if not self.area:
+            return []
+        out = [(h + oy, k) for h, k in floors(self.area, x - ox, z - oz)]
+        if self.sea:
+            out = [(h, "f0_s" if abs(h) < SEA_LEVEL else k) for h, k in out]
+        return out
 
     def stand(self, x, z, near_y=None, ylim=40.0):
         """Height a fisher can stand at (x, z) by known water, or None."""
@@ -77,6 +94,8 @@ class Finder:
         for h, k in reversed(here):
             if k in NOT_FLOOR or (near_y is not None and abs(h - near_y) > ylim):
                 continue
+            if self.sea and h < -0.5:
+                continue  # a sea bed: more than knee-deep under the sea
             if any(h + 0.3 < u < h + 6 and kk not in NOT_FLOOR for u, kk in here):
                 continue  # under a ledge or a roof
             if not any(-2.6 <= w - h <= 1.8 for w in wet):
@@ -155,6 +174,10 @@ def main():
             f = Finder(terrain, zone, offset)
             cx, cz, radius = f.middle()
             spots = f.scan(cx, cz, radius)
+        elif name in G.TOWN_PLACES:
+            zone, layout, offset, (cx, cz, radius) = G.TOWN_PLACES[name]
+            f = Finder(terrain, layout, offset)
+            spots = f.scan(cx, cz, radius)
         else:
             zone, ax, ay, az = aeth[G.PLACES[name][1]]
             f = Finder(terrain, zone)
@@ -164,7 +187,7 @@ def main():
         print(f"{name} (zone {zone}): {len(spots)} spots")
         for x, y, z in got:
             print("   ", (x, y, z) + f.facing(x, z, y))
-        terrain.release(zone)
+        terrain.release(f.layout)
 
 
 if __name__ == "__main__":
