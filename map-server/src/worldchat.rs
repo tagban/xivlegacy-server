@@ -931,7 +931,8 @@ mod tests {
         assert!(received(&mut rx[2]).is_none(), "nobody in another zone");
         while rx[0].try_recv().is_ok() {}
 
-        // on: everyone, wherever they are, the speaker too
+        // on: everyone, wherever they are, but not the speaker (the client
+        // already prints its own line)
         let wc = WorldChat::new(Settings::default());
         route_say(
             Some(&wc),
@@ -943,7 +944,8 @@ mod tests {
             "hello world",
         )
         .await;
-        for (i, r) in rx.iter_mut().enumerate() {
+        assert!(received(&mut rx[0]).is_none(), "no echo to the speaker");
+        for (i, r) in rx.iter_mut().enumerate().skip(1) {
             let got = received(r).unwrap_or_else(|| panic!("player {i} heard nothing"));
             assert!(
                 got.contains("Loud Talker") && got.contains("hello world"),
@@ -969,11 +971,11 @@ mod tests {
         });
         assert_eq!(
             wc.say(&registry, &world, &me, "Spammer", "1").await,
-            Said::World(2)
+            Said::World(1)
         );
         assert_eq!(
             wc.say(&registry, &world, &me, "Spammer", "2").await,
-            Said::World(2)
+            Said::World(1)
         );
         assert_eq!(
             wc.say(&registry, &world, &me, "Spammer", "3").await,
@@ -993,7 +995,12 @@ mod tests {
     async fn long_lines_are_cut() {
         let world = WorldManager::new();
         let registry = ActorRegistry::new();
-        let mut rx = players(&world, &registry, &[(1, "Talker", 100)]).await;
+        let mut rx = players(
+            &world,
+            &registry,
+            &[(1, "Talker", 100), (2, "Listener", 200)],
+        )
+        .await;
         let me = registry.get(1).await.unwrap();
         let wc = WorldChat::new(Settings {
             max_length: 10,
@@ -1001,7 +1008,7 @@ mod tests {
         });
         wc.say(&registry, &world, &me, "Talker", "0123456789ABCDEF")
             .await;
-        let got = received(&mut rx[0]).unwrap();
+        let got = received(&mut rx[1]).unwrap();
         assert!(got.contains("0123456789") && !got.contains('A'), "{got}");
     }
 
