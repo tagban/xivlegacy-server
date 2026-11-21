@@ -5326,3 +5326,53 @@ mod other_player_spawn_tests {
         );
     }
 }
+
+#[cfg(test)]
+mod uldah_gate_tests {
+    use super::push_npc_spawn;
+    use crate::packets::opcodes::*;
+    use common::luaparam::LuaParam;
+    use std::sync::Arc;
+
+    /// The Gate of Nald is Ul'dah's way out to Central Thanalan. The town
+    /// layout (wil_w0_twn01, layout 421) bakes it in as isgrp_002836 and
+    /// draws it shut, with collision, until a DoorServer actor binds to it
+    /// with isOpen. Without that actor no one could walk out of the city
+    /// and Man0u1 stopped at SEQ 5 (#356).
+    #[test]
+    fn gate_of_nald_spawns_as_an_open_door_server() {
+        let sql = include_str!("../../common/sql/data/server_spawn_locations.sql");
+        let row = sql
+            .lines()
+            .find(|l| l.contains("'uldah_gate_of_nald'"))
+            .expect("Gate of Nald spawn row");
+        let f: Vec<&str> = row.trim_start_matches('(').split(", ").collect();
+        assert_eq!(f[1], crate::dungeon_gates::DOOR_CLASS.to_string(), "{row}");
+        assert_eq!(f[3], "175", "{row}");
+        assert_eq!(&f[6..9], &["-52.5", "192.0", "-2.3"], "{row}");
+
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../scripts/lua");
+        let lua = Arc::new(crate::lua::LuaEngine::new(root));
+        let tail = lua
+            .call_unique_npc_init("wil0Town01", "DoorServer", "uldah_gate_of_nald")
+            .expect("unique init");
+        assert!(matches!(tail.get(4), Some(LuaParam::Int32(421))), "{tail:?}");
+        assert!(matches!(tail.get(5), Some(LuaParam::Int32(2836))), "{tail:?}");
+        assert!(matches!(tail.get(6), Some(LuaParam::True)), "{tail:?}");
+
+        let mut c = crate::actor::Character::new((4 << 28) | (175 << 19) | 0x60001);
+        c.base.class_name = "DoorServer".into();
+        c.base.class_path = "/Chara/Npc/MapObj/DoorServer".into();
+        c.base.unique_id = "uldah_gate_of_nald".into();
+        c.base.zone_id = 175;
+        c.chara.actor_class_id = crate::dungeon_gates::DOOR_CLASS;
+        let mut out = Vec::new();
+        push_npc_spawn(&mut out, &c, "wil0Town01", 0, false, Some(&lua), None, None);
+        let bg = out
+            .iter()
+            .find(|p| p.game_message.opcode == OP_SET_ACTOR_BG_PROPERTIES)
+            .expect("bound to its background object");
+        assert_eq!(&bg.data[..4], &2836u32.to_le_bytes());
+        assert_eq!(&bg.data[4..8], &421u32.to_le_bytes());
+    }
+}

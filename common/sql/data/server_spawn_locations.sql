@@ -2072,4 +2072,5 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (31901, 1000159, 'mp_nibbles', 175, '', 0, -64.5, 195.2, 75.0, 2.88, 0, 0, 'Nibbles Coinwhisker'),
 (31902, 1000159, 'mp_mogsley', 155, '', 0, 58.5, 4.0, -1193.5, 1.67, 0, 0, 'Mogsley Pompomtrade'),
 (31903, 1000159, 'mp_gobbie', 133, '', 0, -436.0, 39.6, 190.0, -1.37, 0, 0, 'Gobbie Grubtrader'),
-(31904, 1090202, 'man0g1_gate_trig_n150', 150, '', 0, -194.73, 3.5, -1021.33, -1.642, 0, 0, NULL);
+(31904, 1090202, 'man0g1_gate_trig_n150', 150, '', 0, -194.73, 3.5, -1021.33, -1.642, 0, 0, NULL),
+(31905, 5900015, 'uldah_gate_of_nald', 175, '', 0, -52.5, 192.0, -2.3, 0.0, 0, 0, NULL);
