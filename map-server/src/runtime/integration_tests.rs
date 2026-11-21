@@ -4937,6 +4937,30 @@ async fn every_fishing_pool_spawns_and_a_cast_catches_its_fish() {
         texts(&result.commands)
     );
 
+    // A full bag: nothing to cast for, no bait used.
+    let snapshot = PlayerSnapshot {
+        actor_id: 0x1234_5678,
+        current_class: 41,
+        fishing_tackle: Some((lugworm, 5, false)),
+        bag_full: true,
+        ..Default::default()
+    };
+    let result = engine.call_command_on_event_started(
+        &probe,
+        snapshot,
+        fish_command,
+        "commandRequest".to_string(),
+        0,
+        Vec::new(),
+        Some((*zone, unique.to_string())),
+    );
+    assert!(result.error.is_none(), "{:?}", result.error);
+    assert!(!gathered(&result.commands));
+    assert!(
+        bait_used(&result.commands).is_empty(),
+        "a full bag uses no bait"
+    );
+
     // A lure catches without being used up.
     let crow_fly = 3_940_102u32;
     let result = cast_with(41, fish_command, *zone, unique, Some((crow_fly, 1, true)));

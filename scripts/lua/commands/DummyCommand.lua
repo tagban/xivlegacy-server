@@ -178,6 +178,13 @@ function onEventStarted(player, commandActor, triggerName, arg1, arg2, arg3, arg
         return;
     end
 
+    -- Nowhere to put what's gathered (1.0's line for a full bag).
+    if player:IsBagFull() then
+        player:SendMessage(MESSAGE_TYPE_SYSTEM, "", "Command could not be executed. Your inventory is full.");
+        player:EndEvent();
+        return;
+    end
+
     local resolver = GetGatherResolver();
     if resolver == nil then
         -- No catalog loaded — abort gracefully so a boot misconfig

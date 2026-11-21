@@ -5414,8 +5414,21 @@ pub async fn apply_equip_from_package(
         let (server_item_id, catalog_id) = resolved;
         // The Lua tables name bag positions, which only hold the class's
         // starter kit on a fresh character; skip anything else that doesn't
-        // go in this gear slot (chausses on the head, gloves as a body).
-        if let Ok(Some(point)) = db.item_equip_point(catalog_id).await
+        // go in this gear slot (chausses on the head, gloves as a body, bait
+        // on the belt) and anything that isn't gear at all (a fish, ore).
+        // (Point 0 is food and medicine: their rows carry effects, not a slot.)
+        let point = db.item_equip_point(catalog_id).await;
+        if matches!(point, Ok(None) | Ok(Some(0))) {
+            tracing::debug!(
+                player = format!("0x{player_id:08X}"),
+                gear_slot,
+                src_position,
+                item = catalog_id,
+                "EquipFromPackage: not gear — skipping",
+            );
+            continue;
+        }
+        if let Ok(Some(point)) = point
             && crate::actor::player::gear_slot_fits(point, gear_slot) == Some(false)
         {
             tracing::debug!(

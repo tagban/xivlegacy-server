@@ -7453,8 +7453,9 @@ impl PacketProcessor {
     /// Give a quest hook's snapshot the player's items, so `HasItem` and
     /// `GetItemQuantity` in quest scripts answer from what the character
     /// really carries (the snapshot built from the Character alone has none).
-    /// The bait or lure in the Pack slot, for the gathering commands
-    /// (`player:GetFishingTackle()` in DummyCommand.lua).
+    /// The bait or lure in the Pack slot and whether the bag is full, for
+    /// the gathering commands (`player:GetFishingTackle()` and
+    /// `player:IsBagFull()` in DummyCommand.lua).
     async fn with_fishing_tackle(
         &self,
         mut snapshot: crate::lua::userdata::PlayerSnapshot,
@@ -7469,6 +7470,13 @@ impl PacketProcessor {
             Err(e) => {
                 tracing::warn!(player = snapshot.actor_id, err = %e, "gathering: reading the Pack slot failed")
             }
+        }
+        if let Ok(bag) = self
+            .db
+            .get_item_package(snapshot.actor_id, crate::inventory::PKG_NORMAL as u32)
+            .await
+        {
+            snapshot.bag_full = bag.len() >= crate::inventory::CAP_NORMAL as usize;
         }
         snapshot
     }
@@ -11758,6 +11766,7 @@ pub(crate) fn build_player_snapshot_for_login(
         inventory: Vec::new(),
         inventory_slots: Vec::new(),
         fishing_tackle: None,
+        bag_full: false,
         login_director_actor_id: c.chara.login_director_actor_id,
         content_area_name: c.chara.content_area_name.clone(),
         // Login snapshot never has a retainer spawned — the tutorial

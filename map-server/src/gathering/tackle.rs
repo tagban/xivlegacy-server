@@ -282,6 +282,53 @@ mod tests {
         (rod, stack, fish)
     }
 
+    /// The login backfill (player.lua `equipClassItems`) equips fixed bag
+    /// positions into fixed gear slots. Bait and fish there must stay in
+    /// the bag: bait goes only in the Pack slot, a fish is no gear at all.
+    #[tokio::test]
+    async fn login_backfill_leaves_bait_and_fish_in_the_bag() {
+        let db = db().await;
+        let registry = ActorRegistry::new();
+        let world = WorldManager::new();
+        db.add_harvest_item(65, MAPLE_ROD, 1, 1).await.unwrap();
+        db.add_harvest_item(65, CRAYFISH, 3, 1).await.unwrap();
+        db.add_harvest_item(65, LUGWORM, 5, 1).await.unwrap();
+        // The Fisher's table: gear slots 0, 8, 12, 14, 15 from bag 0-4.
+        crate::runtime::quest_apply::apply_equip_from_package(
+            65,
+            &[0, 8, 12, 14, 15],
+            &[0, 1, 2, 3, 4],
+            0,
+            &registry,
+            &db,
+            &world,
+            None,
+        )
+        .await;
+        // No player in the registry: the rows are keyed by class 0.
+        assert!(
+            db.equipped_item(65, 0, SLOT_MAINHAND)
+                .await
+                .unwrap()
+                .is_some()
+        );
+        assert_eq!(
+            db.equipped_item(65, 0, 8).await.unwrap(),
+            None,
+            "a fish as a hat"
+        );
+        assert_eq!(
+            db.equipped_item(65, 0, 12).await.unwrap(),
+            None,
+            "bait as legs"
+        );
+        // Bait fits only the Pack slot.
+        assert_eq!(
+            crate::actor::player::gear_slot_fits(6, SLOT_PACK),
+            Some(true)
+        );
+    }
+
     #[tokio::test]
     async fn pack_tackle_reads_bait_and_lures_only() {
         let db = db().await;

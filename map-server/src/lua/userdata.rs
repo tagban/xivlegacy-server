@@ -670,6 +670,9 @@ pub struct PlayerSnapshot {
     /// is a lure)`. Filled from the DB only for the gathering commands
     /// (DummyCommand.lua), read by `player:GetFishingTackle()`.
     pub fishing_tackle: Option<(u32, i32, bool)>,
+    /// The bag (package 0) has no free slot. Filled with `fishing_tackle`
+    /// for the gathering commands; read by `player:IsBagFull()`.
+    pub bag_full: bool,
     /// Set by `player:SetLoginDirector(director)` during `onBeginLogin`
     /// — zero means no director attached. `player:GetDirector()` reads
     /// this to hand the `zone.lua:onZoneIn` hook a real director handle
@@ -840,6 +843,7 @@ impl From<&crate::actor::Player> for PlayerSnapshot {
             inventory,
             inventory_slots: Vec::new(),
             fishing_tackle: None,
+            bag_full: false,
             login_director_actor_id: p.character.chara.login_director_actor_id,
             content_area_name: p.character.chara.content_area_name.clone(),
             // The From<&Player> impl can't reach the session store
@@ -2763,6 +2767,8 @@ impl UserData for LuaPlayer {
         // Fishing tackle in the Pack slot when the gathering command
         // started: `catalogId, quantity, isLure`, or nil when the slot
         // holds no bait or lure.
+        // The bag had no free slot when the gathering command started.
+        methods.add_method("IsBagFull", |_, this, _: ()| Ok(this.snapshot.bag_full));
         methods.add_method("GetFishingTackle", |_, this, _: ()| {
             Ok(match this.snapshot.fishing_tackle {
                 Some((item, qty, lure)) if qty > 0 => (Some(item), Some(qty), Some(lure)),
