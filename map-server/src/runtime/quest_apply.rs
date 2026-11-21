@@ -6728,6 +6728,17 @@ pub(crate) async fn broadcast_quest_enpc_update(
     if session_id == 0 {
         return;
     }
+    // Between a deferred zone change and its zone-in bundle the client
+    // has none of the destination's actors; the bundle sends this state
+    // itself (#348).
+    if world.zone_in_deferred(session_id).await {
+        tracing::debug!(
+            player = player_id,
+            class_id = enpc.actor_class_id,
+            "quest ENPC broadcast held — zone-in bundle pending",
+        );
+        return;
+    }
     let Some(client) = world.client(session_id).await else {
         return;
     };
@@ -7351,6 +7362,9 @@ async fn broadcast_quest_enpc_graphic(
     if session_id == 0 {
         return;
     }
+    if world.zone_in_deferred(session_id).await {
+        return; // the pending zone-in bundle carries it (#348)
+    }
     let Some(client) = world.client(session_id).await else {
         return;
     };
@@ -7400,6 +7414,9 @@ async fn broadcast_quest_enpc_clear(
     let session_id = player_handle.session_id;
     if session_id == 0 {
         return;
+    }
+    if world.zone_in_deferred(session_id).await {
+        return; // the pending zone-in bundle carries it (#348)
     }
     let Some(client) = world.client(session_id).await else {
         return;
@@ -10244,5 +10261,94 @@ mod realign_after_remove_tests {
         let packed = realign_after_remove(&rows, &[], &[1]);
         assert_eq!(slots(&packed.moved), vec![(2, 0, 1), (3, 1, 2)]);
         assert_eq!(packed.tail_slots, vec![2, 5]);
+    }
+}
+
+#[cfg(test)]
+mod zone_in_deferred_tests {
+    use super::broadcast_quest_enpc_update;
+    use crate::actor::Character;
+    use crate::actor::quest::QuestEnpc;
+    use crate::runtime::actor_registry::{ActorHandle, ActorKindTag, ActorRegistry};
+    use crate::world_manager::WorldManager;
+
+    /// #348: a quest NPC update sent while a deferred zone-in bundle is
+    /// parked names destination actors the client has not spawned, and
+    /// the client hangs on Now Loading (Man0g1's Fane exit: IncCounter's
+    /// onStateChange drained right after DoZoneChange). It is held; the
+    /// bundle carries the state. Once the bundle is out it goes through.
+    #[tokio::test]
+    async fn quest_enpc_update_is_held_while_zone_in_is_deferred() {
+        use crate::data::ClientHandle;
+
+        const PLAYER_ID: u32 = 71;
+        const SESSION_ID: u32 = 48;
+        const NPC_CLASS_ID: u32 = 1_000_009;
+        const NPC_ACTOR_ID: u32 = 0x4670_0001;
+
+        let registry = ActorRegistry::new();
+        registry
+            .insert(ActorHandle::new(
+                PLAYER_ID,
+                ActorKindTag::Player,
+                206,
+                SESSION_ID,
+                Character::new(PLAYER_ID),
+            ))
+            .await;
+        let mut npc = Character::new(NPC_ACTOR_ID);
+        npc.chara.actor_class_id = NPC_CLASS_ID;
+        registry
+            .insert(ActorHandle::new(NPC_ACTOR_ID, ActorKindTag::Npc, 206, 0, npc))
+            .await;
+
+        let world = WorldManager::new();
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<Vec<u8>>(32);
+        world
+            .register_client(SESSION_ID, ClientHandle::new(SESSION_ID, tx))
+            .await;
+        let mut session = crate::data::Session::new(SESSION_ID);
+        session.current_zone_id = 206;
+        session.pending_zone_in = Some(crate::data::PendingZoneIn {
+            fire_at_unix_ms: u64::MAX,
+            spawn_type: 15,
+            commit_keep_list: true,
+            notify_private_area: false,
+        });
+        world.upsert_session(session.clone()).await;
+
+        let enpc = QuestEnpc::new(NPC_CLASS_ID, 2, true, true, false, false);
+        broadcast_quest_enpc_update(PLAYER_ID, enpc, &registry, &world).await;
+        assert!(rx.try_recv().is_err(), "held while the zone-in bundle is parked");
+
+        session.pending_zone_in = None;
+        world.upsert_session(session).await;
+        broadcast_quest_enpc_update(PLAYER_ID, enpc, &registry, &world).await;
+        assert!(rx.try_recv().is_ok(), "sent once the bundle is out");
+    }
+}
+
+#[cfg(test)]
+mod man0g1_gate_trigger_tests {
+    /// Man0g1's GATE_TRIGGER (class 1090202) stands on the road past the
+    /// White Wolf Gate. A player can be there in either town zone (the
+    /// road is walkable before any seam) or in zone 150 itself: a timed-
+    /// out or abandoned escort duty drops the player back at the trigger
+    /// in public Central Shroud, and with no copy in 150 the duty could
+    /// never be started again (#350).
+    #[test]
+    fn gate_trigger_spawns_in_both_towns_and_the_central_shroud() {
+        let sql = include_str!("../../../common/sql/data/server_spawn_locations.sql");
+        let mut zones: Vec<u32> = sql
+            .lines()
+            .filter(|l| l.starts_with('(') && l.contains(", 1090202, "))
+            .map(|l| {
+                let f: Vec<&str> = l.trim_start_matches('(').split(", ").collect();
+                assert_eq!(&f[6..9], &["-194.73", "3.5", "-1021.33"], "{l}");
+                f[3].parse().unwrap()
+            })
+            .collect();
+        zones.sort_unstable();
+        assert_eq!(zones, vec![150, 155, 206]);
     }
 }

@@ -1951,6 +1951,23 @@ impl WorldManager {
         self.sessions.write().await.insert(session.id, session);
     }
 
+    /// Whether this session's zone-in bundle is parked behind the 0x00E2
+    /// reload latch (`pending_zone_in`, same-region zone changes). Quest
+    /// NPC updates sent in that window name destination actors the
+    /// client has not spawned yet, and the client never finishes loading
+    /// (Man0g1's Fane exit after Swethyna, #348). The bundle carries the
+    /// quest NPC state itself (`push_quest_enpc_overlay` and the
+    /// re-emission after the populace), and onStateChange runs again on
+    /// RX 0x0007. The immediate wipe+0x10 recipe sends its bundle at
+    /// once, so `reload_in_flight` alone does not hold updates back.
+    pub async fn zone_in_deferred(&self, session_id: u32) -> bool {
+        self.sessions
+            .read()
+            .await
+            .get(&session_id)
+            .is_some_and(|s| s.pending_zone_in.is_some())
+    }
+
     /// Remember that a quest hid `actor_id` from this session's player
     /// (see `Session::hidden_actors`).
     pub async fn hide_actor_for_session(&self, session_id: u32, actor_id: u32) {

@@ -7074,6 +7074,11 @@ impl PacketProcessor {
         if session_id == 0 {
             return;
         }
+        // Held while a deferred zone-in bundle is parked; the bundle
+        // carries the quest NPC state (#348).
+        if self.world.zone_in_deferred(session_id).await {
+            return;
+        }
         let Some(client) = self.world.client(session_id).await else {
             return;
         };
@@ -7165,6 +7170,9 @@ impl PacketProcessor {
         let session_id = player_handle.session_id;
         if session_id == 0 {
             return;
+        }
+        if self.world.zone_in_deferred(session_id).await {
+            return; // the pending zone-in bundle carries it (#348)
         }
         let Some(client) = self.world.client(session_id).await else {
             return;
