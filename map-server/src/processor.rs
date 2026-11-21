@@ -10644,6 +10644,9 @@ impl PacketProcessor {
         // (crate::linkshells; group packets sent during the login burst
         // were ignored).
         if !had_deferred_warp && let Some(h) = self.registry.by_session(session_id).await {
+            // The zone-in rebuilt the map: an always-open town gate needs
+            // opening again on the player's next step near it (#356).
+            crate::town_gates::reset(h.actor_id);
             crate::runtime::monster_mode::after_zone_in(&self.registry, &self.world, h.actor_id)
                 .await;
             crate::linkshells::send_login(&self.registry, &self.world, &self.db, h.actor_id).await;
@@ -10945,6 +10948,38 @@ impl PacketProcessor {
         self.world
             .send_instance_update(&self.registry, self.lua.as_ref(), actor_id, session_id)
             .await;
+
+        // 3b'. Always-open town gates (Ul'dah's Gate of Nald, #356): play
+        //      the gate's open schedule when the player walks up to it, and
+        //      move a player coming in from the field through the field
+        //      layout's copy of the gate, which the client keeps shut.
+        if let Some(zone_id) = self
+            .world
+            .session(session_id)
+            .await
+            .map(|s| s.current_zone_id)
+        {
+            if let Some((y, z)) = crate::town_gates::passage(actor_id, zone_id, pkt.x, pkt.z) {
+                tracing::info!(
+                    actor = actor_id,
+                    zone = zone_id,
+                    x = pkt.x,
+                    z = pkt.z,
+                    "town gate: walked in from the field"
+                );
+                self.apply_warp_to_position(actor_id, pkt.x, y, z, pkt.rot, 0x11)
+                    .await;
+            }
+            crate::town_gates::on_position(
+                &self.world,
+                &self.registry,
+                actor_id,
+                zone_id,
+                pkt.x,
+                pkt.z,
+            )
+            .await;
+        }
 
         // 3c. On a seamless zone CHANGE, re-establish the active quests' ENPC
         //     conditions for the DESTINATION zone. Without this the only thing
