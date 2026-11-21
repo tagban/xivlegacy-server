@@ -17880,6 +17880,207 @@ async fn send_instance_update_skips_quest_hidden_npc() {
     assert!(!session.actor_instance_list.contains(&0x4000_0010));
 }
 
+/// Quest cast in the open world (`server_spawn_location_quests`, gate
+/// `step`): Bowlord Lewin stands in Stillglade Fane only for a player whose
+/// Appetite for Destruction (Com0g6) step names him. A player without the
+/// quest isn't sent him; once their step names him he streams in; when a
+/// later step drops him he stays while they're near and leaves their
+/// client once they walk off.
+#[tokio::test]
+async fn quest_cast_streams_only_for_the_step_that_needs_it() {
+    use crate::actor::quest::{Quest, QuestEnpc, quest_actor_id};
+    use crate::data::Session as MapSession;
+    use crate::zone::zone::Zone;
+    use common::Vector3;
+
+    const COM0G6: u32 = 111_606;
+    const LEWIN_CLASS: u32 = 1_000_020;
+    // An id no other test spawns: the gates live in a process-wide table.
+    const LEWIN: u32 = 0x4670_6E01;
+    const PLAYER: u32 = 7;
+    const SESSION: u32 = 7;
+
+    // Every AddActor / RemoveActor sent for Lewin since the last call.
+    fn sent_for_lewin(rx: &mut mpsc::Receiver<Vec<u8>>) -> (bool, bool) {
+        let (mut added, mut removed) = (false, false);
+        while let Ok(bytes) = rx.try_recv() {
+            let mut offset = 0;
+            while offset < bytes.len() {
+                let Ok(sub) = common::subpacket::SubPacket::parse(&bytes, &mut offset) else {
+                    break;
+                };
+                if sub.header.source_id != LEWIN {
+                    continue;
+                }
+                added |= sub.game_message.opcode == crate::packets::opcodes::OP_ADD_ACTOR;
+                removed |= sub.game_message.opcode == crate::packets::opcodes::OP_REMOVE_ACTOR;
+            }
+        }
+        (added, removed)
+    }
+
+    let world = Arc::new(WorldManager::new());
+    let registry = Arc::new(ActorRegistry::new());
+    let zone = Zone::new(
+        206,
+        "fst0Town01a".to_string(),
+        102,
+        String::new(),
+        0,
+        0,
+        0,
+        false,
+        false,
+        false,
+        false,
+        false,
+        None,
+    );
+    world.register_zone(zone).await;
+    let zone_arc = world.zone(206).await.unwrap();
+
+    let mut player = Character::new(PLAYER);
+    player.base.zone_id = 206;
+    registry
+        .insert(ActorHandle::new(
+            PLAYER,
+            ActorKindTag::Player,
+            206,
+            SESSION,
+            player,
+        ))
+        .await;
+    let (tx, mut rx) = mpsc::channel::<Vec<u8>>(256);
+    world
+        .register_client(SESSION, ClientHandle::new(SESSION, tx))
+        .await;
+    let mut session = MapSession::new(SESSION);
+    session.current_zone_id = 206;
+    world.upsert_session(session).await;
+
+    let mut lewin = Character::new(LEWIN);
+    lewin.base.zone_id = 206;
+    lewin.chara.actor_class_id = LEWIN_CLASS;
+    lewin.base.actor_name = "com0g6_lewin".to_string();
+    registry
+        .insert(ActorHandle::new(LEWIN, ActorKindTag::Npc, 206, 0, lewin))
+        .await;
+    crate::quest_cast::tag_actor(
+        LEWIN,
+        LEWIN_CLASS,
+        &crate::quest_cast::parse_gates("111606:step"),
+    );
+    {
+        let mut z = zone_arc.write().await;
+        let mut out = AreaOutbox::new();
+        for (id, kind, pos) in [
+            (PLAYER, ActorKind::Player, Vector3::new(0.0, 0.0, 0.0)),
+            (LEWIN, ActorKind::Npc, Vector3::new(3.0, 0.0, 3.0)),
+        ] {
+            z.core.add_actor(
+                StoredActor {
+                    actor_id: id,
+                    kind,
+                    position: pos,
+                    grid: (0, 0),
+                    is_alive: true,
+                },
+                &mut out,
+            );
+        }
+    }
+    let in_list = |world: Arc<WorldManager>| async move {
+        world
+            .session(SESSION)
+            .await
+            .unwrap()
+            .actor_instance_list
+            .contains(&LEWIN)
+    };
+
+    // 1. No quest: Lewin stays off this player's client.
+    world
+        .send_instance_update(&registry, None, PLAYER, SESSION)
+        .await;
+    assert_eq!(
+        sent_for_lewin(&mut rx),
+        (false, false),
+        "no quest, no Lewin"
+    );
+    assert!(!in_list(world.clone()).await);
+
+    // 2. Com0g6 at a step that doesn't name Lewin: still nothing.
+    let handle = registry.get(PLAYER).await.unwrap();
+    {
+        let mut quest = Quest::new(quest_actor_id(COM0G6), "Com0g6".to_string());
+        quest.start_sequence(30);
+        handle.character.write().await.quest_journal.add(quest);
+    }
+    world
+        .send_instance_update(&registry, None, PLAYER, SESSION)
+        .await;
+    assert_eq!(
+        sent_for_lewin(&mut rx),
+        (false, false),
+        "wrong step, no Lewin"
+    );
+
+    // 3. The step names Lewin (quest:SetENpc): he streams in.
+    {
+        let mut c = handle.character.write().await;
+        let quest = c.quest_journal.slots.iter_mut().flatten().next().unwrap();
+        quest.start_sequence(0);
+        quest.state.current.insert(
+            LEWIN_CLASS,
+            QuestEnpc::new(LEWIN_CLASS, 2, true, true, false, false),
+        );
+    }
+    world
+        .send_instance_update(&registry, None, PLAYER, SESSION)
+        .await;
+    assert_eq!(
+        sent_for_lewin(&mut rx),
+        (true, false),
+        "his step: Lewin comes in"
+    );
+    assert!(in_list(world.clone()).await);
+
+    // 4. The next step drops him. The player is right beside him (mid-scene,
+    //    say), so he stays for now.
+    {
+        let mut c = handle.character.write().await;
+        let quest = c.quest_journal.slots.iter_mut().flatten().next().unwrap();
+        quest.start_sequence(10);
+        quest.state.current.clear();
+    }
+    world
+        .send_instance_update(&registry, None, PLAYER, SESSION)
+        .await;
+    assert_eq!(
+        sent_for_lewin(&mut rx),
+        (false, false),
+        "kept while the player is near"
+    );
+    assert!(in_list(world.clone()).await);
+
+    // 5. The player walks off past QUEST_CAST_LEAVE_RADIUS: he goes.
+    {
+        let mut z = zone_arc.write().await;
+        let mut out = AreaOutbox::new();
+        z.core
+            .update_actor_position(PLAYER, Vector3::new(30.0, 0.0, 3.0), &mut out);
+    }
+    world
+        .send_instance_update(&registry, None, PLAYER, SESSION)
+        .await;
+    assert_eq!(
+        sent_for_lewin(&mut rx),
+        (false, true),
+        "walked off: Lewin leaves"
+    );
+    assert!(!in_list(world.clone()).await);
+}
+
 /// Garlemald-Server #46 escort rendering — `send_instance_update` must
 /// stream CONTENT-band actors by proximity inside a content instance
 /// (pmeteor `Session.UpdateInstance` parity). Before this arm existed

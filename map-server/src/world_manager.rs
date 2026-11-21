@@ -544,6 +544,11 @@ pub(crate) const ZONE_IN_BUNDLE_RADIUS: f32 = 50.0;
 /// radius plus a margin so an actor near the edge doesn't flicker.
 pub(crate) const MONSTER_DESPAWN_RADIUS: f32 = 130.0;
 
+/// Quest cast a player's quests are done with leaves their client once
+/// they are this far from it, so it doesn't vanish mid-scene or under
+/// their nose. Within it the NPC stays until they walk off.
+pub(crate) const QUEST_CAST_LEAVE_RADIUS: f32 = 20.0;
+
 /// Actor-number bit that marks a content-script-spawned actor.
 /// Content spawn appliers set bit 18 in the composite actor id
 /// (`SpawnBattleNpcById` = 0x40000|id, `SpawnActor` = 0x60000|suffix)
@@ -3404,28 +3409,6 @@ impl WorldManager {
                     .collect(),
             }
         };
-        // A private area several Echoes share (zone 209
-        // PrivateAreaMasterPast 5) holds every one of their casts. A seeded
-        // NPC tagged with quests (`server_spawn_location_quests`) goes only
-        // to a player holding one of them, so one Echo's scene doesn't
-        // stand in another's.
-        if session.current_private_area_name.is_some() {
-            let mut kept = Vec::with_capacity(neighbours.len());
-            for neighbour in neighbours {
-                let gate = match registry.get(neighbour.0).await {
-                    Some(handle) => handle.character.read().await.base.spawn_quest_ids.clone(),
-                    None => Vec::new(),
-                };
-                if !gate.is_empty() {
-                    let player = actor_handle.character.read().await;
-                    if !gate.iter().any(|&q| player.quest_journal.has(q)) {
-                        continue;
-                    }
-                }
-                kept.push(neighbour);
-            }
-            neighbours = kept;
-        }
         // Seamless-partner-zone neighbours. pmeteor's Player.
         // SendInstanceUpdate scans BOTH `zone` and `zone2` (Player.cs:
         // 2285-2288); a zone-in near the 133/230 Limsa seam must do the
@@ -3456,6 +3439,15 @@ impl WorldManager {
         neighbours.retain(|(id, _, _)| !quest_hidden.contains(id));
         // Seasonal-event NPCs only while their event runs.
         neighbours.retain(|(id, _, _)| !crate::seasonal::actor_hidden(*id));
+        // Quest cast (`server_spawn_location_quests`) only for a player
+        // whose quest needs them: an Echo's scene in a private area several
+        // Echoes share, and a quest's cast standing in the open world.
+        if crate::quest_cast::any_tagged() {
+            let view = crate::quest_cast::QuestView::of(
+                &actor_handle.character.read().await.quest_journal,
+            );
+            neighbours.retain(|(id, _, _)| !crate::quest_cast::hidden(*id, &view));
+        }
         tracing::info!(
             session = session_id,
             actor = format!("0x{actor_id:08X}"),
@@ -4543,7 +4535,10 @@ impl WorldManager {
     /// It spawns newly-in-range actors and records them in
     /// `session.actor_instance_list`. Open-world monsters are removed again
     /// past [`MONSTER_DESPAWN_RADIUS`] (pmeteor sends RemoveActor on the
-    /// diff); populace and quest NPCs stay add-only, which avoids fighting
+    /// diff). Quest cast (`crate::quest_cast`) comes in when the player's
+    /// quest step names them and goes again, once the player is
+    /// [`QUEST_CAST_LEAVE_RADIUS`] away, when it no longer does. Other
+    /// populace and quest NPCs stay add-only, which avoids fighting
     /// the warp-time mass-delete keep-list and quest `SetENpc` broadcasts
     /// that assume an NPC stays in the client's table — their count is
     /// small at 1.x zone scale.
@@ -4639,6 +4634,24 @@ impl WorldManager {
         // Quest-only gathering points closed to this player: not streamed
         // in, and dropped once their quest step is over.
         let quest_hidden = self.quest_hidden_gather_nodes_for(registry, actor_id).await;
+        // Quest cast closed to this player: not streamed in, and taken
+        // away once their quest no longer needs them and the player has
+        // walked off (`QUEST_CAST_LEAVE_RADIUS`).
+        let cast_view = if crate::quest_cast::any_tagged() {
+            match registry.get(actor_id).await {
+                Some(h) => Some(crate::quest_cast::QuestView::of(
+                    &h.character.read().await.quest_journal,
+                )),
+                None => None,
+            }
+        } else {
+            None
+        };
+        let cast_hidden = |id: u32| {
+            cast_view
+                .as_ref()
+                .is_some_and(|v| crate::quest_cast::hidden(id, v))
+        };
         let (
             new_ids,
             mut far_ids,
@@ -4688,6 +4701,7 @@ impl WorldManager {
                 .filter(|id| !crate::runtime::monster_mode::is_hidden(*id))
                 .filter(|id| !self.is_gather_node_resting_for(*id, actor_id))
                 .filter(|id| !quest_hidden.contains(id))
+                .filter(|id| !cast_hidden(*id))
                 .collect();
             // Other players in range the client hasn't spawned yet. The
             // range query only pairs actors of one content copy, so inside
@@ -4726,11 +4740,11 @@ impl WorldManager {
                     (None, _) => true,
                 })
                 .collect();
-            // Open-world monsters the client has that are now far away.
-            // Only base-zone BattleNpcs: populace and quest NPCs stay
-            // add-only (quest ENPC broadcasts and the warp keep-list
-            // assume they remain in the client's table), and content
-            // actors live and die with their instance.
+            // Open-world monsters the client has that are now far away,
+            // and quest cast this player's quests are done with. Other
+            // populace and quest NPCs stay add-only (quest ENPC broadcasts
+            // and the warp keep-list assume they remain in the client's
+            // table), and content actors live and die with their instance.
             let player_pos = z.core.find_actor(actor_id).map(|a| a.position);
             let far: Vec<u32> = match player_pos {
                 Some(p) => session
@@ -4740,9 +4754,20 @@ impl WorldManager {
                     .filter(|id| (id & CONTENT_ACTOR_BAND_BIT) == 0)
                     .filter(|id| {
                         z.core.find_actor(*id).is_some_and(|a| {
-                            matches!(a.kind, crate::zone::area::ActorKind::BattleNpc) && {
-                                let (dx, dz) = (a.position.x - p.x, a.position.z - p.z);
-                                dx * dx + dz * dz > MONSTER_DESPAWN_RADIUS * MONSTER_DESPAWN_RADIUS
+                            let (dx, dz) = (a.position.x - p.x, a.position.z - p.z);
+                            let d2 = dx * dx + dz * dz;
+                            match a.kind {
+                                crate::zone::area::ActorKind::BattleNpc => {
+                                    d2 > MONSTER_DESPAWN_RADIUS * MONSTER_DESPAWN_RADIUS
+                                }
+                                // Quest cast whose quest is done with them,
+                                // once the player is away: not under their
+                                // nose, nor mid-scene with them.
+                                crate::zone::area::ActorKind::Npc => {
+                                    d2 > QUEST_CAST_LEAVE_RADIUS * QUEST_CAST_LEAVE_RADIUS
+                                        && cast_hidden(*id)
+                                }
+                                _ => false,
                             }
                         })
                     })
@@ -4818,8 +4843,9 @@ impl WorldManager {
                 }
             }
         }
-        // Seasonal-event NPCs only while their event runs.
-        stream_list.retain(|(id, _)| !crate::seasonal::actor_hidden(*id));
+        // Seasonal-event NPCs only while their event runs; quest cast only
+        // for a player whose quest needs them.
+        stream_list.retain(|(id, _)| !crate::seasonal::actor_hidden(*id) && !cast_hidden(*id));
         if stream_list.is_empty() {
             return;
         }

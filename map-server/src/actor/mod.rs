@@ -115,9 +115,8 @@ pub struct BaseActor {
     /// the mesh + collision baked into the zone (closed doors, gates).
     pub mapobj_layout_id: u32,
     pub mapobj_instance_id: u32,
-    /// Quests a seeded NPC belongs to (`SpawnLocation::quest_ids`); the
-    /// private-area zone-in bundle sends it only to a player holding one.
-    /// Empty = everyone.
+    /// Quests a seeded NPC belongs to (`SpawnLocation::quest_gates`); who
+    /// is sent it is `crate::quest_cast`'s call. Empty = everyone.
     pub spawn_quest_ids: Vec<u32>,
 }
 

@@ -793,7 +793,7 @@ impl Database {
                              sl.positionX, sl.positionY, sl.positionZ, sl.rotation,
                              sl.actorState, sl.animationId,
                              mo.layoutId, mo.instanceId,
-                             (SELECT GROUP_CONCAT(sq.questId)
+                             (SELECT GROUP_CONCAT(CONCAT(sq.questId, ':', sq.gate))
                                 FROM server_spawn_location_quests sq
                                WHERE sq.spawnId = sl.id),
                              se.eventName,
@@ -821,13 +821,11 @@ impl Database {
                                 animation_id: r.get::<_, u32>(10).unwrap_or_default(),
                                 mapobj_layout_id: r.get::<_, u32>(11).unwrap_or_default(),
                                 mapobj_instance_id: r.get::<_, u32>(12).unwrap_or_default(),
-                                quest_ids: r
+                                quest_gates: r
                                     .get::<_, Option<String>>(13)
                                     .ok()
                                     .flatten()
-                                    .map(|s| {
-                                        s.split(',').filter_map(|q| q.trim().parse().ok()).collect()
-                                    })
+                                    .map(|s| crate::quest_cast::parse_gates(&s))
                                     .unwrap_or_default(),
                                 event: r
                                     .get::<_, Option<String>>(14)

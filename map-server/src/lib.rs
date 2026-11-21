@@ -66,6 +66,7 @@ pub mod lua;
 mod npc;
 mod packets;
 mod processor;
+mod quest_cast;
 mod runtime;
 mod seasonal;
 mod server;
