@@ -70,38 +70,52 @@ ATTEMPTS = 3
 FISH_SPOTS = {
     "Bearded Rock": [(-213.67, 0.51, 19.27, -457.3, 74.0)],
     "Cedarwood": [(772.0, 2.03, 9.0, 961.5, 19.2)],
-    "Bald Knoll": [(-1973.77, -0.25, -1234.35, -2064.1, -1096.0)],
-    "Skull Valley": [(-1080.0, 1.5, -706.1, -1168.1, -291.4)],
+    "Bald Knoll": [(-2027.47, 1.91, -1204.68, -2007.5, -1204.7)],
+    "Skull Valley": [(-1370.0, 0.92, -600.0, -1370.0, -580.0)],
     "Bloodshore": [(1303.3, 1.5, -890.4, 1483.3, -852.1)],
     "Iron Lake": [(-64.0, 62.85, -1949.9, 150.2, -1639.0), (-22.5, 63.75, -1942.6, 233.2, -1624.4)],
     "Emerald Moss": [(-1381.3, 28.1, -1953.3, -1710.6, -2146.6), (-1377.3, 28.1, -1993.3, -1702.6, -2226.6), (-1426.7, 28.1, -1954.7, -1801.4, -2149.4)],
     "Nine Ivies": [(1605.1, 15.91, -745.1, 1508.2, -628.2)],
     "Tranquil Paths": [(-1551.4, -12.3, -626.24, -1536.8, -702.0)],
     "Humblehearth": [(-135.3, -3.74, -446.2, -176.5, -349.2)],
-    "Halatali": [(1659.3, 258.5, -254.3, 1719.6, -275.6)],
-    "Horizon's Edge": [(-1092.7, 58.4, -65.7, -871.5, 14.2), (-1154.5, 58.4, 123.7, -995.1, 393.0)],
+    "Halatali": [(1679.0, 258.56, -253.0, 1659.0, -253.0), (1719.0, 258.4, -181.0, 1739.0, -181.0)],
+    "Horizon's Edge": [(-1077.91, 58.99, -77.6, -1077.9, -57.6), (-1154.5, 58.4, 123.7, -995.1, 393.0)],
     "Nophica's Wells": [(-834.6, 90.4, 324.3, -804.2, 273.4), (-1019.3, 90.4, 321.6, -1173.6, 268.0)],
-    "The Fields of Glory": [(2117.3, 121.65, 405.3, 2733.8, 43.1), (2053.3, 121.65, 277.3, 2605.8, -212.9), (2117.3, 121.65, 341.3, 2733.8, -84.9)],
+    "The Fields of Glory": [(1124.78, 217.36, 1447.55, 1144.8, 1447.5), (2088.78, 122.57, 243.55, 2108.8, 243.6)],
     "Bentbranch": [(332.0, -1.01, -451.93, 317.9, -437.8), (360.0, 0.87, -451.93, 380.0, -451.9)],
-    "Cassiopeia Hollow": [(1308.0, -93.26, -741.0, 1328.0, -741.0), (1155.0, -94.02, -894.0, 1140.9, -908.1)],
-    "Drybone": [(1026.9, 251.0, -272.2, 1026.9, -252.2), (1038.9, 250.31, -248.2, 1018.9, -248.2)],
+    "Cassiopeia Hollow": [(1364.0, -61.6, -1029.0, 1349.9, -1043.1), (1298.0, -68.72, -687.0, 1318.0, -687.0)],
+    "Drybone": [(1026.9, 251.0, -272.2, 1026.9, -252.2), (1006.9, 251.01, -264.2, 1026.9, -264.2)],
     "Mistbeard Cove": [(-2245.0, 31.61, -1594.0, -2259.1, -1579.9), (-2248.0, 45.71, -1558.0, -2262.1, -1543.9)],
-    "The Mun Tuy Cellars": [(-848.0, -32.11, -2162.0, -828.0, -2162.0), (-818.0, -24.6, -2267.0, -798.0, -2267.0)],
-    "The Tam Tara Deepcroft": [(173.0, -36.1, -92.0, 158.9, -77.9), (260.0, -36.17, 13.0, 280.0, 13.0)],
+    "The Mun Tuy Cellars": [(-848.0, -32.11, -2162.0, -828.0, -2162.0)],
+    "The Tam Tara Deepcroft": [(173.0, -36.1, -92.0, 158.9, -77.9)],
+    "Gridania": [(-84.3, 16.76, -1475.8, -104.3, -1475.8)],
+    "Ul'dah": [(-177.44, 229.0, 236.03, -163.3, 221.9)],
+    "Limsa Lominsa": [(-640.0, 1.0, 405.0, -654.1, 419.1), (-586.0, 0.26, 375.0, -566.0, 375.0)],
     "Riversmeet": [(-1952.0, 251.85, 0.0, -2143.6, 194.7), (-1888.0, 251.85, 192.0, -2015.6, 578.7), (-2080.0, 267.85, 64.0, -2399.6, 322.7)],
 }
+# The other camps' spots were walked to and fished in the client too (2026-11-21). Moved after
+# that test: Skull Valley's and Bald Knoll's (the old ones sank through beach floors that
+# aren't solid; Skull Valley's is now on the sand beach west of the spearfishing islet),
+# Halatali's and Horizon's Edge's first (the walk couldn't reach them), and The Fields of
+# Glory's (they stood on the lake flat, which has no floor).
+# Fishing spots that were moved: their old places stay taken so the client-tested points of
+# the other pools around them don't move. zone -> [(x, y, z)]
+KEEP_CLEAR = {171: [(1659.3, 258.5, -254.3)]}  # Halatali's first fish spot
 # Spearfishing pools (folded into Fish): spots of their own, POOL_GAP+ from the Fish spots.
-# These, and the FISH_SPOTS of Bentbranch, Drybone and the dungeons, came from fish_water.py:
-# a level floor standing at one of the client's water meshes, 20+ yalms from other pools.
-# The fishing window opens at any fishing point, dry ground too (client test 2026-11-20), so
-# the water rule is ours. Of these, Bearded Rock's (-267.67, -34.73) and Cedarwood's
-# (793.0, 6.0) were walked to from dry ground in the client and the window opened; the rest
-# are terrain-checked only.
+# These, and the FISH_SPOTS of Bentbranch, Drybone, the dungeons and Limsa Lominsa, came
+# from fish_water.py: a level floor standing at one of the client's water meshes, 20+ yalms
+# from other pools (Gridania's and Ul'dah's were found by hand, see TOWN_PLACES). All of
+# them were walked to in the 1.23b client from dry ground 4-15 yalms away and fished as a
+# Fisher (client test 2026-11-21: each gave its own pool's fish and Fisher EXP), except
+# Limsa Lominsa's, where the character logged in on the point. Mistbeard Cove's stand on
+# ledges over the sea, which its layout does not carry. The fishing window opens at any
+# fishing point, dry ground too, so the water rule is ours. Skull Valley has one: its
+# other sea-shore spots sink to the undecoded sea bed.
 SPEAR_SPOTS = {
-    "Bearded Rock": [(-267.67, 0.0, -34.73, -247.7, -34.7), (-222.67, 0.0, -1.73, -202.7, -1.7)],
+    "Bearded Rock": [(-46.03, 1.9, 216.53, -26.0, 216.5), (-302.03, 1.66, -87.47, -282.0, -87.5)],
     "Bentbranch": [(316.0, -4.0, -439.93, 330.1, -454.1), (428.0, -0.7, -455.93, 448.0, -455.9)],
-    "Bloodshore": [(1288.3, 0.0, -869.4, 1308.3, -869.4), (1282.3, 0.0, -842.4, 1302.3, -842.4)],
-    "Cedarwood": [(793.0, 0.0, 6.0, 813.0, 6.0), (772.0, 0.0, 30.0, 752.0, 30.0)],
+    "Bloodshore": [(1263.29, 0.24, -824.69, 1283.3, -824.7), (1263.29, 0.23, -768.69, 1283.3, -768.7)],
+    "Cedarwood": [(778.47, 1.57, 54.8, 798.5, 54.8), (742.47, 0.94, 102.8, 762.5, 102.8)],
     "Drybone": [(1342.9, 258.86, -144.2, 1357.0, -130.1), (1198.9, 258.92, -136.2, 1218.9, -136.2)],
     "Emerald Moss": [(-1402.3, 28.0, -1953.3, -1382.3, -1953.3), (-1377.3, 28.0, -2014.3, -1377.3, -1994.3)],
     "Halatali": [(1668.3, 258.73, -272.3, 1668.3, -252.3), (1710.3, 259.12, -200.3, 1730.3, -200.3)],
@@ -110,8 +124,8 @@ SPEAR_SPOTS = {
     "Iron Lake": [(-40.5, 63.95, -1951.6, -20.5, -1951.6), (-31.5, 63.41, -1924.6, -45.6, -1910.5)],
     "Nine Ivies": [(1596.1, 15.2, -763.1, 1610.2, -777.2), (1596.1, 14.93, -727.1, 1582.0, -713.0)],
     "Nophica's Wells": [(-825.6, 91.04, 306.3, -825.6, 326.3), (-1037.3, 90.19, 312.6, -1017.3, 312.6)],
-    "Skull Valley": [(-1071.0, 0.0, -688.1, -1051.0, -688.1), (-1086.0, 0.0, -733.1, -1066.0, -733.1)],
-    "The Fields of Glory": [(2135.3, 120.15, 414.3, 2155.3, 414.3), (2117.3, 120.15, 320.3, 2137.3, 320.3)],
+    "Skull Valley": [(-1059.88, 0.31, -596.79, -1039.9, -596.8)],
+    "The Fields of Glory": [(2112.78, 120.34, 311.55, 2132.8, 311.6), (2128.78, 121.9, 299.55, 2148.8, 299.6)],
     "Tranquil Paths": [(-1560.4, -14.87, -644.24, -1546.3, -630.1), (-1584.4, -15.09, -635.24, -1604.4, -635.2)],
 }
 # Fish pools of the open dungeons: place -> (zone, layout offset). Their spots are in
@@ -122,10 +136,25 @@ DUNGEON_PLACES = {
     "The Mun Tuy Cellars": (157, (-864.0, -24.0, -2208.0)),
     "The Tam Tara Deepcroft": (158, (224.0, -35.9, -97.0)),
 }
-# No Fish point: Black Brush, Broken Water and Dragonhead (no water mesh in reach of the
-# camp; Broken Water's river bed is dry), and the towns (Limsa Lominsa, Gridania, Ul'dah:
-# tools/terrain's town layouts do not line up with server coordinates). Their fish all
-# come from other pools.
+# Fish pools of the towns: place -> (zone, layout zone, layout offset, (x, z, radius) to search).
+# Zone 230 (Limsa Lominsa's lower decks) stands on zone 133's layout moved by (-448, 0, 192):
+# there 96 of the zone's NPC spawns stand on the layout's floors. Zone 209 (Ul'dah's
+# lower city) stands on wil_w0_twn01 moved by (-96, 188, 160), as zone 175 does.
+# Gridania's layout fits neither of its zones (layout None): its spot, by the mill pond
+# west of the Whistling Miller, and Ul'dah's, at a fountain basin, were found by walking in
+# the client and reading the position the server logged. The spots are in FISH_SPOTS; the
+# pools keep their own grade.
+TOWN_PLACES = {
+    "Limsa Lominsa": (230, 133, (-448.0, 0.0, 192.0), (-610.0, 390.0, 80.0)),
+    "Ul'dah": (209, 175, (-96.0, 188.0, 160.0), (-150.0, 200.0, 120.0)),
+    "Gridania": (206, None, None, None),
+}
+# No Fish point: Black Brush, Broken Water and Dragonhead. No water mesh is in reach of the
+# camps, and a look in the client (2026-11-21) found none at either Thanalan camp nor at
+# Black Brush's "a0_w" basins by the Ul'dah gate; Dragonhead's flat "b2_w" squares are
+# stone floors. Their fish all come from other pools.
+# The Mun Tuy Cellars and The Tam Tara Deepcroft have one point each: the client shows no
+# open water there (their "p0_w" meshes are puddles), but the pools need a point.
 
 
 def aetherytes():
@@ -192,14 +221,19 @@ def main():
     grades, spawns, sid = {}, [], 100
     taken = collections.defaultdict(list)  # zone -> points placed so far
     for name, spots in list(FISH_SPOTS.items()) + list(SPEAR_SPOTS.items()):
-        if name in DUNGEON_PLACES:  # hand-picked water spots come first
-            taken[DUNGEON_PLACES[name][0]] += [(x, y, z) for x, y, z, _, _ in spots]
+        own = DUNGEON_PLACES.get(name) or TOWN_PLACES.get(name)
+        if own:  # hand-picked water spots come first
+            taken[own[0]] += [(x, y, z) for x, y, z, _, _ in spots]
         elif name in PLACES and PLACES[name][1] in aeth:
             taken[aeth[PLACES[name][1]][0]] += [(x, y, z) for x, y, z, _, _ in spots]
+    for zone, pts in KEEP_CLEAR.items():
+        taken[zone] += pts
     for p in pools:
         tid, cmd, name = int(p["template"]), p["command"], p["place"]
         if name in DUNGEON_PLACES and cmd == "Fish":
             region, zone, grade, ax, ay, az = "dungeon", DUNGEON_PLACES[name][0], "own", 0.0, 0.0, 0.0
+        elif name in TOWN_PLACES and cmd == "Fish":
+            region, zone, grade, ax, ay, az = "town", TOWN_PLACES[name][0], "own", 0.0, 0.0, 0.0
         elif name in PLACES:
             region, aid, grade = PLACES[name]
             grades[tid] = grade
