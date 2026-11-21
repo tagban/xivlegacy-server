@@ -168,6 +168,14 @@ pub enum LuaCommand {
         unique_id: String,
         seconds: u32,
     },
+    /// `player:UseFishingTackle(catalogId)` — one bait used by a cast, or
+    /// one lure lost, from the Pack slot stack. The last one leaves the
+    /// Pack slot (every class's equipment row) and then the bag
+    /// (DummyCommand.lua, `crate::gathering::tackle`).
+    UseFishingTackle {
+        player_id: u32,
+        catalog_id: u32,
+    },
     PlayAnimation {
         actor_id: u32,
         animation_id: u32,

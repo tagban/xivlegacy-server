@@ -975,6 +975,14 @@ pub async fn apply_runtime_lua_command(
             }
             true
         }
+        LC::UseFishingTackle {
+            player_id,
+            catalog_id,
+        } => {
+            crate::gathering::tackle::use_tackle(player_id, catalog_id, registry, Some(world), db)
+                .await;
+            true
+        }
         LC::RestGatherNodeForPlayer {
             player_id,
             zone_id,

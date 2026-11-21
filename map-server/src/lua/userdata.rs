@@ -666,6 +666,10 @@ pub struct PlayerSnapshot {
     /// `package:GetItemAtSlot(slot)` can resolve the item references the
     /// craft start widget returns.
     pub inventory_slots: Vec<(u16, u16, u32)>,
+    /// The bait or lure in the Pack gear slot: `(catalog id, quantity,
+    /// is a lure)`. Filled from the DB only for the gathering commands
+    /// (DummyCommand.lua), read by `player:GetFishingTackle()`.
+    pub fishing_tackle: Option<(u32, i32, bool)>,
     /// Set by `player:SetLoginDirector(director)` during `onBeginLogin`
     /// — zero means no director attached. `player:GetDirector()` reads
     /// this to hand the `zone.lua:onZoneIn` hook a real director handle
@@ -835,6 +839,7 @@ impl From<&crate::actor::Player> for PlayerSnapshot {
             traits,
             inventory,
             inventory_slots: Vec::new(),
+            fishing_tackle: None,
             login_director_actor_id: p.character.chara.login_director_actor_id,
             content_area_name: p.character.chara.content_area_name.clone(),
             // The From<&Player> impl can't reach the session store
@@ -2755,6 +2760,27 @@ impl UserData for LuaPlayer {
                 Ok(())
             },
         );
+        // Fishing tackle in the Pack slot when the gathering command
+        // started: `catalogId, quantity, isLure`, or nil when the slot
+        // holds no bait or lure.
+        methods.add_method("GetFishingTackle", |_, this, _: ()| {
+            Ok(match this.snapshot.fishing_tackle {
+                Some((item, qty, lure)) if qty > 0 => (Some(item), Some(qty), Some(lure)),
+                _ => (None, None, None),
+            })
+        });
+        // Use one bait (or lose one lure) from the Pack slot stack; the
+        // last one leaves the Pack slot and the bag.
+        methods.add_method("UseFishingTackle", |_, this, item: u32| {
+            push(
+                &this.queue,
+                LuaCommand::UseFishingTackle {
+                    player_id: this.snapshot.actor_id,
+                    catalog_id: item,
+                },
+            );
+            Ok(())
+        });
         methods.add_method(
             "RestGatherNodeForMe",
             |_, this, (zone_id, unique_id, seconds): (u32, String, u32)| {
@@ -6542,6 +6568,15 @@ impl UserData for LuaGatherResolver {
         });
         methods.add_method("GetNumItems", |_, this, _: ()| {
             Ok(this.resolver.num_items() as u32)
+        });
+        // Fishing: does this fish bite on this bait or lure? A fish with no
+        // recorded tackle bites on anything (`gamedata_fishing_tackle`).
+        methods.add_method("FishBitesOn", |_, this, (fish, tackle): (u32, u32)| {
+            Ok(this.resolver.fish_bites_on(fish, tackle))
+        });
+        // The bait and lures a fish takes (a sequence; empty = anything).
+        methods.add_method("GetFishTackle", |lua, this, fish: u32| {
+            lua.create_sequence_from(this.resolver.fish_tackle(fish).iter().copied())
         });
 
         // Build the 11-slot aim pivot table. Returns an array-style

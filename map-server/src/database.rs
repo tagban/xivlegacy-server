@@ -1669,7 +1669,7 @@ impl Database {
     /// two indexes, built once at boot and shared across Lua VMs via
     /// [`Catalogs::install_gather_resolver`](crate::lua::Catalogs::install_gather_resolver).
     pub async fn load_gather_resolver(&self) -> Result<crate::gathering::GatherResolver> {
-        let (nodes, items) = self
+        let (nodes, items, tackle) = self
             .conn
             .call_db(|c| {
                 let mut nodes_stmt = c.prepare(
@@ -1711,10 +1711,22 @@ impl Database {
                         })
                     })?
                     .collect::<common::sql::Result<_>>()?;
-                Ok((nodes, items))
+                // Older databases may not have the table yet (migration 016).
+                let mut tackle: Vec<(u32, u32)> = match c.prepare(
+                    r"SELECT itemCatalogId, tackleCatalogId
+                      FROM gamedata_fishing_tackle
+                      ORDER BY itemCatalogId, tackleCatalogId",
+                ) {
+                    Ok(mut stmt) => stmt
+                        .query_map([], |r| Ok((r.get::<_, u32>(0)?, r.get::<_, u32>(1)?)))?
+                        .collect::<common::sql::Result<_>>()?,
+                    Err(_) => Vec::new(),
+                };
+                tackle.dedup();
+                Ok((nodes, items, tackle))
             })
             .await?;
-        Ok(crate::gathering::GatherResolver::from_parts(nodes, items))
+        Ok(crate::gathering::GatherResolver::from_parts(nodes, items).with_tackle(tackle))
     }
 
     /// Load every row of `server_gather_node_spawns`. Returned in id
@@ -3984,6 +3996,82 @@ impl Database {
                     )
                     .optional()?;
                 Ok(row)
+            })
+            .await
+    }
+
+    /// The bait or lure in a class's Pack gear slot (item kind 6112 bait,
+    /// 6113 lure), with its stack size and bag position. `None` when the
+    /// slot is empty or holds something else.
+    pub async fn pack_tackle(
+        &self,
+        chara_id: u32,
+        class_id: u8,
+    ) -> Result<Option<crate::gathering::tackle::PackTackle>> {
+        self.conn
+            .call_db(move |c| {
+                let row = c
+                    .query_row(
+                        r"SELECT si.id, si.itemId, si.quantity, gi.kind, ci.itemPackage, ci.slot
+                          FROM characters_inventory_equipment cie
+                          JOIN server_items si ON si.id = cie.itemId
+                          JOIN characters_inventory ci
+                            ON ci.characterId = cie.characterId AND ci.serverItemId = cie.itemId
+                          JOIN gamedata_items gi ON gi.catalogID = si.itemId
+                          WHERE cie.characterId = :cid AND cie.equipSlot = :slot
+                            AND (cie.classId = :class OR cie.classId = 0)
+                          ORDER BY cie.classId DESC
+                          LIMIT 1",
+                        named_params! {
+                            ":cid": chara_id,
+                            ":slot": crate::actor::player::SLOT_PACK,
+                            ":class": class_id,
+                        },
+                        |r| {
+                            Ok((
+                                r.get::<_, i64>(0)? as u64,
+                                r.get::<_, u32>(1)?,
+                                r.get::<_, i64>(2)? as i32,
+                                r.get::<_, i64>(3)?,
+                                r.get::<_, u16>(4)?,
+                                r.get::<_, u16>(5)?,
+                            ))
+                        },
+                    )
+                    .optional()?;
+                Ok(row.and_then(
+                    |(server_item_id, catalog_id, quantity, kind, package, slot)| {
+                        crate::gathering::tackle::tackle_kind(kind).map(|is_lure| {
+                            crate::gathering::tackle::PackTackle {
+                                server_item_id,
+                                catalog_id,
+                                quantity,
+                                is_lure,
+                                package,
+                                slot,
+                            }
+                        })
+                    },
+                ))
+            })
+            .await
+    }
+
+    /// Take an item out of every gear slot of every class that holds it
+    /// (the equipment rows), before the item itself goes. Returns how
+    /// many rows went.
+    pub async fn unequip_item_everywhere(
+        &self,
+        chara_id: u32,
+        server_item_id: u64,
+    ) -> Result<usize> {
+        self.conn
+            .call_db(move |c| {
+                let n = c.execute(
+                    "DELETE FROM characters_inventory_equipment WHERE characterId = :cid AND itemId = :iid",
+                    named_params! { ":cid": chara_id, ":iid": server_item_id as i64 },
+                )?;
+                Ok(n)
             })
             .await
     }

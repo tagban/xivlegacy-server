@@ -205,6 +205,22 @@ function onEventStarted(player, commandActor, triggerName, arg1, arg2, arg3, arg
 
     worldMaster = GetWorldMaster();
     harvestJudge = GetStaticActor("HarvestJudge");
+
+    -- Fishing needs bait or a lure in the Pack slot (1.0: "You do not have
+    -- bait or a lure equipped."). A cast uses one bait; a lure goes only
+    -- when a hooked fish breaks away with it.
+    tackleId, tackleCount, tackleIsLure = nil, 0, false;
+    fishSlot = nil;
+    if harvestType == commandFish then
+        tackleId, tackleCount, tackleIsLure = player:GetFishingTackle();
+        if tackleId == nil then
+            -- The window isn't open yet, so the line goes to the log.
+            player:SendGameMessage(harvestJudge, FISH_TEXT.noTackle, MESSAGE_TYPE_SYSTEM);
+            player:SendMessage(MESSAGE_TYPE_SYSTEM, "", FISH_LOG[FISH_TEXT.noTackle]);
+            player:EndEvent();
+            return;
+        end
+    end
     callClientFunction(player, "delegateCommand", harvestJudge, "loadTextData", commandActor);
     --callClientFunction(player, "delegateCommand", harvestJudge, "targetCancel", commandActor);
     --callClientFunction(player, "delegateCommand", harvestJudge, "turnToTarget", commandActor, harvestType, nodeGrade);
@@ -249,6 +265,39 @@ function onEventStarted(player, commandActor, triggerName, arg1, arg2, arg3, arg
                 local aimSlot = math.floor((sliderPhase or 0) / 10) + 1; -- Thanks LUA index = 1
 
                 local nodeDetails = NearestAimSlot(harvestNode, aimSlot);
+                if harvestType == commandFish then
+                    if tackleCount <= 0 then
+                        -- The last bait or lure went on an earlier cast.
+                        FishText(player, commandActor, FISH_TEXT.noTackle);
+                        break;
+                    end
+                    -- The cast uses one bait.
+                    if not tackleIsLure then
+                        UseTackle(player);
+                        if tackleCount <= 0 then
+                            FishText(player, commandActor, FISH_TEXT.outOfBait);
+                        end
+                    end
+                    -- Fish bite only on tackle they take: the depth's fish
+                    -- if it takes this tackle, else the nearest that does.
+                    fishSlot = FishAimSlot(harvestNode, aimSlot, tackleId, resolver);
+                    if fishSlot == nil then
+                        FishText(player, commandActor, FISH_TEXT.nothingBites);
+                        local wanted = nodeDetails ~= nil and resolver:GetFishTackle(nodeDetails[1]) or {};
+                        if wanted[1] ~= nil then
+                            FishText(player, commandActor, FISH_TEXT.bitingOn, wanted[1]);
+                        end
+                        harvestAttempts = harvestAttempts - 1;
+                        if harvestAttempts > 0 then
+                            player:SendGameMessage(player, worldMaster, 40344, 0x20, harvestAttempts);
+                        else
+                            player:SendGameMessage(player, worldMaster, 40339, 0x20, harvestAttempts);
+                        end
+                        goto nextCast;
+                    end
+                    nodeDetails = fishSlot;
+                    FishText(player, commandActor, FISH_TEXT.lineSinks);
+                end
                 local nodeItem = nodeDetails[1];
                 local nodeRemainder = nodeDetails[2];
                 local nodeSweetspot = nodeDetails[3];
@@ -318,8 +367,20 @@ function onEventStarted(player, commandActor, triggerName, arg1, arg2, arg3, arg
                         elseif math.random(1, 2) == 1 then
                             -- Waiting on a bite can lose the fish.
                             fishWaits, fishBite = 0, math.random(1, 3);
-                            callClientFunction(player, "delegateCommand", harvestJudge, "textInputWidget", commandActor, harvestType, harvestJudge, 42);
-                            player:SendGameMessage(harvestJudge, 42, MESSAGE_TYPE_SYSTEM);
+                            FishText(player, commandActor, FISH_TEXT.gotAway);
+                            -- A fish that breaks away can take the lure with it;
+                            -- the line is then empty and the cast is over.
+                            if tackleIsLure and math.random(1, LURE_LOSS_ODDS) == 1 then
+                                UseTackle(player);
+                                FishText(player, commandActor, FISH_TEXT.lureLost);
+                                harvestAttempts = harvestAttempts - 1;
+                                if harvestAttempts > 0 then
+                                    player:SendGameMessage(player, worldMaster, 40344, 0x20, harvestAttempts);
+                                else
+                                    player:SendGameMessage(player, worldMaster, 40339, 0x20, harvestAttempts);
+                                end
+                                break;
+                            end
                         end
 
                     elseif chosenCommand == ui.strike then  -- Strike / Chop / Jig.
@@ -428,6 +489,7 @@ function onEventStarted(player, commandActor, triggerName, arg1, arg2, arg3, arg
             if windowClosed then
                 break;
             end
+            ::nextCast::
         end
 
     end
@@ -467,6 +529,61 @@ HARVEST_UI = {
     -- Fishing's Aim button is Wait (22711: cast at the chosen depth); 22707 is unused by 1.23b.
     [22004] = {begin = 22711, strike = 22708, cancel = 22709, wait = 22711}, -- Fish (Jig)
 };
+
+-- Fishing lines of the HarvestJudge sheet (client data/03/A2/08/2D).
+FISH_TEXT = {
+    noTackle = 28,      -- "You do not have bait or a lure equipped."
+    nothingBites = 34,  -- "Nothing bites."
+    gotAway = 35,       -- "The fish got away."
+    lineSinks = 37,     -- "Your line sinks to the desired depth."
+    outOfBait = 58,     -- "You are out of bait."
+    lureLost = 59,      -- "Your lure is lost."
+    bitingOn = 75,      -- "The fish seem to be biting on <item>."
+};
+
+-- Lines that also go to the log: the HarvestJudge sheet lines show only
+-- in the fishing window, and these change what the player has on them.
+FISH_LOG = {
+    [28] = "You do not have bait or a lure equipped.",
+    [58] = "You are out of bait.",
+    [59] = "Your lure is lost.",
+};
+
+-- Show a fishing line in the window (and the log, for FISH_LOG lines).
+-- `item` fills the line's item, for "The fish seem to be biting on <item>."
+function FishText(player, commandActor, id, item)
+    callClientFunction(player, "delegateCommand", harvestJudge, "textInputWidget", commandActor, harvestType, harvestJudge, id, item or 0, 0, 0, 0);
+    player:SendGameMessage(harvestJudge, id, MESSAGE_TYPE_SYSTEM);
+    if FISH_LOG[id] ~= nil then
+        player:SendMessage(MESSAGE_TYPE_SYSTEM, "", FISH_LOG[id]);
+    end
+end
+
+-- One fish in this many that breaks away takes the lure (our number: no
+-- 1.0 rate was recorded).
+LURE_LOSS_ODDS = 3;
+
+-- Take one bait (or the lost lure) off the Pack slot stack.
+function UseTackle(player)
+    player:UseFishingTackle(tackleId);
+    tackleCount = tackleCount - 1;
+end
+
+-- The aim slot a cast lands on with this tackle: the chosen depth's fish if
+-- it takes the tackle, else the nearest depth whose fish does (a fish with
+-- no recorded tackle takes anything). nil when nothing in the pool takes it.
+function FishAimSlot(slots, aimSlot, tackle, resolver)
+    for d = 0, 10 do
+        for _, i in ipairs({aimSlot - d, aimSlot + d}) do
+            local s = slots[i];
+            if s ~= nil and s[1] ~= nil and s[1] ~= 0
+                and (resolver == nil or tackle == nil or resolver:FishBitesOn(s[1], tackle)) then
+                return s;
+            end
+        end
+    end
+    return nil;
+end
 
 -- Class that gathers each command's points.
 GATHER_CLASS = {[22002] = 39, [22006] = 39, [22003] = 40, [22007] = 40, [22004] = 41, [22008] = 41};
