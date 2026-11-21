@@ -1,4 +1,4 @@
 name = "welcome"
 version = "1.0"
-description = "A welcome message when a player enters the world (an example of a Lua module)"
+description = "Welcome lines when a player enters the world, from settings/welcome.toml (an example of a Lua module)"
 hooks = ["on_login"]
