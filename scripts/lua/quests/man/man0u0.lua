@@ -196,7 +196,10 @@ function onPush(player, quest, npc)
     elseif (sequence == SEQ_010) then
         if (classId == BLOCKER) then
 
-            posz = player:GetPos()[3];
+            -- GetPos() returns x, y, z, rotation, zone as separate values,
+            -- not a table: indexing it errored, the event never ended and
+            -- the client stayed frozen on the blocker (every relog too).
+            local _, _, posz = player:GetPos();
 
             if (posz >= 71 and posz <= 95) then
                 callClientFunction(player, "delegateEvent", player, quest, "processTtrBlkNml002");
@@ -205,6 +208,7 @@ function onPush(player, quest, npc)
                 callClientFunction(player, "delegateEvent", player, quest, "processTtrBlkNml003");
                 GetWorldManager():DoPlayerMoveInZone(player, -0.3, 196, 116, -2.7, 0x11);
             end
+            player:EndEvent();
         elseif (classId == ULDAH_OPENING_EXIT) then
             player:ReplaceQuest(quest, "Man0u1")
             return;

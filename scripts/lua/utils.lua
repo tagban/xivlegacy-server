@@ -18,22 +18,23 @@ function getAngleFacing(x, y, targetX, targetY)
 end
 
 function getDistanceBetweenActors(actor1, actor2)
-	local pos1 = actor1:GetPos();
-	local pos2 = actor2:GetPos();
+	-- GetPos() returns x, y, z, rotation, zone as separate values.
+	local x1, y1, z1 = actor1:GetPos();
+	local x2, y2, z2 = actor2:GetPos();
 
-	local dx = pos1[0] - pos2[0];
-	local dy = pos1[1] - pos2[1]
-	local dz = pos1[2] - pos2[2]
+	local dx = x1 - x2;
+	local dy = y1 - y2;
+	local dz = z1 - z2;
 	
 	return math.sqrt(dx * dx + dy * dy + dz *dz);
 end
 
 function getXZDistanceBetweenActors(actor1, actor2)
-	local pos1 = actor1:GetPos();
-	local pos2 = actor2:GetPos();
+	local x1, _, z1 = actor1:GetPos();
+	local x2, _, z2 = actor2:GetPos();
 
-	local dx = pos1[0] - pos2[0];
-	local dz = pos1[2] - pos2[2];
+	local dx = x1 - x2;
+	local dz = z1 - z2;
 
 	return math.sqrt(dx * dx + dz *dz);
 end

@@ -17553,6 +17553,104 @@ async fn man0u0_seq000_tutorial_flags_and_exit_gate() {
     );
 }
 
+/// Live 2026-11-21: a new Ul'dah player pushed the SEQ_010 BLOCKER on
+/// the Merchant Strip; `player:GetPos()[3]` indexed a number (GetPos
+/// returns x, y, z, rot, zone as separate values), the hook errored, no
+/// EndEvent went out and the client stayed frozen on the blocker after
+/// every relog. The push must now read z, bounce the player back to the
+/// strip and end the event.
+#[tokio::test]
+async fn man0u0_seq010_blocker_push_bounces_and_ends_event() {
+    use crate::actor::quest::{Quest, quest_actor_id};
+    use crate::runtime::quest_apply::{apply_quest_start_sequence, fire_quest_on_push_via_command};
+
+    const QUEST_ID: u32 = 110_009;
+    const BLOCKER: u32 = 1_090_372;
+
+    let script_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("scripts/lua");
+    if !script_root.join("quests/man/man0u0.lua").exists() {
+        return; // trimmed artifact; skip
+    }
+    let lua = Arc::new(crate::lua::LuaEngine::new(&script_root));
+    {
+        let mut quests = std::collections::HashMap::new();
+        quests.insert(
+            QUEST_ID,
+            crate::gamedata::QuestMeta {
+                id: QUEST_ID,
+                quest_name: "Flowers for All".to_string(),
+                class_name: "Man0u0".to_string(),
+                prerequisite: 0,
+                min_level: 1,
+            },
+        );
+        lua.catalogs().install_quests(quests);
+    }
+
+    let db = crate::database::Database::open(tempdb()).await.unwrap();
+    let world = WorldManager::new();
+    let registry = ActorRegistry::new();
+    let zone = Zone::new(
+        175,
+        "uldah",
+        1,
+        "/Area/Zone/Uldah",
+        0,
+        0,
+        0,
+        false,
+        false,
+        false,
+        false,
+        false,
+        Some(&StubNavmeshLoader),
+    );
+    world.register_zone(zone).await;
+
+    let mut player = Character::new(7);
+    player.base.zone_id = 175;
+    // Where the live player stood: inside the blocker's z band.
+    player.base.position_x = -15.68;
+    player.base.position_y = 196.05;
+    player.base.position_z = 81.19;
+    let mut quest = Quest::new(quest_actor_id(QUEST_ID), "Man0u0".to_string());
+    quest.clear_dirty();
+    player.quest_journal.add(quest);
+    let handle = ActorHandle::new(7, ActorKindTag::Player, 175, 7, player);
+    registry.insert(handle.clone()).await;
+
+    apply_quest_start_sequence(7, QUEST_ID, 10, &registry, &db, &world, Some(&lua)).await;
+
+    let npc = crate::lua::LuaNpcSpec {
+        actor_id: 0x4578_008F,
+        name: "blocker".to_string(),
+        class_name: "PopulaceStandard".to_string(),
+        class_path: "Chara/Npc/Populace/PopulaceStandard".to_string(),
+        unique_id: String::new(),
+        zone_id: 175,
+        zone_name: "uldah".to_string(),
+        state: 0,
+        pos: (0.0, 0.0, 0.0),
+        rotation: 0.0,
+        actor_class_id: BLOCKER,
+        quest_graphic: 0,
+    };
+    fire_quest_on_push_via_command(&handle, QUEST_ID, npc, &registry, &db, &world, Some(&lua))
+        .await;
+
+    let (x, z) = {
+        let c = handle.character.read().await;
+        (c.base.position_x, c.base.position_z)
+    };
+    assert!(
+        (x - -22.81).abs() < 0.01 && (z - 87.82).abs() < 0.01,
+        "blocker push must move the player back to the strip (-22.81, 87.82), got ({x}, {z})",
+    );
+}
+
 /// Garlemald-Server #46 live test — `send_instance_update` streams an
 /// NPC that has walked into range since zone-in. A camp NPC sits in the
 /// zone core but is NOT in the session's `actor_instance_list` (the
