@@ -4690,6 +4690,89 @@ end
     probe
 }
 
+/// The Interaction menu with no push circle offered names the player as the
+/// owner. `PlaceDrivenCommand.lua` must only end the event then: a
+/// "pushCommand" kick on the player crashes the 1.23b client. A gathering
+/// point's push still kicks the harvest command, and an NPC's push still
+/// gets its own event.
+#[test]
+fn interaction_with_no_push_circle_only_ends_the_event() {
+    use crate::lua::LuaEngine;
+    use crate::lua::command::LuaCommand;
+    use crate::lua::userdata::PlayerSnapshot;
+    use common::luaparam::LuaParam;
+
+    let script_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("workspace root")
+        .join("scripts/lua");
+    let engine = LuaEngine::new(&script_root);
+    let script = script_root.join("commands/PlaceDrivenCommand.lua");
+    let player_id = 0x1234_5678u32;
+    let run = |push: i32, owner: u32| {
+        let result = engine.call_command_on_event_started(
+            &script,
+            PlayerSnapshot {
+                actor_id: player_id,
+                ..Default::default()
+            },
+            0xA0F0_5EED,
+            "commandRequest".to_string(),
+            0,
+            vec![
+                LuaParam::Int32(push),
+                LuaParam::Nil,
+                LuaParam::Nil,
+                LuaParam::Nil,
+                LuaParam::Actor(owner),
+            ],
+            None,
+        );
+        assert!(result.error.is_none(), "{:?}", result.error);
+        result.commands
+    };
+    let kicks = |commands: &[LuaCommand]| -> Vec<(u32, String)> {
+        commands
+            .iter()
+            .filter_map(|c| match c {
+                LuaCommand::KickEvent {
+                    actor_id, trigger, ..
+                } => Some((*actor_id, trigger.clone())),
+                _ => None,
+            })
+            .collect()
+    };
+    let ends = |commands: &[LuaCommand]| {
+        commands
+            .iter()
+            .filter(|c| matches!(c, LuaCommand::EndEvent { .. }))
+            .count()
+    };
+
+    // No push circle: the owner is the player. Only the event ends.
+    for push in [0, 20003] {
+        let commands = run(push, player_id);
+        assert!(kicks(&commands).is_empty(), "push {push}: {commands:?}");
+        assert_eq!(ends(&commands), 1, "push {push}: {commands:?}");
+    }
+
+    // A fishing point's push kicks Fish's judge mode and ends the request.
+    let commands = run(20003, 0x4A00_0010);
+    assert_eq!(
+        kicks(&commands),
+        vec![(
+            0xA0F0_0000 | crate::gathering::HARVEST_TYPE_FISH,
+            "commandJudgeMode".to_string()
+        )]
+    );
+    assert_eq!(ends(&commands), 1);
+
+    // Anything else an NPC offers gets its own "pushCommand" event.
+    let npc = 0x4A00_0020;
+    let commands = run(12345, npc);
+    assert_eq!(kicks(&commands), vec![(npc, "pushCommand".to_string())]);
+}
+
 /// Every fishing pool with a point in the world (the camps' Fish pools, the
 /// dungeon pools and the folded Spearfish pools) spawns in its zone, and a
 /// Fisher casting there catches one of that pool's items and earns Fisher
@@ -4815,6 +4898,26 @@ async fn every_fishing_pool_spawns_and_a_cast_catches_its_fish() {
                 LuaCommand::AddExp { class_id: 41, exp, .. } if *exp > 0
             )),
             "{unique}: no Fisher EXP",
+        );
+        // Main state 50 locks the client's movement and nothing lifts it, so
+        // the player couldn't walk after fishing: the window must never set
+        // it, and must end on passive and then close the event.
+        assert!(
+            !result.commands.iter().any(|c| matches!(
+                c,
+                LuaCommand::ChangeState { main_state, .. } if *main_state != 0
+            )),
+            "{unique}: fishing changed the main state",
+        );
+        let n = result.commands.len();
+        assert!(
+            n >= 2
+                && matches!(
+                    result.commands[n - 2],
+                    LuaCommand::ChangeState { main_state: 0, .. }
+                )
+                && matches!(result.commands[n - 1], LuaCommand::EndEvent { .. }),
+            "{unique}: fishing must end with ChangeState(0) then EndEvent",
         );
     }
 

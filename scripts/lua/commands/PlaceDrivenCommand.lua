@@ -25,7 +25,10 @@ GATHER_PUSH_COMMANDS = {[20001] = 22002, [20002] = 22003, [20003] = 22004,
 	[20005] = 22006, [20006] = 22007, [20007] = 22008};
 
 function onEventStarted(player, command, triggerName, pushCommand, unk1, unk2, unk3, ownerActorId, unk4, unk5, unk6, unk7)
-	if (ownerActorId == nil or ownerActorId == 0) then
+	-- With no push circle offered, the Interaction menu names the player
+	-- as the owner. A "pushCommand" kick on the player crashes the 1.23b
+	-- client (SIGBUS), so just end the event.
+	if (ownerActorId == nil or ownerActorId == 0 or ownerActorId == player.actorId) then
 		player:EndEvent();
 		return;
 	end
