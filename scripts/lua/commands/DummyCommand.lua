@@ -181,7 +181,7 @@ function onEventStarted(player, commandActor, triggerName, arg1, arg2, arg3, arg
     local resolver = GetGatherResolver();
     if resolver == nil then
         -- No catalog loaded — abort gracefully so a boot misconfig
-        -- doesn't soft-lock the player at `ChangeState(50)`.
+        -- doesn't leave the player stuck in the event.
         player:EndEvent();
         return;
     end
@@ -209,7 +209,11 @@ function onEventStarted(player, commandActor, triggerName, arg1, arg2, arg3, arg
     --callClientFunction(player, "delegateCommand", harvestJudge, "targetCancel", commandActor);
     --callClientFunction(player, "delegateCommand", harvestJudge, "turnToTarget", commandActor, harvestType, nodeGrade);
 
-    player:ChangeState(50);
+    -- No ChangeState(50) here: main state 50 locks the 1.23b client's
+    -- movement, and the ChangeState(0) at the end doesn't lift it, so
+    -- after the window closed W/A/S/D did nothing until a relog and a
+    -- warp froze or hung on Now Loading. The window itself keeps the
+    -- player in place while it is open.
 
 
     -- The aim/strike minigame RPC sequence is identical across all six
