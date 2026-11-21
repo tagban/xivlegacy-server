@@ -10299,7 +10299,13 @@ mod zone_in_deferred_tests {
         let mut npc = Character::new(NPC_ACTOR_ID);
         npc.chara.actor_class_id = NPC_CLASS_ID;
         registry
-            .insert(ActorHandle::new(NPC_ACTOR_ID, ActorKindTag::Npc, 206, 0, npc))
+            .insert(ActorHandle::new(
+                NPC_ACTOR_ID,
+                ActorKindTag::Npc,
+                206,
+                0,
+                npc,
+            ))
             .await;
 
         let world = WorldManager::new();
@@ -10319,7 +10325,10 @@ mod zone_in_deferred_tests {
 
         let enpc = QuestEnpc::new(NPC_CLASS_ID, 2, true, true, false, false);
         broadcast_quest_enpc_update(PLAYER_ID, enpc, &registry, &world).await;
-        assert!(rx.try_recv().is_err(), "held while the zone-in bundle is parked");
+        assert!(
+            rx.try_recv().is_err(),
+            "held while the zone-in bundle is parked"
+        );
 
         session.pending_zone_in = None;
         world.upsert_session(session).await;
