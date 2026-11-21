@@ -40,6 +40,9 @@ pub struct RecentCharacter {
     /// The same as a short id for a flag image: "limsa", "gridania", "uldah".
     pub city_id: &'static str,
     pub online: bool,
+    /// Where the character is (or was last): the zone's place name, such as
+    /// "Lower La Noscea" (empty if unknown).
+    pub zone: String,
     /// When the character last entered or left the world (RFC 3339, UTC).
     pub last_active: String,
 }
@@ -69,13 +72,14 @@ pub async fn status(State(state): State<AppState>) -> Response {
                 players_online: online,
                 recent: rows
                     .into_iter()
-                    .map(|(name, town, last, on)| {
+                    .map(|(name, town, last, on, zone)| {
                         let (city, city_id) = city(town);
                         RecentCharacter {
                             name,
                             city,
                             city_id,
                             online: on,
+                            zone,
                             last_active: rfc3339(last),
                         }
                     })
