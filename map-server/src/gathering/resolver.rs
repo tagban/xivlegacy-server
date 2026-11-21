@@ -34,6 +34,9 @@ use super::node::{AIM_SLOTS, AimSlot, GatherNode, GatherNodeItem};
 pub struct GatherResolver {
     nodes: HashMap<u32, GatherNode>,
     items: HashMap<u32, GatherNodeItem>,
+    /// Fish catalog id -> the bait and lure catalog ids it takes
+    /// (`gamedata_fishing_tackle`). A fish with no entry takes any tackle.
+    tackle: HashMap<u32, Vec<u32>>,
 }
 
 impl GatherResolver {
@@ -48,7 +51,35 @@ impl GatherResolver {
         Self {
             nodes: nodes.into_iter().map(|n| (n.id, n)).collect(),
             items: items.into_iter().map(|i| (i.id, i)).collect(),
+            tackle: HashMap::new(),
         }
+    }
+
+    /// Add `(fish, tackle)` pairs: which bait or lure each fish takes.
+    pub fn with_tackle(mut self, pairs: impl IntoIterator<Item = (u32, u32)>) -> Self {
+        for (fish, tackle) in pairs {
+            let list = self.tackle.entry(fish).or_default();
+            if !list.contains(&tackle) {
+                list.push(tackle);
+            }
+        }
+        self
+    }
+
+    /// The bait and lures a fish takes, in catalog order; empty when none
+    /// were recorded (the fish takes anything).
+    pub fn fish_tackle(&self, fish_catalog_id: u32) -> &[u32] {
+        self.tackle
+            .get(&fish_catalog_id)
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
+    }
+
+    /// Does this fish bite on this bait or lure? A fish with no recorded
+    /// tackle bites on anything.
+    pub fn fish_bites_on(&self, fish_catalog_id: u32, tackle_catalog_id: u32) -> bool {
+        let list = self.fish_tackle(fish_catalog_id);
+        list.is_empty() || list.contains(&tackle_catalog_id)
     }
 
     pub fn insert_node(&mut self, node: GatherNode) {
@@ -133,6 +164,18 @@ fn nearest_free_slot(slots: &[AimSlot; AIM_SLOTS], want: usize) -> Option<usize>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fish_bite_only_on_recorded_tackle() {
+        let r = GatherResolver::new().with_tackle([(10, 1), (10, 2), (10, 1), (11, 3)]);
+        assert_eq!(r.fish_tackle(10), &[1, 2], "pairs dedupe, order kept");
+        assert!(r.fish_bites_on(10, 2));
+        assert!(!r.fish_bites_on(10, 3));
+        assert!(r.fish_bites_on(11, 3));
+        // No record: the fish takes anything.
+        assert!(r.fish_tackle(12).is_empty());
+        assert!(r.fish_bites_on(12, 99));
+    }
 
     fn mk_node(id: u32, keys: &[u32]) -> GatherNode {
         let mut item_keys = [0u32; 11];

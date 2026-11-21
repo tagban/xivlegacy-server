@@ -7453,6 +7453,34 @@ impl PacketProcessor {
     /// Give a quest hook's snapshot the player's items, so `HasItem` and
     /// `GetItemQuantity` in quest scripts answer from what the character
     /// really carries (the snapshot built from the Character alone has none).
+    /// The bait or lure in the Pack slot and whether the bag is full, for
+    /// the gathering commands (`player:GetFishingTackle()` and
+    /// `player:IsBagFull()` in DummyCommand.lua).
+    async fn with_fishing_tackle(
+        &self,
+        mut snapshot: crate::lua::userdata::PlayerSnapshot,
+    ) -> crate::lua::userdata::PlayerSnapshot {
+        let class_id = if snapshot.current_job != 0 {
+            snapshot.current_job
+        } else {
+            snapshot.current_class
+        };
+        match self.db.pack_tackle(snapshot.actor_id, class_id).await {
+            Ok(t) => snapshot.fishing_tackle = t.map(|t| (t.catalog_id, t.quantity, t.is_lure)),
+            Err(e) => {
+                tracing::warn!(player = snapshot.actor_id, err = %e, "gathering: reading the Pack slot failed")
+            }
+        }
+        if let Ok(bag) = self
+            .db
+            .get_item_package(snapshot.actor_id, crate::inventory::PKG_NORMAL as u32)
+            .await
+        {
+            snapshot.bag_full = bag.len() >= crate::inventory::CAP_NORMAL as usize;
+        }
+        snapshot
+    }
+
     async fn with_item_totals(
         &self,
         mut snapshot: crate::lua::userdata::PlayerSnapshot,
@@ -9145,6 +9173,8 @@ impl PacketProcessor {
         // for the DB read.
         let snapshot = if command_name == "CraftCommand" {
             self.with_item_totals(snapshot).await
+        } else if command_name == "DummyCommand" {
+            self.with_fishing_tackle(snapshot).await
         } else {
             snapshot
         };
@@ -11735,6 +11765,8 @@ pub(crate) fn build_player_snapshot_for_login(
         traits: Vec::new(),
         inventory: Vec::new(),
         inventory_slots: Vec::new(),
+        fishing_tackle: None,
+        bag_full: false,
         login_director_actor_id: c.chara.login_director_actor_id,
         content_area_name: c.chara.content_area_name.clone(),
         // Login snapshot never has a retainer spawned — the tutorial

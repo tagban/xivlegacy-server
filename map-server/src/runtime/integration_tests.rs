@@ -4652,8 +4652,9 @@ const NEW_FISH_POOLS: &[u32] = &[
 
 /// `commands/DummyCommand.lua` with the client round trips answered in
 /// place: the fishing window casts (Wait) at the middle depth, waits until
-/// a fish bites, then jigs at the sweet spot of the slot it aimed at, and
-/// cancels once something is caught. `wait` returns at once.
+/// a fish bites, then jigs at the sweet spot of the slot the cast landed on
+/// (the nearest fish that takes the tackle), and cancels once something is
+/// caught. `wait` returns at once.
 fn fish_cast_probe(script_root: &std::path::Path) -> std::path::PathBuf {
     let real = std::fs::read_to_string(script_root.join("commands/DummyCommand.lua"))
         .expect("DummyCommand.lua");
@@ -4682,7 +4683,35 @@ function callClientFunction(player, functionName, target, method, commandActor, 
         return HARVEST_UI[harvestType].wait, 0;
     end
     caught = true;
-    return HARVEST_UI[harvestType].strike, NearestAimSlot(harvestNode, 6)[3];
+    return HARVEST_UI[harvestType].strike, (fishSlot or NearestAimSlot(harvestNode, 6))[3];
+end
+"#,
+    )
+    .unwrap();
+    probe
+}
+
+/// `fish_cast_probe` for a fish that always breaks away: every roll comes
+/// out lowest, and the window only ever waits, so each cast's fish bites,
+/// gets away, and takes a lure with it.
+fn fish_breakaway_probe(script_root: &std::path::Path) -> std::path::PathBuf {
+    let real = std::fs::read_to_string(script_root.join("commands/DummyCommand.lua"))
+        .expect("DummyCommand.lua");
+    let probe = common::test_tmp::dir().join("fish_breakaway_probe.lua");
+    std::fs::write(
+        &probe,
+        real + r#"
+math.random = function(a, b) return a or 0 end
+function wait() end
+function callClientFunction(player, functionName, target, method, commandActor, ...)
+    if method ~= "askInputWidget" then
+        return nil;
+    end
+    local harvestType, phase = ...;
+    if phase == 1 then
+        return HARVEST_UI[harvestType].begin, 50;
+    end
+    return HARVEST_UI[harvestType].wait, 0;
 end
 "#,
     )
@@ -4839,21 +4868,37 @@ async fn every_fishing_pool_spawns_and_a_cast_catches_its_fish() {
     engine.catalogs().install_gather_node_metadata(metadata);
     let probe = fish_cast_probe(&script_root);
     let fish_command = 0xA0F0_0000 | crate::gathering::HARVEST_TYPE_FISH;
-    let cast = |class: u8, command: u32, zone: u32, unique: &str| {
-        let snapshot = PlayerSnapshot {
-            actor_id: 0x1234_5678,
-            current_class: class,
-            ..Default::default()
+    let cast_with =
+        |class: u8, command: u32, zone: u32, unique: &str, tackle: Option<(u32, i32, bool)>| {
+            let snapshot = PlayerSnapshot {
+                actor_id: 0x1234_5678,
+                current_class: class,
+                fishing_tackle: tackle,
+                ..Default::default()
+            };
+            engine.call_command_on_event_started(
+                &probe,
+                snapshot,
+                command,
+                "commandRequest".to_string(),
+                0,
+                Vec::new(),
+                Some((zone, unique.to_string())),
+            )
         };
-        engine.call_command_on_event_started(
-            &probe,
-            snapshot,
-            command,
-            "commandRequest".to_string(),
-            0,
-            Vec::new(),
-            Some((zone, unique.to_string())),
-        )
+    // Every cast below has bait on unless it says otherwise.
+    let lugworm = 3_940_002u32;
+    let cast = |class: u8, command: u32, zone: u32, unique: &str| {
+        cast_with(class, command, zone, unique, Some((lugworm, 20, false)))
+    };
+    let bait_used = |commands: &[LuaCommand]| -> Vec<u32> {
+        commands
+            .iter()
+            .filter_map(|c| match c {
+                LuaCommand::UseFishingTackle { catalog_id, .. } => Some(*catalog_id),
+                _ => None,
+            })
+            .collect()
     };
 
     for (pool, (zone, unique)) in &points {
@@ -4874,8 +4919,20 @@ async fn every_fishing_pool_spawns_and_a_cast_catches_its_fish() {
             .filter_map(|k| catalog.get_item(k))
             .map(|i| i.item_catalog_id)
             .collect();
-        let result = cast(41, fish_command, *zone, unique);
+        // Bait that one of the pool's fish takes (Lugworm when none of
+        // them has a record: they take anything).
+        let bait = fish
+            .iter()
+            .flat_map(|f| catalog.fish_tackle(*f).iter().copied())
+            .find(|t| *t < 3_940_100)
+            .unwrap_or(lugworm);
+        let result = cast_with(41, fish_command, *zone, unique, Some((bait, 20, false)));
         assert!(result.error.is_none(), "{unique}: {:?}", result.error);
+        assert_eq!(
+            bait_used(&result.commands),
+            vec![bait],
+            "{unique}: one bait per cast"
+        );
         let caught: Vec<u32> = result
             .commands
             .iter()
@@ -4890,6 +4947,11 @@ async fn every_fishing_pool_spawns_and_a_cast_catches_its_fish() {
         assert!(
             fish.contains(&caught[0]),
             "{unique}: {} is not in pool {pool} {fish:?}",
+            caught[0],
+        );
+        assert!(
+            catalog.fish_bites_on(caught[0], bait),
+            "{unique}: {} doesn't take bait {bait}",
             caught[0],
         );
         assert!(
@@ -4937,6 +4999,140 @@ async fn every_fishing_pool_spawns_and_a_cast_catches_its_fish() {
             "class {class} command 0x{command:08X} must not gather at {unique}",
         );
     }
+
+    // Tackle rules at Mistbeard Cove (pool 2043), whose fish all have
+    // recorded tackle.
+    let (zone, unique) = points.get(&2043).expect("pool 2043 placed");
+    let node = catalog.get_node(2043).unwrap();
+    let pool_fish: Vec<u32> = node
+        .active_item_keys()
+        .filter_map(|k| catalog.get_item(k))
+        .map(|i| i.item_catalog_id)
+        .collect();
+    assert!(
+        pool_fish
+            .iter()
+            .all(|f| !catalog.fish_tackle(*f).is_empty())
+    );
+    let texts = |commands: &[LuaCommand]| -> Vec<u32> {
+        commands
+            .iter()
+            .filter_map(|c| match c {
+                LuaCommand::SendGameMessage { text_id, .. } => Some(*text_id),
+                _ => None,
+            })
+            .collect()
+    };
+    let gathered = |commands: &[LuaCommand]| {
+        commands
+            .iter()
+            .any(|c| matches!(c, LuaCommand::AddItem { .. } | LuaCommand::AddExp { .. }))
+    };
+
+    // No bait or lure: "You do not have bait or a lure equipped." and no cast.
+    let result = cast_with(41, fish_command, *zone, unique, None);
+    assert!(result.error.is_none(), "{:?}", result.error);
+    assert!(!gathered(&result.commands));
+    assert!(bait_used(&result.commands).is_empty());
+    assert!(
+        texts(&result.commands).contains(&28),
+        "{:?}",
+        texts(&result.commands)
+    );
+
+    // A full bag: nothing to cast for, no bait used.
+    let snapshot = PlayerSnapshot {
+        actor_id: 0x1234_5678,
+        current_class: 41,
+        fishing_tackle: Some((lugworm, 5, false)),
+        bag_full: true,
+        ..Default::default()
+    };
+    let result = engine.call_command_on_event_started(
+        &probe,
+        snapshot,
+        fish_command,
+        "commandRequest".to_string(),
+        0,
+        Vec::new(),
+        Some((*zone, unique.to_string())),
+    );
+    assert!(result.error.is_none(), "{:?}", result.error);
+    assert!(!gathered(&result.commands));
+    assert!(
+        bait_used(&result.commands).is_empty(),
+        "a full bag uses no bait"
+    );
+
+    // A lure catches without being used up.
+    let crow_fly = 3_940_102u32;
+    let result = cast_with(41, fish_command, *zone, unique, Some((crow_fly, 1, true)));
+    assert!(result.error.is_none(), "{:?}", result.error);
+    assert!(gathered(&result.commands));
+    assert!(
+        bait_used(&result.commands).is_empty(),
+        "a lure isn't used by a cast"
+    );
+
+    // Bait none of the pool's fish takes (Rat Tail): every cast uses one,
+    // "Nothing bites." each time with a hint, and nothing is caught.
+    let rat_tail = 3_940_010u32;
+    assert!(
+        pool_fish
+            .iter()
+            .all(|f| !catalog.fish_bites_on(*f, rat_tail))
+    );
+    let result = cast_with(41, fish_command, *zone, unique, Some((rat_tail, 20, false)));
+    assert!(result.error.is_none(), "{:?}", result.error);
+    assert!(!gathered(&result.commands));
+    let attempts = node.attempts as usize;
+    assert_eq!(bait_used(&result.commands), vec![rat_tail; attempts]);
+    let t = texts(&result.commands);
+    assert_eq!(t.iter().filter(|id| **id == 34).count(), attempts, "{t:?}");
+    assert!(t.contains(&75), "a hint names bait the fish take: {t:?}");
+
+    // The last bait: "You are out of bait." on that cast, and the next cast
+    // finds the Pack slot empty.
+    let result = cast_with(41, fish_command, *zone, unique, Some((rat_tail, 1, false)));
+    assert!(result.error.is_none(), "{:?}", result.error);
+    assert_eq!(bait_used(&result.commands), vec![rat_tail]);
+    let t = texts(&result.commands);
+    let out = t.iter().position(|id| *id == 58).expect("out of bait");
+    let none = t
+        .iter()
+        .rposition(|id| *id == 28)
+        .expect("no bait on the next cast");
+    assert!(out < none, "{t:?}");
+
+    // A fish that breaks away takes the lure ("The fish got away.", "Your
+    // lure is lost."); the cast is over and the next one uses the next lure.
+    let breakaway = fish_breakaway_probe(&script_root);
+    let snapshot = PlayerSnapshot {
+        actor_id: 0x1234_5678,
+        current_class: 41,
+        fishing_tackle: Some((crow_fly, 1, true)),
+        ..Default::default()
+    };
+    let result = engine.call_command_on_event_started(
+        &breakaway,
+        snapshot,
+        fish_command,
+        "commandRequest".to_string(),
+        0,
+        Vec::new(),
+        Some((*zone, unique.to_string())),
+    );
+    assert!(result.error.is_none(), "{:?}", result.error);
+    assert!(!gathered(&result.commands));
+    assert_eq!(
+        bait_used(&result.commands),
+        vec![crow_fly],
+        "the one lure is lost"
+    );
+    let t = texts(&result.commands);
+    let lost = t.iter().position(|id| *id == 59).expect("lure lost");
+    assert!(t[..lost].contains(&35), "the fish got away first: {t:?}");
+    assert!(t[lost..].contains(&28), "no lure for the next cast: {t:?}");
 }
 
 /// Parse-all smoke: the rewritten `DummyCommand.lua` still loads

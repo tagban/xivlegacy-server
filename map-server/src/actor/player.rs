@@ -60,13 +60,15 @@ pub const SLOT_FINGER_LEFT: u16 = 22;
 
 /// Whether an item with `equipPoint` `point` (gamedata_items_equipment) goes
 /// in gear slot `slot`, or `None` for points that aren't checked (cowls,
-/// suits and flanchards that cover two parts, ammo, packs). Armor in the
+/// suits and flanchards that cover two parts). Armor in the
 /// wrong slot draws the wrong model part: a robe on the head is a plain
 /// white hat.
 pub fn gear_slot_fits(point: u16, slot: u16) -> Option<bool> {
     let slots: &[u16] = match point {
         36..=39 => &[SLOT_MAINHAND],
         2 | 40 => &[SLOT_OFFHAND],
+        // Arrows, fishing bait and lures: the Pack slot only.
+        6 => &[SLOT_PACK],
         9 => &[SLOT_HEAD],
         10 => &[SLOT_UNDERSHIRT],
         11 => &[SLOT_BODY],
@@ -632,6 +634,8 @@ mod tests {
         assert_eq!(gear_slot_fits(36, SLOT_HEAD), Some(false));
         assert_eq!(gear_slot_fits(42, SLOT_BODY), None); // a cowl isn't checked
         assert_eq!(gear_slot_fits(0, SLOT_PACK), None);
+        assert_eq!(gear_slot_fits(6, SLOT_PACK), Some(true)); // Lugworm
+        assert_eq!(gear_slot_fits(6, SLOT_WAIST), Some(false)); // bait on the belt
     }
 
     fn fresh_player() -> Player {

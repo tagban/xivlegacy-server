@@ -37,6 +37,7 @@
 pub mod node;
 pub mod resolver;
 pub mod spawn;
+pub mod tackle;
 
 pub use node::{GatherNode, GatherNodeItem, NODE_ITEM_SLOTS};
 pub use resolver::GatherResolver;
