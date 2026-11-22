@@ -544,7 +544,7 @@ mod tests {
             assert_eq!(offer_rank(name), 0, "{name}");
         }
         // Guincum: Gcl103 (111429) wins over Gcl701 (111428).
-        let mut eligible = vec![
+        let mut eligible = [
             (offer_rank("gcl701"), 111428),
             (offer_rank("gcl103"), 111429),
         ];
