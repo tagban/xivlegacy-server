@@ -1278,7 +1278,7 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (2440, 1000809, 'man0u1_malnourished_mid', 170, '', 0, 40.5, 200.0, -482.5, 1.0, 0, 0, NULL),
 (2441, 1000817, 'man0u1_helpless_hyur', 170, '', 0, 50.43, 200.0, -480.99, -1.46, 0, 0, NULL),
 (2450, 1090285, 'man0u1_gate_trig', 170, '', 0, -34.54, 183.0, -68.88, 0.0, 0, 0, NULL),
-(2451, 1090283, 'man0u1_arena_gate_trig', 209, 'PrivateAreaMasterPast', 5, -187.23, 192.5, 219.73, 0.0, 0, 0, NULL),
+(2451, 1090283, 'man0u1_arena_gate_trig', 209, 'PrivateAreaMasterPast', 5, -187.23, 192.5, 216.0, 0.0, 0, 0, NULL),
 (2452, 1000864, 'man0u1_qs_otopa_pottopa', 175, 'PrivateAreaMasterPast', 4, -70.5, 195.0, 76.0, -2.2, 0, 0, NULL),
 (2453, 1000936, 'man0u1_qs_undaunted_adventurer', 175, 'PrivateAreaMasterPast', 4, -79.0, 195.0, 70.0, 0.8, 0, 0, NULL),
 (2454, 1000937, 'man0u1_qs_greedy_merchant', 175, 'PrivateAreaMasterPast', 4, -82.5, 195.0, 76.5, 1.6, 0, 0, NULL),
