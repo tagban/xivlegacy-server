@@ -141,6 +141,11 @@ function questBattle.update(tick, area, limitSeconds, onLose)
 		else
 			owner:SendMessage(0x20, "", "You are defeated.");
 		end
+		-- Like allyfight.lua and the Coliseum bout: the loser leaves at
+		-- full HP. Leaving at the 1-HP pin (a damage-over-time then takes
+		-- the last point) made the retry fight lose on entry.
+		owner:ChangeState(0);
+		owner:SetHP(owner:GetMaxHP());
 		onLose(owner, timedOut);
 	end
 end
