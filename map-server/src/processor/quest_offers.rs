@@ -183,6 +183,19 @@ fn job_gate(script_name: &str, class: i16, current_job: u16, skill_level: &[i16]
     }
 }
 
+/// Grand Company promotion quests (`gc?701`, `gc?702`) wait behind every
+/// other quest their officer gives. Below the rank they need, their talk only
+/// plays a "come back later" hint, so offering them first (they have the
+/// lower id) hid the company's story quests (`gc?103`, `gc?105`, `gc?107`)
+/// from anyone not yet a Corporal. The hint still plays when nothing else
+/// is open.
+fn offer_rank(script_name: &str) -> u8 {
+    let promotion = script_name.len() == 6
+        && script_name.starts_with("gc")
+        && script_name[3..].starts_with('7');
+    u8::from(promotion)
+}
+
 fn company_gate(script_name: &str, chara: &crate::actor::CharaState) -> bool {
     use crate::actor::gc;
     let (nation, kind) = if let Some(rest) = script_name.strip_prefix("com") {
@@ -248,6 +261,17 @@ fn rank_gate_hint_only(script_name: &str, chara: &crate::actor::CharaState) -> b
     !gc::is_sworn_rank(rank) || rank < gate
 }
 
+/// The story lines: the main scenario (Man), the company joining quests
+/// (Com) and the Grand Company story (Gc?). At a giver they share with side
+/// quests they go first: Louisoix gives Ifrit Bleeds (Sum6a0) and A Feast of
+/// Fools (Sum6m0) after It Kills with Fire, and their lower ids held In for
+/// Garuda Wakening (Gc?104), and the company story after it, until both
+/// were done.
+fn is_story_quest(script_name: &str) -> bool {
+    let name = script_name.to_ascii_lowercase();
+    name.starts_with("man") || name.starts_with("com") || name.starts_with("gc")
+}
+
 impl PacketProcessor {
     /// Rebuild the player's offers and put the markers up (or take stale
     /// ones down).
@@ -259,7 +283,7 @@ impl PacketProcessor {
             Ok(m) => m.values().cloned().collect(),
             Err(_) => return,
         };
-        let eligible: Vec<u32> = {
+        let eligible: Vec<(u8, u32)> = {
             let c = handle.character.read().await;
             let level = c.chara.level.max(0) as u16;
             let journal = &c.quest_journal;
@@ -285,15 +309,17 @@ impl PacketProcessor {
                         && crate::seasonal::quest_open(m.id)
                         && engine.resolver().quest(&name).exists()
                 })
-                .map(|m| m.id)
+                .map(|m| (offer_rank(&m.class_name.to_lowercase()), m.id))
                 .collect()
         };
 
-        // One offer per NPC: when several quests share a giver, the
-        // lowest id (the earlier quest) is offered first, every time. A
-        // rank gate the player hasn't reached yet only gives its hint, so
-        // it goes last and doesn't hide the officer's other quests.
-        let mut eligible: Vec<(bool, u32)> = {
+        // One offer per NPC: when several quests share a giver, a story
+        // quest goes first, then the lowest id (the earlier quest), every
+        // time, with promotion quests after the rest of the story (see
+        // `offer_rank`). A rank gate the player hasn't reached yet only
+        // gives its hint, so it goes last and doesn't hide the officer's
+        // other quests.
+        let mut eligible: Vec<(bool, bool, u8, u32)> = {
             let c = handle.character.read().await;
             let names: HashMap<u32, String> = metas
                 .iter()
@@ -301,16 +327,16 @@ impl PacketProcessor {
                 .collect();
             eligible
                 .into_iter()
-                .map(|id| {
-                    let hint_only = names
-                        .get(&id)
-                        .is_some_and(|name| rank_gate_hint_only(name, &c.chara));
-                    (hint_only, id)
+                .map(|(rank, id)| {
+                    let name = names.get(&id);
+                    let hint_only = name.is_some_and(|name| rank_gate_hint_only(name, &c.chara));
+                    let side = name.is_none_or(|name| !is_story_quest(name));
+                    (hint_only, side, rank, id)
                 })
                 .collect()
         };
         eligible.sort_unstable();
-        let eligible = eligible.into_iter().map(|(_, id)| id);
+        let eligible = eligible.into_iter().map(|(_, _, _, id)| id);
         let mut offers: HashMap<u32, (u32, QuestEnpc)> = HashMap::new();
         for quest_id in eligible {
             for enpc in self.quest_givers(handle, quest_id).await {
@@ -567,6 +593,23 @@ mod tests {
     }
 
     #[test]
+    fn promotion_quests_are_offered_after_story_quests() {
+        for name in ["gcl701", "gcg702", "gcu701"] {
+            assert_eq!(offer_rank(name), 1, "{name}");
+        }
+        for name in ["gcl103", "gcu107", "gcl301", "com0l7", "etc1l7", "gc"] {
+            assert_eq!(offer_rank(name), 0, "{name}");
+        }
+        // Guincum: Gcl103 (111429) wins over Gcl701 (111428).
+        let mut eligible = [
+            (offer_rank("gcl701"), 111428),
+            (offer_rank("gcl103"), 111429),
+        ];
+        eligible.sort_unstable();
+        assert_eq!(eligible[0].1, 111429);
+    }
+
+    #[test]
     fn call_of_booty_follows_any_nations_pirate_quest() {
         // the column names only Gridania's Etc3g3; Limsa and Ul'dah finish their own
         assert_eq!(prerequisites(110810, 110737), vec![110728, 110737, 110746]);
@@ -631,6 +674,26 @@ mod tests {
     #[test]
     fn the_usual_suspect_follows_any_nations_first_hildibrand_quest() {
         assert_eq!(prerequisites(110849, 0), vec![110828, 110838, 110848]);
+    }
+
+    #[test]
+    fn story_quests_go_before_side_quests_at_a_shared_giver() {
+        assert!(is_story_quest("Gcu104"));
+        assert!(is_story_quest("gcl701"));
+        assert!(is_story_quest("Com0u7"));
+        assert!(is_story_quest("Man0u0"));
+        assert!(!is_story_quest("Sum6a0"));
+        assert!(!is_story_quest("Etc1u9"));
+        assert!(!is_story_quest("Pgl200"));
+        // The sort key: story first, then the lowest id.
+        let mut keys = [
+            (!is_story_quest("Sum6a0"), 110627),
+            (!is_story_quest("Sum6m0"), 110816),
+            (!is_story_quest("Gcu104"), 111830),
+        ];
+        keys.sort_unstable();
+        assert_eq!(keys[0].1, 111830);
+        assert_eq!(keys[1].1, 110627);
     }
 
     fn standing(gc: u8, limsa: u8, gridania: u8, uldah: u8) -> crate::actor::CharaState {
