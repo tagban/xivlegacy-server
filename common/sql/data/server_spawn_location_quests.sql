@@ -43,6 +43,11 @@
 --     29376 wld0u3_abelard, 29378 wld0l3_lolojo, 30272 wld0g2_keketo, 30273 wld0g3_chamberliaux,
 --     31006 wdk300_ryd_wailing_barracks, 31008 wdk300_elyn_quivers_hold, 31202 sum6m0_pukwa_pika.
 --   spawns inside private areas: those areas are already the quest's own.
+--   another quest's open-world spawn when this quest's steps name the class only for an Echo that has its own
+--     spawn of it (in any zone): Man0g0 (110005), Man0g1 (110006) and Man2g0 (110008) have no rows on 27721
+--     com0g5_wise_conjurer, 27756 com0g6_swethyna, 27807 gcg103_o_app_pesi, 27830 gc105_papalymo,
+--     27867 gcg302_challinie or 29308 cnj306_ingram_fane. Their Echo casts are in 155/206/153 private areas;
+--     the rows put O-App-Pesi, Swethyna, Ingram and Papalymo in the public Fane and town for those steps.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_location_quests`;
 INSERT INTO `server_spawn_location_quests` (`spawnId`, `questId`, `gate`) VALUES
@@ -197,7 +202,6 @@ INSERT INTO `server_spawn_location_quests` (`spawnId`, `questId`, `gate`) VALUES
 (27718, 111833, 'step'),
 (27719, 111605, 'step'),
 (27720, 111605, 'step'),
-(27721, 110008, 'step'),
 (27721, 111605, 'step'),
 (27722, 111605, 'step'),
 (27723, 111605, 'step'),
@@ -297,8 +301,6 @@ INSERT INTO `server_spawn_location_quests` (`spawnId`, `questId`, `gate`) VALUES
 (27755, 111830, 'step'),
 (27755, 111831, 'step'),
 (27755, 111832, 'step'),
-(27756, 110005, 'step'),
-(27756, 110006, 'step'),
 (27756, 111606, 'step'),
 (27759, 111606, 'step'),
 (27760, 111427, 'step'),
@@ -452,8 +454,6 @@ INSERT INTO `server_spawn_location_quests` (`spawnId`, `questId`, `gate`) VALUES
 (27805, 111631, 'step'),
 (27805, 111632, 'step'),
 (27805, 111633, 'step'),
-(27807, 110006, 'step'),
-(27807, 110008, 'step'),
 (27807, 111606, 'step'),
 (27807, 111629, 'step'),
 (27807, 111632, 'step'),
@@ -570,9 +570,6 @@ INSERT INTO `server_spawn_location_quests` (`spawnId`, `questId`, `gate`) VALUES
 (27829, 111633, 'step'),
 (27829, 111831, 'step'),
 (27829, 111833, 'step'),
-(27830, 110005, 'step'),
-(27830, 110006, 'step'),
-(27830, 110008, 'step'),
 (27830, 111431, 'step'),
 (27830, 111433, 'step'),
 (27830, 111631, 'step'),
@@ -702,7 +699,6 @@ INSERT INTO `server_spawn_location_quests` (`spawnId`, `questId`, `gate`) VALUES
 (27858, 111632, 'step'),
 (27858, 111832, 'step'),
 (27860, 111419, 'step'),
-(27867, 110006, 'step'),
 (27867, 111618, 'step'),
 (27870, 111620, 'step'),
 (27874, 111432, 'step'),
@@ -749,7 +745,6 @@ INSERT INTO `server_spawn_location_quests` (`spawnId`, `questId`, `gate`) VALUES
 (29233, 110736, 'step'),
 (29236, 110745, 'step'),
 (29240, 110668, 'step'),
-(29308, 110006, 'step'),
 (29308, 110262, 'step'),
 (29350, 110101, 'step'),
 (29350, 110102, 'step'),
