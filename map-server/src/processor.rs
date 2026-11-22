@@ -121,6 +121,16 @@ pub struct PacketProcessor {
     pub cmd: Option<Arc<crate::command_processor::CommandProcessor>>,
 }
 
+/// The zone an open-world actor id belongs to: NPC and trigger ids are
+/// `(4 << 28) | (zone << 19) | local_id`. `None` for players, directors,
+/// content-band actors and anything else whose id doesn't carry its zone.
+fn open_world_actor_zone(actor_id: u32) -> Option<u32> {
+    if actor_id >> 28 != 4 || actor_id & crate::world_manager::CONTENT_ACTOR_BAND_BIT != 0 {
+        return None;
+    }
+    Some((actor_id >> 19) & 0x1FF)
+}
+
 /// Derive a deterministic `group_id` for the retainer-meeting group
 /// that binds a spawned retainer to its owning player. Since the
 /// retainer actor id is already composite-unique via the
@@ -8310,6 +8320,53 @@ impl PacketProcessor {
             return Ok(());
         }
 
+        // A push trigger from a zone the player has already left. The
+        // client can send one more push from the old zone while it loads
+        // the new one (walking over the same circle again, e.g. a mine's
+        // exit trigger whose script warps you out). Running it again warped
+        // the player a second time, on top of the pending load, and the
+        // client sat on Now Loading for good. Seamless partner zones keep
+        // their pushes: their triggers stream in across the seam.
+        if pkt.event_type == 2
+            && let Some(owner_zone) = open_world_actor_zone(pkt.owner_actor_id)
+            && let Some(snap) = self.world.session(session_id).await
+            && snap.current_zone_id != 0
+            && owner_zone != snap.current_zone_id
+        {
+            let region = match self.world.zone(snap.current_zone_id).await {
+                Some(z) => Some(z.read().await.core.region_id),
+                None => None,
+            };
+            let partner = match region {
+                Some(r) => self
+                    .world
+                    .seamless_partner_zones(r as u32, snap.current_zone_id)
+                    .await
+                    .contains(&owner_zone),
+                None => false,
+            };
+            if !partner {
+                if let Some(client) = self.world.client(session_id).await {
+                    let mut end = crate::packets::send::events::build_end_event(
+                        actor_id,
+                        pkt.owner_actor_id,
+                        &pkt.event_name,
+                        pkt.event_type,
+                    );
+                    end.set_target_id(session_id);
+                    client.send_bytes(end.to_bytes()).await;
+                }
+                tracing::debug!(
+                    session = session_id,
+                    owner = format!("0x{:08X}", pkt.owner_actor_id),
+                    owner_zone,
+                    current_zone = snap.current_zone_id,
+                    "push from a zone the player has left ignored",
+                );
+                return Ok(());
+            }
+        }
+
         // Refresh the gil mirror before any script runs: gil moves through
         // several DB paths (shops, `givegil`, rewards) that don't touch the
         // live Character, and NPC menus gate on `GetCurrentGil()`.
@@ -12357,5 +12414,22 @@ mod change_job_tests {
         }];
         processor.apply_event_script_commands(&handle, back).await;
         assert_eq!(job().await, 0, "back to the class");
+    }
+}
+
+#[cfg(test)]
+mod open_world_actor_zone_tests {
+    use super::open_world_actor_zone;
+
+    #[test]
+    fn npc_and_trigger_ids_carry_their_zone() {
+        // Gcl304's mine exit trigger (zone 137), N'nmulika (230), Rorojaru (175).
+        assert_eq!(open_world_actor_zone(0x4448_000B), Some(137));
+        assert_eq!(open_world_actor_zone(0x4730_003D), Some(230));
+        assert_eq!(open_world_actor_zone(0x4578_0002), Some(175));
+        // players, directors and content-band actors don't
+        assert_eq!(open_world_actor_zone(0x0000_0001), None);
+        assert_eq!(open_world_actor_zone(0x6408_0003), None);
+        assert_eq!(open_world_actor_zone(0x44FE_0BA4 | 0x0004_0000), None);
     }
 }
