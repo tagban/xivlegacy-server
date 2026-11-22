@@ -10350,20 +10350,28 @@ impl PacketProcessor {
         // triggers likewise: with man0 open, its onPush ended Deus ex
         // Machina's Aleport trigger before the betrayal cut scene could
         // play, and the duty started with no scene.
+        // One quest only, even when several registered the NPC: each onTalk
+        // parks on its own cutscene, and the next quest's hook displaced the
+        // first one's. Nicoliaux at Wdk306 SEQ_010 (talk marker: hand over
+        // the fetish) ran The Penultimate Prank's SEQ_000 reminder after it,
+        // so the fetish was never taken and the step never moved.
         let active_quest_ids = if hook_name == "onTalk" || hook_name == "onPush" {
             let c = handle.character.read().await;
-            let owners: Vec<u32> = c
+            let owners: Vec<(u32, u8)> = c
                 .quest_journal
                 .slots
                 .iter()
                 .flatten()
-                .filter(|q| q.state.current.contains_key(&npc_spec.actor_class_id))
-                .map(|q| q.quest_id())
+                .filter_map(|q| {
+                    q.state
+                        .current
+                        .get(&npc_spec.actor_class_id)
+                        .map(|e| (q.quest_id(), e.quest_flag_type))
+                })
                 .collect();
-            if owners.is_empty() {
-                active_quest_ids
-            } else {
-                owners
+            match npc_owner_quest(&owners) {
+                Some(quest_id) => vec![quest_id],
+                None => active_quest_ids,
             }
         } else {
             active_quest_ids
@@ -11677,6 +11685,38 @@ impl PacketProcessor {
             "item package request (retainer route pending Player state plumbing)",
         );
         Ok(())
+    }
+}
+
+/// The held quest a talk or push on a registered NPC belongs to, from
+/// `(quest id, quest flag on that NPC)` in journal-slot order: the first
+/// quest whose marker is on the NPC (flag not 0), else the first that
+/// registered it. `None` when no quest registered the NPC.
+fn npc_owner_quest(owners: &[(u32, u8)]) -> Option<u32> {
+    owners
+        .iter()
+        .find(|(_, flag)| *flag != 0)
+        .or_else(|| owners.first())
+        .map(|(quest_id, _)| *quest_id)
+}
+
+#[cfg(test)]
+mod npc_owner_quest_tests {
+    use super::npc_owner_quest;
+
+    #[test]
+    fn marked_quest_wins_over_an_earlier_unmarked_one() {
+        // Etc1g4 SEQ_000 registers Nicoliaux with no flag; Wdk306 SEQ_010
+        // marks him for talk.
+        assert_eq!(npc_owner_quest(&[(110658, 0), (110302, 2)]), Some(110302));
+        assert_eq!(npc_owner_quest(&[(110302, 2), (110658, 0)]), Some(110302));
+    }
+
+    #[test]
+    fn first_registering_quest_when_none_or_all_are_marked() {
+        assert_eq!(npc_owner_quest(&[(110658, 0), (110302, 0)]), Some(110658));
+        assert_eq!(npc_owner_quest(&[(110001, 2), (110002, 4)]), Some(110001));
+        assert_eq!(npc_owner_quest(&[]), None);
     }
 }
 
