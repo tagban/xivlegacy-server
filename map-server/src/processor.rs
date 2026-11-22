@@ -121,6 +121,16 @@ pub struct PacketProcessor {
     pub cmd: Option<Arc<crate::command_processor::CommandProcessor>>,
 }
 
+/// The zone an open-world actor id belongs to: NPC and trigger ids are
+/// `(4 << 28) | (zone << 19) | local_id`. `None` for players, directors,
+/// content-band actors and anything else whose id doesn't carry its zone.
+fn open_world_actor_zone(actor_id: u32) -> Option<u32> {
+    if actor_id >> 28 != 4 || actor_id & crate::world_manager::CONTENT_ACTOR_BAND_BIT != 0 {
+        return None;
+    }
+    Some((actor_id >> 19) & 0x1FF)
+}
+
 /// Derive a deterministic `group_id` for the retainer-meeting group
 /// that binds a spawned retainer to its owning player. Since the
 /// retainer actor id is already composite-unique via the
@@ -8310,6 +8320,53 @@ impl PacketProcessor {
             return Ok(());
         }
 
+        // A push trigger from a zone the player has already left. The
+        // client can send one more push from the old zone while it loads
+        // the new one (walking over the same circle again, e.g. a mine's
+        // exit trigger whose script warps you out). Running it again warped
+        // the player a second time, on top of the pending load, and the
+        // client sat on Now Loading for good. Seamless partner zones keep
+        // their pushes: their triggers stream in across the seam.
+        if pkt.event_type == 2
+            && let Some(owner_zone) = open_world_actor_zone(pkt.owner_actor_id)
+            && let Some(snap) = self.world.session(session_id).await
+            && snap.current_zone_id != 0
+            && owner_zone != snap.current_zone_id
+        {
+            let region = match self.world.zone(snap.current_zone_id).await {
+                Some(z) => Some(z.read().await.core.region_id),
+                None => None,
+            };
+            let partner = match region {
+                Some(r) => self
+                    .world
+                    .seamless_partner_zones(r as u32, snap.current_zone_id)
+                    .await
+                    .contains(&owner_zone),
+                None => false,
+            };
+            if !partner {
+                if let Some(client) = self.world.client(session_id).await {
+                    let mut end = crate::packets::send::events::build_end_event(
+                        actor_id,
+                        pkt.owner_actor_id,
+                        &pkt.event_name,
+                        pkt.event_type,
+                    );
+                    end.set_target_id(session_id);
+                    client.send_bytes(end.to_bytes()).await;
+                }
+                tracing::debug!(
+                    session = session_id,
+                    owner = format!("0x{:08X}", pkt.owner_actor_id),
+                    owner_zone,
+                    current_zone = snap.current_zone_id,
+                    "push from a zone the player has left ignored",
+                );
+                return Ok(());
+            }
+        }
+
         // Refresh the gil mirror before any script runs: gil moves through
         // several DB paths (shops, `givegil`, rewards) that don't touch the
         // live Character, and NPC menus gate on `GetCurrentGil()`.
@@ -10350,20 +10407,28 @@ impl PacketProcessor {
         // triggers likewise: with man0 open, its onPush ended Deus ex
         // Machina's Aleport trigger before the betrayal cut scene could
         // play, and the duty started with no scene.
+        // One quest only, even when several registered the NPC: each onTalk
+        // parks on its own cutscene, and the next quest's hook displaced the
+        // first one's. Nicoliaux at Wdk306 SEQ_010 (talk marker: hand over
+        // the fetish) ran The Penultimate Prank's SEQ_000 reminder after it,
+        // so the fetish was never taken and the step never moved.
         let active_quest_ids = if hook_name == "onTalk" || hook_name == "onPush" {
             let c = handle.character.read().await;
-            let owners: Vec<u32> = c
+            let owners: Vec<(u32, u8)> = c
                 .quest_journal
                 .slots
                 .iter()
                 .flatten()
-                .filter(|q| q.state.current.contains_key(&npc_spec.actor_class_id))
-                .map(|q| q.quest_id())
+                .filter_map(|q| {
+                    q.state
+                        .current
+                        .get(&npc_spec.actor_class_id)
+                        .map(|e| (q.quest_id(), e.quest_flag_type))
+                })
                 .collect();
-            if owners.is_empty() {
-                active_quest_ids
-            } else {
-                owners
+            match npc_owner_quest(&owners) {
+                Some(quest_id) => vec![quest_id],
+                None => active_quest_ids,
             }
         } else {
             active_quest_ids
@@ -11680,6 +11745,38 @@ impl PacketProcessor {
     }
 }
 
+/// The held quest a talk or push on a registered NPC belongs to, from
+/// `(quest id, quest flag on that NPC)` in journal-slot order: the first
+/// quest whose marker is on the NPC (flag not 0), else the first that
+/// registered it. `None` when no quest registered the NPC.
+fn npc_owner_quest(owners: &[(u32, u8)]) -> Option<u32> {
+    owners
+        .iter()
+        .find(|(_, flag)| *flag != 0)
+        .or_else(|| owners.first())
+        .map(|(quest_id, _)| *quest_id)
+}
+
+#[cfg(test)]
+mod npc_owner_quest_tests {
+    use super::npc_owner_quest;
+
+    #[test]
+    fn marked_quest_wins_over_an_earlier_unmarked_one() {
+        // Etc1g4 SEQ_000 registers Nicoliaux with no flag; Wdk306 SEQ_010
+        // marks him for talk.
+        assert_eq!(npc_owner_quest(&[(110658, 0), (110302, 2)]), Some(110302));
+        assert_eq!(npc_owner_quest(&[(110302, 2), (110658, 0)]), Some(110302));
+    }
+
+    #[test]
+    fn first_registering_quest_when_none_or_all_are_marked() {
+        assert_eq!(npc_owner_quest(&[(110658, 0), (110302, 0)]), Some(110658));
+        assert_eq!(npc_owner_quest(&[(110001, 2), (110002, 4)]), Some(110001));
+        assert_eq!(npc_owner_quest(&[]), None);
+    }
+}
+
 fn hash_name_to_id(name: &str) -> u64 {
     // Matches the C# `addFriendList.name.GetHashCode()` fallback —
     // deterministic and collision-tolerant for Phase 7 echoes.
@@ -12317,5 +12414,22 @@ mod change_job_tests {
         }];
         processor.apply_event_script_commands(&handle, back).await;
         assert_eq!(job().await, 0, "back to the class");
+    }
+}
+
+#[cfg(test)]
+mod open_world_actor_zone_tests {
+    use super::open_world_actor_zone;
+
+    #[test]
+    fn npc_and_trigger_ids_carry_their_zone() {
+        // Gcl304's mine exit trigger (zone 137), N'nmulika (230), Rorojaru (175).
+        assert_eq!(open_world_actor_zone(0x4448_000B), Some(137));
+        assert_eq!(open_world_actor_zone(0x4730_003D), Some(230));
+        assert_eq!(open_world_actor_zone(0x4578_0002), Some(175));
+        // players, directors and content-band actors don't
+        assert_eq!(open_world_actor_zone(0x0000_0001), None);
+        assert_eq!(open_world_actor_zone(0x6408_0003), None);
+        assert_eq!(open_world_actor_zone(0x44FE_0BA4 | 0x0004_0000), None);
     }
 }

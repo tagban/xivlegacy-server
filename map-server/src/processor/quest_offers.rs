@@ -61,6 +61,9 @@ fn is_offerable(script_name: &str, has_prerequisite: bool) -> bool {
 /// follows any city's Dreamer's Gospel, and Scrambled Eggs (Spl101, the
 /// next year's quest) follows any city's Dreamer's Dilemma. Moonfire
 /// Faire's Bombard Backlash (Spl102) follows The Heat Is On (Spl0i1).
+/// Call of Booty (Etc303) follows whichever nation's pirate quest the
+/// player finished: Cutthroat Prices (Etc3u3), A Slippery Stone (Etc3g3)
+/// or What a Pirate Wants (Etc3l3).
 const ANY_OF_PREREQUISITES: &[(u32, &[u32])] = &[
     (110013, &[110004, 110008, 110012]),
     (110849, &[110828, 110838, 110848]),
@@ -72,6 +75,7 @@ const ANY_OF_PREREQUISITES: &[(u32, &[u32])] = &[
     (110805, HATCHING_GOSPELS),
     (110859, HATCHING_DILEMMAS),
     (110860, &[110799]),
+    (110810, &[110728, 110737, 110746]),
 ];
 
 /// The Dreamer's Gospel in Ul'dah, Gridania and Limsa Lominsa.
@@ -234,6 +238,29 @@ fn company_gate(script_name: &str, chara: &crate::actor::CharaState) -> bool {
     }
 }
 
+/// The promotion gates Gc?701 (Corporal, 17) and Gc?702 (Chief Sergeant,
+/// 27) are offered below their rank so the officer can say what it takes,
+/// but they can't be taken there. True while the player is below the gate's
+/// rank in its company.
+fn rank_gate_hint_only(script_name: &str, chara: &crate::actor::CharaState) -> bool {
+    use crate::actor::gc;
+    let Some(rest) = script_name.strip_prefix("gc") else {
+        return false;
+    };
+    let rank = match rest.chars().next() {
+        Some('l') => chara.gc_rank_limsa,
+        Some('g') => chara.gc_rank_gridania,
+        Some('u') => chara.gc_rank_uldah,
+        _ => return false,
+    };
+    let gate = match rest.get(1..) {
+        Some("701") => 17,
+        Some("702") => 27,
+        _ => return false,
+    };
+    !gc::is_sworn_rank(rank) || rank < gate
+}
+
 impl PacketProcessor {
     /// Rebuild the player's offers and put the markers up (or take stale
     /// ones down).
@@ -277,11 +304,29 @@ impl PacketProcessor {
 
         // One offer per NPC: when several quests share a giver, the
         // lowest id (the earlier quest) is offered first, every time,
-        // with promotion quests last (see `offer_rank`).
-        let mut eligible = eligible;
+        // with promotion quests last (see `offer_rank`). A rank gate the
+        // player hasn't reached yet only gives its hint, so it goes last and
+        // doesn't hide the officer's other quests.
+        let mut eligible: Vec<(bool, u8, u32)> = {
+            let c = handle.character.read().await;
+            let names: HashMap<u32, String> = metas
+                .iter()
+                .map(|m| (m.id, m.class_name.to_lowercase()))
+                .collect();
+            eligible
+                .into_iter()
+                .map(|(rank, id)| {
+                    let hint_only = names
+                        .get(&id)
+                        .is_some_and(|name| rank_gate_hint_only(name, &c.chara));
+                    (hint_only, rank, id)
+                })
+                .collect()
+        };
         eligible.sort_unstable();
+        let eligible = eligible.into_iter().map(|(_, _, id)| id);
         let mut offers: HashMap<u32, (u32, QuestEnpc)> = HashMap::new();
-        for (_, quest_id) in eligible {
+        for quest_id in eligible {
             for enpc in self.quest_givers(handle, quest_id).await {
                 offers
                     .entry(enpc.actor_class_id)
@@ -553,6 +598,12 @@ mod tests {
     }
 
     #[test]
+    fn call_of_booty_follows_any_nations_pirate_quest() {
+        // the column names only Gridania's Etc3g3; Limsa and Ul'dah finish their own
+        assert_eq!(prerequisites(110810, 110737), vec![110728, 110737, 110746]);
+    }
+
+    #[test]
     fn hatching_tide_quests_are_one_per_adventurer() {
         let none = |_| false;
         assert!(!one_of_taken(110789, none, none));
@@ -647,6 +698,28 @@ mod tests {
         assert!(!company_gate("gcu101", &sworn));
         // Other quests are untouched.
         assert!(company_gate("man300", &sworn));
+    }
+
+    #[test]
+    fn promotion_gates_below_their_rank_only_give_a_hint() {
+        // A Private Third Class of the Flames: Gcu701 can't be taken yet,
+        // so it must not hide Gcu103 at Aubrey.
+        let private = standing(3, 127, 127, 11);
+        assert!(rank_gate_hint_only("gcu701", &private));
+        assert!(rank_gate_hint_only("gcu702", &private));
+        assert!(!rank_gate_hint_only("gcu103", &private));
+        assert!(!rank_gate_hint_only("com0u7", &private));
+        // A Corporal (17) may take the sergeant gate, not yet the commission.
+        let corporal = standing(3, 127, 127, 17);
+        assert!(!rank_gate_hint_only("gcu701", &corporal));
+        assert!(rank_gate_hint_only("gcu702", &corporal));
+        // Chief Sergeant (27) and up: both are takeable.
+        let chief = standing(3, 127, 127, 27);
+        assert!(!rank_gate_hint_only("gcu702", &chief));
+        // Each nation reads its own company's rank.
+        let storm = standing(1, 17, 127, 127);
+        assert!(!rank_gate_hint_only("gcl701", &storm));
+        assert!(rank_gate_hint_only("gcg701", &storm));
     }
 }
 
