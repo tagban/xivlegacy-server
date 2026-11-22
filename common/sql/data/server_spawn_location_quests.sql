@@ -18,9 +18,12 @@
 -- so a quest that borrows this spawn (Cid at the Lotus Stand for Gc?105) must open it too.
 -- Which steps name which NPC was checked by running every quest's onStateChange for each of its sequences,
 -- every nation's copy of the shared Grand Company quests.
+-- Not 27655 (Niellefresne at Arrzaneth Ossuary) for Man0u1: its step 15 names her for the Coliseum echo,
+-- where it has its own spawn (2424); she stood at the Ossuary all through the guild visits.
 --
 -- Quest-named spawns deliberately left out (they stay for everyone):
 --   push triggers (classes 109xxxx): nobody sees them, and their quests switch them on.
+--     (2435 man0u1_flhaminn_gate is class 1099100 but a visible F'lhaminn, so it has a 'step' row.)
 --   quest givers (they offer a quest, theirs or another's): 2271 man0g1_soileine,
 --     27667 man300_hedyn, 27668 man300_shanga_meshanga, 27669 man300_troxia, 27758 com0g6_kinborow,
 --     27790 gcu102_ryder, 27802 gcl103_hyllfyr, 27818 gc104_ethelinda, 27834 gc106_ryder,
@@ -121,6 +124,7 @@ INSERT INTO `server_spawn_location_quests` (`spawnId`, `questId`, `gate`) VALUES
 (2433, 110360, 'step'),
 (2433, 110361, 'step'),
 (2434, 110010, 'step'),
+(2435, 110010, 'step'),
 (2436, 110010, 'step'),
 (2437, 110010, 'step'),
 (2438, 110010, 'step'),
@@ -136,7 +140,6 @@ INSERT INTO `server_spawn_location_quests` (`spawnId`, `questId`, `gate`) VALUES
 (2439, 110010, 'step'),
 (2440, 110010, 'step'),
 (2441, 110010, 'step'),
-(27655, 110010, 'step'),
 (27655, 110011, 'step'),
 (27655, 110012, 'step'),
 (27663, 110010, 'step'),
