@@ -179,6 +179,19 @@ fn job_gate(script_name: &str, class: i16, current_job: u16, skill_level: &[i16]
     }
 }
 
+/// Grand Company promotion quests (`gc?701`, `gc?702`) wait behind every
+/// other quest their officer gives. Below the rank they need, their talk only
+/// plays a "come back later" hint, so offering them first (they have the
+/// lower id) hid the company's story quests (`gc?103`, `gc?105`, `gc?107`)
+/// from anyone not yet a Corporal. The hint still plays when nothing else
+/// is open.
+fn offer_rank(script_name: &str) -> u8 {
+    let promotion = script_name.len() == 6
+        && script_name.starts_with("gc")
+        && script_name[3..].starts_with('7');
+    u8::from(promotion)
+}
+
 fn company_gate(script_name: &str, chara: &crate::actor::CharaState) -> bool {
     use crate::actor::gc;
     let (nation, kind) = if let Some(rest) = script_name.strip_prefix("com") {
@@ -232,7 +245,7 @@ impl PacketProcessor {
             Ok(m) => m.values().cloned().collect(),
             Err(_) => return,
         };
-        let eligible: Vec<u32> = {
+        let eligible: Vec<(u8, u32)> = {
             let c = handle.character.read().await;
             let level = c.chara.level.max(0) as u16;
             let journal = &c.quest_journal;
@@ -258,16 +271,17 @@ impl PacketProcessor {
                         && crate::seasonal::quest_open(m.id)
                         && engine.resolver().quest(&name).exists()
                 })
-                .map(|m| m.id)
+                .map(|m| (offer_rank(&m.class_name.to_lowercase()), m.id))
                 .collect()
         };
 
         // One offer per NPC: when several quests share a giver, the
-        // lowest id (the earlier quest) is offered first, every time.
+        // lowest id (the earlier quest) is offered first, every time,
+        // with promotion quests last (see `offer_rank`).
         let mut eligible = eligible;
         eligible.sort_unstable();
         let mut offers: HashMap<u32, (u32, QuestEnpc)> = HashMap::new();
-        for quest_id in eligible {
+        for (_, quest_id) in eligible {
             for enpc in self.quest_givers(handle, quest_id).await {
                 offers
                     .entry(enpc.actor_class_id)
@@ -519,6 +533,23 @@ mod tests {
         assert!(!is_offerable("trl0l1", false));
         assert!(is_offerable("etc1l1", false));
         assert!(is_offerable("wld0l1", false));
+    }
+
+    #[test]
+    fn promotion_quests_are_offered_after_story_quests() {
+        for name in ["gcl701", "gcg702", "gcu701"] {
+            assert_eq!(offer_rank(name), 1, "{name}");
+        }
+        for name in ["gcl103", "gcu107", "gcl301", "com0l7", "etc1l7", "gc"] {
+            assert_eq!(offer_rank(name), 0, "{name}");
+        }
+        // Guincum: Gcl103 (111429) wins over Gcl701 (111428).
+        let mut eligible = vec![
+            (offer_rank("gcl701"), 111428),
+            (offer_rank("gcl103"), 111429),
+        ];
+        eligible.sort_unstable();
+        assert_eq!(eligible[0].1, 111429);
     }
 
     #[test]
