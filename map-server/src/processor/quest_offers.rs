@@ -61,6 +61,9 @@ fn is_offerable(script_name: &str, has_prerequisite: bool) -> bool {
 /// follows any city's Dreamer's Gospel, and Scrambled Eggs (Spl101, the
 /// next year's quest) follows any city's Dreamer's Dilemma. Moonfire
 /// Faire's Bombard Backlash (Spl102) follows The Heat Is On (Spl0i1).
+/// Call of Booty (Etc303) follows whichever nation's pirate quest the
+/// player finished: Cutthroat Prices (Etc3u3), A Slippery Stone (Etc3g3)
+/// or What a Pirate Wants (Etc3l3).
 const ANY_OF_PREREQUISITES: &[(u32, &[u32])] = &[
     (110013, &[110004, 110008, 110012]),
     (110849, &[110828, 110838, 110848]),
@@ -72,6 +75,7 @@ const ANY_OF_PREREQUISITES: &[(u32, &[u32])] = &[
     (110805, HATCHING_GOSPELS),
     (110859, HATCHING_DILEMMAS),
     (110860, &[110799]),
+    (110810, &[110728, 110737, 110746]),
 ];
 
 /// The Dreamer's Gospel in Ul'dah, Gridania and Limsa Lominsa.
@@ -519,6 +523,12 @@ mod tests {
         assert!(!is_offerable("trl0l1", false));
         assert!(is_offerable("etc1l1", false));
         assert!(is_offerable("wld0l1", false));
+    }
+
+    #[test]
+    fn call_of_booty_follows_any_nations_pirate_quest() {
+        // the column names only Gridania's Etc3g3; Limsa and Ul'dah finish their own
+        assert_eq!(prerequisites(110810, 110737), vec![110728, 110737, 110746]);
     }
 
     #[test]
