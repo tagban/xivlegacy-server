@@ -221,6 +221,17 @@ fn company_gate(script_name: &str, chara: &crate::actor::CharaState) -> bool {
     }
 }
 
+/// The story lines: the main scenario (Man), the company joining quests
+/// (Com) and the Grand Company story (Gc?). At a giver they share with side
+/// quests they go first: Louisoix gives Ifrit Bleeds (Sum6a0) and A Feast of
+/// Fools (Sum6m0) after It Kills with Fire, and their lower ids held In for
+/// Garuda Wakening (Gc?104), and the company story after it, until both
+/// were done.
+fn is_story_quest(script_name: &str) -> bool {
+    let name = script_name.to_ascii_lowercase();
+    name.starts_with("man") || name.starts_with("com") || name.starts_with("gc")
+}
+
 impl PacketProcessor {
     /// Rebuild the player's offers and put the markers up (or take stale
     /// ones down).
@@ -262,10 +273,24 @@ impl PacketProcessor {
                 .collect()
         };
 
-        // One offer per NPC: when several quests share a giver, the
-        // lowest id (the earlier quest) is offered first, every time.
-        let mut eligible = eligible;
+        // One offer per NPC: when several quests share a giver, a story
+        // quest goes first, then the lowest id (the earlier quest), every
+        // time.
+        let mut eligible: Vec<(bool, u32)> = {
+            let names: HashMap<u32, &str> = metas
+                .iter()
+                .map(|m| (m.id, m.class_name.as_str()))
+                .collect();
+            eligible
+                .into_iter()
+                .map(|id| {
+                    let side = names.get(&id).is_none_or(|name| !is_story_quest(name));
+                    (side, id)
+                })
+                .collect()
+        };
         eligible.sort_unstable();
+        let eligible = eligible.into_iter().map(|(_, id)| id);
         let mut offers: HashMap<u32, (u32, QuestEnpc)> = HashMap::new();
         for quest_id in eligible {
             for enpc in self.quest_givers(handle, quest_id).await {
@@ -580,6 +605,26 @@ mod tests {
     #[test]
     fn the_usual_suspect_follows_any_nations_first_hildibrand_quest() {
         assert_eq!(prerequisites(110849, 0), vec![110828, 110838, 110848]);
+    }
+
+    #[test]
+    fn story_quests_go_before_side_quests_at_a_shared_giver() {
+        assert!(is_story_quest("Gcu104"));
+        assert!(is_story_quest("gcl701"));
+        assert!(is_story_quest("Com0u7"));
+        assert!(is_story_quest("Man0u0"));
+        assert!(!is_story_quest("Sum6a0"));
+        assert!(!is_story_quest("Etc1u9"));
+        assert!(!is_story_quest("Pgl200"));
+        // The sort key: story first, then the lowest id.
+        let mut keys = [
+            (!is_story_quest("Sum6a0"), 110627),
+            (!is_story_quest("Sum6m0"), 110816),
+            (!is_story_quest("Gcu104"), 111830),
+        ];
+        keys.sort_unstable();
+        assert_eq!(keys[0].1, 111830);
+        assert_eq!(keys[1].1, 110627);
     }
 
     fn standing(gc: u8, limsa: u8, gridania: u8, uldah: u8) -> crate::actor::CharaState {
