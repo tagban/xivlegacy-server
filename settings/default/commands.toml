@@ -26,11 +26,12 @@ bug = 0
 gmhelp = 0
 # on yourself only (below target_others), and nothing that helps you or
 # reaches anyone else: where you are; music or a sky only you hear and see
-# (!setmusic stays until !setmusic off or logout, !myweather until you
-# zone); clearing a stuck mount or bed/dream state
+# (!setmusic stays until !setmusic off or logout, !myweather and
+# !mydalamud until you zone); clearing a stuck mount or bed/dream state
 pos = 0
 setmusic = 0
 myweather = 0
+mydalamud = 0
 dismount = 0
 wake = 0
 # getting around, on yourself only: !home (back to your home point, the

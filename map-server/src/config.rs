@@ -63,10 +63,16 @@ pub struct ScriptingSection {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct WorldSection {
-    /// Dalamud descent phase emitted at zone-in (`SetDalamud`, 0x0010). A
-    /// visual/testing knob for the red-moon descent; no gameplay effect.
-    /// Default 0 = largest/closest.
+    /// Dalamud stage emitted at zone-in (`SetDalamud`, 0x0010) when
+    /// `dalamud_by_story` is off: the client's sky group index, 0-7
+    /// (4 = a small orange star, 5 and 6 bigger, 0 and 7 the big red moon
+    /// of 1.0's last days; 1-3 draw nothing), and -1 or any value past 7
+    /// hides Dalamud. See `crate::dalamud`.
     pub dalamud_phase: i8,
+    /// When true (the default) each player's Dalamud grows with their
+    /// main story progress (`crate::dalamud::stage_for_story`) and
+    /// `dalamud_phase` is unused.
+    pub dalamud_by_story: bool,
     /// Weather id emitted at zone-in (`SetWeather`, 0x000D). Default 1 = clear.
     pub weather_id: u16,
     /// Weather transition time emitted alongside `weather_id`. Default 1.
@@ -105,6 +111,7 @@ impl Default for WorldSection {
     fn default() -> Self {
         Self {
             dalamud_phase: 0,
+            dalamud_by_story: true,
             weather_id: 1,
             weather_transition: 1,
         }

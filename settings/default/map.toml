@@ -19,8 +19,12 @@ script_root = "./scripts/lua"
 load_from_database = true
 
 [world]
-# Dalamud descent phase emitted at zone-in (0 = largest/closest). Visual
-# testing knob for the red-moon descent only; no gameplay effect.
+# Dalamud, the red moon, grows in each player's sky with their main story
+# progress (no gameplay effect). Set dalamud_by_story = false to show
+# everyone dalamud_phase instead: the client's sky stage 0-7 (4 = a small
+# orange star, 5 and 6 bigger, 0 and 7 the big red moon of 1.0's last days;
+# 1-3 draw nothing), or -1 to hide it. Players can preview with !mydalamud.
+dalamud_by_story = true
 dalamud_phase = 0
 # Weather id (1 = clear) + transition time emitted at zone-in.
 weather_id = 1

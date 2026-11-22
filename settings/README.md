@@ -42,7 +42,7 @@ account may use is its GM level against `settings/commands.toml`:
 
 | Level | Name | Gets, by default |
 | --- | --- | --- |
-| 0 | player | `!help`, `!gmhelp`, `!who`, `!version`; on themselves: `!pos`, `!setmusic`, `!myweather`, `!dismount`, `!wake`, `!home`, `!zone` (open places only), `!posfix` (their own account's characters) |
+| 0 | player | `!help`, `!gmhelp`, `!who`, `!version`; on themselves: `!pos`, `!setmusic`, `!myweather`, `!mydalamud`, `!dismount`, `!wake`, `!home`, `!zone` (open places only), `!posfix` (their own account's characters) |
 | 1 | helper | the same (give helpers commands by lowering them to 1) |
 | 2 | GM | moving players: `!zone`, `!home` and `!posfix` on anyone, `!camp`, `!warp`, `!gmcottage` (`!gmhome`), `!revive`, `!speed`; `!setmusic` for a zone or everyone |
 | 3 | senior GM | changing characters: `!givegil`, `!giveexp`, `!setclass`, `!setlevel`, `!setjob`, `!gearset`, `!equip`, grand companies, retainers |
@@ -78,6 +78,7 @@ camp = 0
 | `!pos [name]` | Everyone, on themselves: where someone is: zone, coordinates, and the `!warp` that comes back there |
 | `!setmusic <music id or name> [name \| world]` / `!setmusic list` / `!setmusic off [name \| world]` | Everyone, on themselves: music only that player hears (`!setmusic gridania`, `!setmusic 59`, `!music list`). It stays through zoning, border crossings, chocobo rides and crafting (which play their own track while they run, then come back to it) until `!setmusic off` or logout. Battle music is the client's own. GMs: with no name, everyone in the GM's zone; `world`, everyone online; a name, that player (`!setmusic off world` puts everyone back). Each player keeps it as their own pick and can `!setmusic off` |
 | `!myweather <weather id \| clear \| snow \| dalamud \| off>` | Everyone: a sky only you see, until you zone or the server's weather changes |
+| `!mydalamud <stage 0-7 \| hide \| off>` | Everyone: Dalamud at another size (4 small .. 7 the biggest; 1-3 draw nothing) only you see, until you zone; `off` goes back to the size your main story earns |
 | `!dismount [name]` / `!wake [name]` | Everyone, on themselves: clear the server's mount state (and any rental) when it is stuck / a stuck bed or dream state |
 | `!endevent [name]` | Free someone held by a conversation, cutscene or menu |
 | `!zone <zone id or name> [name]` | To a zone's spawn point, or beside its aetheryte (`!zone central shroud`, `!zone 155`, `!zone mordion`). Players: themselves only, and only to the three cities, the open fields and the open-world dungeons (Mistbeard Cove, Cassiopeia Hollow, the Mun-Tuy Cellars, Nanawa Mines, Copperbell Mines); the GM Cottage, Mordion Gaol, duty, dungeon and raid copies, story copies of cities and fields, inn rooms, market wards and offices are GM-only |

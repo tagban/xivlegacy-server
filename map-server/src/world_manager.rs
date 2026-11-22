@@ -323,7 +323,7 @@ fn lp_bool(b: bool) -> common::luaparam::LuaParam {
 fn push_zone_header_packets(
     subpackets: &mut Vec<common::subpacket::SubPacket>,
     actor_id: u32,
-    dalamud_phase: i8,
+    dalamud_stage: u8,
     music_id: u16,
     music_mode: u16,
     weather_id: u16,
@@ -332,7 +332,7 @@ fn push_zone_header_packets(
     zone_actor_id: u32,
 ) {
     subpackets.extend([
-        tx::misc::build_set_dalamud(actor_id, dalamud_phase),
+        tx::misc::build_set_dalamud(actor_id, dalamud_stage),
         tx::misc::build_set_music(actor_id, music_id, music_mode),
         tx::misc::build_set_weather(actor_id, weather_id, weather_transition),
         tx::misc::build_set_map(actor_id, region_id, zone_actor_id),
@@ -1285,10 +1285,12 @@ pub struct GatherNodeMetadata {
 /// Top-level zone + session registry.
 /// Server-global world tunables sourced from `[world]` in `map.toml`,
 /// emitted verbatim in the zone-in bundle. Defaults reproduce the prior
-/// hardcoded values (Dalamud phase 0 = largest, weather 1 = clear).
+/// hardcoded values (weather 1 = clear); Dalamud follows each player's
+/// story unless `dalamud_by_story` is off.
 #[derive(Debug, Clone, Copy)]
 pub struct WorldSettings {
     pub dalamud_phase: i8,
+    pub dalamud_by_story: bool,
     pub weather_id: u16,
     pub weather_transition: u16,
 }
@@ -1297,6 +1299,7 @@ impl Default for WorldSettings {
     fn default() -> Self {
         Self {
             dalamud_phase: 0,
+            dalamud_by_story: true,
             weather_id: 1,
             weather_transition: 1,
         }
@@ -2081,6 +2084,40 @@ impl WorldManager {
         n
     }
 
+    /// The Dalamud stage `session_id`'s sky shows: the one its last
+    /// full zone-in worked out, else the world's `dalamud_phase`.
+    pub async fn dalamud_stage_for(&self, session_id: u32) -> u8 {
+        self.session(session_id)
+            .await
+            .and_then(|s| s.dalamud_stage)
+            .unwrap_or(self.world_settings.dalamud_phase as u8)
+    }
+
+    /// Send `session_id` the Dalamud `stage` its story now earns
+    /// (`crate::dalamud::stage_for_story`) when that changed, e.g. a main
+    /// story quest just completed. Does nothing when `dalamud_by_story`
+    /// is off.
+    pub async fn refresh_dalamud_stage(&self, session_id: u32, actor_id: u32, stage: u8) {
+        if !self.world_settings.dalamud_by_story {
+            return;
+        }
+        {
+            let mut sessions = self.sessions.write().await;
+            let Some(s) = sessions.get_mut(&session_id) else {
+                return;
+            };
+            if s.dalamud_stage == Some(stage) {
+                return;
+            }
+            s.dalamud_stage = Some(stage);
+        }
+        if let Some(client) = self.client(session_id).await {
+            let mut pkt = tx::misc::build_set_dalamud(actor_id, stage);
+            pkt.set_target_id(session_id);
+            client.send_bytes(pkt.to_bytes()).await;
+        }
+    }
+
     /// Keep (or with `None` drop) `session_id`'s `!setmusic` pick, in
     /// place so nothing else in the session is overwritten; the session
     /// after the change, or `None` when it has ended.
@@ -2799,10 +2836,18 @@ impl WorldManager {
         // header (also emitted by `do_seamless_zone_change` on a
         // boundary flip; see `push_zone_header_packets`). Music mode
         // 0x01 = EFFECT_IMMEDIATE (pmeteor `SendZoneInPackets`).
+        let dalamud_stage = if self.world_settings.dalamud_by_story {
+            crate::dalamud::stage_for_story(&actor_handle.character.read().await.quest_journal)
+        } else {
+            self.world_settings.dalamud_phase as u8
+        };
+        if let Some(s) = self.sessions.write().await.get_mut(&session_id) {
+            s.dalamud_stage = Some(dalamud_stage);
+        }
         push_zone_header_packets(
             &mut subpackets,
             actor_id,
-            self.world_settings.dalamud_phase,
+            dalamud_stage,
             music_id,
             0x01,
             zone_weather,
@@ -4176,6 +4221,8 @@ impl WorldManager {
         // forth flips. (Garlemald-Server #46, round 4.)
         // A `!setmusic` pick carries over the border.
         let music_choice = self.session(session_id).await.and_then(|s| s.music_choice);
+        // The stage the last full zone-in worked out carries over too.
+        let dalamud_stage = self.dalamud_stage_for(session_id).await;
         if let Some(client) = self.client(session_id).await {
             let (
                 zone_actor_id,
@@ -4210,7 +4257,7 @@ impl WorldManager {
             push_zone_header_packets(
                 &mut subpackets,
                 actor_id,
-                self.world_settings.dalamud_phase,
+                dalamud_stage,
                 music_choice.unwrap_or(
                     crate::seasonal::zone_look(destination_zone_id)
                         .1

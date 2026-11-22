@@ -76,11 +76,14 @@ pub fn build_set_weather(actor_id: u32, weather_id: u16, transition_time: u16) -
     SubPacket::new(OP_SET_WEATHER, actor_id, data)
 }
 
-/// 0x0010 SetDalamud — gating for Dalamud features, one signed byte.
+/// 0x0010 SetDalamud — which Dalamud the sky shows. The client reads
+/// byte 0 as an unsigned stage index 0-7 into its `sgrp_meteor*` sky
+/// groups; 8-255 hides them all (see `crate::dalamud`). It applies on
+/// the client's next update, at zone-in or any time after.
 /// Game-message subpacket (same reasoning as SetMusic).
-pub fn build_set_dalamud(actor_id: u32, dalamud_level: i8) -> SubPacket {
+pub fn build_set_dalamud(actor_id: u32, stage: u8) -> SubPacket {
     let mut data = body(0x28);
-    data[0] = dalamud_level as u8;
+    data[0] = stage;
     SubPacket::new(OP_SET_DALAMUD, actor_id, data)
 }
 
