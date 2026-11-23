@@ -29,3 +29,8 @@ http.workspace = true
 percent-encoding.workspace = true
 base64.workspace = true
 ureq.workspace = true
+# optional HTTPS listener ([tls] in web.toml): ring, not aws-lc, so Windows needs no cmake/nasm
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+axum-server = { version = "0.7", features = ["tls-rustls-no-provider"] }
+rustls-acme = { version = "0.13", default-features = false, features = ["ring", "tls12", "axum"] }
+futures = "0.3"

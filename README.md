@@ -146,7 +146,7 @@ for players on the internet.
 
 | Service | Settings | Default bind | Does |
 |---|---|---|---|
-| `web-server` | `web` | `127.0.0.1:54993` | Sign-up and sign-in; the `status` module's `GET /status` |
+| `web-server` | `web` | `127.0.0.1:54993` (HTTPS on 443 when [turned on](docs/https.md)) | Sign-up and sign-in; the `status` module's `GET /status` |
 | `lobby-server` | `lobby` | `127.0.0.1:54994` | Character list and the hand-off to a world |
 | `world-server` | `world` | `127.0.0.1:54992` | Sessions, routing to the map server, cross-zone chat, parties, linkshells |
 | `map-server` | `map` | `127.0.0.1:1989` | Zones, actors, combat, AI and the Lua scripts |

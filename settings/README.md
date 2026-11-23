@@ -35,6 +35,11 @@ port        = 54992
 
 Forward TCP 54992-54994 on your router to the host; never forward 1989.
 
+Turn on HTTPS too, so players' passwords don't cross the internet in the clear
+(and security software doesn't block sign-in). It's optional and free: a
+Let's Encrypt certificate the web server fetches and renews itself, plus TCP
+443 forwarded. See [docs/https.md](../docs/https.md).
+
 ## GMs and chat commands
 
 Players type commands in chat, starting with `!` (`!zone gridania`). What each

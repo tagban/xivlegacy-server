@@ -34,6 +34,7 @@ pub struct Config {
     pub database: DatabaseSection,
     pub session: SessionSection,
     pub reports: ReportsSection,
+    pub tls: TlsSection,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -47,6 +48,47 @@ pub struct ReportsSection {
 impl Default for ReportsSection {
     fn default() -> Self {
         Self { gm_level: 1 }
+    }
+}
+
+/// Optional HTTPS listener beside the plain HTTP one. Off unless `domains`
+/// or `cert_file` is set; a server on a home network can leave it off.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct TlsSection {
+    /// HTTPS port (443 is what launchers try first).
+    pub port: u16,
+    /// Public names for a Let's Encrypt certificate, fetched and renewed on
+    /// its own (TLS-ALPN-01: `port` must be reachable from the internet as 443).
+    pub domains: Vec<String>,
+    /// Email addresses Let's Encrypt may write to about the certificate.
+    pub contact: Vec<String>,
+    /// Where the Let's Encrypt account and certificate are kept.
+    pub cache_dir: String,
+    /// Use Let's Encrypt's staging service (for testing; browsers distrust it).
+    pub staging: bool,
+    /// Or your own certificate chain and private key (PEM). Used when set.
+    pub cert_file: String,
+    pub key_file: String,
+}
+
+impl Default for TlsSection {
+    fn default() -> Self {
+        Self {
+            port: 443,
+            domains: Vec::new(),
+            contact: Vec::new(),
+            cache_dir: "data/acme".to_string(),
+            staging: false,
+            cert_file: String::new(),
+            key_file: String::new(),
+        }
+    }
+}
+
+impl TlsSection {
+    pub fn enabled(&self) -> bool {
+        !self.cert_file.is_empty() || !self.domains.is_empty()
     }
 }
 
@@ -112,6 +154,9 @@ impl Config {
     }
     pub fn reports_gm_level(&self) -> u8 {
         self.reports.gm_level.max(1)
+    }
+    pub fn tls(&self) -> &TlsSection {
+        &self.tls
     }
     pub fn session_hours(&self) -> u32 {
         self.session.hours
