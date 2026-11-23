@@ -609,4 +609,5 @@ INSERT INTO `server_battlenpc_pools` (`poolId`, `actorClassId`, `name`, `genusId
 (31622, 2210407, 'Dark Moogle (Debuffer)', 29, 0, 1, 4400, 1.0, 1, 0, 0, 0, 31622),
 (31623, 2210408, 'Good King Moggle Mog XII', 29, 0, 1, 3600, 1.5, 1, 0, 0, 0, 31623),
 (31624, 2210901, 'Nael van Darnus', 29, 0, 1, 3600, 1.5, 1, 0, 0, 0, 30115),
-(31650, 2106213, 'Sprinting Spriggan', 50, 0, 1, 4200, 1.0, 0, 0, 0, 0, 50);
+(31650, 2106213, 'Sprinting Spriggan', 50, 0, 1, 4200, 1.0, 0, 0, 0, 0, 50),
+(31700, 2100113, 'toll_puk', 45, 0, 1, 4200, 1.0, 0, 0, 0, 0, 45);

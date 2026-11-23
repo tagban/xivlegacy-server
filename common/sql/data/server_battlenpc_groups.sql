@@ -899,4 +899,5 @@ INSERT INTO `server_battlenpc_groups` (`groupId`, `poolId`, `scriptName`, `minLe
 (31195, 30055, 'horde_mite', 39, 39, 0, 1725, 0, 0, 0, 1, 0, 0, '', 0, 159),
 (31650, 31650, 'hatch_sprinting_spriggan', 30, 30, 120, 900, 0, 0, 0, 0, 0, 0, '', 0, 178),
 (31651, 31650, 'hatch_sprinting_spriggan', 30, 30, 120, 900, 0, 0, 0, 0, 0, 0, '', 0, 158),
-(31652, 31650, 'hatch_sprinting_spriggan', 30, 30, 120, 900, 0, 0, 0, 0, 0, 0, '', 0, 131);
+(31652, 31650, 'hatch_sprinting_spriggan', 30, 30, 120, 900, 0, 0, 0, 0, 0, 0, '', 0, 131),
+(31700, 31700, 'toll_puk', 9, 10, 60, 190, 0, 0, 0, 0, 0, 0, '', 0, 128);
