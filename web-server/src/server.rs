@@ -123,6 +123,21 @@ pub async fn run(config: Config, db: Database, smoke: bool) -> Result<()> {
         return Ok(());
     }
 
+    if config.tls().enabled() {
+        let (tls, ip, app) = (
+            config.tls().clone(),
+            config.bind_ip().to_string(),
+            app.clone(),
+        );
+        tokio::spawn(async move {
+            if let Err(e) = crate::tls::serve(tls, &ip, app).await {
+                tracing::error!("HTTPS listener stopped: {e:#}; plain HTTP keeps running");
+            }
+        });
+    } else {
+        tracing::info!("HTTPS is off ([tls] in web.toml); sign-in passwords travel unencrypted");
+    }
+
     axum::serve(listener, app.into_make_service())
         .await
         .context("axum::serve")?;

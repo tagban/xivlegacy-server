@@ -20,3 +20,20 @@ hours = 24
 # Activity reports at /reports (sessions, items, gil, quests, GM commands).
 # Only accounts with users.gmLevel at or above this may sign in (at least 1).
 gm_level = 1
+
+[tls]
+# HTTPS for sign-up and sign-in, beside the plain HTTP port above. Optional:
+# it stays off until you set domains or cert_file. Advised for any server
+# players reach over the internet, so passwords don't cross it in the clear;
+# a server on your own network can leave it off.
+port = 443
+# A free Let's Encrypt certificate, fetched and renewed by the server itself.
+# Only this port has to be reachable from the internet, as port 443
+# (forward 443 on your router). Example: domains = ["play.example.com"]
+domains = []
+contact = []            # e.g. ["you@example.com"]
+cache_dir = "data/acme"
+staging = false
+# Or a certificate you already have (PEM files); used instead when set.
+cert_file = ""
+key_file = ""

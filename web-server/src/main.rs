@@ -37,6 +37,7 @@ mod server;
 mod session;
 mod status;
 mod templates;
+mod tls;
 
 use crate::config::{Config, LaunchArgs};
 use crate::database::Database;
