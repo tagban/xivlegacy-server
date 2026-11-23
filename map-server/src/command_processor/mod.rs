@@ -140,6 +140,7 @@ const COMMAND_SYNTAX: &[&str] = &[
     "despawn",
     "sethp <hp>",
     "dungeon <name> | dungeon leave",
+    "cutscene <name> | cutscene stop",
     "settp <tp 0-3000> [name]",
     "usemove <command id> (target, else nearest monster)",
     "monstermode [class id | ok [move] | bad [move] [note]] (become your target monster; again to let go; mark a move)",

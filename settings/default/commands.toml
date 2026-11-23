@@ -47,6 +47,8 @@ camp = 2
 warp = 2
 # entering a 1.0 dungeon in your own copy, until its queue NPCs are scripted
 dungeon = 2
+# playing any of the client's cutscenes where you stand (client/cut/<name>)
+cutscene = 2
 gmcottage = 2
 revive = 2
 speed = 2

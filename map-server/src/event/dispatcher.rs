@@ -1140,7 +1140,14 @@ async fn dispatch_director_event_started(
     let class_path_owned = class_path.clone();
     let actor_name_owned = actor_name.clone();
     let script_path_clone = script_path.clone();
-    let lua_params_owned: Vec<LuaParam> = lua_params.to_vec();
+    let mut lua_params_owned: Vec<LuaParam> = lua_params.to_vec();
+    // A GM !cutscene director: hand the script its scene whether or not
+    // the client echoed the kick's argument.
+    if let Some(scene) = crate::processor::cutscene_scene_of(director_actor_id)
+        && !matches!(lua_params_owned.first(), Some(LuaParam::String(_)))
+    {
+        lua_params_owned.insert(0, LuaParam::String(scene));
+    }
     let _ = event_type; // event_type is captured by the EventStartPacket but Meteor's dispatch ignores it for onEventStarted — the director branches on eventName.
 
     // Run onEventStarted inside a coroutine via LuaEngine's helper so

@@ -58,6 +58,8 @@ use crate::social::{
 };
 use crate::world_manager::WorldManager;
 
+mod cutscene;
+pub(crate) use cutscene::scene_of as cutscene_scene_of;
 mod dungeon;
 mod equip;
 pub(crate) mod gm_spawn;
@@ -11184,6 +11186,11 @@ impl PacketProcessor {
                 && level >= crate::command_permissions::get().required("bug")
             {
                 Some(crate::bug_report::file(&self.db, &handle, session_id, note).await)
+            } else if let Some(r) = self.cutscene_command(&handle, &line, level).await {
+                Some(match r {
+                    Ok(m) => (ChatKind::System, m),
+                    Err(m) => (ChatKind::SystemError, m),
+                })
             } else if let Some(r) = self.dungeon_command(&handle, &line, level).await {
                 Some(match r {
                     Ok(m) => (ChatKind::System, m),
