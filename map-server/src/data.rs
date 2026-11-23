@@ -136,6 +136,10 @@ pub struct Session {
     /// off` or logout. Scripted tracks (mount, craft, leve, duty) still
     /// play over it while they run.
     pub music_choice: Option<u16>,
+    /// The Dalamud stage this player's sky shows (`crate::dalamud`),
+    /// worked out at each full zone-in and re-sent on border crossings.
+    /// `None` until the first zone-in: the world's `dalamud_phase` then.
+    pub dalamud_stage: Option<u8>,
     /// Per-session transient party-member list — accumulates as
     /// `currentParty:AddMember(actor_id)` fires from content scripts
     /// (e.g. `SimpleContent30010.lua::onCreate` adds the tutorial

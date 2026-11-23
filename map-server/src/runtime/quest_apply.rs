@@ -4000,6 +4000,13 @@ pub(crate) async fn finish_complete_quest(
         quest = quest_id,
         "CompleteQuest applied",
     );
+    // A main story step can grow Dalamud in this player's sky.
+    if handle.session_id != 0 {
+        let stage = crate::dalamud::stage_for_story(&handle.character.read().await.quest_journal);
+        world
+            .refresh_dalamud_stage(handle.session_id, handle.actor_id, stage)
+            .await;
+    }
 
     let session_id = handle.session_id;
     if session_id != 0

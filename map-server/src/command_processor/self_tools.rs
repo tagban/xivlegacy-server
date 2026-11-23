@@ -354,6 +354,47 @@ impl CommandProcessor {
     }
 }
 
+impl CommandProcessor {
+    /// `mydalamud <stage 0-7 | hide | off>`: Dalamud as only you see it,
+    /// until you zone. Stages are the client's sky groups (see
+    /// `crate::dalamud`); `off` goes back to the stage your story earns.
+    pub(super) async fn handle_mydalamud(&self, args: &Args<'_>) -> String {
+        let usage = "usage: !mydalamud <stage 0-7 | hide | off>";
+        let Some(word) = args.token(0).map(str::to_ascii_lowercase) else {
+            return usage.into();
+        };
+        let me = match self.invoker_id(args).await {
+            Ok(id) => id,
+            Err(e) => return e,
+        };
+        let Some(handle) = self.registry.get(me).await else {
+            return "you are not in the world".into();
+        };
+        let Some(client) = self.world.client(handle.session_id).await else {
+            return "you are not in the world".into();
+        };
+        let off = matches!(word.as_str(), "off" | "reset" | "story");
+        let stage = if off {
+            self.world.dalamud_stage_for(handle.session_id).await
+        } else if word == "hide" || word == "none" {
+            crate::dalamud::HIDDEN
+        } else {
+            match word.parse::<u8>() {
+                Ok(n) if n <= crate::dalamud::LARGEST => n,
+                _ => return usage.into(),
+            }
+        };
+        let mut pkt = crate::packets::send::misc::build_set_dalamud(handle.actor_id, stage);
+        pkt.set_target_id(handle.session_id);
+        client.send_bytes(pkt.to_bytes()).await;
+        if off {
+            format!("Dalamud back to your story's stage ({stage})")
+        } else {
+            format!("Dalamud stage {stage} for you until you zone (!mydalamud off to undo)")
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -45,6 +45,7 @@ mod command_processor;
 mod config;
 mod content_instance;
 mod crafting;
+mod dalamud;
 mod data;
 mod database;
 mod director;
@@ -195,6 +196,7 @@ pub async fn run() -> Result<()> {
     let world = Arc::new(WorldManager::new().with_world_settings(
         crate::world_manager::WorldSettings {
             dalamud_phase: config.world.dalamud_phase,
+            dalamud_by_story: config.world.dalamud_by_story,
             weather_id: config.world.weather_id,
             weather_transition: config.world.weather_transition,
         },
