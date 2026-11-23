@@ -272,6 +272,20 @@ fn is_story_quest(script_name: &str) -> bool {
     name.starts_with("man") || name.starts_with("com") || name.starts_with("gc")
 }
 
+/// Quest flag a quest puts on the NPC that takes its hand-in.
+const QFLAG_REWARD: u8 = 4;
+
+/// Whether an offer at an NPC goes ahead of the taken quests that claimed
+/// that NPC, each given as (is a story quest, its flag on the NPC). Only a
+/// story offer does, and only over side quests that aren't handing in to
+/// that NPC.
+fn offer_beats_claims(offer_is_story: bool, claims: &[(bool, u8)]) -> bool {
+    offer_is_story
+        && claims
+            .iter()
+            .all(|(story, flag)| !*story && *flag != QFLAG_REWARD)
+}
+
 impl PacketProcessor {
     /// Rebuild the player's offers and put the markers up (or take stale
     /// ones down).
@@ -468,25 +482,52 @@ impl PacketProcessor {
     }
 
     /// The quest offered by an NPC of this class, unless a taken quest has
-    /// claimed the NPC (that quest's talk wins).
+    /// claimed the NPC (that quest's talk wins). A story offer still wins
+    /// over taken side quests that aren't handing in there: with Ifrit
+    /// Bleeds (Sum6a0) taken, every talk to Louisoix played its reminder and
+    /// In for Garuda Wakening (Gc?104) could not be offered until it was
+    /// done.
     pub(super) async fn offered_quest_at(
         &self,
         handle: &ActorHandle,
         npc_class_id: u32,
     ) -> Option<u32> {
         let c = handle.character.read().await;
-        let claimed = c
+        let offer = c
+            .quest_offers
+            .get(&npc_class_id)
+            .map(|(quest_id, _)| *quest_id)?;
+        let claims: Vec<(u32, u8)> = c
             .quest_journal
             .slots
             .iter()
             .flatten()
-            .any(|q| q.state.current.contains_key(&npc_class_id));
-        if claimed {
-            return None;
+            .filter_map(|q| {
+                q.state
+                    .current
+                    .get(&npc_class_id)
+                    .map(|e| (q.quest_id(), e.quest_flag_type))
+            })
+            .collect();
+        drop(c);
+        if claims.is_empty() {
+            return Some(offer);
         }
-        c.quest_offers
-            .get(&npc_class_id)
-            .map(|(quest_id, _)| *quest_id)
+        let story = |id: u32| {
+            self.lua
+                .as_ref()
+                .and_then(|engine| {
+                    engine
+                        .catalogs()
+                        .quests
+                        .read()
+                        .ok()
+                        .and_then(|m| m.get(&id).map(|m| is_story_quest(&m.class_name)))
+                })
+                .unwrap_or(false)
+        };
+        let claims: Vec<(bool, u8)> = claims.into_iter().map(|(id, f)| (story(id), f)).collect();
+        offer_beats_claims(story(offer), &claims).then_some(offer)
     }
 
     /// `!talkto <class> [name]` aimed at the typing player's own giver of a
@@ -580,6 +621,23 @@ pub(crate) fn offer_handle(player_id: u32, quest_id: u32) -> crate::lua::LuaQues
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn story_offer_beats_a_taken_side_quest_reminder() {
+        // Gc?104 at Louisoix with Sum6a0 taken at SEQ_000 (talk) or SEQ_010 (no flag).
+        assert!(offer_beats_claims(true, &[(false, 2)]));
+        assert!(offer_beats_claims(true, &[(false, 0)]));
+    }
+
+    #[test]
+    fn claims_keep_the_npc_otherwise() {
+        // Sum6a0 at SEQ_020 hands in to Louisoix: the reward goes first.
+        assert!(!offer_beats_claims(true, &[(false, QFLAG_REWARD)]));
+        // A taken story quest keeps its NPC.
+        assert!(!offer_beats_claims(true, &[(true, 2)]));
+        // A side offer never beats a claim.
+        assert!(!offer_beats_claims(false, &[(false, 0)]));
+    }
 
     #[test]
     fn story_quests_are_offered_only_after_a_prerequisite() {
