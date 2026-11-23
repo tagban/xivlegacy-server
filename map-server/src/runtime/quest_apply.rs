@@ -2872,10 +2872,13 @@ async fn apply_set_actor_mod(
     );
 }
 
-/// A duty's end lifts its `MinimumHpLock`. A player it held at the 1-HP pin
-/// leaves at full HP: the client had been told 0 HP by the blow the pin
-/// absorbed, so after Challenge Accepted (Gcu305) it showed 0/3200 (server
-/// 1/3200), drew the commander twice and sent no talk until a relog.
+/// A duty's end lifts its `MinimumHpLock`. A player the lock saved from a
+/// lethal blow during the duty leaves at full HP: the client had been told
+/// 0 HP by the blow the pin absorbed, so after Challenge Accepted (Gcu305) it
+/// showed 0/3200 (server 1/3200), drew the commander twice and sent no talk
+/// until a relog. Regen keeps ticking at the pin, so by the time the lock
+/// lifts HP is rarely still 1 (161/3200 in the retest): the flag, not the
+/// HP value, says the player was pinned.
 async fn heal_if_left_at_hp_pin(registry: &ActorRegistry, world: &WorldManager, actor_id: u32) {
     let Some(handle) = registry.get(actor_id).await else {
         return;
@@ -2884,8 +2887,9 @@ async fn heal_if_left_at_hp_pin(registry: &ActorRegistry, world: &WorldManager, 
         return;
     }
     let max_hp = {
-        let c = handle.character.read().await;
-        if c.chara.hp > 1 || c.chara.max_hp <= 1 {
+        let mut c = handle.character.write().await;
+        let pinned = std::mem::take(&mut c.chara.hp_pinned) || c.chara.hp <= 1;
+        if !pinned || c.chara.max_hp <= 1 {
             return;
         }
         c.chara.max_hp
@@ -9399,9 +9403,24 @@ mod change_state_self_send_tests {
         heal_if_left_at_hp_pin(&registry, &world, 1).await;
         assert_eq!(handle.character.read().await.chara.hp, 3200);
 
+        // Never pinned: HP is left alone.
         handle.character.write().await.chara.hp = 900;
         heal_if_left_at_hp_pin(&registry, &world, 1).await;
         assert_eq!(handle.character.read().await.chara.hp, 900);
+
+        // Pinned by a lethal blow, then regen ticked HP up before the lock
+        // lifted (161/3200 in the Gcu305 retest): still healed to full.
+        {
+            let mut c = handle.character.write().await;
+            c.chara.mods.set(crate::actor::Modifier::MinimumHpLock, 1.0);
+            c.set_hp(-500);
+            c.add_hp(160);
+            assert_eq!(c.chara.hp, 161);
+        }
+        heal_if_left_at_hp_pin(&registry, &world, 1).await;
+        let c = handle.character.read().await;
+        assert_eq!(c.chara.hp, 3200);
+        assert!(!c.chara.hp_pinned);
     }
 
     #[tokio::test]

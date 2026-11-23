@@ -378,6 +378,9 @@ pub struct CharaState {
     pub spawn_z: f32,
 
     pub hp: i16,
+    /// The `MinimumHpLock` floor stopped a lethal blow since the lock was
+    /// last lifted. A duty's end heals such a player to full.
+    pub hp_pinned: bool,
     pub max_hp: i16,
     pub mp: i16,
     pub max_mp: i16,
@@ -456,6 +459,7 @@ impl Default for CharaState {
             spawn_y: 0.0,
             spawn_z: 0.0,
             hp: 0,
+            hp_pinned: false,
             max_hp: 0,
             mp: 0,
             max_mp: 0,

@@ -120,6 +120,9 @@ impl Character {
         } else {
             0
         };
+        if floor == 1 && hp < 1 {
+            self.chara.hp_pinned = true;
+        }
         self.chara.hp = hp.clamp(floor, self.chara.max_hp as i32) as i16;
     }
 
