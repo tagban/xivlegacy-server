@@ -871,6 +871,9 @@ pub async fn apply_runtime_lua_command(
             value,
         } => {
             apply_set_actor_mod(actor_id, modifier_key, value, registry).await;
+            if modifier_key == crate::actor::Modifier::MinimumHpLock.as_u32() && value == 0 {
+                heal_if_left_at_hp_pin(registry, world, actor_id).await;
+            }
             true
         }
         LC::MonsterMove {
@@ -2866,6 +2869,39 @@ async fn apply_set_actor_mod(
         modifier_key,
         value,
         "SetActorMod applied",
+    );
+}
+
+/// A duty's end lifts its `MinimumHpLock`. A player it held at the 1-HP pin
+/// leaves at full HP: the client had been told 0 HP by the blow the pin
+/// absorbed, so after Challenge Accepted (Gcu305) it showed 0/3200 (server
+/// 1/3200), drew the commander twice and sent no talk until a relog.
+async fn heal_if_left_at_hp_pin(registry: &ActorRegistry, world: &WorldManager, actor_id: u32) {
+    let Some(handle) = registry.get(actor_id).await else {
+        return;
+    };
+    if !handle.is_player() {
+        return;
+    }
+    let max_hp = {
+        let c = handle.character.read().await;
+        if c.chara.hp > 1 || c.chara.max_hp <= 1 {
+            return;
+        }
+        c.chara.max_hp
+    };
+    apply_set_pool(
+        registry,
+        world,
+        actor_id,
+        crate::lua::command::SetPoolKind::Hp,
+        i32::from(max_hp),
+    )
+    .await;
+    tracing::info!(
+        actor = actor_id,
+        max_hp,
+        "HP lock lifted at the pin: healed to full"
     );
 }
 
@@ -9335,6 +9371,37 @@ mod change_state_self_send_tests {
 
         assert_eq!(handle.character.read().await.chara.hp, 137);
         assert!(rx.try_recv().is_ok(), "owner should get the pool update");
+    }
+
+    /// Lifting the HP lock at the pin (a duty's end) heals to full; above
+    /// the pin HP is left alone.
+    #[tokio::test]
+    async fn lifting_the_hp_lock_at_the_pin_heals_to_full() {
+        let world = WorldManager::new();
+        let registry = ActorRegistry::new();
+        let handle = crate::runtime::actor_registry::ActorHandle::new(
+            1,
+            ActorKindTag::Player,
+            166,
+            7,
+            Character::new(1),
+        );
+        {
+            let mut c = handle.character.write().await;
+            c.chara.max_hp = 3200;
+            c.chara.hp = 1;
+            c.chara.mods.set(crate::actor::Modifier::MinimumHpLock, 1.0);
+        }
+        registry.insert(handle.clone()).await;
+        let (tx, _rx) = mpsc::channel::<Vec<u8>>(8);
+        world.register_client(7, ClientHandle::new(7, tx)).await;
+
+        heal_if_left_at_hp_pin(&registry, &world, 1).await;
+        assert_eq!(handle.character.read().await.chara.hp, 3200);
+
+        handle.character.write().await.chara.hp = 900;
+        heal_if_left_at_hp_pin(&registry, &world, 1).await;
+        assert_eq!(handle.character.read().await.chara.hp, 900);
     }
 
     #[tokio::test]
