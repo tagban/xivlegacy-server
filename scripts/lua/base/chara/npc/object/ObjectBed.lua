@@ -46,6 +46,12 @@ function onEventStarted(player, npc, triggerName)
 		startHildibrandQuests(player, npc);
 	end
 
+	-- Close the bed's event before leaving. Logging out with it still open
+	-- took the open event back to the character screen: after "Return to
+	-- the character screen" and logging in again, the client sent no chat
+	-- at all until a second relog.
+	player:EndEvent();
+
 	if (choice == 2) then
 		player:SetSleeping();
 		player:QuitGame();
@@ -55,7 +61,5 @@ function onEventStarted(player, npc, triggerName)
 	elseif (choice == 4) then
 		player:SendMessage(33, "", "Heck the bed");
 	end
-	
-	player:EndEvent();
-	
+
 end
