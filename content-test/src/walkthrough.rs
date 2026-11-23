@@ -764,6 +764,14 @@ impl UserData for Walkthrough {
             }
             Ok(this)
         });
+        // `notice()` fires the quest's `onNotice` hook the way a director's
+        // `quest:OnNotice(player)` does on the server: with no target.
+        methods.add_function("notice", |_, this: AnyUserData| {
+            this.borrow_mut::<Walkthrough>()?
+                .fire("onNotice", Vec::new())
+                .map_err(lua_err)?;
+            Ok(this)
+        });
         // `emote(classId, "emoteDefault1")` fires the quest's `onEmote` hook
         // with the Meteor calling convention `(player, quest, npc, eventName)`,
         // then resumes through any `wait(n)` park the hook opened with (the

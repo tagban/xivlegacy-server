@@ -31,7 +31,12 @@ function init()
 end
 
 function onEventStarted(player, director, eventType, eventName)
-	if (player:HasQuest(110002) == true) then
+	-- Fsh300 flags its own notice, so it is routed first: a Man0l1 or
+	-- Man0g1 left open in the journal must not take it.
+	local fsh300 = player:GetQuest(110501);
+	if (fsh300 ~= nil and fsh300:GetData():GetFlag(0)) then
+		fsh300:OnNotice(player);
+	elseif (player:HasQuest(110002) == true) then
 		quest = player:GetQuest(110002);
 		quest:OnNotice(player);
 	elseif (player:HasQuest(110006) == true) then

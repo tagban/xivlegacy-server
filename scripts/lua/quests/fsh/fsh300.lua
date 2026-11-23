@@ -62,6 +62,9 @@ LIMSA_ZONE = 230;
 GUILD_SPOT = { -611.9, 4.55, 342.57, -2.45 };
 DOCK_SPOT = { -639.1, 1.0, 400.38, -0.87 };
 
+-- Quest flags
+FLAG_SECOND_SCENE = 0; -- set while a crossing's second scene waits for onNotice
+
 -- The pullers' chatter. No speaker is named; these follow the lines'
 -- content (Daca Jinjahl speaks to Bloemerl, who answers; Xavalien is
 -- "Xavie").
@@ -153,6 +156,22 @@ local function warpTo(player, spot)
 	GetWorldManager():DoZoneChange(player, LIMSA_ZONE, nil, 0, 15, spot[1], spot[2], spot[3], spot[4]);
 end
 
+-- Two scenes that each end on an after-warp fade can't share one warp: the
+-- client is left with no input at all (no targeting, no movement) until a
+-- relog. So warp after the first one and play the second from onNotice,
+-- in a new event that AfterQuestWarpDirector starts once the client has
+-- landed. FLAG_SECOND_SCENE tells the director the notice is ours.
+local function warpThenNotice(player, quest, spot)
+	quest:GetData():SetFlag(FLAG_SECOND_SCENE);
+	player:EndEvent();
+	local director = GetWorldManager():GetArea(LIMSA_ZONE):CreateDirector("AfterQuestWarpDirector", false);
+	player:AddDirector(director);
+	director:StartDirector(true);
+	player:SetLoginDirector(director);
+	player:KickEvent(director, "noticeEvent", true);
+	warpTo(player, spot);
+end
+
 function onTalk(player, quest, npc, eventName)
 	local npcClassId = npc.GetActorClassId();
 	local seq = quest:GetSequence();
@@ -172,16 +191,12 @@ function onTalk(player, quest, npc, eventName)
 		quest:StartSequence(SEQ_010);
 	elseif (seq == SEQ_010 and npcClassId == ENPC_RERENASU) then
 		-- Across to the Barrel? (1 = yes) Then fsh30020 (feeding, the
-		-- stranger and his dance) and fsh30025 (off to Ul'dah), both ending
-		-- on an after-warp fade.
+		-- stranger and his dance); fsh30025 (off to Ul'dah) follows in
+		-- onNotice, after the warp.
 		local go = callClientFunction(player, "delegateEvent", player, quest, "processEvent010_1001");
 		if (go == 1) then
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent020");
-			callClientFunction(player, "delegateEvent", player, quest, "processEvent025");
-			player:GetItemPackage(INVENTORY_KEYITEMS):RemoveItem(ITEM_BARREL_FEED, 1);
-			quest:StartSequence(SEQ_028);
-			player:EndEvent();
-			warpTo(player, DOCK_SPOT);
+			warpThenNotice(player, quest, DOCK_SPOT);
 			return;
 		end
 	elseif (seq == SEQ_028 and npcClassId == ENPC_ROROJARU) then
@@ -189,16 +204,14 @@ function onTalk(player, quest, npc, eventName)
 		callClientFunction(player, "delegateEvent", player, quest, "processEvent028");
 		quest:StartSequence(SEQ_029);
 	elseif (seq == SEQ_029 and npcClassId == ENPC_RERENASU) then
-		-- Back to the Barrel: the dance (fsh30030), the catch (fsh30040)
-		-- and the stranger's farewell (fsh30050, after-warp fade).
+		-- Back to the Barrel: the dance (fsh30030) and the catch (fsh30040,
+		-- after-warp fade); the stranger's farewell (fsh30050) follows in
+		-- onNotice, after the warp.
 		local go = callClientFunction(player, "delegateEvent", player, quest, "processEvent010_1001");
 		if (go == 1) then
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent030");
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent040");
-			callClientFunction(player, "delegateEvent", player, quest, "processEvent050");
-			quest:StartSequence(SEQ_050);
-			player:EndEvent();
-			warpTo(player, GUILD_SPOT);
+			warpThenNotice(player, quest, DOCK_SPOT);
 			return;
 		end
 	elseif (seq == SEQ_050 and npcClassId == ENPC_SISIPU) then
@@ -223,6 +236,27 @@ function onTalk(player, quest, npc, eventName)
 	end
 
 	quest:UpdateENPCs();
+	player:EndEvent();
+end
+
+-- The second after-warp scene of a crossing (see warpThenNotice).
+function onNotice(player, quest, target)
+	local seq = quest:GetSequence();
+	quest:GetData():ClearFlag(FLAG_SECOND_SCENE);
+	if (seq == SEQ_010) then
+		callClientFunction(player, "delegateEvent", player, quest, "processEvent025");
+		player:GetItemPackage(INVENTORY_KEYITEMS):RemoveItem(ITEM_BARREL_FEED, 1);
+		quest:StartSequence(SEQ_028);
+		player:EndEvent();
+		warpTo(player, DOCK_SPOT);
+		return;
+	elseif (seq == SEQ_029) then
+		callClientFunction(player, "delegateEvent", player, quest, "processEvent050");
+		quest:StartSequence(SEQ_050);
+		player:EndEvent();
+		warpTo(player, GUILD_SPOT);
+		return;
+	end
 	player:EndEvent();
 end
 
