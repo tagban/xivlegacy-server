@@ -166,15 +166,18 @@ function onTalk(player, quest, npc, eventName)
 		warpTo(player, GUILD_SPOT);
 		return;
 	elseif (seq == SEQ_010 and npcClassId == ENPC_NNMULIKA) then
-		-- Which catch to bring in.
-		callClientFunction(player, "delegateEvent", player, quest, "processEvent015", ITEM_NAUTILUS);
+		-- Which catch to bring in. Its line names the catch with an item
+		-- macro, but given an item id (any id, not only the nautilus) the
+		-- client's macro times out with a script error and the event never
+		-- returns: no input until a relog. Without it the line still plays.
+		callClientFunction(player, "delegateEvent", player, quest, "processEvent015");
 		quest:StartSequence(SEQ_015);
 	elseif (seq == SEQ_015 and npcClassId == ENPC_NNMULIKA) then
 		if (player:GetItemPackage(INVENTORY_NORMAL):HasItem(ITEM_NAUTILUS, 1)) then
 			-- Bought for the sale, then fsh30620: the sale closes. It ends
 			-- on an after-warp fade.
 			player:GetItemPackage(INVENTORY_NORMAL):RemoveItem(ITEM_NAUTILUS, 1);
-			callClientFunction(player, "delegateEvent", player, quest, "processEvent015_3", ITEM_NAUTILUS, 1);
+			callClientFunction(player, "delegateEvent", player, quest, "processEvent015_3", nil, 1); -- no item id: see SEQ_010
 			player:AddGil(SALE_GIL);
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent020");
 			quest:StartSequence(SEQ_020);
