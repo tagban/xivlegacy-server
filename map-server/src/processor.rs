@@ -11832,8 +11832,13 @@ pub(crate) fn build_player_snapshot_for_login(
         guardian: c.chara.guardian,
         birth_month: c.chara.birthday_month,
         birth_day: c.chara.birthday_day,
-        homepoint: 0,
-        homepoint_inn: 0,
+        // Home point + inn slot, hydrated onto CharaState at
+        // session-begin (`character.chara.homepoint = loaded.homepoint`).
+        // A hardcoded 0 here made `player:GetHomePoint()` read 0 in every
+        // command/quest script, so Return showed "Returning..." and then
+        // went nowhere (TeleportCommand.lua found no destination).
+        homepoint: c.chara.homepoint,
+        homepoint_inn: c.chara.homepoint_inn,
         // Hotbar mirrored to CharaState at session-begin (see the
         // `character.chara.hotbar = loaded.hotbar.clone()` line in
         // the LoadedPlayer hydration above). Registry-reachable +
@@ -12438,5 +12443,26 @@ mod open_world_actor_zone_tests {
         assert_eq!(open_world_actor_zone(0x0000_0001), None);
         assert_eq!(open_world_actor_zone(0x6408_0003), None);
         assert_eq!(open_world_actor_zone(0x44FE_0BA4 | 0x0004_0000), None);
+    }
+}
+
+#[cfg(test)]
+mod home_point_snapshot_tests {
+    use super::*;
+
+    /// `player:GetHomePoint()` in TeleportCommand.lua (Return) reads the
+    /// snapshot. It must carry the home point hydrated onto CharaState at
+    /// login, or Return says "Returning..." and goes nowhere.
+    #[test]
+    fn snapshot_carries_the_hydrated_home_point() {
+        let mut c = Character::new(7);
+        c.chara.homepoint = 1_280_031; // Ul'dah CAP
+        c.chara.homepoint_inn = 2;
+        let s = build_player_snapshot_for_login(&c);
+        assert_eq!(s.homepoint, 1_280_031);
+        assert_eq!(s.homepoint_inn, 2);
+        let s = build_player_snapshot_from_character(&c);
+        assert_eq!(s.homepoint, 1_280_031);
+        assert_eq!(s.homepoint_inn, 2);
     }
 }
