@@ -627,6 +627,10 @@ pub async fn apply_runtime_lua_command(
             crate::leve::faction::add_credits(player_id, faction, amount, registry, db).await;
             true
         }
+        LC::SpendAnima { player_id, amount } => {
+            crate::runtime::anima::spend(player_id, amount, registry, db).await;
+            true
+        }
         LC::StartBattleleve {
             player_id,
             guildleve_id,
@@ -7723,6 +7727,7 @@ pub async fn apply_quest_on_notice(
             current_job: c.chara.current_job as u8,
             gc_current: c.chara.gc_current,
             faction_credits: c.chara.faction_credits,
+            anima: c.chara.anima_now(),
             gc_rank_limsa: c.chara.gc_rank_limsa,
             gc_rank_gridania: c.chara.gc_rank_gridania,
             gc_rank_uldah: c.chara.gc_rank_uldah,
@@ -8305,6 +8310,7 @@ async fn fire_quest_npc_hook_via_command(
             current_job: c.chara.current_job as u8,
             gc_current: c.chara.gc_current,
             faction_credits: c.chara.faction_credits,
+            anima: c.chara.anima_now(),
             gc_rank_limsa: c.chara.gc_rank_limsa,
             gc_rank_gridania: c.chara.gc_rank_gridania,
             gc_rank_uldah: c.chara.gc_rank_uldah,
@@ -8536,6 +8542,7 @@ pub async fn fire_quest_on_talk_via_command(
             current_job: c.chara.current_job as u8,
             gc_current: c.chara.gc_current,
             faction_credits: c.chara.faction_credits,
+            anima: c.chara.anima_now(),
             gc_rank_limsa: c.chara.gc_rank_limsa,
             gc_rank_gridania: c.chara.gc_rank_gridania,
             gc_rank_uldah: c.chara.gc_rank_uldah,
@@ -8743,6 +8750,7 @@ async fn fire_quest_hook(
             current_job: c.chara.current_job as u8,
             gc_current: c.chara.gc_current,
             faction_credits: c.chara.faction_credits,
+            anima: c.chara.anima_now(),
             gc_rank_limsa: c.chara.gc_rank_limsa,
             gc_rank_gridania: c.chara.gc_rank_gridania,
             gc_rank_uldah: c.chara.gc_rank_uldah,

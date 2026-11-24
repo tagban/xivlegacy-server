@@ -2628,6 +2628,10 @@ impl Database {
             .load_faction_credits(chara_id)
             .await
             .unwrap_or_default();
+        (player.anima, player.anima_stamp) = self
+            .load_anima(chara_id)
+            .await
+            .unwrap_or((crate::runtime::anima::MAX, 0));
         player.npc_linkshells = self.load_npc_linkshells(chara_id).await.unwrap_or_default();
 
         for (target, ty) in [
@@ -3412,6 +3416,46 @@ impl Database {
             })
             .await?;
         Ok(credits)
+    }
+
+    /// A character's anima and the unix time it was last brought up to
+    /// date (`characters_anima`); a full 100 when there is no row.
+    async fn load_anima(&self, chara_id: u32) -> Result<(u8, i64)> {
+        let row = self
+            .conn
+            .call_db(move |c| {
+                let mut stmt = c.prepare(
+                    r"SELECT anima, stamp FROM characters_anima WHERE characterId = :cid",
+                )?;
+                let mut rows = stmt.query_map(named_params! { ":cid": chara_id }, |r| {
+                    Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?))
+                })?;
+                rows.next().transpose()
+            })
+            .await?;
+        Ok(match row {
+            Some((anima, stamp)) => (
+                anima.clamp(0, i64::from(crate::runtime::anima::MAX)) as u8,
+                stamp,
+            ),
+            None => (crate::runtime::anima::MAX, 0),
+        })
+    }
+
+    /// Store a character's anima and the time it was brought up to date.
+    pub async fn save_anima(&self, chara_id: u32, anima: u8, stamp: i64) -> Result<()> {
+        self.conn
+            .call_db(move |c| {
+                c.execute(
+                    r"INSERT INTO characters_anima (characterId, anima, stamp)
+                      VALUES (:cid, :a, :s)
+                      ON DUPLICATE KEY UPDATE anima = VALUES(anima), stamp = VALUES(stamp)",
+                    named_params! { ":cid": chara_id, ":a": anima, ":s": stamp },
+                )?;
+                Ok(())
+            })
+            .await?;
+        Ok(())
     }
 
     /// Store a character's credits with `faction` (1..=3).

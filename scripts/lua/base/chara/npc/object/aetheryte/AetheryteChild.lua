@@ -64,13 +64,19 @@ function doNormalMenu(player, aetheryte)
 
 	local aetheryteId = aetheryte:GetActorClassId();
 	local parentNode = aetheryteChildLinks[aetheryteId];
-	local menuChoice = callClientFunction(player, "eventAetheryteChildSelect", true, parentNode, 100, 1);
+	local menuChoice = callClientFunction(player, "eventAetheryteChildSelect", true, parentNode, player:GetAnima(), player:GetGateAnimaCost());
 	
 	--Teleport
 	if (menuChoice == 2) then
 		printf("%ud", parentNode);
 		destination = aetheryteTeleportPositions[parentNode];
-		
+		-- 1 anima, charged only when the hop goes ahead (34114: not
+		-- enough anima, see TeleportCommand.lua).
+		if (destination ~= nil and player:SpendAnima(player:GetGateAnimaCost()) == false) then
+			player:SendGameMessage(GetWorldMaster(), 34114, 0x20, player:GetAnima(), player:GetGateAnimaCost());
+			destination = nil;
+		end
+
 		if (destination ~= nil) then
 			randoPos = getRandomPointInBand(destination[2], destination[4], 3, 5);
 			rotation = getAngleFacing(randoPos.x, randoPos.y, destination[2], destination[4]);

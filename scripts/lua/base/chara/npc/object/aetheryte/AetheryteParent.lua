@@ -5,6 +5,7 @@ AetheryteParent Script
 Functions:
 
 eventAetheryteParentSelect(showTeleportMenu, animaAmount, gate1, gate2, gate3, gate4, gate5) - Open Menu
+	(a hop to one of the gates costs player:GetGateAnimaCost(), 1 anima)
 eventAetheryteParentDesion(sheetId) - Show Homepoint Set Message
 
 eventGLSelect(?) - Open GL selector
@@ -138,7 +139,7 @@ function doNormalMenu(player, aetheryte)
 		showTeleportOptions = false;
 	end
 	
-	local choice = callClientFunction(player, "eventAetheryteParentSelect", showTeleportOptions, 100, activeChildNodes[1], activeChildNodes[2], activeChildNodes[3], activeChildNodes[4], activeChildNodes[5]);
+	local choice = callClientFunction(player, "eventAetheryteParentSelect", showTeleportOptions, player:GetAnima(), activeChildNodes[1], activeChildNodes[2], activeChildNodes[3], activeChildNodes[4], activeChildNodes[5]);
 	
 	if (choice ~= nil) then 
 		--Init Leavequest
@@ -157,6 +158,12 @@ function doNormalMenu(player, aetheryte)
 		--Teleport to Gate
 		elseif (choice > 0) then
 			destination = aetheryteTeleportPositions[activeChildNodes[choice]];
+			-- 1 anima, charged only when the hop goes ahead (34114: not
+			-- enough anima, see TeleportCommand.lua).
+			if (destination ~= nil and player:SpendAnima(player:GetGateAnimaCost()) == false) then
+				player:SendGameMessage(GetWorldMaster(), 34114, 0x20, player:GetAnima(), player:GetGateAnimaCost());
+				destination = nil;
+			end
 			if (destination ~= nil) then
 				randoPos = getRandomPointInBand(destination[2], destination[4], 3, 5);
 				rotation = getAngleFacing(randoPos.x, randoPos.y, destination[2], destination[4]);

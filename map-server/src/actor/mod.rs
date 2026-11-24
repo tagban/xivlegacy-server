@@ -318,6 +318,11 @@ pub struct CharaState {
     /// Faction credits (`characters_faction_credit`), by faction: Broken
     /// Blade, Azeyma's Shields, Horn and Hand.
     pub faction_credits: [u16; 3],
+    /// Anima (`characters_anima`, crate::runtime::anima): the amount when
+    /// `anima_stamp` (unix seconds) was last brought up to date. Read it
+    /// through [`CharaState::anima_now`], which adds what has come back.
+    pub anima: u8,
+    pub anima_stamp: i64,
     /// Equipped title (`characters.currentTitle`), hydrated at
     /// session-begin so the zone-in bundle emits `SetPlayerTitle`. The
     /// authoritative runtime copy; `PlayerState.current_title` stays as
@@ -440,6 +445,8 @@ impl Default for CharaState {
             guildleves_local: Vec::new(),
             guildleves_regional: Vec::new(),
             faction_credits: [0; 3],
+            anima: crate::runtime::anima::MAX,
+            anima_stamp: 0,
             current_title: 0,
             unlocked_aetherytes: std::collections::HashSet::new(),
             snpc_nickname: String::new(),
@@ -476,6 +483,12 @@ impl Default for CharaState {
 }
 
 impl CharaState {
+    /// The anima held now: the stored amount plus what has come back since
+    /// `anima_stamp` (crate::runtime::anima::regen).
+    pub fn anima_now(&self) -> u8 {
+        crate::runtime::anima::regen(self.anima, self.anima_stamp, crate::runtime::anima::now()).0
+    }
+
     pub fn is_dead(&self) -> bool {
         self.hp <= 0
     }

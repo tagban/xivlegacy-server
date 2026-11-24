@@ -495,6 +495,10 @@ pub struct LoadedPlayer {
     pub guildleves_regional: Vec<GuildleveRegionalEntry>,
     /// Faction credits, by faction (Broken Blade, Shields, Horn and Hand).
     pub faction_credits: [u16; 3],
+    /// Anima and the time it was last brought up to date
+    /// (`characters_anima`; no row = full).
+    pub anima: u8,
+    pub anima_stamp: i64,
     pub npc_linkshells: Vec<NpcLinkshellEntry>,
 
     pub inventory_normal: Vec<InventoryItem>,

@@ -8,6 +8,16 @@ eventRegion(numAnima)
 eventAetheryte(region, animaCost1, animaCost2, animaCost3, animaCost4, animaCost5, animaCost6)
 eventConfirm(isReturn, isInBattle, cityReturnNum, 138821, forceAskReturnOnly)
 
+Anima (map-server/src/runtime/anima.rs): 1 back every 4 hours, up to 100.
+Another region costs 6, the current region 4, a city's aetheryte plaza
+half (3 or 2). Return is free. Favored destinations (also half price) are
+not built in this server yet. Game messages (worldmaster sheet,
+client data/03/A2/00/BC.DAT):
+  34101 "Teleporting to <aetheryte>... Anima cost: <cost> of <held>"
+        params: 2 (teleport), aetheryte id, cost, held
+  34114 "You do not have enough anima. (<p2> of <p1>)"
+        sent as (held, cost) so it reads "cost of held" like 34101
+
 --]]
 
 require ("global")
@@ -71,12 +81,18 @@ function onEventStarted(player, actor, triggerName, isTeleport)
 
 	if (isTeleport == 0) then		
 		while (true) do
-			regionChoice = callClientFunction(player, "delegateCommand", actor, "eventRegion", 100);
+			regionChoice = callClientFunction(player, "delegateCommand", actor, "eventRegion", player:GetAnima());
 			
 			if (regionChoice == nil) then break	end
 		
 			while (true) do
-				aetheryteChoice = callClientFunction(player, "delegateCommand", actor, "eventAetheryte", regionChoice, 2, 2, 2, 4, 4, 4);
+				-- Each destination's cost from where the player stands (0
+				-- for a slot the region doesn't have).
+				local costs = {0, 0, 0, 0, 0, 0};
+				for slot, aetheryteId in pairs(teleportMenuToAetheryte[regionChoice] or {}) do
+					costs[slot] = player:GetTeleportAnimaCost(aetheryteId);
+				end
+				aetheryteChoice = callClientFunction(player, "delegateCommand", actor, "eventAetheryte", regionChoice, costs[1], costs[2], costs[3], costs[4], costs[5], costs[6]);
 				
 				if (aetheryteChoice == nil) then break end
 
@@ -93,17 +109,27 @@ function onEventStarted(player, actor, triggerName, isTeleport)
 				-- as AetheryteParent.lua's leve-error line) and loop back
 				-- to the aetheryte list. Return/inn/homepoint branches
 				-- below stay ungated.
+				local animaCost = player:GetTeleportAnimaCost(destAetheryteId);
+				local anima = player:GetAnima();
 				if (player:HasAetheryteNodeUnlocked(destAetheryteId) == false) then
 					player:SendMessage(0x20, "", "You are not attuned to that aetheryte.");
+				elseif (anima < animaCost) then
+					-- Too little anima: say so and go back to the list.
+					player:SendGameMessage(worldMaster, 34114, 0x20, anima, animaCost);
 				else
 					player:PlayAnimation(0x4000FFA);
-					player:SendGameMessage(worldMaster, 34101, 0x20, 2, destAetheryteId, 100, 100);
+					player:SendGameMessage(worldMaster, 34101, 0x20, 2, destAetheryteId, animaCost, anima);
 					confirmChoice = callClientFunction(player, "delegateCommand", actor, "eventConfirm", false, false, 1, 138824, false);
 					if (confirmChoice == 1) then
 						player:PlayAnimation(0x4000FFB);
 						player:SendGameMessage(worldMaster, 34105, 0x20);
 						--Do teleport
 						destination = aetheryteTeleportPositions[destAetheryteId];
+						-- Charge only when the teleport goes ahead.
+						if (destination ~= nil and player:SpendAnima(animaCost) == false) then
+							player:SendGameMessage(worldMaster, 34114, 0x20, anima, animaCost);
+							destination = nil;
+						end
 						if (destination ~= nil) then
 							randoPos = getRandomPointInBand(destination[2], destination[4], 3, 5);
 							rotation = getAngleFacing(randoPos.x, randoPos.y, destination[2], destination[4]);

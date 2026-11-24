@@ -495,6 +495,8 @@ impl PacketProcessor {
         character.chara.guildleves_local = loaded.guildleves_local.clone();
         character.chara.guildleves_regional = loaded.guildleves_regional.clone();
         character.chara.faction_credits = loaded.faction_credits;
+        character.chara.anima = loaded.anima;
+        character.chara.anima_stamp = loaded.anima_stamp;
         // Equipped-title hydration — mirror `currentTitle` so the zone-in
         // bundle can emit `SetPlayerTitle`; the DB column already loaded into
         // `loaded.current_title` but was never applied to the runtime actor.
@@ -2121,6 +2123,9 @@ impl PacketProcessor {
                     &self.db,
                 )
                 .await;
+            }
+            LC::SpendAnima { player_id, amount } => {
+                crate::runtime::anima::spend(player_id, amount, &self.registry, &self.db).await;
             }
             LC::StartBattleleve {
                 player_id,
@@ -11859,6 +11864,7 @@ pub(crate) fn build_player_snapshot_for_login(
         rental_min_left: c.chara.rental_min_left,
         gc_current: c.chara.gc_current,
         faction_credits: c.chara.faction_credits,
+        anima: c.chara.anima_now(),
         gc_rank_limsa: c.chara.gc_rank_limsa,
         gc_rank_gridania: c.chara.gc_rank_gridania,
         gc_rank_uldah: c.chara.gc_rank_uldah,
