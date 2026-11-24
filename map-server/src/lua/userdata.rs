@@ -782,8 +782,10 @@ impl From<&crate::actor::Player> for PlayerSnapshot {
             guardian: p.character.chara.guardian,
             birth_month: p.character.chara.birthday_month,
             birth_day: p.character.chara.birthday_day,
-            homepoint: p.player.homepoint,
-            homepoint_inn: p.player.homepoint_inn,
+            // CharaState carries the hydrated home point (PlayerState's
+            // copy is never loaded from the DB).
+            homepoint: p.character.chara.homepoint,
+            homepoint_inn: p.character.chara.homepoint_inn,
             // Hotbar lives on CharaState (mirrored at session-begin
             // from LoadedPlayer.hotbar) — registry-reachable so the
             // EquipAbility/UnequipAbility/SwapAbilities apply paths
