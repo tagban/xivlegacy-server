@@ -53,6 +53,7 @@ pub async fn run(config: Config, db: Database, smoke: bool) -> Result<()> {
             .unwrap_or_default(),
         bug_reports: bug_reports.clone(),
         reports_gm_level: config.reports_gm_level(),
+        default_gm_level: config.default_gm_level(),
     };
 
     let app = Router::new()

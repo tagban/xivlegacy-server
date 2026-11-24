@@ -21,6 +21,13 @@ hours = 24
 # Only accounts with users.gmLevel at or above this may sign in (at least 1).
 gm_level = 1
 
+[accounts]
+# users.gmLevel for every account signed up from now on (existing accounts
+# never change). 0 = a player (retail). 1-4 make every new account a GM
+# (4 = administrator): only for a private or solo server, and the server warns
+# about it at every start. See settings/README.md, "Gameplay limits".
+default_gm_level = 0
+
 [tls]
 # HTTPS for sign-up and sign-in, beside the plain HTTP port above. Optional:
 # it stays off until you set domains or cert_file. Advised for any server

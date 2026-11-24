@@ -75,21 +75,27 @@ impl Database {
             .context("ping")
     }
 
-    /// Insert a new account row. Returns the new user's `id`, or `None` if
-    /// the username is already taken (SQLite `UNIQUE` violation). All other
-    /// errors propagate.
-    pub async fn create_user(&self, username: &str, password_hash: &str) -> Result<Option<i64>> {
+    /// Insert a new account row at `gm_level` (0 = player). Returns the new
+    /// user's `id`, or `None` if the username is already taken (`UNIQUE`
+    /// violation). All other errors propagate.
+    pub async fn create_user(
+        &self,
+        username: &str,
+        password_hash: &str,
+        gm_level: u8,
+    ) -> Result<Option<i64>> {
         let username = username.to_owned();
         let password_hash = password_hash.to_owned();
         let id = self
             .conn
             .call_db(move |c| {
                 let res = c.execute(
-                    r"INSERT INTO users(username, passwordHash)
-                      VALUES(:u, :p)",
+                    r"INSERT INTO users(username, passwordHash, gmLevel)
+                      VALUES(:u, :p, :g)",
                     named_params! {
                         ":u": username,
                         ":p": password_hash,
+                        ":g": i64::from(gm_level),
                     },
                 );
                 match res {
@@ -270,5 +276,35 @@ impl Database {
             })
             .await
             .context("status query")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    async fn gm_level_of(db: &Database, id: i64) -> i64 {
+        db.conn
+            .call_db(move |c| {
+                c.query_row(
+                    "SELECT gmLevel FROM users WHERE id = :id",
+                    named_params! { ":id": id },
+                    |r| r.get::<_, i64>(0),
+                )
+            })
+            .await
+            .unwrap()
+    }
+
+    /// New accounts get the configured GM level; 0 is a player.
+    #[tokio::test]
+    async fn create_user_sets_the_gm_level() {
+        let db = Database::open(common::test_db::fresh().await.unwrap())
+            .await
+            .unwrap();
+        let player = db.create_user("player1", "x", 0).await.unwrap().unwrap();
+        let gm = db.create_user("gm1", "x", 3).await.unwrap().unwrap();
+        assert_eq!(gm_level_of(&db, player).await, 0);
+        assert_eq!(gm_level_of(&db, gm).await, 3);
     }
 }

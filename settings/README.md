@@ -40,6 +40,38 @@ Turn on HTTPS too, so players' passwords don't cross the internet in the clear
 Let's Encrypt certificate the web server fetches and renews itself, plus TCP
 443 forwarded. See [docs/https.md](../docs/https.md).
 
+## Gameplay limits
+
+Level cap, EXP rate, bag size and the GM level of new accounts are yours to
+choose. Every default is the 1.23b retail value. Each setting has a **safe**
+range and a **hard** range, checked once at start-up:
+
+- a value that isn't retail is logged at INFO (`non-retail setting: ...`);
+- outside the safe range the server warns (WARN, with the reason) and uses it;
+- outside the hard range the client breaks, so the server logs an ERROR and
+  uses the nearest end of the range instead. A gameplay value never stops the
+  server from starting.
+
+`settings/map.toml`, for example a 30-cap event server with double EXP:
+
+```toml
+[progression]
+level_cap = 30
+exp_rate_percent = 200
+```
+
+| Setting | File | Retail | Default | Safe | Hard | Beyond the limits |
+| --- | --- | --- | --- | --- | --- | --- |
+| `[progression] level_cap` | map | 50 | 50 | 1-50 | 1-50 | The client's EXP bar and the server's level, stat and ability tables end at 50, so 50 is the most. Characters above a lowered cap keep their level and earn no EXP toward the next; GM `!setlevel` still goes to 50. |
+| `[progression] exp_rate_percent` | map | 100 | 100 | 0-1000 | 0-10000 | Multiplies every EXP gain of the battle classes (kills, quests, leves, GM `!giveexp`), after rested and food bonuses, rounded up. Above 1000 (10x) one kill or quest levels a character several times; past 10000 (100x) one quest reward covers the whole 1-50 curve (1,781,150 EXP), so it's clamped. 0 = no EXP. |
+| `[progression] crafting_gathering_exp_rate_percent` | map | 100 | 100 | 0-1000 | 0-10000 | The same for the crafters (carpenter to culinarian) and gatherers (miner, botanist, fisher). |
+| `[storage] bag_slots` | map | 200 | 200 | 50-200 | 1-200 | Normal-bag slots that take new items. The 1.23b client crashes at every login with an item at bag slot 200 or above, so this can only be lowered. Below 50 the bag fills fast: quest rewards, purchases and gathered items that don't fit are lost. Items already past a lowered size stay. |
+| `[accounts] default_gm_level` | web | 0 | 0 | 0 | 0-4 | `users.gmLevel` for accounts signed up from now on (existing accounts never change). Anything above 0 makes every new account a GM, so the server warns at every start: only for private or solo servers. 4 (administrator) is the highest level. |
+
+Other bags (currency 320, key items 500, loot, bazaar, equipment) stay at
+their retail sizes: lowering them loses crystals or quest key items, and the
+client's limits past retail are unknown.
+
 ## GMs and chat commands
 
 Players type commands in chat, starting with `!` (`!zone gridania`). What each

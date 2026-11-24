@@ -31,6 +31,8 @@ pub struct Config {
     pub database: DatabaseSection,
     pub scripting: ScriptingSection,
     pub world: WorldSection,
+    pub progression: crate::gameplay::ProgressionSection,
+    pub storage: crate::gameplay::StorageSection,
 }
 
 #[derive(Debug, Clone, Deserialize)]

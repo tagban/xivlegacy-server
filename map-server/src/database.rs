@@ -1913,7 +1913,8 @@ impl Database {
     /// The [`send_inventory_package_update`] send path emits one `list_x01`
     /// per matching row, so spilled stacks render with no send-side change.
     ///
-    /// New stacks take the lowest free slot below `CAP_NORMAL` (200); when
+    /// New stacks take the lowest free slot below the host's
+    /// `[storage] bag_slots` (retail and at most `CAP_NORMAL`, 200); when
     /// the bag is full the rest is not added (a warning is logged), since
     /// an item at slot 200+ makes the client throw at every login.
     ///
@@ -1926,6 +1927,22 @@ impl Database {
         delta: i32,
         quality: u8,
     ) -> Result<i32> {
+        let bag_slots = crate::gameplay::current().bag_slots;
+        self.add_harvest_item_in_bag(chara_id, item_catalog_id, delta, quality, bag_slots)
+            .await
+    }
+
+    /// [`Self::add_harvest_item`] with an explicit bag size (clamped to
+    /// `CAP_NORMAL`).
+    pub async fn add_harvest_item_in_bag(
+        &self,
+        chara_id: u32,
+        item_catalog_id: u32,
+        delta: i32,
+        quality: u8,
+        bag_slots: u16,
+    ) -> Result<i32> {
+        let bag_slots = bag_slots.min(crate::inventory::CAP_NORMAL);
         if delta <= 0 || item_catalog_id == 0 {
             return Ok(0);
         }
@@ -2007,9 +2024,7 @@ impl Database {
                 // throws on an item at slot 200 or above and then can't log
                 // that character in at all.
                 while remaining > 0 {
-                    let Some(next_slot) =
-                        free_bag_slot(&tx, chara_id, 0, crate::inventory::CAP_NORMAL)?
-                    else {
+                    let Some(next_slot) = free_bag_slot(&tx, chara_id, 0, bag_slots)? else {
                         tracing::warn!(
                             chara = chara_id,
                             item = item_catalog_id,
@@ -6604,6 +6619,7 @@ impl Database {
         retainer_id: u32,
         server_item_id: u64,
     ) -> Result<PurchaseOutcome> {
+        let bag_slots = crate::gameplay::current().bag_slots;
         let outcome = self
             .conn
             .call_db(move |c| {
@@ -6685,6 +6701,34 @@ impl Database {
                         need: total_price,
                     });
                 }
+
+                // The stack lands in the buyer's NORMAL bag: merged into a
+                // matching stack, else a free slot below the bag size. A
+                // full bag refuses the purchase before any gil moves.
+                let buyer_stack: Option<i64> = tx
+                    .query_row(
+                        r"SELECT si.id FROM server_items si
+                          INNER JOIN characters_inventory ci ON ci.serverItemId = si.id
+                          WHERE ci.characterId = :cid
+                            AND ci.itemPackage = 0
+                            AND si.itemId = :iid
+                            AND si.quality = :q
+                          LIMIT 1",
+                        named_params! {
+                            ":cid": buyer_chara_id,
+                            ":iid": item_id,
+                            ":q": quality as i64,
+                        },
+                        |r| r.get::<_, i64>(0),
+                    )
+                    .optional()?;
+                let buyer_slot = match buyer_stack {
+                    Some(_) => None,
+                    None => match free_bag_slot(&tx, buyer_chara_id, 0, bag_slots)? {
+                        Some(slot) => Some(slot),
+                        None => return Ok(PurchaseOutcome::BagFull),
+                    },
+                };
 
                 // Deduct from buyer. Uses the same merge-aware
                 // pattern `add_gil` produces: find the existing
@@ -6782,24 +6826,7 @@ impl Database {
                 )?;
 
                 // Merge into buyer's NORMAL bag (itemPackage = 0).
-                let existing_sid: Option<i64> = tx
-                    .query_row(
-                        r"SELECT si.id FROM server_items si
-                          INNER JOIN characters_inventory ci ON ci.serverItemId = si.id
-                          WHERE ci.characterId = :cid
-                            AND ci.itemPackage = 0
-                            AND si.itemId = :iid
-                            AND si.quality = :q
-                          LIMIT 1",
-                        named_params! {
-                            ":cid": buyer_chara_id,
-                            ":iid": item_id,
-                            ":q": quality as i64,
-                        },
-                        |r| r.get::<_, i64>(0),
-                    )
-                    .optional()?;
-                match existing_sid {
+                match buyer_stack {
                     Some(sid) => {
                         tx.execute(
                             "UPDATE server_items SET quantity = quantity + :q WHERE id = :id",
@@ -6817,15 +6844,7 @@ impl Database {
                             },
                         )?;
                         let new_sid = tx.last_insert_rowid();
-                        let next_slot: i32 = tx
-                            .query_row(
-                                r"SELECT COALESCE(MAX(slot), -1) + 1
-                                  FROM characters_inventory
-                                  WHERE characterId = :cid AND itemPackage = 0",
-                                named_params! { ":cid": buyer_chara_id },
-                                |r| r.get::<_, i32>(0),
-                            )
-                            .unwrap_or(0);
+                        let next_slot = buyer_slot.unwrap_or(0);
                         tx.execute(
                             r"INSERT INTO characters_inventory
                                 (characterId, itemPackage, serverItemId, slot)
@@ -6945,6 +6964,9 @@ pub enum PurchaseOutcome {
     ListingGone,
     /// Buyer's gil balance is below the stack total.
     InsufficientGil { have: i32, need: i32 },
+    /// The buyer's bag has no free slot (`[storage] bag_slots`) and no
+    /// stack to merge into.
+    BagFull,
 }
 
 /// One row of the retainer bazaar — surfaces through `list_retainer_bazaar`
@@ -7765,6 +7787,35 @@ mod add_harvest_item_stack_cap_tests {
         assert_eq!(db.add_harvest_item(0, ITEM, 2, 1).await.unwrap(), 200);
         let slots: Vec<u16> = normal_rows(&db, ITEM).await.iter().map(|r| r.2).collect();
         assert_eq!(slots, (0..200).collect::<Vec<u16>>());
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// `[storage] bag_slots` lowered to 10: the eleventh stack is refused,
+    /// a stack already in the bag still grows.
+    #[tokio::test]
+    async fn add_harvest_item_respects_a_lowered_bag_size() {
+        const ITEM: u32 = 90_000_006;
+        let path = tempdb("bag-slots");
+        let db = Database::open(&path).await.expect("open db");
+        seed_item_cap(&db, ITEM, 1).await;
+
+        assert_eq!(
+            db.add_harvest_item_in_bag(0, ITEM, 12, 1, 10)
+                .await
+                .unwrap(),
+            10
+        );
+        let rows = normal_rows(&db, ITEM).await;
+        assert_eq!(rows.len(), 10);
+        assert_eq!(rows.iter().map(|r| r.2).max(), Some(9));
+        // a size past the client's 200 is held to 200
+        assert_eq!(
+            db.add_harvest_item_in_bag(0, ITEM, 300, 1, 999)
+                .await
+                .unwrap(),
+            200
+        );
 
         let _ = std::fs::remove_file(&path);
     }

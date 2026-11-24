@@ -29,3 +29,27 @@ dalamud_phase = 0
 # Weather id (1 = clear) + transition time emitted at zone-in.
 weather_id = 1
 weather_transition = 1
+
+# Gameplay limits. Every default is the 1.23b retail value. Each setting has a
+# safe range (outside it the server warns at start-up) and a hard range (the
+# server uses the nearest end instead and logs an error, since the client
+# breaks past it). Table with the reasons: settings/README.md, "Gameplay limits".
+[progression]
+# Highest level a class reaches by earning EXP. Retail 50; 1-50 (the client's
+# EXP bar and the level tables end at 50). Characters already above a lowered
+# cap keep their level and earn no EXP toward the next.
+level_cap = 50
+# EXP multiplier, percent, for every class but the crafters and gatherers:
+# kills, quests, leves, GM !giveexp, after rested/food bonuses. Retail 100;
+# safe 0-1000, hard 0-10000.
+exp_rate_percent = 100
+# The same for the crafters (carpenter..culinarian) and gatherers (miner,
+# botanist, fisher). Retail 100; safe 0-1000, hard 0-10000.
+crafting_gathering_exp_rate_percent = 100
+
+[storage]
+# Normal-bag slots that take new items. Retail 200; safe 50-200, hard 1-200
+# (the client crashes at every login with an item at slot 200 or above, so it
+# can only be lowered). Items already past a lowered size stay; new ones that
+# don't fit are refused.
+bag_slots = 200
