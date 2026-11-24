@@ -1,0 +1,152 @@
+{
+  "about": "server = layout + offset; see README.md for how each was checked",
+  "layouts": {
+    "fst_f0_fld01": {"offset": [0.0, 0.0, 0.0], "checked": "field layouts are in server coordinates; walked to the Blue Badger Gate on it (2026-11-24)"},
+    "fst_f0_fld02": {"offset": [0.0, 0.0, 0.0], "checked": "assumed: field layouts are in server coordinates, like the three checked ones; no walk yet"},
+    "fst_f0_fld03": {"offset": [0.0, 0.0, 0.0], "checked": "assumed: field layouts are in server coordinates, like the three checked ones; no walk yet"},
+    "fst_f0_fld04": {"offset": [0.0, 0.0, 0.0], "checked": "assumed: field layouts are in server coordinates, like the three checked ones; no walk yet"},
+    "fst_f0_fld05": {"offset": [0.0, 0.0, 0.0], "checked": "assumed: field layouts are in server coordinates, like the three checked ones; no walk yet"},
+    "fst_f0_ind01": {
+      "offset": [32.0, 12.0, -1312.0],
+      "checked": "98% of walked positions (zones 155/206/150 test logs) on a floor within 1 yalm; walked Carline Canopy -> Blue Badger Gate (2026-11-24)"
+    },
+    "fst_f0_twn01": {
+      "offset": [32.0, 12.0, -1312.0],
+      "checked": "98% of walked positions (zones 155/206/150 test logs) on a floor within 1 yalm; walked Carline Canopy -> Blue Badger Gate (2026-11-24)"
+    },
+    "lak_l0_fld01": {"offset": [0.0, 0.0, 0.0], "checked": "assumed: field layouts are in server coordinates, like the three checked ones; no walk yet"},
+    "roc_r0_fld01": {"offset": [0.0, 0.0, 0.0], "checked": "assumed: field layouts are in server coordinates, like the three checked ones; no walk yet"},
+    "roc_r0_fld02": {"offset": [0.0, 0.0, 0.0], "checked": "assumed: field layouts are in server coordinates, like the three checked ones; no walk yet"},
+    "roc_r0_fld03": {"offset": [0.0, 0.0, 0.0], "checked": "assumed: field layouts are in server coordinates, like the three checked ones; no walk yet"},
+    "roc_r0_fld04": {"offset": [0.0, 0.0, 0.0], "checked": "assumed: field layouts are in server coordinates, like the three checked ones; no walk yet"},
+    "roc_r0_fld05": {"offset": [0.0, 0.0, 0.0], "checked": "assumed: field layouts are in server coordinates, like the three checked ones; no walk yet"},
+    "roc_r1_fld01": {"offset": [0.0, 0.0, 0.0], "checked": "assumed: field layouts are in server coordinates, like the three checked ones; no walk yet"},
+    "roc_r1_fld02": {"offset": [0.0, 0.0, 0.0], "checked": "assumed: field layouts are in server coordinates, like the three checked ones; no walk yet"},
+    "roc_r1_fld03": {"offset": [0.0, 0.0, 0.0], "checked": "assumed: field layouts are in server coordinates, like the three checked ones; no walk yet"},
+    "sea_s0_fld01": {"offset": [0.0, 0.0, 0.0], "checked": "field layouts are in server coordinates; walked to the Zephyr Gate on it (2026-11-24)"},
+    "sea_s0_fld02": {"offset": [0.0, 0.0, 0.0], "checked": "assumed: field layouts are in server coordinates, like the three checked ones; no walk yet"},
+    "sea_s0_fld03": {"offset": [0.0, 0.0, 0.0], "checked": "assumed: field layouts are in server coordinates, like the three checked ones; no walk yet"},
+    "sea_s0_fld04": {"offset": [0.0, 0.0, 0.0], "checked": "assumed: field layouts are in server coordinates, like the three checked ones; no walk yet"},
+    "sea_s0_ind01": {
+      "offset": [-448.0, 0.0, 192.0],
+      "checked": "94% of walked positions (zones 133/230/128 test logs) on a floor within 1 yalm (the misses are the Procession of Terns, see walked.txt); walked Bulwark Hall -> Zephyr Gate (2026-11-24)"
+    },
+    "sea_s0_twn01": {
+      "offset": [-448.0, 0.0, 192.0],
+      "checked": "94% of walked positions (zones 133/230/128 test logs) on a floor within 1 yalm (the misses are the Procession of Terns, see walked.txt); walked Bulwark Hall -> Zephyr Gate (2026-11-24)"
+    },
+    "sea_s1_fld01": {"offset": [0.0, 0.0, 0.0], "checked": "assumed: field layouts are in server coordinates, like the three checked ones; no walk yet"},
+    "wil_w0_fld01": {"offset": [0.0, 0.0, 0.0], "checked": "field layouts are in server coordinates; walked Ul'dah -> Camp Black Brush across it (2026-11-24)"},
+    "wil_w0_fld02": {"offset": [0.0, 0.0, 0.0], "checked": "assumed: field layouts are in server coordinates, like the three checked ones; no walk yet"},
+    "wil_w0_fld03": {"offset": [0.0, 0.0, 0.0], "checked": "assumed: field layouts are in server coordinates, like the three checked ones; no walk yet"},
+    "wil_w0_fld04": {"offset": [0.0, 0.0, 0.0], "checked": "assumed: field layouts are in server coordinates, like the three checked ones; no walk yet"},
+    "wil_w0_fld05": {"offset": [0.0, 0.0, 0.0], "checked": "assumed: field layouts are in server coordinates, like the three checked ones; no walk yet"},
+    "wil_w0_ind01": {
+      "offset": [-96.0, 188.0, 160.0],
+      "checked": "94% of walked positions (zones 175/209/170 test logs) on a floor within 1 yalm; walked Gold Court -> Concern and Ul'dah -> Camp Black Brush (2026-11-24)"
+    },
+    "wil_w0_twn01": {
+      "offset": [-96.0, 188.0, 160.0],
+      "checked": "94% of walked positions (zones 175/209/170 test logs) on a floor within 1 yalm; walked Gold Court -> Concern and Ul'dah -> Camp Black Brush (2026-11-24)"
+    }
+  },
+  "zones": {
+    "175": {"name": "Ul'dah", "layouts": ["wil_w0_twn01", "wil_w0_ind01", "wil_w0_fld01"], "same_map": [175, 209, 170]},
+    "209": {"name": "Ul'dah", "layouts": ["wil_w0_twn01", "wil_w0_ind01", "wil_w0_fld01"], "same_map": [175, 209, 170]},
+    "155": {"name": "Gridania", "layouts": ["fst_f0_twn01", "fst_f0_ind01", "fst_f0_fld01"], "same_map": [155, 206, 150]},
+    "206": {"name": "Gridania", "layouts": ["fst_f0_twn01", "fst_f0_ind01", "fst_f0_fld01"], "same_map": [155, 206, 150]},
+    "133": {"name": "Limsa Lominsa", "layouts": ["sea_s0_twn01", "sea_s0_ind01", "sea_s0_fld01"], "same_map": [133, 230, 128]},
+    "230": {"name": "Limsa Lominsa", "layouts": ["sea_s0_twn01", "sea_s0_ind01", "sea_s0_fld01"], "same_map": [133, 230, 128]},
+    "128": {"name": "Lower La Noscea", "layouts": ["sea_s0_fld01", "sea_s0_twn01", "sea_s0_ind01"], "same_map": [128, 133, 230]},
+    "129": {"name": "Western La Noscea", "layouts": ["sea_s0_fld02"]},
+    "130": {"name": "Eastern La Noscea", "layouts": ["sea_s0_fld03"]},
+    "135": {"name": "Upper La Noscea", "layouts": ["sea_s0_fld04"]},
+    "139": {"name": "The Cieldalaes", "layouts": ["sea_s0_fld01", "sea_s0_twn01", "sea_s0_ind01"], "same_map": [128, 133, 230]},
+    "141": {"name": "Lower La Noscea", "layouts": ["sea_s0_fld01", "sea_s0_twn01", "sea_s0_ind01"], "same_map": [128, 133, 230]},
+    "143": {"name": "Coerthas Central Highlands", "layouts": ["roc_r0_fld01"]},
+    "144": {"name": "Coerthas Eastern Highlands", "layouts": ["roc_r0_fld02"]},
+    "145": {"name": "Coerthas Eastern Lowlands", "layouts": ["roc_r0_fld03"]},
+    "147": {"name": "Coerthas Central Lowlands", "layouts": ["roc_r0_fld04"]},
+    "148": {"name": "Coerthas Western Highlands", "layouts": ["roc_r0_fld05"]},
+    "150": {"name": "Central Shroud", "layouts": ["fst_f0_fld01", "fst_f0_twn01", "fst_f0_ind01"], "same_map": [150, 155, 206]},
+    "151": {"name": "East Shroud", "layouts": ["fst_f0_fld02"]},
+    "152": {"name": "North Shroud", "layouts": ["fst_f0_fld03"]},
+    "153": {"name": "West Shroud", "layouts": ["fst_f0_fld04"]},
+    "154": {"name": "South Shroud", "layouts": ["fst_f0_fld05"]},
+    "162": {"name": "Central Shroud", "layouts": ["fst_f0_fld01", "fst_f0_twn01", "fst_f0_ind01"], "same_map": [150, 155, 206]},
+    "170": {"name": "Central Thanalan", "layouts": ["wil_w0_fld01", "wil_w0_twn01", "wil_w0_ind01"], "same_map": [170, 175, 209]},
+    "171": {"name": "Eastern Thanalan", "layouts": ["wil_w0_fld02"]},
+    "172": {"name": "Western Thanalan", "layouts": ["wil_w0_fld03"]},
+    "173": {"name": "Northern Thanalan", "layouts": ["wil_w0_fld04"]},
+    "174": {"name": "Southern Thanalan", "layouts": ["wil_w0_fld05"]},
+    "190": {"name": "Mor Dhona", "layouts": ["lak_l0_fld01"]},
+    "204": {"name": "Western La Noscea", "layouts": ["sea_s0_fld02"]},
+    "205": {"name": "Eastern La Noscea", "layouts": ["sea_s0_fld03"]},
+    "207": {"name": "North Shroud", "layouts": ["fst_f0_fld03"]},
+    "208": {"name": "South Shroud", "layouts": ["fst_f0_fld05"]},
+    "236": {"name": "Locke's Lie", "layouts": ["sea_s1_fld01"]},
+    "238": {"name": "Thornmarch", "layouts": ["fst_f0_fld04"]},
+    "239": {"name": "The Howling Eye", "layouts": ["roc_r0_fld02"]},
+    "240": {"name": "The Bowl of Embers", "layouts": ["wil_w0_fld05"]},
+    "250": {"name": "The Howling Eye", "layouts": ["roc_r0_fld02"]},
+    "256": {"name": "The Howling Eye", "layouts": ["roc_r0_fld02"]},
+    "257": {"name": "Rivenroad", "layouts": ["roc_r1_fld01"]},
+    "264": {"name": "Transmission Tower", "layouts": ["lak_l0_fld01"]},
+    "266": {"name": "Mor Dhona", "layouts": ["lak_l0_fld01"]},
+    "267": {"name": "Rivenroad", "layouts": ["roc_r1_fld02"]},
+    "268": {"name": "Rivenroad", "layouts": ["roc_r1_fld03"]}
+  },
+  "doors": [
+    {
+      "name": "Gate of Nald",
+      "zones": [175, 170],
+      "x": -52.5,
+      "z": -2.3,
+      "r": 5.0,
+      "note": "town copy opened by the uldah_gate_of_nald DoorServer; the field copy blocks only from outside (map-server town_gates.rs)"
+    }
+  ],
+  "closed": [
+    {
+      "name": "Kopuru Fupuru's counter",
+      "zones": [209, 175, 170],
+      "x": -114.5,
+      "z": 173.5,
+      "r": 1.5,
+      "note": "walks stick along it every time; not in the collision as read"
+    },
+    {
+      "name": "Kopuru Fupuru's counter",
+      "zones": [209, 175, 170],
+      "x": -112.0,
+      "z": 176.5,
+      "r": 1.5,
+      "note": "walks stick along it every time; not in the collision as read"
+    },
+    {
+      "name": "Kopuru Fupuru's counter",
+      "zones": [209, 175, 170],
+      "x": -109.5,
+      "z": 179.5,
+      "r": 1.5,
+      "note": "walks stick along it every time; not in the collision as read"
+    },
+    {
+      "name": "Kopuru Fupuru's counter",
+      "zones": [209, 175, 170],
+      "x": -107.0,
+      "z": 181.0,
+      "r": 1.5,
+      "note": "walks stick along it every time; not in the collision as read"
+    },
+    {
+      "name": "Sapphire Avenue stall",
+      "zones": [209, 175, 170],
+      "x": -92.5,
+      "z": 236.5,
+      "r": 1.5,
+      "note": "walks stick here every time; not in the collision as read"
+    }
+  ],
+  "zone_lines": []
+}
