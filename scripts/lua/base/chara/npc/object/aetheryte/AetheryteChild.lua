@@ -70,10 +70,10 @@ function doNormalMenu(player, aetheryte)
 	if (menuChoice == 2) then
 		printf("%ud", parentNode);
 		destination = aetheryteTeleportPositions[parentNode];
-		-- 1 anima, charged only when the hop goes ahead (34114: not
+		-- 1 anima, charged only when the hop goes ahead (34115: not
 		-- enough anima, see TeleportCommand.lua).
 		if (destination ~= nil and player:SpendAnima(player:GetGateAnimaCost()) == false) then
-			player:SendGameMessage(GetWorldMaster(), 34114, 0x20, player:GetAnima(), player:GetGateAnimaCost());
+			player:SendGameMessage(GetWorldMaster(), 34115, 0x20, player:GetGateAnimaCost(), player:GetAnima());
 			destination = nil;
 		end
 

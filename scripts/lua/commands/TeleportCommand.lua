@@ -14,9 +14,10 @@ half (3 or 2). Return is free. Favored destinations (also half price) are
 not built in this server yet. Game messages (worldmaster sheet,
 client data/03/A2/00/BC.DAT):
   34101 "Teleporting to <aetheryte>... Anima cost: <cost> of <held>"
-        params: 2 (teleport), aetheryte id, cost, held
-  34114 "You do not have enough anima. (<p2> of <p1>)"
-        sent as (held, cost) so it reads "cost of held" like 34101
+        params: kind (1 logging out, 2 returning, 3 teleporting), aetheryte id, cost, held
+  34115 "You do not have enough anima. (<p2> of <p1>)"
+        sent as (cost, held) so it reads "(held of cost)", e.g. "(0 of 4)".
+        (34114 is "No.": rows 34107-34132 follow 34101-34105 in the sheet)
 
 --]]
 
@@ -115,10 +116,10 @@ function onEventStarted(player, actor, triggerName, isTeleport)
 					player:SendMessage(0x20, "", "You are not attuned to that aetheryte.");
 				elseif (anima < animaCost) then
 					-- Too little anima: say so and go back to the list.
-					player:SendGameMessage(worldMaster, 34114, 0x20, anima, animaCost);
+					player:SendGameMessage(worldMaster, 34115, 0x20, animaCost, anima);
 				else
 					player:PlayAnimation(0x4000FFA);
-					player:SendGameMessage(worldMaster, 34101, 0x20, 2, destAetheryteId, animaCost, anima);
+					player:SendGameMessage(worldMaster, 34101, 0x20, 3, destAetheryteId, animaCost, anima);
 					confirmChoice = callClientFunction(player, "delegateCommand", actor, "eventConfirm", false, false, 1, 138824, false);
 					if (confirmChoice == 1) then
 						player:PlayAnimation(0x4000FFB);
@@ -127,7 +128,7 @@ function onEventStarted(player, actor, triggerName, isTeleport)
 						destination = aetheryteTeleportPositions[destAetheryteId];
 						-- Charge only when the teleport goes ahead.
 						if (destination ~= nil and player:SpendAnima(animaCost) == false) then
-							player:SendGameMessage(worldMaster, 34114, 0x20, anima, animaCost);
+							player:SendGameMessage(worldMaster, 34115, 0x20, animaCost, anima);
 							destination = nil;
 						end
 						if (destination ~= nil) then
