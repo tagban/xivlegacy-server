@@ -61,7 +61,8 @@ things a player can't walk through are not in it (market counters and stalls in 
 and some walkways are missing (Limsa's Procession of Terns). So:
 
 - `walked.txt`: floors where our characters stood but the layouts have none (dense trails only, from
-  our own logs; Limsa and Lower La Noscea only: in Ul'dah, trails along walls opened false ways).
+  our own logs; Limsa and Lower La Noscea, and the Central Shroud road to Gridania's White Wolf
+  Gate: in Ul'dah, trails along walls opened false ways, so add a stretch only where a route needs it).
   Right where a character stood, walls don't block.
 - `zones.json` `closed`: spots walks always stuck at (Ul'dah market counters); `doors`: gates that
   are open in game (the Gate of Nald: the town copy is opened by its DoorServer, see
