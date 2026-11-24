@@ -2631,7 +2631,7 @@ impl Database {
         (player.anima, player.anima_stamp) = self
             .load_anima(chara_id)
             .await
-            .unwrap_or((crate::runtime::anima::MAX, 0));
+            .unwrap_or_else(|_| (crate::runtime::anima::max(), crate::runtime::anima::now()));
         player.npc_linkshells = self.load_npc_linkshells(chara_id).await.unwrap_or_default();
 
         for (target, ty) in [
@@ -3419,7 +3419,8 @@ impl Database {
     }
 
     /// A character's anima and the unix time it was last brought up to
-    /// date (`characters_anima`); a full 100 when there is no row.
+    /// date (`characters_anima`). No row (never spent any) is full, at the
+    /// cap now (crate::runtime::anima::max), with the clock at now.
     async fn load_anima(&self, chara_id: u32) -> Result<(u8, i64)> {
         let row = self
             .conn
@@ -3434,11 +3435,8 @@ impl Database {
             })
             .await?;
         Ok(match row {
-            Some((anima, stamp)) => (
-                anima.clamp(0, i64::from(crate::runtime::anima::MAX)) as u8,
-                stamp,
-            ),
-            None => (crate::runtime::anima::MAX, 0),
+            Some((anima, stamp)) => (anima.clamp(0, i64::from(u8::MAX)) as u8, stamp),
+            None => (crate::runtime::anima::max(), crate::runtime::anima::now()),
         })
     }
 

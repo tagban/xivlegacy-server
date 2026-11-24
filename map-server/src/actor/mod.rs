@@ -445,7 +445,7 @@ impl Default for CharaState {
             guildleves_local: Vec::new(),
             guildleves_regional: Vec::new(),
             faction_credits: [0; 3],
-            anima: crate::runtime::anima::MAX,
+            anima: crate::runtime::anima::RETAIL_MAX,
             anima_stamp: 0,
             current_title: 0,
             unlocked_aetherytes: std::collections::HashSet::new(),
@@ -484,9 +484,9 @@ impl Default for CharaState {
 
 impl CharaState {
     /// The anima held now: the stored amount plus what has come back since
-    /// `anima_stamp` (crate::runtime::anima::regen).
+    /// `anima_stamp` (crate::runtime::anima::held; full with anima off).
     pub fn anima_now(&self) -> u8 {
-        crate::runtime::anima::regen(self.anima, self.anima_stamp, crate::runtime::anima::now()).0
+        crate::runtime::anima::held(self.anima, self.anima_stamp, crate::runtime::anima::now()).0
     }
 
     pub fn is_dead(&self) -> bool {
