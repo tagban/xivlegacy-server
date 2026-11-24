@@ -88,7 +88,10 @@ pub async fn run(
             a = listener.accept() => a,
             () = &mut shutdown => {
                 save_online_players(&processor).await;
-                return Ok(());
+                // Exit here rather than return: the console reader (see
+                // `lib::run`) sits in a blocking stdin read that the tokio
+                // runtime would wait on forever while shutting down.
+                std::process::exit(0);
             }
         };
         let (socket, peer) = match accepted {
