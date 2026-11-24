@@ -27,6 +27,7 @@
 #![allow(unused_imports)]
 
 pub mod actor_registry;
+pub mod anima;
 pub mod aurum_hazards;
 pub mod aurum_pools;
 pub mod bnpc_spawn;

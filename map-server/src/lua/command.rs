@@ -501,6 +501,12 @@ pub enum LuaCommand {
         faction: u8,
         amount: i32,
     },
+    /// `player:SpendAnima(n)`: spend `amount` anima (crate::runtime::anima);
+    /// nothing is spent when the player holds less.
+    SpendAnima {
+        player_id: u32,
+        amount: u8,
+    },
     /// `player:StartGuildleve(id, difficulty)` at a camp aetheryte.
     StartBattleleve {
         player_id: u32,

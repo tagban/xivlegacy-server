@@ -612,6 +612,8 @@ pub struct PlayerSnapshot {
     pub gc_current: u8,
     /// Faction credits: Broken Blade, Azeyma's Shields, Horn and Hand.
     pub faction_credits: [u16; 3],
+    /// Anima held when the snapshot was taken (regained anima included).
+    pub anima: u8,
     pub gc_rank_limsa: u8,
     pub gc_rank_gridania: u8,
     pub gc_rank_uldah: u8,
@@ -810,6 +812,7 @@ impl From<&crate::actor::Player> for PlayerSnapshot {
             rental_min_left: p.character.chara.rental_min_left,
             gc_current: p.character.chara.gc_current,
             faction_credits: p.character.chara.faction_credits,
+            anima: p.character.chara.anima_now(),
             gc_rank_limsa: p.character.chara.gc_rank_limsa,
             gc_rank_gridania: p.character.chara.gc_rank_gridania,
             gc_rank_uldah: p.character.chara.gc_rank_uldah,
@@ -1623,6 +1626,41 @@ impl UserData for LuaPlayer {
                 Ok(())
             },
         );
+        // Anima, the teleport currency (crate::runtime::anima).
+        // GetAnima: held now. GetMaxAnima: 100. GetGateAnimaCost: an
+        // aetheryte to one of its own gates or back (1). GetAnimaRegion:
+        // the teleport menu's region of the player's zone (1 La Noscea,
+        // 2 Coerthas, 3 Black Shroud, 4 Thanalan, 5 Mor Dhona, 0 none).
+        // GetTeleportAnimaCost(id): what teleporting to aetheryte `id`
+        // costs from here. SpendAnima(n): false (and nothing spent) when
+        // short, else true and spends n.
+        methods.add_method("GetAnima", |_, this, _: ()| Ok(this.snapshot.anima));
+        methods.add_method("GetMaxAnima", |_, _, _: ()| Ok(crate::runtime::anima::MAX));
+        methods.add_method("GetGateAnimaCost", |_, _, _: ()| {
+            Ok(crate::runtime::anima::COST_GATE_HOP)
+        });
+        methods.add_method("GetAnimaRegion", |_, this, _: ()| {
+            Ok(crate::runtime::anima::zone_region(this.snapshot.zone_id))
+        });
+        methods.add_method("GetTeleportAnimaCost", |_, this, aetheryte_id: u32| {
+            Ok(crate::runtime::anima::teleport_cost(
+                crate::runtime::anima::zone_region(this.snapshot.zone_id),
+                aetheryte_id,
+            ))
+        });
+        methods.add_method("SpendAnima", |_, this, amount: u8| {
+            if crate::runtime::anima::spend_from(this.snapshot.anima, amount).is_none() {
+                return Ok(false);
+            }
+            push(
+                &this.queue,
+                LuaCommand::SpendAnima {
+                    player_id: this.snapshot.actor_id,
+                    amount,
+                },
+            );
+            Ok(true)
+        });
         methods.add_method("GetGuildleve", |_, this, _: ()| {
             Ok(match crate::leve::battle::current(this.snapshot.actor_id) {
                 Some((id, difficulty)) => (Some(id), Some(difficulty)),
