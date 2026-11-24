@@ -76,7 +76,9 @@ and some walkways are missing (Limsa's Procession of Terns). So:
   so the grassy top is out of reach in the game too): go.py walks to the closest spot it can reach
   and says how far that is from the goal.
   Spots that hold up are worth moving into `closed`.
-- Public NPCs (server spawn rows) block a small circle each; players can't walk through them.
+- Public NPCs (server spawn rows) block a small circle each; players can't walk through them. Map
+  objects (`/Chara/Npc/MapObj/` classes) don't: a guild or shop door's spawn stands in its doorway,
+  and the door opens as a player walks up.
 
 ## Cache
 

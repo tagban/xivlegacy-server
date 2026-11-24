@@ -175,7 +175,9 @@ def walk_to(rig, world, goal, near, tries, learned, learned_file, paths, plans):
         file = paths / f"go-{os.getpid()}-{n}.txt"
         file.write_text("".join(f"{x:.2f} {y:.2f} {z:.2f}\n" for x, y, z in pts))
         marks = ", ".join(f"{m['name']}" for m in world.marks(pts))
-        print(f"plan {n}: {len(pts)} points, {nav.length(pts):.0f} yalms to {goal[0]:.1f} {goal[2]:.1f} in "
+        to = (f"the closest spot {pts[-1][0]:.1f} {pts[-1][2]:.1f} ({walled:.1f} yalms short; the goal is cut off)"
+              if walled is not None else f"{goal[0]:.1f} {goal[2]:.1f}")
+        print(f"plan {n}: {len(pts)} points, {nav.length(pts):.0f} yalms to {to} in "
               f"{time.time() - tp:.1f} s" + (f" (passes {marks})" if marks else ""), flush=True)
         off = rig.size()
         moff = rig.map_size()
