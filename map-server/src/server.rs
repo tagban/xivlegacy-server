@@ -108,9 +108,31 @@ pub async fn run(
     }
 }
 
-/// Resolves on Ctrl-C, or on SIGTERM where there is one (what `kill`,
-/// systemd and the ops scripts send to stop the server).
+/// Resolves on Ctrl-C, on SIGTERM where there is one (what `kill`,
+/// systemd and the Linux ops scripts send), or when the stop file named
+/// by `XIVLEGACY_STOP_FILE` appears. The stop file is for Windows, where a
+/// supervisor can't send a hidden child process a signal: it writes the
+/// file, waits for the server to exit, and only then falls back to a kill.
 async fn shutdown_signal() {
+    let stop_file = std::env::var_os("XIVLEGACY_STOP_FILE").map(std::path::PathBuf::from);
+    if let Some(f) = &stop_file
+        && f.exists()
+    {
+        // Left over from an earlier stop that never got to remove it.
+        let _ = std::fs::remove_file(f);
+    }
+    tokio::select! {
+        () = os_signal() => {}
+        () = wait_for_stop_file(stop_file.clone()) => {
+            tracing::info!(file = ?stop_file, "stop file found");
+        }
+    }
+    if let Some(f) = &stop_file {
+        let _ = std::fs::remove_file(f);
+    }
+}
+
+async fn os_signal() {
     #[cfg(unix)]
     {
         let mut term =
@@ -130,6 +152,20 @@ async fn shutdown_signal() {
     #[cfg(not(unix))]
     {
         let _ = tokio::signal::ctrl_c().await;
+    }
+}
+
+/// Polls once a second for the stop file; never resolves without one.
+async fn wait_for_stop_file(stop_file: Option<std::path::PathBuf>) {
+    let Some(f) = stop_file else {
+        return std::future::pending().await;
+    };
+    let mut tick = tokio::time::interval(std::time::Duration::from_secs(1));
+    loop {
+        tick.tick().await;
+        if f.exists() {
+            return;
+        }
     }
 }
 
