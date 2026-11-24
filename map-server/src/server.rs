@@ -81,8 +81,17 @@ pub async fn run(
         cmd: Some(cmd),
     });
 
+    let shutdown = shutdown_signal();
+    tokio::pin!(shutdown);
     loop {
-        let (socket, peer) = match listener.accept().await {
+        let accepted = tokio::select! {
+            a = listener.accept() => a,
+            () = &mut shutdown => {
+                save_online_players(&processor).await;
+                return Ok(());
+            }
+        };
+        let (socket, peer) = match accepted {
             Ok(pair) => pair,
             Err(e) => {
                 tracing::warn!(error = %e, "accept failed");
@@ -97,6 +106,45 @@ pub async fn run(
             }
         });
     }
+}
+
+/// Resolves on Ctrl-C, or on SIGTERM where there is one (what `kill`,
+/// systemd and the ops scripts send to stop the server).
+async fn shutdown_signal() {
+    #[cfg(unix)]
+    {
+        let mut term =
+            match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+                Ok(t) => t,
+                Err(e) => {
+                    tracing::warn!(error = %e, "SIGTERM handler not installed");
+                    let _ = tokio::signal::ctrl_c().await;
+                    return;
+                }
+            };
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {}
+            _ = term.recv() => {}
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = tokio::signal::ctrl_c().await;
+    }
+}
+
+/// Stopping the server saves every online player the way a logout does
+/// (position, hp/mp, statuses), so a restart doesn't send them back to
+/// wherever their last save happened.
+async fn save_online_players(processor: &PacketProcessor) {
+    let sessions = processor.world.all_sessions().await;
+    tracing::info!(online = sessions.len(), "shutdown: saving online players");
+    for s in sessions {
+        if let Some(handle) = processor.registry.by_session(s.id).await {
+            processor.save_on_leave(&handle, s.id).await;
+        }
+    }
+    tracing::info!("shutdown: saves done, exiting");
 }
 
 async fn handle_connection(
