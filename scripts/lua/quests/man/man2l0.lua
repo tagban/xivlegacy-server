@@ -212,7 +212,7 @@ function onTalk_shipSequences(player, quest, npc, classId, sequence)
 			local returnToPublic = callClientFunction(player, "delegateEvent", player, quest, "processEvent011_2");
 			if (returnToPublic == 1) then
 				player:EndEvent();
-				GetWorldManager():DoZoneChange(player, 230, nil, 0, 0, -639.325, 1, 403.967, 1.655);
+				GetWorldManager():DoZoneChange(player, 230, nil, 0, 15, -639.325, 1, 403.967, 1.655);
 				return 1;
 			end
 		else
@@ -290,7 +290,7 @@ function onPush(player, quest, npc)
 		callClientFunction(player, "delegateEvent", player, quest, "processEvent081");
 		player:EndEvent();
 		quest:StartSequence(SEQ_060);
-		GetWorldManager():DoZoneChange(player, 133, nil, 0, 0, -435.501, 40, 202.698, -2.152);
+		GetWorldManager():DoZoneChange(player, 133, nil, 0, 15, -435.501, 40, 202.698, -2.152);
 		return;
 	end	
 	
