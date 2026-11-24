@@ -4,6 +4,9 @@ plan again from where it stopped if it gets stuck. Prints "arrived ..." or why i
 
     go.py ZONE X Z [--y Y] [--near 1.5] [--via X Z]... [--rig DIR] [--who A] [--forget]
 
+Exit status: 0 arrived; 1 stopped (the last line says why); 3 a quest event or cutscene took over on
+the way (a push trigger, a zone-in scene): the walk ends there and the spot is not learned as stuck.
+
 A rig is the folder layout every XIVLegacy test rig uses: c<who>/xiv.fifo (the client's
 XIVLEGACY_CONTROL fifo), c<who>/client.log (its output) and logs/map.log (the map server's log,
 for the server's last position of the player). The client must be a test build with walk.c
@@ -26,6 +29,9 @@ import nav  # noqa: E402
 WALK = re.compile(r"\[walk\] (arrived|stuck|lost|stopped)(?::| at) ?(-?[\d.]+)? ?(-?[\d.]+)? ?(-?[\d.]+)?")
 AT = re.compile(r"\[walk\] at (-?[\d.]+) (-?[\d.]+) (-?[\d.]+)")
 MARK = re.compile(r"stand-and-mark player position actor=\d+ x=(\S+) y=(\S+) z=(\S+)")
+# an event that holds the player (a push trigger, talk, a notice scene); event_type 0 is a command
+EVENT = re.compile(r"RunEventFunction .*? event=(\S+) .*?event_type=([1-9])")
+LEARN_DAYS = 3  # stuck spots learned from walks are forgotten after this long (a mob, a door shut then)
 
 
 class Rig:
@@ -44,6 +50,14 @@ class Rig:
 
     def since(self, off):
         with open(self.log, "rb") as f:
+            f.seek(off)
+            return f.read().decode("latin1", "replace")
+
+    def map_size(self):
+        return self.map.stat().st_size
+
+    def map_since(self, off):
+        with open(self.map, "rb") as f:
             f.seek(off)
             return f.read().decode("latin1", "replace")
 
@@ -93,7 +107,11 @@ def main():
     # spots earlier walks got stuck at (walls the collision data doesn't have): kept per zone in the cache
     learned_file = nav.CACHE / "learned" / f"{a.zone}.json"
     learned = [] if a.forget or not learned_file.exists() else json.loads(learned_file.read_text())
-    for x, z, r in learned:
+    now = time.time()
+    # older files have no time stamp: count them as learned now
+    learned = [s if len(s) > 3 else s + [now] for s in learned]
+    learned = [s for s in learned if now - s[3] < LEARN_DAYS * 86400]
+    for x, z, r, _ in learned:
         world.block(x, z, r)
     paths = nav.CACHE / "paths"
     paths.mkdir(parents=True, exist_ok=True)
@@ -110,6 +128,9 @@ def main():
     pos = rig.where() or (float("nan"),) * 3
     d = math.hypot(pos[0] - a.x, pos[2] - a.z)
     took = time.time() - t0
+    if why and why.startswith("event"):
+        print(f"{why} at {pos[0]:.1f} {pos[1]:.1f} {pos[2]:.1f}, {d:.1f} from the goal, after {took:.0f} s and {plans} plan(s)")
+        return 3
     if d <= a.near + 0.5:
         print(f"arrived at {pos[0]:.1f} {pos[1]:.1f} {pos[2]:.1f} ({d:.1f} from the goal) in {took:.0f} s, {plans} plan(s)")
         return 0
@@ -129,9 +150,24 @@ def walk_to(rig, world, goal, near, tries, learned, learned_file, paths, plans):
             return None, attempt - 1
         n = plans + attempt
         tp = time.time()
+        walled = None
         try:
             pts = world.plan(pos, goal, near)
-        except (nav.NoPath, RuntimeError) as e:
+        except nav.NoPath as e:
+            if not e.walled or not e.partial or e.gap is None:
+                return str(e), attempt - 1
+            # the goal stands on ground cut off from here (a fenced bank, a ledge): walk to the
+            # closest spot that can be reached and say so
+            cx, cy, cz = e.partial[-1]
+            if math.hypot(pos[0] - cx, pos[2] - cz) < 1.0:
+                return (f"the goal is cut off from here (a wall, fence or ledge in the collision); "
+                        f"this is the closest spot, {e.gap:.1f} yalms from it"), attempt - 1
+            try:
+                pts = world.plan(pos, (cx, cy, cz), 1.0)
+            except (nav.NoPath, RuntimeError) as e2:
+                return str(e2), attempt - 1
+            walled = e.gap
+        except RuntimeError as e:
             return str(e), attempt - 1
         pts[0] = pos
         if nav.length(pts) < 1.0:
@@ -142,6 +178,7 @@ def walk_to(rig, world, goal, near, tries, learned, learned_file, paths, plans):
         print(f"plan {n}: {len(pts)} points, {nav.length(pts):.0f} yalms to {goal[0]:.1f} {goal[2]:.1f} in "
               f"{time.time() - tp:.1f} s" + (f" (passes {marks})" if marks else ""), flush=True)
         off = rig.size()
+        moff = rig.map_size()
         rig.send(f"walkpath {file} {min(near, 1.0)}")
         limit = time.time() + 60 + nav.length(pts) / 3.0
         result = None
@@ -157,6 +194,14 @@ def walk_to(rig, world, goal, near, tries, learned, learned_file, paths, plans):
             print(f"plan {n}: no word from the walker in time; stopped it", flush=True)
             continue
         kind = result.group(1)
+        ev = EVENT.search(rig.map_since(moff))
+        if ev:
+            # a trigger or scene holds the character: not an obstacle, so nothing is learned
+            rig.send("walkstop")
+            return f"event {ev.group(1)} (a quest trigger or cutscene) took over", attempt
+        if walled is not None and kind == "arrived":
+            return (f"the goal is cut off from here (a wall, fence or ledge in the collision); "
+                    f"walked to the closest spot, {walled:.1f} yalms from it"), attempt
         if kind == "arrived":
             continue  # the top of the loop checks the goal itself
         if kind == "lost":
@@ -170,9 +215,9 @@ def walk_to(rig, world, goal, near, tries, learned, learned_file, paths, plans):
             dx, dz = ahead[0] - sx, ahead[2] - sz
             d = math.hypot(dx, dz) or 1.0
             # stuck near the same place again: the obstacle is bigger than the last circle
-            again = sum(1 for x, z, r in learned if math.hypot(x - sx, z - sz) <= r + 2.5)
-            spot = [round(sx + dx / d * 1.5, 2), round(sz + dz / d * 1.5, 2), min(1.0 + again, 3.0)]
-            world.block(*spot)
+            again = sum(1 for x, z, r, _ in learned if math.hypot(x - sx, z - sz) <= r + 2.5)
+            spot = [round(sx + dx / d * 1.5, 2), round(sz + dz / d * 1.5, 2), min(1.0 + again, 3.0), round(time.time())]
+            world.block(*spot[:3])
             learned.append(spot)
             learned_file.parent.mkdir(parents=True, exist_ok=True)
             learned_file.write_text(json.dumps(learned))
