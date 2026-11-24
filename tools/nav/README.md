@@ -35,6 +35,11 @@ its output in `<rig>/c<who>/client.log`, and the map server's log in `<rig>/logs
 takes the server's last "stand-and-mark" position as a hint for finding the player in memory).
 Keep test clients silent (`XIVLEGACY_NOAUDIO=1`).
 
+To log a client in (title, the "A Word to Our Players" box, the first character, the world), with
+each step checked in the logs: `python3 tools/nav/login.py --rig RIG [--who A]`. The box focuses No;
+Left only moves to Yes once the title's Return has opened it, which is the trap a blind key list falls
+into.
+
 To put the character somewhere, log out, set the database row and log in:
 `currentZoneId`, `destinationZoneId` (both: the client loads the map of the destination zone; a
 stale one gives you a black void with the wrong map), `positionX/Y/Z`. Don't walk right after a GM
