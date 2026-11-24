@@ -20,8 +20,10 @@ python3 tools/nav/go.py 170 34.8 -480.5 --near 3 --via -52.5 -12   # out through
 
 `ZONE` is the map to plan on. A city's map includes its field and the other way round, so a route can
 leave through a gate: plan a walk out of Ul'dah on 170 (Central Thanalan). `--via X Z` (repeatable)
-walks through a spot first. `--y` picks the floor when the goal has several. The first plan in a
-zone builds its grid tiles (20-30 s); later ones take well under a few seconds.
+walks through a spot first (no longer needed for long routes: the planner finds the gate itself).
+`--y` picks the floor when the goal has several. The first plan in a zone builds its grid tiles
+(20-30 s), and the first long route there its tile pieces too (minutes for a whole field, once);
+later plans take a few seconds.
 
 `nav.py plan ZONE SX SY SZ TX TZ` prints waypoints without walking; `nav.py floor ZONE X Z` lists the
 walkable heights at a spot.
@@ -60,7 +62,13 @@ and some walkways are missing (Limsa's Procession of Terns). So:
   are open in game (the Gate of Nald: the town copy is opened by its DoorServer, see
   map-server/src/town_gates.rs).
 - go.py remembers where walks stuck, per zone, in `$XIVNAV_CACHE/learned/<zone>.json`, and plans
-  around those spots next time (a spot hit again grows from 1 to 3 yalms). `--forget` starts over.
+  around those spots next time (a spot hit again grows from 1 to 3 yalms). They are forgotten after
+  3 days, a plan never treats the spot it starts from or its goal as blocked, and `--forget` starts
+  over. A stop caused by a quest event (a push trigger, a cutscene) is never learned: go.py sees the
+  event in the map server's log, ends the walk and exits with status 3.
+- A goal on ground cut off from the start (Gridania has banks with an invisible fence at their foot,
+  so the grassy top is out of reach in the game too): go.py walks to the closest spot it can reach
+  and says how far that is from the goal.
   Spots that hold up are worth moving into `closed`.
 - Public NPCs (server spawn rows) block a small circle each; players can't walk through them.
 

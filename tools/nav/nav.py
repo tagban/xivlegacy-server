@@ -19,9 +19,15 @@ with several floor levels per cell:
 
 The grid is built in 32-yalm tiles when first needed and cached outside the repository
 ($XIVNAV_CACHE, default ~/.cache/xivlegacy/nav). A* finds the path; it is then pulled tight
-(straight lines wherever the grid says the walker fits) into waypoints. Routes longer than
-COARSE_FROM yalms (a field crossing) are searched on a coarse grid first: 2-yalm moves, each one a
-straight line the walker fits along, so a few seconds instead of a minute.
+(straight lines wherever the grid says the walker fits) into waypoints.
+
+Long routes (over LONG_FROM yalms, or a short one the fine search runs out of budget on, such as a
+city to its field through one gate far off) are planned in two steps. Each tile is split into its
+pieces (cells that join up inside the tile) and the crossings between pieces of neighbouring tiles
+are found (both cached); a search over those crossings gives a corridor, and the fine search then
+walks it leg by leg, each leg inside one piece. No gate list is needed: the crossings find the gate.
+A route whose goal can't be reached at all ends in NoPath with `walled` set and the way to the
+closest spot (go.py walks there and says so).
 
     nav.py plan ZONE SX SY SZ TX TZ [--radius R] [--out FILE]   waypoints "x y z", one a line
     nav.py floor ZONE X Z                                        the walkable levels there
@@ -43,7 +49,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "terrain"))
 import xivterrain  # noqa: E402
 
-COARSE_FROM = 150.0  # yalms: longer routes are planned on the coarse grid first
+LONG_FROM = 150.0  # yalms: longer routes are planned as a corridor of tile pieces first
 VERSION = 5  # bump when the grid rules change (old cache tiles are then ignored)
 G = 0.5  # cell size, yalms
 TILE = 64  # cells a tile side (32 yalms)
@@ -134,6 +140,7 @@ class World:
         self.world_tris = {}  # (layout index, placement) -> [(A, B, C, ny)]
         self.clear_memo = {}
         self.blocked = set()  # cells kept out of plans for now (where a walk got stuck)
+        self.free = set()  # blocked cells let through for this plan (where it starts and ends)
 
     # --- building tiles -------------------------------------------------------------------
     def _tris(self, li, n):
@@ -324,7 +331,7 @@ class World:
         return best[1] if best else None
 
     # --- planning -------------------------------------------------------------------------
-    def plan(self, start, goal, near=1.5, max_nodes=600000, coarse=True):
+    def plan(self, start, goal, near=1.5, max_nodes=300000, corridor=True, pulled=True):
         """[(x, y, z)] from start (x, y, z) to within `near` yalms of goal (x, y or None, z), or raise
         NoPath with the way to the closest spot"""
         s = self.snap(*start)
@@ -334,17 +341,16 @@ class World:
         if g is None:
             raise RuntimeError(f"no walkable floor near the goal {goal}")
         gi, gj = g[0], g[1]
+        if corridor:
+            self.free_ends(s, goal, near)
         soft = self.radius + 0.75
         # search inside an ellipse around start and goal: a detour of 1.5 x the straight line + 150 yalms
         span = math.hypot(s[0] - gi, s[1] - gj)
         reach = 1.5 * span + 150.0 / G
         # a greedier search on long routes (a field crossing): a little longer path, far fewer cells
         weight = 1.2 + min(0.8, span * G / 500.0)
-        if coarse and span * G > COARSE_FROM:
-            try:
-                return self.coarse(start, goal, near, max_nodes)
-            except NoPath:
-                pass  # the fine search may still squeeze through
+        if corridor and span * G > LONG_FROM:
+            return self.long(start, goal, near)
         openq = [(0.0, 0.0, s)]
         came = {s: None}
         cost = {s: 0.0}
@@ -371,7 +377,7 @@ class World:
                     # no cutting corners
                     if self.level_near(ci + di, cj, y) is None or self.level_near(ci, cj + dj, y) is None:
                         continue
-                if (ni, nj) in self.blocked or math.hypot(ni - s[0], nj - s[1]) + math.hypot(ni - gi, nj - gj) > reach:
+                if self.is_blocked((ni, nj)) or math.hypot(ni - s[0], nj - s[1]) + math.hypot(ni - gi, nj - gj) > reach:
                     continue
                 for f in self.levels(ni, nj):
                     if abs(f - y) > STEP:
@@ -393,77 +399,212 @@ class World:
         path.reverse()
         pts = [(*self.centre(ci, cj), y) for ci, cj, y in path]
         pts = [(x, y, z) for x, z, y in pts]
-        if not found and nodes > max_nodes and coarse:
-            # out of budget on a long route: a coarse search, 2-yalm strides each checked as a straight line
-            try:
-                return self.coarse(start, goal, near, max_nodes)
-            except NoPath:
-                pass
+        if not found and nodes > max_nodes and corridor:
+            # out of budget (a short way as the crow flies, a long way round): the corridor search
+            return self.long(start, goal, near)
         if not found:
             x, y, z = pts[-1]
             raise NoPath(f"no path ({nodes} cells searched); closest {x:.1f} {y:.1f} {z:.1f}, "
-                         f"{best[0] * G:.1f} yalms from the goal", pts)
-        return self.pull(pts)
+                         f"{best[0] * G:.1f} yalms from the goal", pts, walled=nodes <= max_nodes, gap=best[0] * G)
+        return self.pull(pts) if pulled else pts
 
-    def coarse(self, start, goal, near=1.5, max_nodes=600000, stride=4):
-        """like plan(), over every `stride`-th cell; each move is a straight line the walker fits along"""
-        s = self.snap(*start)
-        g = self.snap(goal[0], goal[1], goal[2], 8.0)
-        if s is None or g is None:
-            raise RuntimeError("no walkable floor near the start or the goal")
-        gi, gj = g[0], g[1]
+    # --- long routes: pieces of tiles and the crossings between them ------------------------
+    def moves(self, ci, cj, y, inside=None):
+        """the walker's moves from (ci, cj) at level y: (ni, nj, f, step); `inside` keeps them to one tile"""
+        for di, dj, step in N8:
+            ni, nj = ci + di, cj + dj
+            if inside and (ni // TILE, nj // TILE) != inside:
+                continue
+            if di and dj and (self.level_near(ci + di, cj, y) is None or self.level_near(ci, cj + dj, y) is None):
+                continue
+            for f in self.levels(ni, nj):
+                if abs(f - y) <= STEP and self.clear(ni, nj, f, self.radius):
+                    yield ni, nj, f, step
+
+    def pieces(self, tx, tz):
+        """{(ci, cj, f): piece number}: the tile's walkable cells, grouped by what joins up inside it"""
+        k = ("pieces", tx, tz)
+        if k in self.tiles:
+            return self.tiles[k]
+        path = self.cache / f"{tx}_{tz}.pieces-{self.radius}.pkl"
+        try:
+            out = pickle.loads(path.read_bytes())
+        except (OSError, pickle.PickleError, EOFError):
+            out = {}
+            n = 0
+            for idx, fl in self.tile(tx, tz).items():
+                ci, cj = tx * TILE + idx // TILE, tz * TILE + idx % TILE
+                for f in fl:
+                    if (ci, cj, f) in out or not self.clear(ci, cj, f, self.radius):
+                        continue
+                    out[(ci, cj, f)] = n
+                    todo = [(ci, cj, f)]
+                    while todo:
+                        c = todo.pop()
+                        for ni, nj, g, _ in self.moves(*c, inside=(tx, tz)):
+                            if (ni, nj, g) not in out:
+                                out[(ni, nj, g)] = n
+                                todo.append((ni, nj, g))
+                    n += 1
+            try:
+                self.cache.mkdir(parents=True, exist_ok=True)
+                tmp = path.with_suffix(".tmp")
+                tmp.write_bytes(pickle.dumps(out, protocol=4))
+                tmp.replace(path)
+            except OSError:
+                pass
+        self.tiles[k] = out
+        return out
+
+    def piece_of(self, node):
+        return (node[0] // TILE, node[1] // TILE, self.pieces(node[0] // TILE, node[1] // TILE).get(node))
+
+    def crossings(self, tx, tz):
+        """{piece: [(here, there)]}: where the walker steps from a piece of this tile into a neighbour
+        tile; one crossing for each run of side-by-side border cells (and one every 8 cells of a long run)"""
+        k = ("cross", tx, tz)
+        if k in self.tiles:
+            return self.tiles[k]
+        mine = self.pieces(tx, tz)
+        runs = {}  # (my piece, their piece, side) -> [(here, there)] along the border
+        for (ci, cj, f), p in mine.items():
+            for di, dj in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                ni, nj = ci + di, cj + dj
+                if (ni // TILE, nj // TILE) == (tx, tz):
+                    continue
+                for g in self.levels(ni, nj):
+                    if abs(g - f) <= STEP and self.clear(ni, nj, g, self.radius):
+                        q = self.piece_of((ni, nj, g))
+                        if q[2] is not None:
+                            runs.setdefault(((tx, tz, p), q, (di, dj)), []).append(((ci, cj, f), (ni, nj, g)))
+        out = {}
+        for (p, q, side), pairs in runs.items():
+            along = 1 if side[0] else 0  # the border runs along j for an east/west side
+            pairs.sort(key=lambda ab: ab[0][along])
+            run = [pairs[0]]
+            for ab in pairs[1:] + [None]:
+                if ab is not None and ab[0][along] - run[-1][0][along] <= 1 and len(run) < 8:
+                    run.append(ab)
+                    continue
+                out.setdefault(p, []).append(run[len(run) // 2])
+                run = [ab]
+        self.tiles[k] = out
+        return out
+
+    def goal_cells(self, goal, near):
+        """every walkable cell within `near` of goal (x, y or None, z), at a matching height; else the
+        nearest walkable one"""
+        gx, gy, gz = goal
+        ci, cj = self.cell(gx, gz)
+        n = int(math.ceil(near / G))
+        out = []
+        for di in range(-n, n + 1):
+            for dj in range(-n, n + 1):
+                x, z = self.centre(ci + di, cj + dj)
+                if math.hypot(x - gx, z - gz) > near:
+                    continue
+                for f in self.levels(ci + di, cj + dj):
+                    if (gy is None or abs(f - gy) < 1.5) and self.piece_of((ci + di, cj + dj, f))[2] is not None:
+                        out.append((ci + di, cj + dj, f))
+        if not out:
+            g = self.snap(gx, gy, gz, 8.0)
+            if g is not None and self.piece_of(g)[2] is not None:
+                out.append(g)
+        return out
+
+    def corridor(self, s, goals, max_nodes=200000, avoid=()):
+        """[s, crossings..., one of goals]: cells (ci, cj, f) to walk through, from a search over tile
+        pieces and the crossings between them (each leg between two of them stays inside one piece)"""
+        ends = {}
+        for g in goals:
+            ends.setdefault(self.piece_of(g), []).append(g)
+        goals = set(goals)
+        gi = sum(g[0] for g in goals) / len(goals)
+        gj = sum(g[1] for g in goals) / len(goals)
         span = math.hypot(s[0] - gi, s[1] - gj)
-        reach = 1.5 * span + 150.0 / G
-        weight = 1.2 + min(0.8, span * G / 500.0)
+        reach = 2.0 * span + 400.0 / G
         openq = [(0.0, 0.0, s)]
         came, cost = {s: None}, {s: 0.0}
         best = (span, s)
-        found, nodes = None, 0
-        while openq and nodes <= max_nodes:
+        nodes = 0
+        end = None
+        while openq:
             _, c0, cur = heapq.heappop(openq)
             if c0 > cost.get(cur, 1e18):
                 continue
-            nodes += 1
-            ci, cj, y = cur
-            h = math.hypot(ci - gi, cj - gj)
-            if h * G <= near + stride * G and (goal[1] is None or abs(y - goal[1]) < 1.5):
-                found = cur
+            if cur in goals:
+                end = cur
                 break
+            nodes += 1
+            if nodes > max_nodes:
+                break
+            h = math.hypot(cur[0] - gi, cur[1] - gj)
             if h < best[0]:
                 best = (h, cur)
-            a = (*self.centre(ci, cj), y)
-            a = (a[0], y, a[1])
-            for di, dj, step in N8:
-                ni, nj = ci + di * stride, cj + dj * stride
-                if math.hypot(ni - s[0], nj - s[1]) + math.hypot(ni - gi, nj - gj) > reach:
+            p = self.piece_of(cur)
+            nxt = list(ends.get(p, ()))
+            for here, there in self.crossings(p[0], p[1]).get(p, ()):
+                if here == cur:
+                    nxt.append(there)
+                elif (cur, here) not in avoid:
+                    nxt.append(here)
+            for n in nxt:
+                if (cur, n) in avoid or math.hypot(n[0] - s[0], n[1] - s[1]) + math.hypot(n[0] - gi, n[1] - gj) > reach:
                     continue
-                bx, bz = self.centre(ni, nj)
-                f = self.trace(a, (bx, y, bz))
-                if f is None:
-                    continue
-                nc = c0 + step * stride + abs(f - y) * 0.5
-                st = (ni, nj, f)
-                if nc < cost.get(st, 1e18):
-                    cost[st] = nc
-                    came[st] = cur
-                    heapq.heappush(openq, (nc + weight * math.hypot(ni - gi, nj - gj), nc, st))
-        end = found or best[1]
-        path = []
-        c = end
+                nc = c0 + math.hypot(n[0] - cur[0], n[1] - cur[1]) * 1.1 + abs(n[2] - cur[2]) * 0.5
+                if nc < cost.get(n, 1e18):
+                    cost[n] = nc
+                    came[n] = cur
+                    heapq.heappush(openq, (nc + 1.2 * math.hypot(n[0] - gi, n[1] - gj), nc, n))
+        out = []
+        c = end or best[1]
         while c:
-            path.append(c)
+            out.append(c)
             c = came[c]
-        path.reverse()
-        pts = [(self.centre(ci, cj)[0], y, self.centre(ci, cj)[1]) for ci, cj, y in path]
-        if not found:
-            x, y, z = pts[-1]
-            raise NoPath(f"no coarse path ({nodes} cells searched); closest {x:.1f} {y:.1f} {z:.1f}, "
-                         f"{best[0] * G:.1f} yalms from the goal", pts)
-        # the last stride stops up to 2 yalms short: finish at the goal's own cell when a line reaches it
-        gx, gz = self.centre(gi, gj)
-        if self.line_ok(pts[-1], (gx, g[2], gz)):
-            pts.append((gx, g[2], gz))
-        return self.pull(pts)
+        out.reverse()
+        if end is None:
+            x, z = self.centre(out[-1][0], out[-1][1])
+            raise NoPath(f"no way through ({nodes} crossings searched); closest {x:.1f} {out[-1][2]:.1f} {z:.1f}, "
+                         f"{best[0] * G:.1f} yalms from the goal", [(self.centre(a, b)[0], f, self.centre(a, b)[1]) for a, b, f in out],
+                         walled=nodes <= max_nodes, gap=best[0] * G)
+        return out
+
+    def long(self, start, goal, near=1.5):
+        """a long route (a field crossing, a city to its field): a corridor of tile pieces, then the
+        fine search leg by leg along it"""
+        s = self.snap(*start)
+        if s is None or self.piece_of(s)[2] is None:
+            raise RuntimeError(f"no walkable floor near the start {start}")
+        self.free_ends(s, goal, near)
+        goals = self.goal_cells(goal, max(near, 0.75))
+        if not goals:
+            raise RuntimeError(f"no walkable floor near the goal {goal}")
+        avoid = set()
+        for _ in range(8):
+            cells = self.corridor(s, goals, avoid=avoid)
+            pts = []
+            bad = None
+            for a, b in zip(cells, cells[1:]):
+                pa = (self.centre(a[0], a[1])[0], a[2], self.centre(a[0], a[1])[1])
+                pb = (self.centre(b[0], b[1])[0], b[2], self.centre(b[0], b[1])[1])
+                if self.piece_of(a) != self.piece_of(b):
+                    leg = [pa, pb]  # a crossing: side-by-side cells
+                else:
+                    try:
+                        leg = self.fine(pa, pb, 0.5)
+                    except NoPath:
+                        bad = (a, b)  # a spot blocked since (where a walk stuck) cuts this piece
+                        break
+                pts += leg if not pts else leg[1:]
+            if bad is None:
+                return self.pull(pts)
+            avoid.add(bad)
+        raise NoPath("no way through: the corridor keeps meeting blocked spots", pts)
+
+    def fine(self, start, goal, near):
+        """the fine search alone, unpulled (a leg of a long route)"""
+        pts = self.plan(start, goal, near, max_nodes=60000, corridor=False, pulled=False)
+        return pts
 
     def trace(self, a, b):
         """walk the grid straight from a (x, y, z) toward b's x, z: the floor height reached, or None"""
@@ -482,7 +623,7 @@ class World:
                 if self.level_near(c[0], prev[1], y) is None or self.level_near(prev[0], c[1], y) is None:
                     return None
             f = self.level_near(c[0], c[1], y)
-            if f is None or c in self.blocked or not self.clear(c[0], c[1], f, self.radius) or not self.clear(c[0], c[1], f, self.radius + 0.25):
+            if f is None or self.is_blocked(c) or not self.clear(c[0], c[1], f, self.radius) or not self.clear(c[0], c[1], f, self.radius + 0.25):
                 return None
             y, prev = f, c
         return y
@@ -503,6 +644,19 @@ class World:
             out.append(pts[j])
             i = j
         return out
+
+    def is_blocked(self, c):
+        return c in self.blocked and c not in self.free
+
+    def free_ends(self, s, goal, near):
+        """a blocked spot never covers where the walker stands (it is standing there) or the goal itself"""
+        self.free = set()
+        for (ci, cj), r in ((s[:2], 2.0), (self.cell(goal[0], goal[2]), near + 0.5)):
+            n = int(math.ceil(r / G))
+            for di in range(-n, n + 1):
+                for dj in range(-n, n + 1):
+                    if (di * di + dj * dj) * G * G <= r * r and (ci + di, cj + dj) in self.blocked:
+                        self.free.add((ci + di, cj + dj))
 
     def block(self, x, z, r):
         """keep plans out of a circle (a spot a walk got stuck at)"""
@@ -525,9 +679,14 @@ class World:
 
 
 class NoPath(RuntimeError):
-    def __init__(self, msg, partial):
+    """no way to the goal; `partial` is the way to the closest spot, `walled` says every spot reachable
+    from the start was searched (the goal is cut off, not just far), `gap` how far that spot is from it"""
+
+    def __init__(self, msg, partial, walled=False, gap=None):
         super().__init__(msg)
         self.partial = partial
+        self.walled = walled
+        self.gap = gap
 
 
 def length(pts):
