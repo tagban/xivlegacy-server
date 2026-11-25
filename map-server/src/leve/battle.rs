@@ -69,6 +69,14 @@ const MAX_UP: usize = 8;
 const EXTRAS: usize = 2;
 /// Targets stand at least this far from the camp.
 const MIN_CAMP_DISTANCE: f32 = 30.0;
+/// Spawn points more than this far above or below the camp (yalms) are
+/// left out of a leve's ground spots: around Camp Bentbranch the nearest
+/// spawn points include ledges at y 13.5 and y 27 over a camp at y 4,
+/// which a player at the camp can't reach or hit (#420).
+const MAX_SPOT_RISE: f32 = 4.0;
+/// Keep every spawn point when fewer than this many are at the camp's
+/// height (a camp on a slope, or a zone with few spawn points).
+const MIN_LEVEL_SPOTS: usize = 6;
 /// Party members this close to the leader (yalms) join the leve they
 /// start at the camp.
 const PARTY_JOIN_RANGE: f32 = 50.0;
@@ -989,7 +997,10 @@ pub async fn start(
             (c.base.position_x, c.base.position_y, c.base.position_z)
         }
     };
-    let points = db.battlenpc_spawn_points(zone_id).await.unwrap_or_default();
+    let points = at_camp_height(
+        db.battlenpc_spawn_points(zone_id).await.unwrap_or_default(),
+        camp,
+    );
     let dist =
         |a: (f32, f32, f32), b: (f32, f32, f32)| ((a.0 - b.0).powi(2) + (a.2 - b.2).powi(2)).sqrt();
     let center = points
@@ -2429,6 +2440,21 @@ fn next_stage_center(
         .unwrap_or(from)
 }
 
+/// The spawn points near the camp's height (`MAX_SPOT_RISE`), or all of
+/// them when too few are (`MIN_LEVEL_SPOTS`).
+fn at_camp_height(points: Vec<(f32, f32, f32)>, camp: (f32, f32, f32)) -> Vec<(f32, f32, f32)> {
+    let level: Vec<(f32, f32, f32)> = points
+        .iter()
+        .copied()
+        .filter(|p| (p.1 - camp.1).abs() <= MAX_SPOT_RISE)
+        .collect();
+    if level.len() >= MIN_LEVEL_SPOTS {
+        level
+    } else {
+        points
+    }
+}
+
 /// End the running leve `player_id` owns; returns it with its phase set to
 /// Ended.
 fn finish(player_id: u32, now_ms: u64) -> Option<Leve> {
@@ -3136,6 +3162,32 @@ mod tests {
             round_line("PrivateGLBattleSweepNormal", &aim, &[2, 0, 0, 0]),
             None
         );
+    }
+
+    #[test]
+    fn leve_spots_stay_at_the_camp_height() {
+        // Camp Bentbranch (camp y 4): the ledges at y 13.5 and y 27 go.
+        let camp = (288.0, 4.0, -543.9);
+        let points = vec![
+            (256.5, 7.2, -531.1),
+            (243.4, 13.5, -536.8),
+            (283.9, 4.0, -548.3),
+            (232.7, 27.0, -559.1),
+            (270.5, 5.7, -566.7),
+            (321.7, 5.3, -507.5),
+            (195.0, 4.0, -485.0),
+            (182.0, 4.0, -495.0),
+        ];
+        let kept = at_camp_height(points, camp);
+        assert_eq!(kept.len(), 6);
+        assert!(kept.iter().all(|p| p.1 < 8.0), "{kept:?}");
+    }
+
+    #[test]
+    fn leve_spots_keep_everything_when_few_are_level() {
+        let camp = (0.0, 0.0, 0.0);
+        let points = vec![(10.0, 0.0, 0.0), (20.0, 12.0, 0.0), (30.0, 15.0, 0.0)];
+        assert_eq!(at_camp_height(points.clone(), camp), points);
     }
 
     #[test]
