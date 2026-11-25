@@ -493,7 +493,7 @@ function onTalk(player, quest, npc)
 	elseif (sequence == SEQ_092) then
 		if (classId == BADERON) then
 			callClientFunction(player, "delegateEvent", player, quest, "processEventComplete");
-			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 300, 1, 1, 2);
+			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 200, 1, 1, 2);
 			-- Completion rewards: 200 EXP + 6,000 gil (era guides;
 			-- FFXIVenturer "Treasures of the Main" completion box). The
 			-- guides also list an unnamed food item — no surviving
