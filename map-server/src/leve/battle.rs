@@ -77,6 +77,12 @@ const MAX_SPOT_RISE: f32 = 4.0;
 /// Keep every spawn point when fewer than this many are at the camp's
 /// height (a camp on a slope, or a zone with few spawn points).
 const MIN_LEVEL_SPOTS: usize = 6;
+/// Ground spots farther than this from the leve center (yalms) are left
+/// out, so every target stands where the player fights. With few spawn
+/// points near a camp the targets share spots instead (#441).
+const MAX_SPOT_RANGE: f32 = 50.0;
+/// Most ground spots a leve keeps.
+const MAX_SPOTS: usize = 24;
 /// Party members this close to the leader (yalms) join the leve they
 /// start at the camp.
 const PARTY_JOIN_RANGE: f32 = 50.0;
@@ -1021,12 +1027,7 @@ pub async fn start(
         .filter(|p| dist(*p, camp) >= MIN_CAMP_DISTANCE)
         .min_by(|a, b| dist(*a, camp).total_cmp(&dist(*b, camp)))
         .unwrap_or((camp.0 + MIN_CAMP_DISTANCE, camp.1, camp.2));
-    let mut spots: Vec<(f32, f32, f32)> = points.clone();
-    spots.sort_by(|a, b| dist(*a, center).total_cmp(&dist(*b, center)));
-    spots.truncate(24);
-    if spots.is_empty() {
-        spots.push(center);
-    }
+    let spots = ground_spots(&points, center);
 
     let field = match field_harvest_type(&gd) {
         Some(harvest_type) => {
@@ -2148,9 +2149,11 @@ async fn spawn_one(
         Some(p) => p,
         None => {
             let (x, y, z) = leve.spots[leve.next_spot % leve.spots.len()];
+            // spread out around the spot, wider on each pass when targets
+            // share spots
+            let r = spot_spread(leve.next_spot, leve.spots.len());
             leve.next_spot += 1;
-            // spread out a little around the spot
-            (x + 2.0 * (k * 2.4).sin(), y, z + 2.0 * (k * 2.4).cos())
+            (x + r * (k * 2.4).sin(), y, z + r * (k * 2.4).cos())
         }
     };
     let rotation = (k * 1.7) % std::f32::consts::TAU;
@@ -2402,14 +2405,7 @@ async fn next_stage(
         return;
     };
     let center = next_stage_center(&leve.points, leve.camp, leve.marker);
-    let mut spots = leve.points.clone();
-    let d = |a: &(f32, f32, f32)| (a.0 - center.0).powi(2) + (a.2 - center.2).powi(2);
-    spots.sort_by(|a, b| d(a).total_cmp(&d(b)));
-    spots.truncate(24);
-    if spots.is_empty() {
-        spots.push(center);
-    }
-    leve.spots = spots;
+    leve.spots = ground_spots(&leve.points, center);
     leve.next_spot = 0;
     leve.marker = center;
     let mut new = Vec::new();
@@ -2502,6 +2498,32 @@ fn next_stage_center(
 
 /// The spawn points near the camp's height (`MAX_SPOT_RISE`), or all of
 /// them when too few are (`MIN_LEVEL_SPOTS`).
+/// A leve's ground spots: the spawn points nearest `center`, up to
+/// [`MAX_SPOTS`], within [`MAX_SPOT_RANGE`] of it (always at least the
+/// nearest one; the center itself when there are no points).
+fn ground_spots(points: &[(f32, f32, f32)], center: (f32, f32, f32)) -> Vec<(f32, f32, f32)> {
+    let d = |a: &(f32, f32, f32)| ((a.0 - center.0).powi(2) + (a.2 - center.2).powi(2)).sqrt();
+    let mut spots = points.to_vec();
+    spots.sort_by(|a, b| d(a).total_cmp(&d(b)));
+    spots.truncate(MAX_SPOTS);
+    let near = spots
+        .iter()
+        .filter(|p| d(p) <= MAX_SPOT_RANGE)
+        .count()
+        .max(1);
+    spots.truncate(near);
+    if spots.is_empty() {
+        spots.push(center);
+    }
+    spots
+}
+
+/// How far (yalms) the `n`th target stands from its spot: 2 on the first
+/// pass over the `len` spots, 3 more on each pass after.
+fn spot_spread(n: usize, len: usize) -> f32 {
+    2.0 + 3.0 * (n / len.max(1)) as f32
+}
+
 fn at_camp_height(points: Vec<(f32, f32, f32)>, camp: (f32, f32, f32)) -> Vec<(f32, f32, f32)> {
     let level: Vec<(f32, f32, f32)> = points
         .iter()
@@ -3257,6 +3279,42 @@ mod tests {
         let camp = (0.0, 0.0, 0.0);
         let points = vec![(10.0, 0.0, 0.0), (20.0, 12.0, 0.0), (30.0, 15.0, 0.0)];
         assert_eq!(at_camp_height(points.clone(), camp), points);
+    }
+
+    #[test]
+    fn leve_spots_stay_near_the_center() {
+        // #441: Camp Bentbranch after #434 — three spawn points by the
+        // center, the rest 130+ yalms away.
+        let center = (321.7, 5.3, -507.5);
+        let points = vec![
+            (195.0, 4.0, -485.0),
+            (322.0, 5.3, -508.0),
+            (346.0, 5.0, -512.0),
+            (-10.0, 3.4, -573.0),
+            (338.0, 5.5, -509.0),
+            (260.0, 3.5, -380.0),
+        ];
+        assert_eq!(
+            ground_spots(&points, center),
+            vec![
+                (322.0, 5.3, -508.0),
+                (338.0, 5.5, -509.0),
+                (346.0, 5.0, -512.0)
+            ],
+        );
+        // Nothing in range: the nearest one still serves.
+        let far = vec![(500.0, 4.0, -500.0), (400.0, 4.0, -500.0)];
+        assert_eq!(ground_spots(&far, center), vec![(400.0, 4.0, -500.0)]);
+        assert_eq!(ground_spots(&[], center), vec![center]);
+    }
+
+    #[test]
+    fn shared_spots_spread_wider_each_pass() {
+        assert_eq!(spot_spread(0, 3), 2.0);
+        assert_eq!(spot_spread(2, 3), 2.0);
+        assert_eq!(spot_spread(3, 3), 5.0);
+        assert_eq!(spot_spread(6, 3), 8.0);
+        assert_eq!(spot_spread(5, 24), 2.0);
     }
 
     #[test]
