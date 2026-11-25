@@ -54,6 +54,28 @@ crafting_gathering_exp_rate_percent = 100
 # don't fit are refused.
 bag_slots = 200
 
+[economy]
+# NPC shop prices in gil, percent (seal and guild-mark shops don't change).
+# The shop window still shows the retail price; the charge and the purchase
+# message use this one. Never below what an NPC pays back for the item.
+# NPCs buy items back at retail prices. Retail 100; safe 50-300, hard 0-1000.
+shop_price_percent = 100
+# Chocobo gil costs (the rental fee, retail 800 gil), percent. Retail 100;
+# safe 0-500, hard 0-10000.
+chocobo_price_percent = 100
+# Gil from monsters, leves and treasure chests, percent (quest rewards and
+# sales to NPCs don't change). Retail 100; safe 0-1000, hard 0-10000.
+gil_drop_percent = 100
+
+[drops]
+# The chance of each monster item drop, percent; a chance never goes past
+# 100%. Retail 100; safe 0-500, hard 0-10000.
+drop_rate_percent = 100
+# On top of that for rare drops, and the chance a dropped item is HQ, so good
+# items get likelier without flooding common materials. Retail 100; safe
+# 0-500, hard 0-10000.
+rare_drop_percent = 100
+
 [anima]
 # Anima, the teleport currency. false: teleports cost nothing and the
 # teleport menu shows full (as before anima was built).

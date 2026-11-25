@@ -6280,6 +6280,10 @@ pub async fn apply_regional_leve_hand_in(
     // Rewards. Apply in the order retail's `handInLeve` ticks them
     // so the client's message log reads gil → item → seals.
     let gil = data.reward_gil.get(band).copied().unwrap_or(0);
+    // the host's [economy] gil_drop_percent (retail 100)
+    let gil = crate::gameplay::current()
+        .gil_reward(i64::from(gil))
+        .clamp(0, i64::from(i32::MAX)) as i32;
     if gil > 0 {
         apply_add_gil(player_id, gil, registry, world, db).await;
         outcome.gil_granted = gil;

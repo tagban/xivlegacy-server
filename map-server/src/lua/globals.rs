@@ -146,6 +146,31 @@ pub fn install_globals(
         globals.set("GetItemGamedata", f)?;
     }
 
+    // Host economy settings (`[economy]` in map.toml, crate::gameplay).
+    // ShopBuyPrice(itemId, retailTotal, quantity): the gil a shop charges,
+    // never below what an NPC pays back for the same items.
+    {
+        let cats = catalogs.clone();
+        let f = lua.create_function(move |_, (item_id, retail, quantity): (u32, i64, i64)| {
+            let sell_back = cats
+                .items
+                .read()
+                .ok()
+                .and_then(|m| m.get(&item_id).map(|i| i64::from(i.sell_price)))
+                .unwrap_or(0)
+                .saturating_mul(quantity.max(1));
+            Ok(crate::gameplay::current().shop_buy_price(retail, sell_back))
+        })?;
+        globals.set("ShopBuyPrice", f)?;
+    }
+    // ChocoboPrice(retail): a chocobo gil cost.
+    {
+        let f = lua.create_function(|_, retail: i64| {
+            Ok(crate::gameplay::current().chocobo_price(retail))
+        })?;
+        globals.set("ChocoboPrice", f)?;
+    }
+
     // GetGuildleveGamedata(id) — returns a plain table of fields.
     {
         let cats = catalogs.clone();
@@ -172,6 +197,10 @@ pub fn install_globals(
             } else {
                 gd.reward_gil
             };
+            // what the hand-in pays, with the host's gil rate
+            let gil = crate::gameplay::current()
+                .gil_reward(i64::from(gil))
+                .clamp(0, i64::from(u32::MAX)) as u32;
             t.set("rewardGil", gil)?;
             t.set("classType", gd.class_type)?;
             t.set("location", gd.location)?;

@@ -2498,9 +2498,12 @@ async fn complete(
         .await;
     }
     wrap_up(&leve, registry, world, db).await;
+    // the host's [economy] gil_drop_percent (retail 100)
+    let gil = crate::gameplay::current()
+        .gil_reward(i64::from(leve.reward_gil))
+        .clamp(0, i64::from(i32::MAX)) as i32;
     for &p in &paid {
-        crate::runtime::quest_apply::apply_add_gil(p, leve.reward_gil, registry, Some(world), db)
-            .await;
+        crate::runtime::quest_apply::apply_add_gil(p, gil, registry, Some(world), db).await;
     }
     if let Some(faction) = leve.sponsor {
         for &p in &paid {
@@ -2517,7 +2520,7 @@ async fn complete(
     tracing::info!(
         player = player_id,
         gl_id = leve.guildleve_id,
-        gil = leve.reward_gil,
+        gil,
         paid = ?paid,
         "battle leve complete"
     );

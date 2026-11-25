@@ -5126,6 +5126,11 @@ pub(crate) async fn die_if_defender_fell(
         .await;
     }
 
+    // Monster drops: the monster's list, rolled once, each thing to a
+    // random player sharing the kill.
+    let drop_list_id = handle.character.read().await.chara.drop_list_id;
+    award_drops(drop_list_id, &sharers, registry, world, db_arc, lua).await;
+
     let Some(lua) = lua else {
         return;
     };
@@ -5346,6 +5351,90 @@ pub(crate) async fn check_content_battle_complete(
         )
         .await;
         return;
+    }
+}
+
+/// Roll a fallen monster's drop list (`crate::drops`) and hand each item
+/// or gil to a random player of `sharers`, telling them all who got what.
+/// The client already prints "You obtain N gil." to whoever gets gil, so
+/// that player gets no extra gil line; item lines go to everyone.
+async fn award_drops(
+    drop_list_id: u32,
+    sharers: &[crate::runtime::actor_registry::ActorHandle],
+    registry: &ActorRegistry,
+    world: &WorldManager,
+    db: &Arc<crate::database::Database>,
+    lua: Option<&Arc<crate::lua::LuaEngine>>,
+) {
+    if drop_list_id == 0 || sharers.is_empty() {
+        return;
+    }
+    let entries = crate::drops::list(drop_list_id);
+    if entries.is_empty() {
+        return;
+    }
+    let got = crate::drops::roll(&entries, &crate::gameplay::current(), |n| {
+        rand::random_range(0..n.max(1))
+    });
+    for drop in got {
+        let who = &sharers[rand::random_range(0..sharers.len())];
+        let is_gil = matches!(drop, crate::drops::Drop::Gil(_));
+        let line = match drop {
+            crate::drops::Drop::Gil(gil) => {
+                crate::runtime::quest_apply::apply_add_gil(
+                    who.actor_id,
+                    gil,
+                    registry,
+                    Some(world),
+                    db,
+                )
+                .await;
+                format!("obtains {gil} gil.")
+            }
+            crate::drops::Drop::Item {
+                item_id,
+                quantity,
+                quality,
+            } => {
+                crate::runtime::quest_apply::apply_add_item_quality(
+                    who.actor_id,
+                    crate::inventory::PKG_NORMAL,
+                    item_id,
+                    quantity,
+                    quality,
+                    registry,
+                    Some(world),
+                    db,
+                )
+                .await;
+                let name = lua
+                    .and_then(|l| {
+                        l.catalogs()
+                            .items
+                            .read()
+                            .ok()
+                            .and_then(|m| m.get(&item_id).map(|d| d.name.clone()))
+                    })
+                    .unwrap_or_else(|| format!("item {item_id}"));
+                let hq = if quality > 1 { " (HQ)" } else { "" };
+                if quantity > 1 {
+                    format!("obtains {name}{hq} x{quantity}.")
+                } else {
+                    format!("obtains {name}{hq}.")
+                }
+            }
+        };
+        let who_name = who.character.read().await.base.display_name().to_string();
+        let line = format!("{who_name} {line}");
+        for h in sharers {
+            if is_gil && h.actor_id == who.actor_id {
+                continue;
+            }
+            crate::runtime::quest_apply::apply_send_message(
+                h.actor_id, 0x20, "", &line, registry, world,
+            )
+            .await;
+        }
     }
 }
 
