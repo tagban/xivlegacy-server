@@ -65,16 +65,14 @@ function onEventStarted(player, actor, triggerName)
 		wait(3);
 		closeTutorialWidget(player);
 	elseif player:IsDiscipleOfMagic() then
+		-- The magic lesson is the whole intro: cutscene, the targeting
+		-- lesson (returns once the enemy is targeted) and the casting
+		-- popup. Its EndEvent leaves the client free to fight, so no
+		-- second noticeEvent is kicked here. A kick left open kept the
+		-- client in event mode (F and attacks dead), and closing it with
+		-- processTtrBtl002 played the targeting and casting popups a
+		-- second time (#345).
 		callClientFunction(player, "delegateEvent", player, man0l0Quest, "processTtrBtlMagic001");
-		player:EndEvent();
-		wait(1);
-		kickEventContinue(player, actor, "noticeEvent", "noticeEvent");
-		-- The kicked noticeEvent must be ended again: left open, the client
-		-- stays in event mode, so F (active mode) and attacks are dead and
-		-- the fight can never start. Same targeting lesson + EndEvent as the
-		-- DoW branch; it returns once a wolf is targeted, with movement,
-		-- hotbar and targeting unlocked.
-		callClientFunction(player, "delegateEvent", player, man0l0Quest, "processTtrBtl002", nil, nil, nil);
 		player:EndEvent();
 		closeTutorialWidget(player);
 		openTutorialWidget(player, CONTROLLER_KEYBOARD, TUTORIAL_DEFEATENEMY);
