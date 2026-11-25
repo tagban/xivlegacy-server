@@ -1855,7 +1855,10 @@ mod tests {
         let (vm, _q) = lua.load_script(&path).unwrap();
         let gate: bool = vm.globals().get("_gate").unwrap();
         let other: bool = vm.globals().get("_other").unwrap();
-        assert!(gate, "an attuned gate must read as attuned inside the aetheryte's event");
+        assert!(
+            gate,
+            "an attuned gate must read as attuned inside the aetheryte's event"
+        );
         assert!(!other, "a gate never touched must still read as unattuned");
         let _ = std::fs::remove_dir_all(root);
     }
