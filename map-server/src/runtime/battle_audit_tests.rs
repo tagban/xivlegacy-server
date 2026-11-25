@@ -635,6 +635,22 @@ async fn audit_command(
             )
             .await;
         }
+        // Back on their spots: a knockback move (Bone Breaker) pushes the
+        // dummy away on a hit, and a press that missed its other goal
+        // would then come back "too far away" (#418).
+        for (id, x, z) in [(ENEMY, 3.0, 0.0), (ENEMY2, 3.5, 0.5)] {
+            crate::runtime::quest_apply::apply_move_actor_to_position(
+                id,
+                x,
+                0.0,
+                z,
+                0.0,
+                0,
+                &sc.registry,
+                &sc.processor.world,
+            )
+            .await;
+        }
         if cmd.requirements & 16 != 0 {
             let h = sc.registry.get(PLAYER).await.unwrap();
             h.character
