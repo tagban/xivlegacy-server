@@ -7277,7 +7277,13 @@ mod pool_tick_sync_tests {
         ally.chara.mp = 395;
         ally.base.zone_id = ZONE_ID;
         registry
-            .insert(ActorHandle::new(ALLY_ID, ActorKindTag::Ally, ZONE_ID, 0, ally))
+            .insert(ActorHandle::new(
+                ALLY_ID,
+                ActorKindTag::Ally,
+                ZONE_ID,
+                0,
+                ally,
+            ))
             .await;
         // Drain the setup traffic.
         let _ = received_state_bundle(&mut rx);
