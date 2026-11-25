@@ -199,6 +199,7 @@ pub async fn run() -> Result<()> {
         &config.storage,
     ));
 
+    crate::runtime::anima::configure(&config.anima);
     let world = Arc::new(WorldManager::new().with_world_settings(
         crate::world_manager::WorldSettings {
             dalamud_phase: config.world.dalamud_phase,

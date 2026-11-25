@@ -1633,9 +1633,15 @@ impl UserData for LuaPlayer {
         // 2 Coerthas, 3 Black Shroud, 4 Thanalan, 5 Mor Dhona, 0 none).
         // GetTeleportAnimaCost(id): what teleporting to aetheryte `id`
         // costs from here. SpendAnima(n): false (and nothing spent) when
-        // short, else true and spends n.
+        // short, else true and spends n. With [anima] enabled = false
+        // (IsAnimaEnabled), GetAnima is the full max_stored and SpendAnima
+        // spends nothing; the costs stay as they are for the menus, which
+        // hide a destination whose cost is 0.
         methods.add_method("GetAnima", |_, this, _: ()| Ok(this.snapshot.anima));
-        methods.add_method("GetMaxAnima", |_, _, _: ()| Ok(crate::runtime::anima::MAX));
+        methods.add_method(
+            "GetMaxAnima",
+            |_, _, _: ()| Ok(crate::runtime::anima::max()),
+        );
         methods.add_method("GetGateAnimaCost", |_, _, _: ()| {
             Ok(crate::runtime::anima::COST_GATE_HOP)
         });
@@ -1648,7 +1654,13 @@ impl UserData for LuaPlayer {
                 aetheryte_id,
             ))
         });
+        methods.add_method("IsAnimaEnabled", |_, _, _: ()| {
+            Ok(crate::runtime::anima::rules().enabled)
+        });
         methods.add_method("SpendAnima", |_, this, amount: u8| {
+            if !crate::runtime::anima::rules().enabled {
+                return Ok(true);
+            }
             if crate::runtime::anima::spend_from(this.snapshot.anima, amount).is_none() {
                 return Ok(false);
             }

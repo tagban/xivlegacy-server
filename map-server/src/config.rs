@@ -33,6 +33,7 @@ pub struct Config {
     pub world: WorldSection,
     pub progression: crate::gameplay::ProgressionSection,
     pub storage: crate::gameplay::StorageSection,
+    pub anima: AnimaSection,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -79,6 +80,28 @@ pub struct WorldSection {
     pub weather_id: u16,
     /// Weather transition time emitted alongside `weather_id`. Default 1.
     pub weather_transition: u16,
+}
+
+/// `[anima]`: the teleport currency (crate::runtime::anima).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct AnimaSection {
+    /// Off: teleports and gate hops cost nothing and the menu shows full.
+    pub enabled: bool,
+    /// The most anima a character can store (1.x: 100), held to 100..=255.
+    pub max_stored: i64,
+    /// Minutes per anima regained (1.x: 240), at least 1.
+    pub regen_minutes: i64,
+}
+
+impl Default for AnimaSection {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            max_stored: 200,
+            regen_minutes: crate::runtime::anima::RETAIL_REGEN_SECS / 60,
+        }
+    }
 }
 
 impl Default for ServerSection {
