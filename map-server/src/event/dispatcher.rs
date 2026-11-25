@@ -656,6 +656,13 @@ async fn dispatch_npc_event_started(
             // was empty, so no gate hop was ever offered and every touch
             // attuned again.
             unlocked_aetherytes: c.chara.unlocked_aetherytes.iter().copied().collect(),
+            // The chocobo lender's menu: summon for owners, the issuance
+            // only for players without a bird. Left to Default every
+            // owner was offered the issuance again (#417).
+            has_chocobo: c.chara.has_chocobo,
+            mount_state: c.chara.mount_state,
+            chocobo_appearance: c.chara.chocobo_appearance,
+            chocobo_name: c.chara.chocobo_name.clone(),
             ..Default::default()
         }
     };
@@ -1138,6 +1145,13 @@ async fn dispatch_director_event_started(
             completed_quests: c.quest_journal.iter_completed().collect(),
             quest_npcs: c.quest_npc_classes(),
             unlocked_aetherytes: c.chara.unlocked_aetherytes.iter().copied().collect(),
+            // The chocobo lender's menu: summon for owners, the issuance
+            // only for players without a bird. Left to Default every
+            // owner was offered the issuance again (#417).
+            has_chocobo: c.chara.has_chocobo,
+            mount_state: c.chara.mount_state,
+            chocobo_appearance: c.chara.chocobo_appearance,
+            chocobo_name: c.chara.chocobo_name.clone(),
             ..Default::default()
         }
     };

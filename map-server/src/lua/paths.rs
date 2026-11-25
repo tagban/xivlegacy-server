@@ -269,6 +269,88 @@ mod tests {
         assert!(p.exists(), "private-area override did not resolve: {p:?}");
     }
 
+    /// #417: the base chocobo lender's issuance scenes crash the client
+    /// unless a sys_chocoview (class 1080101) is in the player's instance.
+    /// Every lender spawn must either stand next to one (same zone and
+    /// private area, within 10 yalms, which is what the base script's
+    /// `chocoViewNearby` checks) or have an override of its own (the
+    /// dispatcher looks under the class name, `PopulaceChocoboLender`).
+    #[test]
+    fn every_chocobo_lender_has_a_chocoview_or_an_override() {
+        let r = repo_resolver();
+        let rows = |sql: &'static str| -> Vec<Vec<String>> {
+            sql.lines()
+                .filter(|l| l.starts_with('('))
+                .map(|l| {
+                    l.trim_start_matches('(')
+                        .split(", ")
+                        .map(|f| f.trim_matches('\'').to_string())
+                        .collect()
+                })
+                .collect()
+        };
+        let zones = rows(include_str!("../../../common/sql/data/server_zones.sql"));
+        let zone_name = |id: &str| {
+            zones
+                .iter()
+                .find(|z| z[0] == id)
+                .map(|z| z[2].clone())
+                .unwrap_or_else(|| panic!("zone {id} not in server_zones.sql"))
+        };
+        let spawns = rows(include_str!(
+            "../../../common/sql/data/server_spawn_locations.sql"
+        ));
+        let pos = |s: &Vec<String>| -> [f32; 3] {
+            [
+                s[6].parse().unwrap(),
+                s[7].parse().unwrap(),
+                s[8].parse().unwrap(),
+            ]
+        };
+        let lenders: Vec<&Vec<String>> = spawns
+            .iter()
+            .filter(|s| matches!(s[1].as_str(), "1500006" | "1500061" | "1000840"))
+            .collect();
+        assert!(lenders.len() >= 3, "lender spawns not found");
+        for l in lenders {
+            let near_view = spawns.iter().any(|v| {
+                v[1] == "1080101"
+                    && v[3] == l[3]
+                    && v[4] == l[4]
+                    && v[5] == l[5]
+                    && pos(v)
+                        .iter()
+                        .zip(pos(l))
+                        .map(|(a, b)| (a - b) * (a - b))
+                        .sum::<f32>()
+                        <= 100.0
+            });
+            let zone = zone_name(&l[3]);
+            let over = if l[4].is_empty() {
+                r.npc(&zone, "PopulaceChocoboLender", &l[2])
+            } else {
+                r.npc_in_private_area(
+                    &zone,
+                    &l[4],
+                    l[5].parse().unwrap(),
+                    "PopulaceChocoboLender",
+                    &l[2],
+                )
+            };
+            let overridden = std::fs::read_to_string(&over)
+                .map(|t| t.contains("function onEventStarted"))
+                .unwrap_or(false);
+            assert!(
+                near_view || overridden,
+                "lender spawn {} ({} in zone {zone} {} {}) has no sys_chocoview nearby and no override at {over:?}",
+                l[0],
+                l[2],
+                l[4],
+                l[5]
+            );
+        }
+    }
+
     /// Quest script names are lowercased by the catalog before path
     /// construction, but six scripts are stored capitalized on disk
     /// (DftSea et al.).
