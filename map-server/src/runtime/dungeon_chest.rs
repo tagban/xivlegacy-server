@@ -39,6 +39,9 @@ use crate::world_manager::WorldManager;
 /// `GuildleveBonusTreasureBox`: the chest model with a talk event.
 pub const CHEST_CLASS_ID: u32 = 1_200_161;
 
+/// Gil's item id: a chest entry of it pays gil.
+const GIL: u32 = 1_000_001;
+
 /// The chest's name over its head.
 pub const CHEST_NAME: &str = "Treasure Chest";
 
@@ -315,16 +318,24 @@ pub async fn open(
     );
     let mut lines = vec![format!("{opener} opens the treasure chest.")];
     for (p, item) in &shares {
-        crate::runtime::quest_apply::apply_add_item(
-            *p,
-            crate::inventory::PKG_NORMAL,
-            item.item_id,
-            item.quantity,
-            registry,
-            Some(world),
-            db,
-        )
-        .await;
+        if item.item_id == GIL {
+            // gil goes to the currency bag, at the host's gil rate
+            let gil = crate::gameplay::current()
+                .gil_reward(i64::from(item.quantity))
+                .clamp(0, i64::from(i32::MAX)) as i32;
+            crate::runtime::quest_apply::apply_add_gil(*p, gil, registry, Some(world), db).await;
+        } else {
+            crate::runtime::quest_apply::apply_add_item(
+                *p,
+                crate::inventory::PKG_NORMAL,
+                item.item_id,
+                item.quantity,
+                registry,
+                Some(world),
+                db,
+            )
+            .await;
+        }
         let who = match registry.get(*p).await {
             Some(h) => h.character.read().await.base.display_name().to_string(),
             None => continue,

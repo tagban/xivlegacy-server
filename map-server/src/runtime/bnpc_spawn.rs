@@ -286,6 +286,7 @@ pub(crate) async fn spawn_battle_npc_as(
     };
     character.chara.respawn_disabled = content_spawn;
     character.chara.bnpc_id = bnpc_id;
+    character.chara.drop_list_id = crate::drops::list_id(spawn.drop_list_id, spawn.actor_class_id);
     // Phase C1/C2b — tag ally-allegiance BNpcs as `Ally` in the
     // registry. C# Meteor instantiates `Ally` as a separate
     // subclass of `BattleNpc` (`Map Server/Actors/Chara/Npc/Ally.cs`);

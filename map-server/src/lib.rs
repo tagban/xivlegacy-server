@@ -49,6 +49,7 @@ mod dalamud;
 mod data;
 mod database;
 mod director;
+mod drops;
 mod dungeon_gates;
 mod event;
 mod gamedata;
@@ -194,10 +195,17 @@ pub async fn run() -> Result<()> {
         }
     }
 
-    gameplay::install(gameplay::Gameplay::from_sections(
-        &config.progression,
-        &config.storage,
-    ));
+    gameplay::install(gameplay::Gameplay::from_config(&config));
+    match db.load_drop_lists().await {
+        Ok(lists) => {
+            let rows: usize = lists.values().map(Vec::len).sum();
+            tracing::info!(lists = lists.len(), rows, "monster drop lists loaded");
+            drops::install(lists);
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "monster drop lists failed to load: monsters drop nothing")
+        }
+    }
 
     let world = Arc::new(WorldManager::new().with_world_settings(
         crate::world_manager::WorldSettings {

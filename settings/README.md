@@ -42,8 +42,8 @@ Let's Encrypt certificate the web server fetches and renews itself, plus TCP
 
 ## Gameplay limits
 
-Level cap, EXP rate, bag size and the GM level of new accounts are yours to
-choose. Every default is the 1.23b retail value. Each setting has a **safe**
+Level cap, EXP rate, bag size, prices, gil and drop rates and the GM level of
+new accounts are yours to choose. Every default is the 1.23b retail value. Each setting has a **safe**
 range and a **hard** range, checked once at start-up:
 
 - a value that isn't retail is logged at INFO (`non-retail setting: ...`);
@@ -66,7 +66,18 @@ exp_rate_percent = 200
 | `[progression] exp_rate_percent` | map | 100 | 100 | 0-1000 | 0-10000 | Multiplies every EXP gain of the battle classes (kills, quests, leves, GM `!giveexp`), after rested and food bonuses, rounded up. Above 1000 (10x) one kill or quest levels a character several times; past 10000 (100x) one quest reward covers the whole 1-50 curve (1,781,150 EXP), so it's clamped. 0 = no EXP. |
 | `[progression] crafting_gathering_exp_rate_percent` | map | 100 | 100 | 0-1000 | 0-10000 | The same for the crafters (carpenter to culinarian) and gatherers (miner, botanist, fisher). |
 | `[storage] bag_slots` | map | 200 | 200 | 50-200 | 1-200 | Normal-bag slots that take new items. The 1.23b client crashes at every login with an item at bag slot 200 or above, so this can only be lowered. Below 50 the bag fills fast: quest rewards, purchases and gathered items that don't fit are lost. Items already past a lowered size stay. |
+| `[economy] shop_price_percent` | map | 100 | 100 | 50-300 | 0-1000 | NPC shop prices in gil (seal and guild-mark shops don't change). The shop window still shows the client's retail price; the charge and the purchase message use the scaled one, so far from 100 surprises players. A price never drops below what an NPC pays back for the item (no buy-to-sell gil). Selling to NPCs stays at retail: it's income, which `gil_drop_percent` covers. Past 10x a stack of the dearest goods passes the 32-bit gil limit. |
+| `[economy] chocobo_price_percent` | map | 100 | 100 | 0-500 | 0-10000 | Chocobo gil costs: the rental fee (retail 800 gil). Above 5x a rental costs more than new players earn in an hour. |
+| `[economy] gil_drop_percent` | map | 100 | 100 | 0-1000 | 0-10000 | Gil from monsters, leves (and the reward the leve menus show) and treasure chests. Quest rewards and sales to NPCs don't change. Above 10x gil stops mattering. |
+| `[drops] drop_rate_percent` | map | 100 | 100 | 0-500 | 0-10000 | The chance of each monster item drop; a chance never goes past 100%. Above 5x common materials flood bags and the market. Doesn't change gil rows (that's `gil_drop_percent`). |
+| `[drops] rare_drop_percent` | map | 100 | 100 | 0-500 | 0-10000 | On top of `drop_rate_percent` for rare drops, and the chance a dropped item is HQ, so good items get likelier without more common materials. Above 5x rare items stop being rare. |
 | `[accounts] default_gm_level` | web | 0 | 0 | 0 | 0-4 | `users.gmLevel` for accounts signed up from now on (existing accounts never change). Anything above 0 makes every new account a GM, so the server warns at every start: only for private or solo servers. 4 (administrator) is the highest level. |
+
+Monster drops come from `server_drop_lists` (`common/sql/data/server_drop_lists.sql`):
+which monster drops which item is from ZAM's 1.0 monster pages, but ZAM has
+no rates, so each row's chance follows a rule by item category
+(`tools/drops/zam_drops.py`): shards 30%, crystals 5%, clusters 1%,
+beastcoins 8%, gemstones 2% (rare), everything else 10% with a 1% HQ chance.
 
 Other bags (currency 320, key items 500, loot, bazaar, equipment) stay at
 their retail sizes: lowering them loses crystals or quest key items, and the

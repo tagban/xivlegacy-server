@@ -18,6 +18,12 @@ function purchaseItem(player, location, itemId, quantity, quality, price, curren
     local spent = spentThisVisit[player] or {};
     spentThisVisit[player] = spent;
 
+    -- Gil prices follow the host's [economy] shop_price_percent (retail 100).
+    -- (ShopBuyPrice is the map server's; bare test harnesses lack it.)
+    if (currency == 1000001 and itemId ~= 1000001 and ShopBuyPrice ~= nil) then
+        price = ShopBuyPrice(itemId, price, quantity);
+    end
+
     if (player:GetItemPackage(INVENTORY_CURRENCY):HasItem(currency, price + (spent[currency] or 0))) then
         invCheck = player:GetItemPackage(location):AddItem(itemId, quantity, quality); 
     

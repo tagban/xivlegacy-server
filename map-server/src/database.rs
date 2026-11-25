@@ -1133,6 +1133,40 @@ impl Database {
     // Gamedata loaders (called once at startup)
     // =======================================================================
 
+    /// Every monster drop list (`server_drop_lists`), by list id.
+    pub async fn load_drop_lists(&self) -> Result<HashMap<u32, Vec<crate::drops::DropEntry>>> {
+        let rows = self
+            .conn
+            .call_db(|c| {
+                let mut stmt = c.prepare(
+                    r"SELECT dropListId, itemId, quantityMin, quantityMax, chance, rarity, hqChance
+                      FROM server_drop_lists ORDER BY dropListId, itemId",
+                )?;
+                let rows = stmt
+                    .query_map([], |r| {
+                        Ok((
+                            r.get::<_, u32>(0)?,
+                            crate::drops::DropEntry {
+                                item_id: r.get(1)?,
+                                quantity_min: r.get(2)?,
+                                quantity_max: r.get(3)?,
+                                chance: r.get(4)?,
+                                rarity: r.get(5)?,
+                                hq_chance: r.get(6)?,
+                            },
+                        ))
+                    })?
+                    .collect::<common::sql::Result<Vec<_>>>()?;
+                Ok(rows)
+            })
+            .await?;
+        let mut map: HashMap<u32, Vec<crate::drops::DropEntry>> = HashMap::new();
+        for (id, e) in rows {
+            map.entry(id).or_default().push(e);
+        }
+        Ok(map)
+    }
+
     pub async fn get_item_gamedata(&self) -> Result<HashMap<u32, ItemData>> {
         let rows = self
             .conn
@@ -7029,6 +7063,28 @@ mod battle_npc_spawn_tests {
         );
         assert!(r.saved_at > 1_000, "saved_at is stamped by the save");
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// The bundled drop lists load: the copper coblyn (class 2102101) drops
+    /// 1-6 earth shards, among others, and the yda pool has no list.
+    #[tokio::test]
+    async fn load_drop_lists_reads_the_bundled_lists() {
+        let db = Database::open(&tempdb("drops")).await.expect("open db");
+        let lists = db.load_drop_lists().await.expect("load drop lists");
+        assert!(lists.len() > 200, "only {} lists", lists.len());
+        let coblyn = lists.get(&2_102_101).expect("copper coblyn list");
+        let shard = coblyn
+            .iter()
+            .find(|e| e.item_id == 1_000_006)
+            .expect("earth shard");
+        assert_eq!((shard.quantity_min, shard.quantity_max), (1, 6));
+        assert!(shard.chance > 0 && shard.chance <= 10_000);
+        assert!(
+            lists
+                .values()
+                .flatten()
+                .all(|e| e.chance <= 10_000 && e.hq_chance <= 10_000 && e.quantity_min >= 1)
+        );
     }
 
     #[tokio::test]

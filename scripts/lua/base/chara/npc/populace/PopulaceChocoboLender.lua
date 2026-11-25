@@ -22,7 +22,8 @@ Notes:
 
 require ("global")
 
-local rentalPrice = 800;
+-- Retail 800 gil; the host's [economy] chocobo_price_percent scales it.
+local retailRentalPrice = 800;
 local rentalTime = 10;
 
 local gcIssuances = {
@@ -56,6 +57,7 @@ function onEventStarted(player, npc, triggerName)
 		hasIssuance = true;
 	end	
 
+	local rentalPrice = ChocoboPrice(retailRentalPrice);
 	local hasFunds = (player:GetCurrentGil() >= rentalPrice);
 
 	callClientFunction(player, "eventTalkWelcome", player);
@@ -95,6 +97,10 @@ function onEventStarted(player, npc, triggerName)
 	elseif(menuChoice == 3) then -- Change Barding
 		callClientFunction(player, "eventTalkStepBreak", player);
 	elseif(menuChoice == 5) then -- Rent Bird
+		-- The rental fee (the menu only offers renting when hasFunds).
+		if (rentalPrice > 0) then
+			player:GetItemPackage(INVENTORY_CURRENCY):RemoveItem(1000001, rentalPrice);
+		end
 		mountChocobo(player, true, 1);
 		GetWorldManager():DoZoneChange(player, cityExits[npc:GetActorClassId()][1], nil, 0, SPAWN_CHOCOBO_RENTAL, cityExits[npc:GetActorClassId()][2], cityExits[npc:GetActorClassId()][3], cityExits[npc:GetActorClassId()][4], cityExits[npc:GetActorClassId()][5]);
 	else

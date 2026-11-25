@@ -20,7 +20,7 @@ Garlemald plays, but its core lacks what hosting needs:
 | Character routing | Spread across the world and map servers | No single place that knows which character is in which zone on which map server |
 | Settings | Tracked files in `configs/` | Hosting changes (public address, binds) would end up in the repository |
 | Database | SQLite only (WAL, foreign keys switched on), 73 tables, none declaring a foreign key | Rows can point at rows that don't exist; one writer process at a time |
-| Monsters | Family, pool, group and spawn tables | No drop tables (`dropListId` points nowhere), no notorious monsters, skill lists can hold one skill each |
+| Monsters | Family, pool, group, spawn and drop tables (`server_drop_lists`) | Drop rates are rule-based (ZAM lists no rates), no notorious monsters, skill lists can hold one skill each |
 | Extensions | Edit the core | No way to add a feature (a status page, a Discord bridge) without touching core code |
 
 ## Services
