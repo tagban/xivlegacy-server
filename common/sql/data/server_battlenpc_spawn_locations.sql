@@ -1,4 +1,4 @@
--- server_battlenpc_spawn_locations: game data, 5455 rows. Reloaded whole when this file changes.
+-- server_battlenpc_spawn_locations: game data, 5443 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_battlenpc_spawn_locations`;
 INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `groupId`, `positionX`, `positionY`, `positionZ`, `rotation`) VALUES
@@ -3320,12 +3320,6 @@ INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `
 (102620, 'roselet', 10367, 1442.86, 15.692, 1243.013, -2.3481),
 (102621, 'roselet', 10367, 1453.654, 12.012, 1230.972, 3.096),
 (102622, 'roselet', 10367, 1471.431, -0.78, 1226.719, -1.3997),
-(102623, 'sabotender', 10368, 283.929, 4.011, -548.288, 1.7655),
-(102624, 'sabotender', 10368, 256.458, 7.191, -531.08, -0.5387),
-(102625, 'sabotender', 10368, 243.391, 13.501, -536.823, 0.6529),
-(102626, 'sabotender', 10368, 232.655, 27.047, -559.073, 0.0134),
-(102627, 'sabotender', 10368, 259.133, 9.236, -576.199, -2.2745),
-(102628, 'sabotender', 10368, 270.495, 5.655, -566.707, -2.5366),
 (102629, 'sabotender', 10369, -1123.237, 20.102, -1944.732, 0.7183),
 (102630, 'sabotender', 10369, -1137.147, 21.538, -1927.487, 2.6199),
 (102631, 'sabotender', 10369, -1154.615, 26.097, -1939.718, -0.9437),
@@ -3356,12 +3350,6 @@ INSERT INTO `server_battlenpc_spawn_locations` (`bnpcId`, `customDisplayName`, `
 (102656, 'sabotender_del_sol', 10373, 535.672, 10.341, -758.036, 2.5752),
 (102657, 'sabotender_del_sol', 10373, 551.15, 4.867, -764.317, 0.5031),
 (102658, 'sabotender_del_sol', 10373, 570.585, 23.936, -767.752, 0.9299),
-(102659, 'sabotender_del_sol', 10374, 484.257, -0.47, -450.093, -1.1422),
-(102660, 'sabotender_del_sol', 10374, 461.318, 14.325, -433.983, -1.5233),
-(102661, 'sabotender_del_sol', 10374, 445.192, 5.037, -435.746, -0.4197),
-(102662, 'sabotender_del_sol', 10374, 430.284, 0.228, -459.761, -0.4139),
-(102663, 'sabotender_del_sol', 10374, 450.374, 9.364, -467.034, -1.8578),
-(102664, 'sabotender_del_sol', 10374, 468.869, 18.878, -460.204, -1.5597),
 (102665, 'sabotender_del_sol', 10375, 477.533, 209.564, 264.448, 2.2687),
 (102666, 'sabotender_del_sol', 10375, 465.506, 194.773, 268.222, -2.1376),
 (102667, 'sabotender_del_sol', 10375, 444.904, 184.387, 273.609, -1.1685),
