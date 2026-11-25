@@ -45,6 +45,9 @@ pub struct AppState {
     pub bug_reports: Arc<common::bug_reports::Settings>,
     /// The lowest account GM level that may read /reports.
     pub reports_gm_level: u8,
+    /// `users.gmLevel` for accounts signed up now (`[accounts]
+    /// default_gm_level`, 0 = player).
+    pub default_gm_level: u8,
 }
 
 const USERNAME_MIN: usize = 3;
@@ -183,7 +186,11 @@ pub async fn signup_submit(
         }
     };
 
-    let user_id = match state.db.create_user(&username, &hash).await {
+    let user_id = match state
+        .db
+        .create_user(&username, &hash, state.default_gm_level)
+        .await
+    {
         Ok(Some(id)) => id,
         Ok(None) => {
             return redirect_signup("That username is already taken.", &username);

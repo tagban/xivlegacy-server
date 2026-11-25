@@ -27,6 +27,7 @@ pub mod activity;
 pub mod bitfield;
 pub mod bitstream;
 pub mod blowfish;
+pub mod bounded;
 pub mod bug_reports;
 pub mod db;
 pub mod error;

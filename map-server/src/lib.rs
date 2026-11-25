@@ -52,6 +52,7 @@ mod director;
 mod dungeon_gates;
 mod event;
 mod gamedata;
+mod gameplay;
 mod gathering;
 mod gm_tags;
 mod group;
@@ -192,6 +193,11 @@ pub async fn run() -> Result<()> {
             return Err(e);
         }
     }
+
+    gameplay::install(gameplay::Gameplay::from_sections(
+        &config.progression,
+        &config.storage,
+    ));
 
     crate::runtime::anima::configure(&config.anima);
     let world = Arc::new(WorldManager::new().with_world_settings(

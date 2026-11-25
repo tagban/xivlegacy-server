@@ -4340,10 +4340,15 @@ pub async fn apply_quest_update_enpcs(
 ///      effective gain is `exp + floor(exp * restBonus / 100)`,
 ///      and the rested pool decays by roughly `exp / 50` per call
 ///      (so ~5000 XP at 100% rested drains the pool).
-///   3. Run the existing level-up rollover via
-///      `battle::save::level_up_if_threshold_crossed`.
-///   4. Persist `skillPoint` / `skillLevel` / `restBonus` to DB.
-///   5. When `world` is available, emit `SetActorProperty` packets
+///   3. Food / manual bonuses, then the host's EXP rate
+///      (`crate::gameplay`, `[progression] exp_rate_percent`) over it all.
+///      Every EXP source (kills, quests, leves, synthesis, gathering, GM
+///      `!giveexp`) comes through here, so this is the one place it applies.
+///   4. Run the existing level-up rollover via
+///      `battle::save::level_up_if_threshold_crossed` (stops at the
+///      host's `[progression] level_cap`).
+///   5. Persist `skillPoint` / `skillLevel` / `restBonus` to DB.
+///   6. When `world` is available, emit `SetActorProperty` packets
 ///      so the client UI refreshes without a full re-login:
 ///        - `charaWork.battleSave.skillPoint[class-1]` on every gain,
 ///        - `charaWork.battleSave.skillLevel[class-1]` +
@@ -4389,6 +4394,24 @@ pub async fn apply_add_exp(
         if class_slot >= c.battle_save.skill_point.len() {
             tracing::warn!(class = class_id, "AddExp: class_id out of range");
             None
+        } else if exp > 0
+            && c.battle_save
+                .skill_level
+                .get(class_slot)
+                .copied()
+                .unwrap_or(1)
+                >= crate::gameplay::current().level_cap
+        {
+            // At the host's level cap (`[progression] level_cap`) EXP
+            // stops: nothing is earned, no "You earn" line, and rested
+            // EXP is kept for later.
+            tracing::debug!(
+                actor = actor_id,
+                class = class_id,
+                exp,
+                "AddExp: at the level cap, nothing earned"
+            );
+            None
         } else {
             let rested_before = c.chara.rest_bonus_exp_rate;
             let (effective_gain, rested_after) = consume_rested_xp(exp, rested_before);
@@ -4396,6 +4419,12 @@ pub async fn apply_add_exp(
             // Food's EXP bonus and the company-issue manuals.
             let effective_gain =
                 crate::processor::items::item_exp_bonus(&mut c, class_id, effective_gain);
+            // The host's EXP rate (`[progression] exp_rate_percent`, or
+            // the crafting/gathering one), over every other bonus.
+            let effective_gain = crate::gameplay::scale_exp(
+                effective_gain,
+                crate::gameplay::current().exp_rate_for(class_id),
+            );
             let prior_sp = c.battle_save.skill_point[class_slot];
             let combined = prior_sp.saturating_add(effective_gain).max(0);
             let prior_level = c

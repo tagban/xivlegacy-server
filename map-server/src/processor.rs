@@ -7501,7 +7501,7 @@ impl PacketProcessor {
             .get_item_package(snapshot.actor_id, crate::inventory::PKG_NORMAL as u32)
             .await
         {
-            snapshot.bag_full = bag.len() >= crate::inventory::CAP_NORMAL as usize;
+            snapshot.bag_full = bag.len() >= usize::from(crate::gameplay::current().bag_slots);
         }
         snapshot
     }

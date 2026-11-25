@@ -35,7 +35,28 @@ pub struct Config {
     pub session: SessionSection,
     pub reports: ReportsSection,
     pub tls: TlsSection,
+    pub accounts: AccountsSection,
 }
+
+/// New accounts.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct AccountsSection {
+    /// `users.gmLevel` given to each account signed up from now on (0 = a
+    /// player, retail). Existing accounts never change.
+    pub default_gm_level: i64,
+}
+
+/// `[accounts] default_gm_level`: 0 to 4 (administrator, the highest level
+/// `settings/commands.toml` knows). Anything above 0 warns at every start.
+pub const DEFAULT_GM_LEVEL: common::bounded::Bounded<i64> = common::bounded::Bounded {
+    name: "accounts.default_gm_level",
+    retail: 0,
+    safe: 0..=0,
+    hard: 0..=4,
+    risky: "every new account is a GM: only for private servers",
+    breaks: "the highest GM level is 4 (administrator)",
+};
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -155,6 +176,10 @@ impl Config {
     pub fn reports_gm_level(&self) -> u8 {
         self.reports.gm_level.max(1)
     }
+    /// The GM level for new accounts, checked against its limits (logged).
+    pub fn default_gm_level(&self) -> u8 {
+        DEFAULT_GM_LEVEL.apply(self.accounts.default_gm_level) as u8
+    }
     pub fn tls(&self) -> &TlsSection {
         &self.tls
     }
@@ -214,4 +239,27 @@ pub struct LaunchArgs {
     /// settings/web.toml)
     #[arg(long)]
     pub config: Option<PathBuf>,
+}
+
+#[cfg(test)]
+mod accounts_tests {
+    use super::*;
+    use common::bounded::Verdict;
+
+    #[test]
+    fn default_gm_level_is_a_player() {
+        let cfg: Config = toml::from_str(include_str!("../../settings/default/web.toml")).unwrap();
+        assert_eq!(cfg.default_gm_level(), 0);
+    }
+
+    #[test]
+    fn any_gm_default_warns_and_past_4_is_clamped() {
+        assert_eq!(DEFAULT_GM_LEVEL.judge(2), (2, Verdict::Risky));
+        assert_eq!(DEFAULT_GM_LEVEL.judge(4), (4, Verdict::Risky));
+        assert_eq!(DEFAULT_GM_LEVEL.judge(9), (4, Verdict::Clamped { used: 4 }));
+        assert_eq!(
+            DEFAULT_GM_LEVEL.judge(-1),
+            (0, Verdict::Clamped { used: 0 })
+        );
+    }
 }

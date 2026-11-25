@@ -128,18 +128,27 @@ pub const LEVEL_THRESHOLDS: [i32; 50] = [
 /// `(level, skill_point)` pair plus the number of levels gained this
 /// call (caller may want to log, emit a game message, etc.).
 ///
-/// Clamps at [`MAX_LEVEL`] — a character who's already there keeps
-/// their `skill_point` saturated rather than rolling over into
-/// undefined territory.
+/// Stops at the host's `[progression] level_cap` (retail [`MAX_LEVEL`]):
+/// see [`level_up_with_cap`].
 ///
 /// Both inputs must be non-negative; callers are responsible for
 /// clamping negative inputs (`apply_add_exp` already does `.max(0)`).
 pub fn level_up_if_threshold_crossed(level: i16, skill_point: i32) -> (i16, i32, i16) {
+    level_up_with_cap(level, skill_point, crate::gameplay::current().level_cap)
+}
+
+/// [`level_up_if_threshold_crossed`] with an explicit cap (clamped to
+/// 1..=[`MAX_LEVEL`]). A character who's at the cap keeps their
+/// `skill_point` saturated at 0 rather than rolling over into undefined
+/// territory; one already above it (the host lowered the cap) keeps the
+/// level and earns nothing toward the next.
+pub fn level_up_with_cap(level: i16, skill_point: i32, cap: i16) -> (i16, i32, i16) {
+    let cap = cap.clamp(1, MAX_LEVEL);
     let mut lvl = level.max(1);
     let mut sp = skill_point.max(0);
     let mut gained: i16 = 0;
 
-    while lvl < MAX_LEVEL {
+    while lvl < cap {
         let idx = (lvl - 1).max(0) as usize;
         let threshold = LEVEL_THRESHOLDS[idx];
         if sp < threshold {
@@ -152,7 +161,7 @@ pub fn level_up_if_threshold_crossed(level: i16, skill_point: i32) -> (i16, i32,
     // If we hit the cap with leftover SP, clamp to the final threshold
     // so the UI doesn't flash a stuck "50% to level 51" bar — Meteor's
     // retail client treats post-cap SP as 0.
-    if lvl >= MAX_LEVEL {
+    if lvl >= cap {
         sp = 0;
     }
     (lvl, sp, gained)
@@ -200,6 +209,28 @@ mod level_up_tests {
         // dropped because 50 is the cap.
         let (lvl, sp, gained) = level_up_if_threshold_crossed(49, 105_000);
         assert_eq!((lvl, sp, gained), (50, 0, 1));
+    }
+
+    #[test]
+    fn level_cap_30_stops_level_ups_at_30() {
+        // 29 -> 30 costs 35000; 30 -> 31 would cost 38000. The surplus
+        // past the cap is dropped, as at 50.
+        let (lvl, sp, gained) = level_up_with_cap(29, 35_000 + 38_000 + 500, 30);
+        assert_eq!((lvl, sp, gained), (30, 0, 1));
+        // At the cap: nothing gained, EXP stays 0.
+        assert_eq!(level_up_with_cap(30, 99_999, 30), (30, 0, 0));
+        // Below the cap: unchanged behavior.
+        assert_eq!(level_up_with_cap(1, 600, 30), (2, 30, 1));
+    }
+
+    #[test]
+    fn above_a_lowered_cap_keeps_the_level() {
+        assert_eq!(level_up_with_cap(45, 10_000, 30), (45, 0, 0));
+    }
+
+    #[test]
+    fn cap_past_50_is_treated_as_50() {
+        assert_eq!(level_up_with_cap(49, 105_000, 60), (50, 0, 1));
     }
 
     #[test]
