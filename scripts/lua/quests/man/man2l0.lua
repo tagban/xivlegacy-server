@@ -176,7 +176,7 @@ function onTalk(player, quest, npc)
 		-- reward window (it parked until disconnect in Beckon of the
 		-- Elementals).
 		if (classId == BADERON) then
-			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 300, 1, 1, 2);
+			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 500, 1, 1, 2);
 			-- Completion reward from the client's quest reward sheet: 500 EXP + 30,000 gil.
 			player:AddExp(500, player.charaWork.parameterSave.state_mainSkill[0], 0);
 			player:AddGil(30000);

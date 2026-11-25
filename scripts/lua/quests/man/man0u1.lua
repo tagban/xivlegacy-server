@@ -539,7 +539,7 @@ function onTalk(player, quest, npc)
 	elseif (sequence == SEQ_105) then
 		if (classId == MOMODI) then
 			callClientFunction(player, "delegateEvent", player, quest, "processEventComplete");
-			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 300, 1, 1, 2);
+			callClientFunction(player, "delegateEvent", player, quest, "sqrwa", 200, 1, 1, 2);
 			-- Completion: 200 EXP + 6,000 gil — client
 			-- quest_new_reward.csv row 110010; the 6,000-gil toast is
 			-- on camera at the retail turn-in.
