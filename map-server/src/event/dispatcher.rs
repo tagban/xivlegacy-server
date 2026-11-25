@@ -650,6 +650,12 @@ async fn dispatch_npc_event_started(
             snpc_skin: c.chara.snpc_skin,
             snpc_personality: c.chara.snpc_personality,
             snpc_coordinate: c.chara.snpc_coordinate,
+            // The aetheryte scripts read attunement here: the gate list in
+            // AetheryteParent.lua's menu and the first-touch check in
+            // AetheryteParent/AetheryteChild.lua. Left to Default the set
+            // was empty, so no gate hop was ever offered and every touch
+            // attuned again.
+            unlocked_aetherytes: c.chara.unlocked_aetherytes.iter().copied().collect(),
             ..Default::default()
         }
     };
@@ -1131,6 +1137,7 @@ async fn dispatch_director_event_started(
                 .collect(),
             completed_quests: c.quest_journal.iter_completed().collect(),
             quest_npcs: c.quest_npc_classes(),
+            unlocked_aetherytes: c.chara.unlocked_aetherytes.iter().copied().collect(),
             ..Default::default()
         }
     };
@@ -1761,6 +1768,95 @@ mod tests {
             event_name, "onTalk",
             "eventName must be the third positional arg per Meteor's `LuaEngine.EventStarted` shim",
         );
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    /// An NPC's `onEventStarted` sees the player's attuned aetherytes.
+    /// AetheryteParent.lua lists a camp's gates only when
+    /// `HasAetheryteNodeUnlocked` is true for them, and attunes on touch
+    /// only when it is false for the touched one. With the set missing
+    /// from this snapshot, no gate hop was offered and every touch
+    /// attuned again.
+    #[tokio::test]
+    async fn npc_event_started_sees_attuned_aetherytes() {
+        use crate::actor::Character;
+        use crate::runtime::actor_registry::{ActorHandle, ActorKindTag};
+        use crate::zone::navmesh::StubNavmeshLoader;
+        use crate::zone::zone::Zone;
+
+        let root = tmpdir();
+        std::fs::create_dir_all(root.join("base/Chara/Npc/Object/Aetheryte")).unwrap();
+        std::fs::write(
+            root.join("base/Chara/Npc/Object/Aetheryte/AetheryteParent.lua"),
+            r#"
+                _gate = nil
+                _other = nil
+                function onEventStarted(player, npc, eventName)
+                    _gate = player:HasAetheryteNodeUnlocked(1280007)
+                    _other = player:HasAetheryteNodeUnlocked(1280008)
+                end
+            "#,
+        )
+        .unwrap();
+
+        let lua = Arc::new(LuaEngine::new(&root));
+        let world = WorldManager::new();
+        let registry = ActorRegistry::new();
+        let db = Database::open(tempdb()).await.expect("db stub");
+        let zone = Zone::new(
+            128,
+            "test",
+            1,
+            "/Area/Zone/Test",
+            0,
+            0,
+            0,
+            false,
+            false,
+            false,
+            false,
+            false,
+            Some(&StubNavmeshLoader),
+        );
+        world.register_zone(zone).await;
+
+        let mut npc_chara = Character::new(43);
+        npc_chara.base.class_path = "Chara/Npc/Object/Aetheryte/AetheryteParent".into();
+        npc_chara.base.class_name = "AetheryteParent".into();
+        npc_chara.base.actor_name = "camp_beardedrock_aetheryte".into();
+        registry
+            .insert(ActorHandle::new(43, ActorKindTag::Npc, 128, 0, npc_chara))
+            .await;
+
+        let mut player_chara = Character::new(1235);
+        player_chara.chara.unlocked_aetherytes.insert(1280007);
+        registry
+            .insert(ActorHandle::new(
+                1235,
+                ActorKindTag::Player,
+                128,
+                43,
+                player_chara,
+            ))
+            .await;
+
+        let event = EventEvent::EventStarted {
+            player_actor_id: 1235,
+            owner_actor_id: 43,
+            event_name: "talkDefault".to_string(),
+            event_type: 1,
+            lua_params: vec![],
+        };
+        dispatch_event_event(&event, &registry, &world, &db, Some(&lua)).await;
+
+        let path = lua
+            .resolver()
+            .base_class("Chara/Npc/Object/Aetheryte/AetheryteParent");
+        let (vm, _q) = lua.load_script(&path).unwrap();
+        let gate: bool = vm.globals().get("_gate").unwrap();
+        let other: bool = vm.globals().get("_other").unwrap();
+        assert!(gate, "an attuned gate must read as attuned inside the aetheryte's event");
+        assert!(!other, "a gate never touched must still read as unattuned");
         let _ = std::fs::remove_dir_all(root);
     }
 
