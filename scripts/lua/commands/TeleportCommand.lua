@@ -112,6 +112,12 @@ function onEventStarted(player, actor, triggerName, isTeleport)
 				-- below stay ungated.
 				local animaCost = player:GetTeleportAnimaCost(destAetheryteId);
 				local anima = player:GetAnima();
+				-- Anima off ([anima] enabled = false in map.toml): free, and
+				-- 34101 leaves out its cost line for 0. The menu above keeps
+				-- the prices, since the client hides a destination costing 0.
+				if (player:IsAnimaEnabled() == false) then
+					animaCost = 0;
+				end
 				if (player:HasAetheryteNodeUnlocked(destAetheryteId) == false) then
 					player:SendMessage(0x20, "", "You are not attuned to that aetheryte.");
 				elseif (anima < animaCost) then

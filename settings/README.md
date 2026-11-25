@@ -185,6 +185,16 @@ messages coming back into the game. Its settings are in
 `settings/worldchat.toml` (defaults in
 [`settings/default/worldchat.toml`](default/worldchat.toml)).
 
+### Anima
+
+`[anima]` in `settings/map.toml` sets the teleport currency: `enabled`
+(true; false makes teleports free with the menu showing full),
+`max_stored` (200; 1.x retail was 100; held to 100-255) and
+`regen_minutes` (240, 1 anima every 4 hours as in 1.x; at least 1).
+Raising `max_stored` lets characters at the old cap regenerate again;
+lowering it takes nothing away. A new `regen_minutes` applies to the time
+since each character's last teleport at once.
+
 ### Seasonal events
 
 `settings/events.toml` lists the seasonal events and when they run, by the

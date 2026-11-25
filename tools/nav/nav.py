@@ -13,9 +13,10 @@ with several floor levels per cell:
 - neighbours connect when their floors differ by at most STEP; diagonals don't cut corners;
 - the walker's radius: every cell within it must have a floor near the same height, and a path
   near walls costs more, so routes keep to the middle of streets and doorways;
-- public NPC spawns (common/sql/data/server_spawn_locations.sql) block a small circle each;
-- zones.json can open doors (remove walls in a circle), close spots, and add floors where players
-  have walked but the layout has no collision (walked.txt: our own test logs).
+- public NPC spawns (common/sql/data/server_spawn_locations.sql) block a small circle each, map
+  objects (door spawns stand in their doorways) excepted;
+- zones.json can open doors (remove walls in a circle) and close spots; walked.txt adds floors where
+  players have walked but the layout has no collision (our own test logs).
 
 The grid is built in 32-yalm tiles when first needed and cached outside the repository
 ($XIVNAV_CACHE, default ~/.cache/xivlegacy/nav). A* finds the path; it is then pulled tight
@@ -80,13 +81,21 @@ def load_walked():
 
 
 def load_npcs():
-    """zone -> [(x, y, z)]: public NPC spawns (server data); a player can't walk through them"""
+    """zone -> [(x, y, z)]: public NPC spawns (server data); a player can't walk through them.
+    Map objects (/Chara/Npc/MapObj/: guild and shop doors, which open as a player walks up, and
+    pieces that only show or hide) are left out: a door spawn stands in its doorway."""
     out = {}
-    path = HERE.parent.parent / "common" / "sql" / "data" / "server_spawn_locations.sql"
-    row = re.compile(r"\(\d+, \d+, '[^']*', (\d+), '', \d+, (-?[\d.]+), (-?[\d.]+), (-?[\d.]+),")
+    data = HERE.parent.parent / "common" / "sql" / "data"
+    path = data / "server_spawn_locations.sql"
+    row = re.compile(r"\(\d+, (\d+), '[^']*', (\d+), '', \d+, (-?[\d.]+), (-?[\d.]+), (-?[\d.]+),")
+    mapobj = set()
+    classes = data / "gamedata_actor_class.sql"
+    if classes.exists():
+        mapobj = set(re.findall(r"^\((\d+), '/Chara/Npc/MapObj/", classes.read_text(errors="replace"), re.M))
     if path.exists():
-        for z, x, y, zz in row.findall(path.read_text()):
-            out.setdefault(int(z), []).append((float(x), float(y), float(zz)))
+        for c, z, x, y, zz in row.findall(path.read_text()):
+            if c not in mapobj:
+                out.setdefault(int(z), []).append((float(x), float(y), float(zz)))
     return out
 
 

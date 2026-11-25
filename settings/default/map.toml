@@ -75,3 +75,14 @@ drop_rate_percent = 100
 # items get likelier without flooding common materials. Retail 100; safe
 # 0-500, hard 0-10000.
 rare_drop_percent = 100
+
+[anima]
+# Anima, the teleport currency. false: teleports cost nothing and the
+# teleport menu shows full (as before anima was built).
+enabled = true
+# The most anima a character can store, 100 to 255. 1.x retail was 100.
+# Lowering it takes nothing away: a character above it keeps what they
+# hold and regains nothing until they spend below it.
+max_stored = 200
+# Minutes between new anima (at least 1). 1.x gave 1 anima every 4 hours.
+regen_minutes = 240

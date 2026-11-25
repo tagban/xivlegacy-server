@@ -35,14 +35,95 @@
 //! back since, so no timer runs. Scripts read it with `player:GetAnima()`
 //! and spend it with `player:SpendAnima(n)` (TeleportCommand.lua,
 //! AetheryteParent.lua, AetheryteChild.lua).
+//!
+//! `[anima]` in settings/map.toml ([`Rules`]) sets the cap (`max_stored`,
+//! 200 shipped) and the time per anima (`regen_minutes`, 240 as in 1.x),
+//! and `enabled = false` makes teleports free with the menu showing full.
 
 use crate::database::Database;
 use crate::runtime::actor_registry::ActorRegistry;
 
-/// The most anima a character can hold.
-pub const MAX: u8 = 100;
-/// Seconds of real time per anima regained.
-pub const REGEN_SECS: i64 = 4 * 60 * 60;
+/// The most anima a character could store in 1.x.
+pub const RETAIL_MAX: u8 = 100;
+/// Seconds of real time per anima regained in 1.x (4 hours).
+pub const RETAIL_REGEN_SECS: i64 = 4 * 60 * 60;
+
+/// How anima works on this server: `[anima]` in settings/map.toml
+/// (crate::config::AnimaSection), set once at start-up by [`configure`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Rules {
+    /// Off: teleports and gate hops cost nothing and everyone holds `max`.
+    pub enabled: bool,
+    /// The most anima a character can store, 100..=255 (sent and stored
+    /// as a byte).
+    pub max: u8,
+    /// Seconds per anima regained, at least 60.
+    pub regen_secs: i64,
+}
+
+impl Rules {
+    /// From the settings, held to sane values: `max_stored` to 100..=255,
+    /// `regen_minutes` to at least 1.
+    pub fn from_settings(enabled: bool, max_stored: i64, regen_minutes: i64) -> Self {
+        Self {
+            enabled,
+            max: max_stored.clamp(i64::from(RETAIL_MAX), i64::from(u8::MAX)) as u8,
+            regen_secs: regen_minutes.clamp(1, i64::MAX / 60) * 60,
+        }
+    }
+}
+
+impl Default for Rules {
+    fn default() -> Self {
+        let a = crate::config::AnimaSection::default();
+        Self::from_settings(a.enabled, a.max_stored, a.regen_minutes)
+    }
+}
+
+static RULES: std::sync::OnceLock<Rules> = std::sync::OnceLock::new();
+
+/// Set the rules from settings/map.toml (once, at start-up).
+pub fn configure(section: &crate::config::AnimaSection) {
+    let rules = Rules::from_settings(section.enabled, section.max_stored, section.regen_minutes);
+    if i64::from(rules.max) != section.max_stored
+        || rules.regen_secs != section.regen_minutes.saturating_mul(60)
+    {
+        tracing::warn!(
+            max_stored = section.max_stored,
+            regen_minutes = section.regen_minutes,
+            used_max = rules.max,
+            used_regen_secs = rules.regen_secs,
+            "[anima] held to max_stored 100..=255, regen_minutes >= 1"
+        );
+    }
+    tracing::info!(
+        enabled = rules.enabled,
+        max_stored = rules.max,
+        regen_secs = rules.regen_secs,
+        "anima"
+    );
+    let _ = RULES.set(rules);
+}
+
+/// The rules in force ([`Rules::default`] before [`configure`]).
+pub fn rules() -> Rules {
+    RULES.get().copied().unwrap_or_default()
+}
+
+/// The most anima a character can store now.
+pub fn max() -> u8 {
+    rules().max
+}
+
+/// The anima a character holds now, from what is stored: [`regen`] with
+/// the rules in force, or the full `max` with anima off.
+pub fn held(anima: u8, stamp: i64, now: i64) -> (u8, i64) {
+    let r = rules();
+    if !r.enabled {
+        return (r.max, now);
+    }
+    regen(anima, stamp, now, r.max, r.regen_secs)
+}
 /// Teleport costs.
 pub const COST_OTHER_REGION: u8 = 6;
 pub const COST_SAME_REGION: u8 = 4;
@@ -62,21 +143,25 @@ pub fn now() -> i64 {
         .unwrap_or(0)
 }
 
-/// Bring `(anima, stamp)` up to `now`: one anima per whole [`REGEN_SECS`]
-/// since `stamp`, up to [`MAX`]. The stamp moves forward by the whole
-/// periods counted, so a part-finished period carries on; at [`MAX`] it is
-/// `now` (nothing builds up while full). A stamp in the future (a clock
-/// set back) counts as no time passed.
-pub fn regen(anima: u8, stamp: i64, now: i64) -> (u8, i64) {
-    if anima >= MAX {
-        return (MAX, now);
+/// Bring `(anima, stamp)` up to `now`: one anima per whole `period`
+/// seconds since `stamp`, up to `max`. The stamp moves forward by the whole
+/// periods counted, so a part-finished period carries on; at or above `max`
+/// it is `now` (nothing builds up while full). An amount above `max` (the
+/// cap was lowered) is kept, not cut, and regains nothing until spent below
+/// it. A stamp in the future (a clock set back) counts as no time passed.
+/// Only the stamp is stored, so a changed `period` applies to the time
+/// since it at once.
+pub fn regen(anima: u8, stamp: i64, now: i64, max: u8, period: i64) -> (u8, i64) {
+    if anima >= max {
+        return (anima, now);
     }
-    let periods = (now - stamp).max(0) / REGEN_SECS;
+    let period = period.max(1);
+    let periods = (now - stamp).max(0) / period;
     let total = i64::from(anima) + periods;
-    if total >= i64::from(MAX) {
-        (MAX, now)
+    if total >= i64::from(max) {
+        (max, now)
     } else {
-        (total as u8, stamp + periods * REGEN_SECS)
+        (total as u8, stamp + periods * period)
     }
 }
 
@@ -180,11 +265,15 @@ pub async fn spend(
     registry: &ActorRegistry,
     db: &Database,
 ) -> Option<u8> {
+    if !rules().enabled {
+        // Anima off: nothing to spend or store.
+        return Some(max());
+    }
     let handle = registry.get(player_id).await?;
     let now = now();
     let (left, stamp) = {
         let mut c = handle.character.write().await;
-        let (have, stamp) = regen(c.chara.anima, c.chara.anima_stamp, now);
+        let (have, stamp) = held(c.chara.anima, c.chara.anima_stamp, now);
         let Some(left) = spend_from(have, cost) else {
             // Keep the regained anima even when the spend fails.
             c.chara.anima = have;
@@ -208,52 +297,97 @@ mod tests {
     use super::*;
 
     const T: i64 = 1_800_000_000;
+    const MAX: u8 = RETAIL_MAX;
+    const P: i64 = RETAIL_REGEN_SECS;
 
     #[test]
     fn regen_counts_whole_periods_and_keeps_the_part() {
         // 2 periods and 1 hour in: +2, the hour carries over.
-        let (a, s) = regen(50, T, T + 2 * REGEN_SECS + 3600);
+        let (a, s) = regen(50, T, T + 2 * P + 3600, MAX, P);
         assert_eq!(a, 52);
-        assert_eq!(s, T + 2 * REGEN_SECS);
+        assert_eq!(s, T + 2 * P);
         // The next anima comes 3 hours later, not 4.
-        assert_eq!(regen(a, s, T + 3 * REGEN_SECS - 1).0, 52);
-        assert_eq!(regen(a, s, T + 3 * REGEN_SECS).0, 53);
+        assert_eq!(regen(a, s, T + 3 * P - 1, MAX, P).0, 52);
+        assert_eq!(regen(a, s, T + 3 * P, MAX, P).0, 53);
     }
 
     #[test]
     fn regen_nothing_before_a_full_period() {
-        assert_eq!(regen(10, T, T + REGEN_SECS - 1), (10, T));
-        assert_eq!(regen(10, T, T), (10, T));
+        assert_eq!(regen(10, T, T + P - 1, MAX, P), (10, T));
+        assert_eq!(regen(10, T, T, MAX, P), (10, T));
     }
 
     #[test]
     fn regen_stops_at_max_and_the_stamp_tracks_now() {
-        assert_eq!(
-            regen(99, T, T + 10 * REGEN_SECS + 5),
-            (MAX, T + 10 * REGEN_SECS + 5)
-        );
-        assert_eq!(regen(MAX, T, T + 7), (MAX, T + 7));
-        // A row that says more than the cap is held to it.
-        assert_eq!(regen(200, 0, T), (MAX, T));
+        assert_eq!(regen(99, T, T + 10 * P + 5, MAX, P), (MAX, T + 10 * P + 5));
+        assert_eq!(regen(MAX, T, T + 7, MAX, P), (MAX, T + 7));
         // Empty for 400 hours fills right up.
+        assert_eq!(regen(0, T, T + 100 * P, MAX, P), (MAX, T + 100 * P));
+    }
+
+    #[test]
+    fn a_raised_cap_regenerates_past_retail() {
+        // qol anima_max 200: a character full at 100 keeps going.
+        assert_eq!(regen(100, T, T + 3 * P, 200, P), (103, T + 3 * P));
+        assert_eq!(regen(150, T, T + 60 * P, 200, P), (200, T + 60 * P));
+        assert_eq!(regen(200, T, T + 7, 200, P), (200, T + 7));
+    }
+
+    #[test]
+    fn settings_are_held_to_sane_values() {
+        let r = Rules::from_settings(true, 200, 240);
+        assert_eq!((r.max, r.regen_secs), (200, RETAIL_REGEN_SECS));
+        assert_eq!(Rules::from_settings(true, 50, 240).max, 100);
+        assert_eq!(Rules::from_settings(true, 1000, 240).max, 255);
+        assert_eq!(Rules::from_settings(true, 200, 0).regen_secs, 60);
+        assert_eq!(Rules::from_settings(true, 200, -5).regen_secs, 60);
+        assert!(Rules::from_settings(true, 200, i64::MAX).regen_secs > 0);
+    }
+
+    #[test]
+    fn shipped_settings() {
+        let c: crate::config::Config =
+            toml::from_str(include_str!("../../../settings/default/map.toml")).unwrap();
+        let a = c.anima;
         assert_eq!(
-            regen(0, T, T + 100 * REGEN_SECS),
-            (MAX, T + 100 * REGEN_SECS)
+            Rules::from_settings(a.enabled, a.max_stored, a.regen_minutes),
+            Rules {
+                enabled: true,
+                max: 200,
+                regen_secs: RETAIL_REGEN_SECS
+            }
         );
+        assert_eq!(Rules::default(), Rules::from_settings(true, 200, 240));
+    }
+
+    #[test]
+    fn a_changed_period_applies_to_the_time_since_the_stamp() {
+        // Stored at 50, 6 hours ago: 1 back at 4 h a period, 6 at 1 h.
+        assert_eq!(regen(50, T, T + 6 * 3600, 200, P).0, 51);
+        assert_eq!(regen(50, T, T + 6 * 3600, 200, 3600), (56, T + 6 * 3600));
+    }
+
+    #[test]
+    fn a_lowered_cap_keeps_what_is_held() {
+        // The module switched off with 150 held: kept, nothing regained,
+        // and the clock runs again once it is spent below 100.
+        assert_eq!(regen(150, 0, T, MAX, P), (150, T));
+        let left = spend_from(150, 60).unwrap();
+        assert_eq!(regen(left, T, T + P, MAX, P).0, 91);
     }
 
     #[test]
     fn regen_ignores_a_stamp_in_the_future() {
-        assert_eq!(regen(40, T + 1000, T), (40, T + 1000));
+        assert_eq!(regen(40, T + 1000, T, MAX, P), (40, T + 1000));
     }
 
     #[test]
     fn spending_full_anima_starts_the_clock_at_the_spend() {
         // Full at T: the stamp is T, so the first anima back is at T + 4 h.
-        let (have, stamp) = regen(MAX, 0, T);
+        let (have, stamp) = regen(MAX, 0, T, MAX, P);
         let left = spend_from(have, 6).unwrap();
         assert_eq!((left, stamp), (94, T));
-        assert_eq!(regen(left, stamp, T + REGEN_SECS).0, 95);
+        assert_eq!(regen(left, stamp, T + P, MAX, P).0, 95);
     }
 
     #[test]
