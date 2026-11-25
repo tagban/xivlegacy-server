@@ -6691,6 +6691,101 @@ async fn issue_chocobo_lua_command_mirrors_state() {
     assert_eq!(row, (1, 7, "Boco".to_string()));
 }
 
+/// #417: the lender names the chocobo inside a resumed talk coroutine
+/// (`eventSetChocoboName` is an RPC), so `IssueChocobo` and the rental
+/// timer arrive through the resumed-event drain, which used to drop them.
+#[tokio::test]
+async fn resumed_talk_applies_issue_chocobo_and_rental() {
+    use crate::actor::Character;
+    use crate::data::Session as MapSession;
+    use crate::lua::LuaCommandKind as LuaCommand;
+    use crate::runtime::actor_registry::{ActorHandle, ActorKindTag};
+    use common::db::ConnCallExt;
+    use std::sync::Arc;
+
+    let world = Arc::new(WorldManager::new());
+    let registry = Arc::new(ActorRegistry::new());
+    let db = Arc::new(
+        crate::database::Database::open(tempdb())
+            .await
+            .expect("db stub"),
+    );
+    db.conn_for_test()
+        .call_db(|c| {
+            c.execute(
+                r"INSERT INTO characters (id, userId, slot, serverId, name)
+                  VALUES (56, 0, 0, 0, 'Chocoberry')",
+                [],
+            )?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+    registry
+        .insert(ActorHandle::new(
+            56,
+            ActorKindTag::Player,
+            200,
+            56,
+            Character::new(56),
+        ))
+        .await;
+    world
+        .upsert_session(MapSession {
+            id: 56,
+            current_zone_id: 200,
+            ..MapSession::default()
+        })
+        .await;
+    let processor = crate::processor::PacketProcessor {
+        db: db.clone(),
+        world: world.clone(),
+        registry: registry.clone(),
+        lua: None,
+        cmd: None,
+    };
+    let handle = registry.get(56).await.unwrap();
+    processor
+        .apply_resumed_event_commands(
+            &handle,
+            vec![
+                LuaCommand::IssueChocobo {
+                    player_id: 56,
+                    appearance_id: 61,
+                    name: "Pepito".into(),
+                },
+                LuaCommand::StartChocoboRental {
+                    player_id: 56,
+                    minutes: 10,
+                },
+                LuaCommand::SetMountState {
+                    player_id: 56,
+                    state: 1,
+                },
+            ],
+        )
+        .await;
+    {
+        let c = handle.character.read().await;
+        assert!(c.chara.has_chocobo);
+        assert_eq!(c.chara.chocobo_name, "Pepito");
+        assert_eq!(c.chara.mount_state, 1);
+        assert!(c.chara.rental_expire_time > 0, "rental timer not started");
+    }
+    let has: i64 = db
+        .conn_for_test()
+        .call_db(|c| {
+            c.query_row(
+                "SELECT hasChocobo FROM characters_chocobo WHERE characterId = 56",
+                [],
+                |r| r.get(0),
+            )
+        })
+        .await
+        .unwrap();
+    assert_eq!(has, 1);
+}
+
 /// Rental-expiry tick — if `rental_expire_time` is in the past the
 /// ticker dismounts the player (flips mount_state + main_state).
 #[tokio::test]

@@ -9025,12 +9025,64 @@ impl PacketProcessor {
         // crystal slot) needs the processor: the shared drain has no arm
         // for it and would drop it. It runs after the rest, so the
         // command's EndEvent reaches the client before the job change.
+        use crate::lua::command::LuaCommand as LC;
         let (jobs, commands): (Vec<_>, Vec<_>) = commands
             .into_iter()
-            .partition(|c| matches!(c, crate::lua::command::LuaCommand::ChangeJob { .. }));
+            .partition(|c| matches!(c, LC::ChangeJob { .. }));
+        // The chocobo lender's commands (`IssueChocobo`, the mount state and
+        // appearance, the rental timer) come out of resumed talk coroutines
+        // too, and the shared drain has no arm for them either: a freshly
+        // named chocobo was never saved (#417). Apply them here, in order
+        // with the commands around them.
+        let mut batch = Vec::with_capacity(commands.len());
+        for cmd in commands {
+            if matches!(
+                cmd,
+                LC::IssueChocobo { .. }
+                    | LC::StartChocoboRental { .. }
+                    | LC::SetMountState { .. }
+                    | LC::SendMountAppearance { .. }
+                    | LC::SetChocoboName { .. }
+            ) {
+                crate::runtime::quest_apply::apply_event_script_commands(
+                    handle,
+                    std::mem::take(&mut batch),
+                    &self.registry,
+                    &self.db,
+                    &self.world,
+                    self.lua.as_ref(),
+                )
+                .await;
+                match cmd {
+                    LC::IssueChocobo {
+                        player_id,
+                        appearance_id,
+                        name,
+                    } => {
+                        self.apply_issue_chocobo(player_id, appearance_id, name)
+                            .await
+                    }
+                    LC::StartChocoboRental { player_id, minutes } => {
+                        self.apply_start_chocobo_rental(player_id, minutes).await
+                    }
+                    LC::SetMountState { player_id, state } => {
+                        self.apply_set_mount_state(player_id, state).await
+                    }
+                    LC::SendMountAppearance { player_id } => {
+                        self.apply_send_mount_appearance(player_id).await
+                    }
+                    LC::SetChocoboName { player_id, name } => {
+                        self.apply_set_chocobo_name(player_id, name).await
+                    }
+                    _ => unreachable!(),
+                }
+            } else {
+                batch.push(cmd);
+            }
+        }
         crate::runtime::quest_apply::apply_event_script_commands(
             handle,
-            commands,
+            batch,
             &self.registry,
             &self.db,
             &self.world,
@@ -9051,7 +9103,7 @@ impl PacketProcessor {
     /// everything else takes the shared event-script drain. Shared by
     /// the EventStart resume gate and the EventUpdate resume path so
     /// both client wake-ups route a continuation identically.
-    async fn apply_resumed_event_commands(
+    pub(crate) async fn apply_resumed_event_commands(
         &self,
         handle: &ActorHandle,
         cmds: Vec<crate::lua::command::LuaCommand>,
