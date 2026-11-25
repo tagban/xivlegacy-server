@@ -10,8 +10,9 @@ eventConfirm(isReturn, isInBattle, cityReturnNum, 138821, forceAskReturnOnly)
 
 Anima (map-server/src/runtime/anima.rs): 1 back every 4 hours, up to 100.
 Another region costs 6, the current region 4, a city's aetheryte plaza
-half (3 or 2). Return is free. Favored destinations (also half price) are
-not built in this server yet. Game messages (worldmaster sheet,
+half (3 or 2). Return is free, and so are the camps the client's menu
+shows as free (freeTeleportAetherytes in aetheryte.lua). Favored
+destinations (also half price) are not built in this server yet. Game messages (worldmaster sheet,
 client data/03/A2/00/BC.DAT):
   34101 "Teleporting to <aetheryte>... Anima cost: <cost> of <held>"
         params: kind (1 logging out, 2 returning, 3 teleporting), aetheryte id, cost, held
@@ -111,6 +112,10 @@ function onEventStarted(player, actor, triggerName, isTeleport)
 				-- to the aetheryte list. Return/inn/homepoint branches
 				-- below stay ungated.
 				local animaCost = player:GetTeleportAnimaCost(destAetheryteId);
+				if (freeTeleportAetherytes[destAetheryteId]) then
+					-- shown as free in the client's menu (aetheryte.lua)
+					animaCost = 0;
+				end
 				local anima = player:GetAnima();
 				if (player:HasAetheryteNodeUnlocked(destAetheryteId) == false) then
 					player:SendMessage(0x20, "", "You are not attuned to that aetheryte.");

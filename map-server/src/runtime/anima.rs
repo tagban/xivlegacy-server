@@ -153,6 +153,13 @@ pub fn aetheryte_region(aetheryte_id: u32) -> u8 {
 
 /// What teleporting to `dest_aetheryte` costs from a zone in region
 /// `from_region` (see [`zone_region`]; 0 counts as another region).
+///
+/// This is also the cost the teleport menu shows. Patch 1.23b ([dev1486])
+/// made five camps free to teleport to (Glory, Ever Lakes, Bluefog,
+/// Brittlebark, Revenant's Toll); Gamer Escape's anima page predates it.
+/// TeleportCommand.lua charges 0 for them (`freeTeleportAetherytes` in
+/// aetheryte.lua) while the menu still gets this cost: the 1.23b client
+/// shows those five as "Anima: 0" itself, and drops a slot whose cost is 0.
 pub fn teleport_cost(from_region: u8, dest_aetheryte: u32) -> u8 {
     let same = from_region != 0 && from_region == aetheryte_region(dest_aetheryte);
     let full = if same {
