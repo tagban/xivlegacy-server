@@ -2871,6 +2871,45 @@ mod tests {
         }
     }
 
+    /// #430 — Return while knocked out must revive through `Revive()`.
+    /// `ChangeState(0)` on a corpse is dropped by the server's corpse
+    /// guard, which left the player dead server-side (no regen, lying
+    /// down) at the home point.
+    #[test]
+    fn knocked_out_return_revives_the_player() {
+        use common::luaparam::LuaParam;
+        let root = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../scripts/lua"));
+        let engine = LuaEngine::new(root);
+        let mut snapshot = sample_snapshot();
+        snapshot.hp = 0;
+        snapshot.max_hp = 190;
+        let started = engine.call_command_on_event_started(
+            &root.join("commands/TeleportCommand.lua"),
+            snapshot,
+            0xA0F0_5E9C,
+            "commandRequest".to_string(),
+            0,
+            vec![LuaParam::Int32(1)], // isTeleport = 1: Return
+            None,
+        );
+        assert!(started.error.is_none(), "{:?}", started.error);
+        let confirmed = engine
+            .fire_player_event_and_drain(42, &[LuaParam::Int32(1), LuaParam::Int32(0)])
+            .expect("Return parks on the confirm");
+        assert!(
+            confirmed
+                .iter()
+                .any(|c| matches!(c, LuaCommand::Revive { actor_id: 42 })),
+            "a knocked-out Return must Revive; got {confirmed:?}",
+        );
+        assert!(
+            !confirmed
+                .iter()
+                .any(|c| matches!(c, LuaCommand::ChangeState { .. })),
+            "ChangeState can't revive a corpse; got {confirmed:?}",
+        );
+    }
+
     /// Garlemald-Server #46 regression — a FREE emote (the emote menu /
     /// `/bow`) fires an EventStart against the EmoteStandardCommand static
     /// actor carrying `event_name="commandRequest"` + LuaParams
