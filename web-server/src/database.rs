@@ -246,9 +246,12 @@ const SEEN_WITHIN_S: i64 = 90;
 
 impl Database {
     /// The status module: players in the world, and the `limit` most recently
-    /// active characters as (name, initialTown, lastActiveAt, online), the
-    /// ones online first.
-    pub async fn status(&self, limit: usize) -> Result<(u32, Vec<(String, i64, i64, bool)>)> {
+    /// active characters as (name, initialTown, lastActiveAt, online, zone
+    /// place name), the ones online first.
+    pub async fn status(
+        &self,
+        limit: usize,
+    ) -> Result<(u32, Vec<(String, i64, i64, bool, String)>)> {
         self.conn
             .call_db(move |c| {
                 let since = chrono::Utc::now().timestamp() - SEEN_WITHIN_S;
@@ -259,9 +262,11 @@ impl Database {
                 )?;
                 let mut st = c.prepare(
                     r"SELECT c.name, COALESCE(c.initialTown, 0), c.lastActiveAt,
-                             ws.character_id IS NOT NULL AND ws.last_seen_at >= :since AS online
+                             ws.character_id IS NOT NULL AND ws.last_seen_at >= :since AS online,
+                             COALESCE(z.placeName, '')
                       FROM characters c
                       LEFT JOIN world_sessions ws ON ws.character_id = c.id
+                      LEFT JOIN server_zones z ON z.id = c.currentZoneId
                       WHERE c.state = 2 AND c.lastActiveAt IS NOT NULL
                       ORDER BY online DESC, c.lastActiveAt DESC
                       LIMIT :limit",
@@ -269,7 +274,7 @@ impl Database {
                 let rows = st
                     .query_map(
                         named_params! { ":since": since, ":limit": limit as i64 },
-                        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+                        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
                     )?
                     .collect::<common::sql::Result<Vec<_>>>()?;
                 Ok((online, rows))
