@@ -1842,6 +1842,54 @@ async fn set_on(leve: &Leve, person: u32, registry: &ActorRegistry) {
     }
 }
 
+/// An idle leve target with a leve member within `NOTICE_RANGE` on the
+/// ground plane goes for them: a target on a rise or ledge the player
+/// can't climb comes down to the fight instead of waiting out the timer
+/// (#420).
+async fn close_in(leve: &Leve, here: &[u32], registry: &ActorRegistry) {
+    let mut people = Vec::new();
+    for &p in here {
+        if let Some(h) = registry.get(p).await {
+            let c = h.character.read().await;
+            if c.chara.hp > 0 {
+                people.push((p, c.base.position_x, c.base.position_z));
+            }
+        }
+    }
+    if people.is_empty() {
+        return;
+    }
+    // counted targets only: a Detect leve's decoys stay put
+    for (&actor_id, _) in leve.spawned.iter().filter(|(_, line)| line.is_some()) {
+        let Some(h) = registry.get(actor_id).await else {
+            continue;
+        };
+        let mut c = h.character.write().await;
+        if c.chara.hp <= 0 || c.ai_container.is_engaged() || c.hate.most_hated().is_some() {
+            continue;
+        }
+        let (x, z) = (c.base.position_x, c.base.position_z);
+        if let Some(&(p, _, _)) = people
+            .iter()
+            .filter(|(_, px, pz)| noticed((x, z), (*px, *pz)))
+            .min_by(|a, b| {
+                let d = |q: &(u32, f32, f32)| (q.1 - x).powi(2) + (q.2 - z).powi(2);
+                d(a).total_cmp(&d(b))
+            })
+        {
+            c.hate.update_hate(p, 1);
+        }
+    }
+}
+
+/// How near (yalms, ground plane) a leve member comes before an idle
+/// target goes for them.
+const NOTICE_RANGE: f32 = 12.0;
+
+fn noticed(beast: (f32, f32), person: (f32, f32)) -> bool {
+    ((beast.0 - person.0).powi(2) + (beast.1 - person.1).powi(2)).sqrt() <= NOTICE_RANGE
+}
+
 /// A rescue's second: the beasts appear when a player comes near the
 /// person; then the person's health bar follows their HP, and when they
 /// fall the leve fails, else the idle beasts go for them again.
@@ -2669,6 +2717,8 @@ pub async fn tick(
                     }
                     if let Some(person) = leve.rescuee {
                         rescue_tick(&leve, person, now_ms, registry, world, db, lua).await;
+                    } else {
+                        close_in(&leve, &here, registry).await;
                     }
                     if leve.errand.is_some() {
                         errand::tick(&leve, &here, now_ms, registry, world, db).await;
@@ -3181,6 +3231,13 @@ mod tests {
         let kept = at_camp_height(points, camp);
         assert_eq!(kept.len(), 6);
         assert!(kept.iter().all(|p| p.1 < 8.0), "{kept:?}");
+    }
+
+    #[test]
+    fn leve_targets_notice_people_on_the_ground_plane() {
+        // Bentbranch: Wren below the rise at 9 yalms, the marmot on it.
+        assert!(noticed((256.5, -531.1), (265.5, -533.0)));
+        assert!(!noticed((243.4, -536.8), (266.3, -535.7)));
     }
 
     #[test]
