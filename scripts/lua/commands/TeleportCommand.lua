@@ -185,15 +185,13 @@ function onEventStarted(player, actor, triggerName, isTeleport)
 				return;
 			end
 
-			--bandaid fix for returning while dead, missing things like weakness and the heal number
+			-- Returning while knocked out revives at the home point.
+			-- Revive() takes the player out of the dead state (HP and MP
+			-- whole, getting-up animation). ChangeState(0) can't: the
+			-- server keeps a corpse a corpse, so the player stayed dead
+			-- server-side with no regen and lying down (#430).
 			if (player:GetHP() == 0) then
-				-- `:GetMaxHP()` — the inherited `.GetMaxHP()` dot-call passed
-				-- no self to the mlua method and errored, killing the
-				-- coroutine before EndEvent/warp ever ran on a dead Return.
-				-- (Garlemald-Server #46, round 2 drive-by.)
-				player:SetHP(player:GetMaxHP());
-				player:ChangeState(0);
-				player:PlayAnimation(0x01000066);
+				player:Revive();
 			end
 
 			-- Same 0x0131-before-0x00E2 ordering as the teleport branch
