@@ -145,7 +145,7 @@ function onEventStarted(player, npc, triggerName)
 		if (rentalPrice > 0) then
 			player:GetItemPackage(INVENTORY_CURRENCY):RemoveItem(1000001, rentalPrice);
 		end
-		mountChocobo(player, true, 1);
+		mountChocobo(player, true, rentalTime);
 		GetWorldManager():DoZoneChange(player, cityExits[npc:GetActorClassId()][1], nil, 0, SPAWN_CHOCOBO_RENTAL, cityExits[npc:GetActorClassId()][2], cityExits[npc:GetActorClassId()][3], cityExits[npc:GetActorClassId()][4], cityExits[npc:GetActorClassId()][5]);
 	else
 		callClientFunction(player, "eventTalkStepBreak", player);
