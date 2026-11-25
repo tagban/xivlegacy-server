@@ -98,6 +98,12 @@ pub const PASSIVE_MODE_HP_REGEN_PERCENT: i32 = 2;
 /// max HP per 3 s regen tick. Same unattested/tunable caveat as
 /// [`PASSIVE_MODE_HP_REGEN_PERCENT`].
 pub const ACTIVE_MODE_HP_REGEN_PERCENT: i32 = 1;
+/// Out-of-combat MP regen while the weapon is sheathed, as % of max MP
+/// per 3 s regen tick (#421). 1.x players got MP back out of combat, and
+/// it stopped in active mode (Engadget, "The Mog Log: Auto-Refresh",
+/// 2011-03-12), so drawn or engaged gets none. The rate isn't recorded;
+/// it matches the sheathed HP rate.
+pub const PASSIVE_MODE_MP_REGEN_PERCENT: i32 = 2;
 
 /// Per-actor death-state tick decision. Returned from the read-lock
 /// scan inside `tick_zone` so the follow-up write lock + dispatcher
@@ -1079,9 +1085,10 @@ fn tick_status(chara: &mut Character, now_ms: u64, outbox: &mut StatusOutbox) {
 ///   * HP auto-regens while disengaged; sheathed (`MAIN_STATE_PASSIVE`)
 ///     heals faster than drawn — rates are the tunable
 ///     `*_MODE_HP_REGEN_PERCENT` constants above (min 1 HP/tick).
-///   * MP has NO natural out-of-combat regen in 1.x — anima is the only
-///     documented passive regen in 1.0; MP came from aetherytes,
-///     abilities, and Refresh effects.
+///   * MP regens only while sheathed and disengaged
+///     (`PASSIVE_MODE_MP_REGEN_PERCENT`, #421); drawn gets none. Before
+///     #421 MP never came back outside a level-up, so a caster who ran
+///     dry stayed dry.
 ///   * TP decays toward 0 only while SHEATHED (`MAIN_STATE_PASSIVE`).
 ///     pmeteor's "should be -90 out of combat" (Modifier.cs:178) maps to
 ///     passive stance — "combat mode" in 1.x parlance IS the drawn-weapon
@@ -1119,12 +1126,19 @@ fn compute_passive_regen(chara: &Character) -> crate::status::PassiveRegen {
     } else {
         0
     };
-    let tp = if chara.base.current_main_state == crate::actor::MAIN_STATE_PASSIVE {
+    let sheathed = chara.base.current_main_state == crate::actor::MAIN_STATE_PASSIVE;
+    let max_mp = chara.chara.max_mp as i32;
+    let mp = if sheathed && (chara.chara.mp as i32) < max_mp {
+        (max_mp * PASSIVE_MODE_MP_REGEN_PERCENT / 100).max(1)
+    } else {
+        0
+    };
+    let tp = if sheathed {
         -OUT_OF_COMBAT_TP_DECAY_PER_TICK.min(chara.chara.tp as i32)
     } else {
         0
     };
-    crate::status::PassiveRegen { hp, mp: 0, tp }
+    crate::status::PassiveRegen { hp, mp, tp }
 }
 
 /// What an ally's support pass (#334) can do this tick, read from its
@@ -1920,10 +1934,9 @@ mod tests {
         assert_eq!(handle.character.read().await.chara.hp, 530);
     }
 
-    /// 1.x has no natural out-of-combat MP regen — the pool must not
-    /// move across regen ticks without a Refresh effect.
+    /// MP regens out of combat while sheathed (#421), up to max MP.
     #[tokio::test]
-    async fn mp_never_regens_out_of_combat() {
+    async fn mp_regens_out_of_combat_while_sheathed() {
         let ticker = setup_one_zone_plain_actor(1000, 1000, 0).await;
         let handle = ticker.registry.get(1).await.unwrap();
         {
@@ -1932,9 +1945,26 @@ mod tests {
             c.chara.mp = 100;
         }
 
+        // Sheathed (Character::new defaults to MAIN_STATE_PASSIVE): 2%.
         ticker.tick_once(3_000).await;
+        assert_eq!(handle.character.read().await.chara.mp, 110);
+
+        // Drawn: no MP regen.
+        {
+            let mut c = handle.character.write().await;
+            c.base.current_main_state = crate::actor::MAIN_STATE_ACTIVE;
+        }
         ticker.tick_once(6_000).await;
-        assert_eq!(handle.character.read().await.chara.mp, 100);
+        assert_eq!(handle.character.read().await.chara.mp, 110);
+
+        // Sheathed again, near full: stops at max.
+        {
+            let mut c = handle.character.write().await;
+            c.base.current_main_state = crate::actor::MAIN_STATE_PASSIVE;
+            c.chara.mp = 495;
+        }
+        ticker.tick_once(9_000).await;
+        assert_eq!(handle.character.read().await.chara.mp, 500);
     }
 
     /// The passive-regen gates: engaged and dead actors get no base
@@ -1950,15 +1980,19 @@ mod tests {
         let p = compute_passive_regen(&c);
         assert_eq!((p.hp, p.mp, p.tp), (0, 0, -90));
 
-        // Damaged + disengaged + sheathed: 2% of max, MP untouched.
+        // Damaged + disengaged + sheathed: 2% of max HP; MP 2% of max (#421).
         c.chara.hp = 500;
         let p = compute_passive_regen(&c);
         assert_eq!((p.hp, p.mp, p.tp), (20, 0, -90));
+        c.chara.max_mp = 300;
+        c.chara.mp = 0;
+        let p = compute_passive_regen(&c);
+        assert_eq!((p.hp, p.mp, p.tp), (20, 6, -90));
 
-        // Poisoned (any damage-over-time): no HP regen, TP still decays.
+        // Poisoned (any damage-over-time): no HP regen; MP and TP go on.
         c.chara.mods.set(crate::actor::Modifier::RegenDown, 5.0);
         let p = compute_passive_regen(&c);
-        assert_eq!((p.hp, p.mp, p.tp), (0, 0, -90));
+        assert_eq!((p.hp, p.mp, p.tp), (0, 6, -90));
         c.chara.mods.set(crate::actor::Modifier::RegenDown, 0.0);
 
         // Engaged: nothing at all.
