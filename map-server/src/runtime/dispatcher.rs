@@ -506,6 +506,18 @@ pub async fn dispatch_battle_event(
                 &row,
             );
             broadcast_around_actor(world, registry, zone, *owner_actor_id, begin.to_bytes()).await;
+            // An NPC caster (an ally healer) pays its MP when the cast
+            // starts (ticker `start_ally_cast`), not at resolve, so the
+            // resolve-time pool sync never sees the change. Send its pools
+            // now or the party list's MP gauge never moves (#346). Players
+            // pay at resolve, which syncs them.
+            let npc_caster = registry
+                .get(*owner_actor_id)
+                .await
+                .is_some_and(|h| !h.is_player());
+            if npc_caster {
+                broadcast_state_quickly(registry, world, zone, *owner_actor_id).await;
+            }
         }
         BattleEvent::CastComplete { owner_actor_id, .. }
         | BattleEvent::CastInterrupted { owner_actor_id, .. } => {
@@ -7233,6 +7245,66 @@ mod pool_tick_sync_tests {
         assert!(
             !received_state_bundle(&mut rx),
             "empty-TP decay must not emit a state bundle",
+        );
+    }
+
+    /// An ally healer pays its MP when its cast starts (ticker
+    /// `start_ally_cast`), so the CastStart must carry its pools to the
+    /// party: else the party list's MP gauge never moves (#346). A
+    /// player's own CastStart stays as it was (its cost syncs at resolve).
+    #[tokio::test]
+    async fn ally_cast_start_syncs_its_pools() {
+        const ALLY_ID: u32 = 0x4660_0007;
+        let (world, registry, _db, _handle, mut rx) = setup(1000, 0).await;
+        let zone = world.zone(ZONE_ID).await.expect("zone");
+        {
+            let mut ob = crate::zone::outbox::AreaOutbox::new();
+            zone.write().await.core.add_actor(
+                crate::zone::area::StoredActor {
+                    actor_id: ALLY_ID,
+                    kind: crate::zone::area::ActorKind::Ally,
+                    position: common::Vector3::ZERO,
+                    grid: (0, 0),
+                    is_alive: true,
+                },
+                &mut ob,
+            );
+        }
+        let mut ally = Character::new(ALLY_ID);
+        ally.chara.max_hp = 500;
+        ally.chara.hp = 500;
+        ally.chara.max_mp = 400;
+        ally.chara.mp = 395;
+        ally.base.zone_id = ZONE_ID;
+        registry
+            .insert(ActorHandle::new(
+                ALLY_ID,
+                ActorKindTag::Ally,
+                ZONE_ID,
+                0,
+                ally,
+            ))
+            .await;
+        // Drain the setup traffic.
+        let _ = received_state_bundle(&mut rx);
+
+        let cast = |owner_actor_id| BattleEvent::CastStart {
+            owner_actor_id,
+            target_actor_id: PLAYER_ID,
+            command_id: 27346,
+            cast_time_ms: 2000,
+            cast_type: 3,
+        };
+        dispatch_battle_event(&cast(ALLY_ID), &registry, &world, &zone, None, None).await;
+        assert!(
+            received_state_bundle(&mut rx),
+            "an ally's cast start must sync its MP to the party",
+        );
+
+        dispatch_battle_event(&cast(PLAYER_ID), &registry, &world, &zone, None, None).await;
+        assert!(
+            !received_state_bundle(&mut rx),
+            "a player's cast start pays nothing yet, so no pool sync",
         );
     }
 }
