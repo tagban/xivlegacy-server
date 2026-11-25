@@ -2673,6 +2673,14 @@ impl Database {
             .load_guildleves_regional(chara_id)
             .await
             .unwrap_or_default();
+        // a gap left by an older build hides the leves after it (#424)
+        for (gl_id, slot) in
+            crate::gamedata::compact_guildleve_slots(&mut player.guildleves_regional)
+        {
+            if let Err(e) = self.move_guildleve_slot(chara_id, gl_id, slot).await {
+                tracing::warn!(chara_id, gl_id, slot, error = %e, "guildleve: slot compaction failed");
+            }
+        }
         player.faction_credits = self
             .load_faction_credits(chara_id)
             .await
@@ -3539,6 +3547,21 @@ impl Database {
                     named_params! { ":cid": chara_id, ":slot": slot, ":gid": gl_id },
                 )?;
                 activity::quest(c, chara_id, "leve", gl_id, "accept", 0);
+                Ok(())
+            })
+            .await?;
+        Ok(())
+    }
+
+    /// Move a held regional leve to `slot` (closing a gap, #424).
+    pub async fn move_guildleve_slot(&self, chara_id: u32, gl_id: u16, slot: u16) -> Result<()> {
+        self.conn
+            .call_db(move |c| {
+                c.execute(
+                    r"UPDATE characters_quest_guildleve_regional SET slot = :slot
+                      WHERE characterId = :cid AND guildleveId = :gid",
+                    named_params! { ":cid": chara_id, ":slot": slot, ":gid": gl_id },
+                )?;
                 Ok(())
             })
             .await?;

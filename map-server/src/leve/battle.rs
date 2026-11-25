@@ -887,20 +887,32 @@ async fn remove(
     let Some(handle) = registry.get(player_id).await else {
         return;
     };
-    let slot = {
+    // The leves after the freed slot move down one: the journal lists the
+    // slots only up to the first empty one (#424).
+    let (moved, freed) = {
         let mut c = handle.character.write().await;
         let held = &mut c.chara.guildleves_regional;
-        let slot = held
+        let Some(top) = held
             .iter()
-            .find(|e| u32::from(e.guildleve_id) == gl_id)
-            .map(|e| e.slot);
+            .any(|e| u32::from(e.guildleve_id) == gl_id)
+            .then(|| held.iter().map(|e| e.slot).max().unwrap_or(0))
+        else {
+            return;
+        };
         held.retain(|e| u32::from(e.guildleve_id) != gl_id);
-        slot
+        let moved = crate::gamedata::compact_guildleve_slots(held);
+        (moved, (held.len() as u16)..=top)
     };
     if let Err(e) = db.remove_guildleve(player_id, gl_id).await {
         tracing::warn!(player = player_id, gl_id, error = %e, "guildleve: remove failed");
     }
-    if let Some(slot) = slot {
+    for &(id, slot) in &moved {
+        if let Err(e) = db.move_guildleve_slot(player_id, id, slot).await {
+            tracing::warn!(player = player_id, gl_id = id, slot, error = %e, "guildleve: slot move failed");
+        }
+        send_slot(registry, world, player_id, slot, id).await;
+    }
+    for slot in freed {
         send_slot(registry, world, player_id, slot, 0).await;
     }
 }

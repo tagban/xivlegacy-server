@@ -425,6 +425,56 @@ pub struct GuildleveRegionalEntry {
     pub completed: bool,
 }
 
+/// Close the gaps in a player's regional leve slots: the 1.23b journal
+/// lists `work.guildleveId[]` only up to the first empty slot, so a leve
+/// after a gap (a finished leve's slot) disappears from it (#424). Sorts
+/// by slot and renumbers from 0; returns (guildleve id, new slot) for each
+/// entry that moved.
+pub fn compact_guildleve_slots(held: &mut [GuildleveRegionalEntry]) -> Vec<(u16, u16)> {
+    held.sort_by_key(|e| e.slot);
+    let mut moved = Vec::new();
+    for (i, e) in held.iter_mut().enumerate() {
+        let slot = i as u16;
+        if e.slot != slot {
+            e.slot = slot;
+            moved.push((e.guildleve_id, slot));
+        }
+    }
+    moved
+}
+
+#[cfg(test)]
+mod guildleve_slot_tests {
+    use super::*;
+
+    fn entry(slot: u16, id: u16) -> GuildleveRegionalEntry {
+        GuildleveRegionalEntry {
+            slot,
+            guildleve_id: id,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn leve_slots_close_their_gaps() {
+        // Wren: slots 0 and 1 finished, the Exorcism left in slot 2.
+        let mut held = vec![entry(2, 12425)];
+        assert_eq!(compact_guildleve_slots(&mut held), vec![(12425, 0)]);
+        assert_eq!(held[0].slot, 0);
+
+        let mut held = vec![entry(3, 30), entry(0, 10), entry(5, 50)];
+        assert_eq!(compact_guildleve_slots(&mut held), vec![(30, 1), (50, 2)]);
+        let slots: Vec<(u16, u16)> = held.iter().map(|e| (e.slot, e.guildleve_id)).collect();
+        assert_eq!(slots, vec![(0, 10), (1, 30), (2, 50)]);
+    }
+
+    #[test]
+    fn contiguous_leve_slots_stay_put() {
+        let mut held = vec![entry(0, 10), entry(1, 20)];
+        assert!(compact_guildleve_slots(&mut held).is_empty());
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct NpcLinkshellEntry {
     pub npc_ls_id: u16,
