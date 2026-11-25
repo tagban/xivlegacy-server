@@ -5354,13 +5354,10 @@ pub(crate) async fn check_content_battle_complete(
     }
 }
 
-/// Award GC seals to `attacker_handle` for killing a mob of the given
-/// level. No-ops when the attacker isn't enlisted. Cap is the per-rank
-/// seal cap (matches `gcseals.lua::AddGCSeals` — refusing the deposit
-/// over-cap), implemented at the DB layer in `add_seals`'s
-/// transactional upsert. Failure to persist is logged but not fatal.
 /// Roll a fallen monster's drop list (`crate::drops`) and hand each item
 /// or gil to a random player of `sharers`, telling them all who got what.
+/// The client already prints "You obtain N gil." to whoever gets gil, so
+/// that player gets no extra gil line; item lines go to everyone.
 async fn award_drops(
     drop_list_id: u32,
     sharers: &[crate::runtime::actor_registry::ActorHandle],
@@ -5381,6 +5378,7 @@ async fn award_drops(
     });
     for drop in got {
         let who = &sharers[rand::random_range(0..sharers.len())];
+        let is_gil = matches!(drop, crate::drops::Drop::Gil(_));
         let line = match drop {
             crate::drops::Drop::Gil(gil) => {
                 crate::runtime::quest_apply::apply_add_gil(
@@ -5420,7 +5418,7 @@ async fn award_drops(
                     .unwrap_or_else(|| format!("item {item_id}"));
                 let hq = if quality > 1 { " (HQ)" } else { "" };
                 if quantity > 1 {
-                    format!("obtains {quantity} {name}{hq}.")
+                    format!("obtains {name}{hq} x{quantity}.")
                 } else {
                     format!("obtains {name}{hq}.")
                 }
@@ -5429,6 +5427,9 @@ async fn award_drops(
         let who_name = who.character.read().await.base.display_name().to_string();
         let line = format!("{who_name} {line}");
         for h in sharers {
+            if is_gil && h.actor_id == who.actor_id {
+                continue;
+            }
             crate::runtime::quest_apply::apply_send_message(
                 h.actor_id, 0x20, "", &line, registry, world,
             )
@@ -5437,6 +5438,11 @@ async fn award_drops(
     }
 }
 
+/// Award GC seals to `attacker_handle` for killing a mob of the given
+/// level. No-ops when the attacker isn't enlisted. Cap is the per-rank
+/// seal cap (matches `gcseals.lua::AddGCSeals` — refusing the deposit
+/// over-cap), implemented at the DB layer in `add_seals`'s
+/// transactional upsert. Failure to persist is logged but not fatal.
 async fn award_grand_company_seals(
     attacker_handle: &crate::runtime::actor_registry::ActorHandle,
     mob_level: i16,
