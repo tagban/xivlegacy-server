@@ -27,7 +27,8 @@ sys.path.insert(0, str(HERE))
 import nav  # noqa: E402
 
 WALK = re.compile(r"\[walk\] (arrived|stuck|lost|stopped)(?::| at) ?(-?[\d.]+)? ?(-?[\d.]+)? ?(-?[\d.]+)?")
-AT = re.compile(r"\[walk\] at (-?[\d.]+) (-?[\d.]+) (-?[\d.]+)")
+AT = re.compile(r"\[walk\] at (-?[\d.]+) (-?[\d.]+) (-?[\d.]+)(?: facing (-?[\d.]+))?")
+START = re.compile(r"\[walk\] start at \S+ \S+ \S+ facing (-?[\d.]+)")
 MARK = re.compile(r"stand-and-mark player position actor=\d+ x=(\S+) y=(\S+) z=(\S+)")
 # an event that holds the player (a push trigger, talk, a notice scene); event_type 0 is a command
 EVENT = re.compile(r"RunEventFunction .*? event=(\S+) .*?event_type=([1-9])")
@@ -40,6 +41,7 @@ class Rig:
         self.fifo = self.root / f"c{who}" / "xiv.fifo"
         self.log = self.root / f"c{who}" / "client.log"
         self.map = self.root / "logs" / "map.log"
+        self.facing = None
 
     def send(self, line):
         with open(self.fifo, "w") as f:
@@ -72,6 +74,7 @@ class Rig:
         return tuple(float(v) for v in m.groups()) if m else None
 
     def where(self, timeout=10):
+        """the player's x, y, z (and its facing in self.facing), or None"""
         off = self.size()
         hint = self.server_pos()
         self.send("walkwhere" + (f" near {hint[0]:.2f} {hint[2]:.2f} {hint[1]:.2f}" if hint else ""))
@@ -79,7 +82,8 @@ class Rig:
         while time.time() < end:
             m = AT.search(self.since(off))
             if m:
-                return tuple(float(v) for v in m.groups())
+                self.facing = float(m.group(4)) if m.group(4) else None
+                return tuple(float(v) for v in m.groups()[:3])
             time.sleep(0.2)
         return None
 
@@ -139,6 +143,57 @@ def main():
     return 1
 
 
+def wrap(a):
+    """an angle in -pi..pi"""
+    return (a + math.pi) % (2 * math.pi) - math.pi
+
+
+def didnt_turn(rig, off, pts):
+    """why a stuck walk is not a wall, or None: the character kept the facing it started with
+    although the route turned it (in battle stance it faces its target, so the walker turns the
+    camera and runs the wrong way); a spot learned from that would wall off open ground"""
+    m = START.search(rig.since(off))
+    if not m or len(pts) < 2 or rig.where() is None or rig.facing is None:
+        return None
+    start = float(m.group(1))
+    want = math.atan2(pts[1][0] - pts[0][0], pts[1][2] - pts[0][2])
+    if abs(wrap(rig.facing - start)) < 0.05 and abs(wrap(want - start)) > 0.5:
+        return (f"the character didn't turn (facing {start:.2f} the whole walk, the route wanted {want:.2f}): "
+                f"in battle stance or locked on a target? Nothing was learned here")
+    return None
+
+
+def plan_past_learned(world, pos, goal, near, learned, learned_file):
+    """world.plan, but when the spots learned from earlier walks wall the route off and it plans
+    without them, forget the learned spots the new route passes (they were not walls: a fight, a
+    mob, a door shut then) and use it"""
+    try:
+        return world.plan(pos, goal, near)
+    except nav.NoPath as e:
+        if not world.blocked:
+            raise
+        first = e
+    kept = world.blocked
+    world.blocked = set()
+    try:
+        pts = world.plan(pos, goal, near)
+    except nav.NoPath:
+        world.blocked = kept
+        raise first
+    # the route every half yalm (its waypoints are the ends of long straight legs)
+    along = [(a[0] + (b[0] - a[0]) * k / n, a[2] + (b[2] - a[2]) * k / n)
+             for a, b in zip(pts, pts[1:]) for n in [max(1, int(math.hypot(b[0] - a[0], b[2] - a[2]) / 0.5))]
+             for k in range(n + 1)]
+    on_way = [s for s in learned if any(math.hypot(x - s[0], z - s[1]) <= s[2] + 1.0 for x, z in along)]
+    for s in on_way:
+        learned.remove(s)
+    for x, z, r, _ in learned:
+        world.block(x, z, r)
+    learned_file.write_text(json.dumps(learned))
+    print(f"the {len(on_way)} spot(s) earlier walks stuck at wall this route off; planning without them", flush=True)
+    return pts
+
+
 def walk_to(rig, world, goal, near, tries, learned, learned_file, paths, plans):
     """plan and walk to goal (x, y or None, z) within `near`, planning again where a walk sticks;
     (None, plans made) when there, else (why it stopped, plans made)"""
@@ -152,7 +207,7 @@ def walk_to(rig, world, goal, near, tries, learned, learned_file, paths, plans):
         tp = time.time()
         walled = None
         try:
-            pts = world.plan(pos, goal, near)
+            pts = plan_past_learned(world, pos, goal, near, learned, learned_file)
         except nav.NoPath as e:
             if not e.walled or not e.partial or e.gap is None:
                 return str(e), attempt - 1
@@ -209,6 +264,10 @@ def walk_to(rig, world, goal, near, tries, learned, learned_file, paths, plans):
         if kind == "lost":
             return "the client lost the player (a zone change that didn't come back?)", attempt
         # stuck or stopped: keep the next plan away from where it stuck, plan again
+        turned = didnt_turn(rig, off, pts)
+        if turned:
+            rig.send("walkstop")
+            return turned, attempt
         if result.group(2):
             sx, sz = float(result.group(2)), float(result.group(4))
             # block the spot just ahead of where it stuck (the obstacle), not under its feet

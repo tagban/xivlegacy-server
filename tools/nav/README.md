@@ -61,8 +61,8 @@ things a player can't walk through are not in it (market counters and stalls in 
 and some walkways are missing (Limsa's Procession of Terns). So:
 
 - `walked.txt`: floors where our characters stood but the layouts have none (dense trails only, from
-  our own logs; Limsa and Lower La Noscea, and the Central Shroud road to Gridania's White Wolf
-  Gate: in Ul'dah, trails along walls opened false ways, so add a stretch only where a route needs it).
+  our own logs; Limsa and Lower La Noscea, the Central Shroud road to Gridania's White Wolf Gate,
+  and the ways out of Gridania's aetheryte plaza, where Return lands a character: in Ul'dah, trails along walls opened false ways, so add a stretch only where a route needs it).
   Right where a character stood, walls don't block.
 - `zones.json` `closed`: spots walks always stuck at (Ul'dah market counters); `doors`: gates that
   are open in game (the Gate of Nald: the town copy is opened by its DoorServer, see
@@ -71,7 +71,11 @@ and some walkways are missing (Limsa's Procession of Terns). So:
   around those spots next time (a spot hit again grows from 1 to 3 yalms). They are forgotten after
   3 days, a plan never treats the spot it starts from or its goal as blocked, and `--forget` starts
   over. A stop caused by a quest event (a push trigger, a cutscene) is never learned: go.py sees the
-  event in the map server's log, ends the walk and exits with status 3.
+  event in the map server's log, ends the walk and exits with status 3. Nor is a walk the character
+  never turned on (in battle stance it keeps facing its target, so the walker turns only the camera
+  and runs the wrong way): go.py stops and says so; sheathe the weapon first.
+  When the learned spots wall a route off and it plans without them, go.py forgets the spots that
+  route passes (they were a fight, a mob or a shut door, not walls) and walks it.
 - A goal on ground cut off from the start (Gridania has banks with an invisible fence at their foot,
   so the grassy top is out of reach in the game too): go.py walks to the closest spot it can reach
   and says how far that is from the goal.
