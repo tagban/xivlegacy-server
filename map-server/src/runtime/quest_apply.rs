@@ -4394,6 +4394,24 @@ pub async fn apply_add_exp(
         if class_slot >= c.battle_save.skill_point.len() {
             tracing::warn!(class = class_id, "AddExp: class_id out of range");
             None
+        } else if exp > 0
+            && c.battle_save
+                .skill_level
+                .get(class_slot)
+                .copied()
+                .unwrap_or(1)
+                >= crate::gameplay::current().level_cap
+        {
+            // At the host's level cap (`[progression] level_cap`) EXP
+            // stops: nothing is earned, no "You earn" line, and rested
+            // EXP is kept for later.
+            tracing::debug!(
+                actor = actor_id,
+                class = class_id,
+                exp,
+                "AddExp: at the level cap, nothing earned"
+            );
+            None
         } else {
             let rested_before = c.chara.rest_bonus_exp_rate;
             let (effective_gain, rested_after) = consume_rested_xp(exp, rested_before);
