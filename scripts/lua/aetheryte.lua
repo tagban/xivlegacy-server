@@ -108,6 +108,23 @@ aetheryteChildLinks = {
 	[1280125] = 1280121	
 }
 
+-- Camps a Teleport costs no anima to reach: Patch 1.23b Notes ([dev1486],
+-- Square Enix forum thread 54142, 2012-09-12) made Teleport to these five
+-- camps free ("no longer costs anima"). The 1.23b client's
+-- own menu (client script q5y5uvsq7vxx9w6, eventAetheryte) shows "Anima: 0"
+-- for the same five whatever the server sends. The server must still send
+-- them a cost above 0: the client leaves a slot with cost 0 out of the
+-- list. (The client also shows the Atomos camps of [dev1485], Dragonhead,
+-- Emerald Moss, Crimson Bark, Black Brush and Horizon, as free while its
+-- special event work 9 is 20, an event value this server never sends.)
+freeTeleportAetherytes = {
+	[1280094] = true, -- Camp Glory
+	[1280095] = true, -- Camp Ever Lakes
+	[1280035] = true, -- Camp Bluefog
+	[1280121] = true, -- Camp Brittlebark
+	[1280122] = true  -- Camp Revenant's Toll
+}
+
 aetheryteTeleportPositions = {
     --La Noscea
 	[1280001] = {230, -407, 42.5, 337}, -- CAP
