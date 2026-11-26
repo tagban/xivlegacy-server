@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 2067 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 2065 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -768,7 +768,6 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (772, 1280057, '', 0, '', 0, 33.0, 201.0, -482.0, 0.0, 0, 0, NULL),
 (773, 1280058, '', 0, '', 0, -1315.0, 57.0, -147.0, 0.0, 0, 0, NULL),
 (774, 1280059, '', 0, '', 0, -165.0, 281.0, -1699.0, 0.0, 0, 0, NULL),
-(775, 1280061, 'gridania_aetheryte', 206, '', 0, -130.63, 16.08, -1323.99, 0.0, 0, 0, NULL),
 (776, 1280062, 'camp_bentbranch_aetheryte', 150, '', 0, 288.0, 4.0, -543.928, 0.0, 0, 0, NULL),
 (777, 1280063, 'camp_nineivies_aetheryte', 151, '', 0, 1702.0, 20.0, -862.0, 0.0, 0, 0, NULL),
 (778, 1280064, 'camp_emeraldmoss_aetheryte', 152, '', 0, -1052.0, 20.6, -1760.0, 0.0, 0, 0, NULL),
@@ -821,7 +820,6 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (825, 1280124, 'singingshards_aetherytegate', 190, '', 0, 580.0, 59.0, 206.0, 0.0, 0, 0, NULL),
 (826, 1280125, 'jaggedcrestcave_aetherytegate', 190, '', 0, -365.0, -13.0, -37.0, 0.0, 0, 0, NULL),
 (827, 1280126, '', 0, '', 0, 484.0, 19.0, 672.0, 0.0, 0, 0, NULL),
-(828, 1280127, '', 0, '', 0, -400.0, 19.0, 338.0, 0.0, 0, 0, NULL),
 (832, 1090373, 'opening_stoper_uldah', 184, '', 0, 27.42, 192.0, 126.94, 0.33, 0, 0, NULL),
 (835, 1000444, 'undignified_adventurer', 230, 'PrivateAreaMasterPast', 1, -832.36, 6.0, 209.44, -0.35, 0, 1041, NULL),
 (836, 1000438, 'well-traveled_merchant', 230, 'PrivateAreaMasterPast', 1, -831.73, 6.0, 196.77, 0.86, 0, 1035, NULL),
@@ -1189,7 +1187,6 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (2267, 1090202, 'man0g1_gate_trig', 206, '', 0, -194.73, 3.5, -1021.33, -1.642, 0, 0, NULL),
 (2268, 1090203, 'man0g1_stump_trig', 150, 'PrivateAreaMasterPast', 0, -790.0, 21.0, -1060.0, 0.0, 0, 0, NULL),
 (2269, 1090204, 'man0g1_stump_exit_trig', 150, 'PrivateAreaMasterPast', 1, -756.77, 22.77, -1092.33, 0.0, 0, 0, NULL),
-(2270, 1090046, 'man0g1_btn_trig', 206, '', 0, -202.91, 18.09, -1477.51, -1.42, 0, 0, NULL),
 (2271, 1000234, 'man0g1_soileine', 206, '', 0, -356.5, 6.25, -1708.5, -2.37, 0, 1015, NULL),
 (2272, 1000033, 'man0g1_oapppesi_echo', 155, 'PrivateAreaMasterPast', 0, -355.0, 6.25, -1705.0, 0.6, 0, 1015, NULL),
 (2273, 1000009, 'man0g1_yda_echo', 155, 'PrivateAreaMasterPast', 0, -356.6, 6.25, -1703.6, 0.9, 0, 0, NULL),
