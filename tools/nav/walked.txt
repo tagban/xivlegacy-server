@@ -2,8 +2,8 @@
 # rounded to a yalm) where the 1.23b layouts as read have no floor; dense trails only: Limsa and
 # Lower La Noscea (the Procession of Terns has no collision as read) and the Central Shroud road to
 # Gridania's White Wolf Gate (zone 150 lines), and the ways out of Gridania's aetheryte plaza, where
-# Return lands a character, and the wall line east of the Archers' Guild that players walk through
-# (zone 155 lines). See README.md.
+# Return lands a character, the wall line east of the Archers' Guild that players walk through, and
+# three steps on the way down to the Conjurers' Guild (the Fane) (zone 155 lines). See README.md.
 128 -617 4.0 370
 128 -617 4.0 371
 128 -617 4.0 372
@@ -2509,3 +2509,53 @@
 155 202 9.5 -1237
 155 203 9.4 -1236
 155 203 9.5 -1237
+155 -193 22.8 -1601
+155 -193 22.8 -1600
+155 -192 22.8 -1600
+155 -192 22.8 -1599
+155 -191 22.8 -1599
+155 -191 22.8 -1598
+155 -190 22.8 -1598
+155 -189 22.8 -1597
+155 -188 22.9 -1598
+155 -188 22.8 -1597
+155 -187 22.9 -1597
+155 -186 22.9 -1597
+155 -186 22.9 -1596
+155 -185 22.9 -1596
+155 -246 17.9 -1654
+155 -246 17.9 -1653
+155 -245 17.9 -1654
+155 -245 18.0 -1653
+155 -244 18.1 -1653
+155 -243 18.3 -1653
+155 -243 18.3 -1652
+155 -242 18.7 -1651
+155 -242 18.9 -1650
+155 -241 18.9 -1650
+155 -240 19.0 -1649
+155 -239 19.2 -1649
+155 -239 19.3 -1648
+155 -238 19.3 -1648
+155 -347 6.4 -1692
+155 -346 6.7 -1691
+155 -345 6.8 -1691
+155 -345 6.8 -1690
+155 -345 6.8 -1688
+155 -344 6.6 -1693
+155 -344 6.8 -1690
+155 -343 6.8 -1690
+155 -343 7.0 -1689
+155 -343 7.1 -1688
+155 -343 7.3 -1687
+155 -342 7.4 -1688
+155 -342 7.7 -1687
+155 -342 7.6 -1686
+155 -341 7.8 -1687
+155 -341 8.0 -1686
+155 -341 8.0 -1685
+155 -341 8.1 -1684
+155 -340 8.1 -1686
+155 -340 8.1 -1684
+155 -339 8.1 -1685
+155 -339 8.1 -1684

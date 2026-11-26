@@ -62,7 +62,7 @@ and some walkways are missing (Limsa's Procession of Terns). So:
 
 - `walked.txt`: floors where our characters stood but the layouts have none (dense trails only, from
   our own logs; Limsa and Lower La Noscea, the Central Shroud road to Gridania's White Wolf Gate,
-  and the ways out of Gridania's aetheryte plaza, where Return lands a character: in Ul'dah, trails along walls opened false ways, so add a stretch only where a route needs it).
+  the ways out of Gridania's aetheryte plaza, where Return lands a character, and the way down to the Fane: in Ul'dah, trails along walls opened false ways, so add a stretch only where a route needs it).
   Right where a character stood, walls don't block.
 - `zones.json` `closed`: spots walks always stuck at (Ul'dah market counters); `doors`: gates that
   are open in game (the Gate of Nald: the town copy is opened by its DoorServer, see
