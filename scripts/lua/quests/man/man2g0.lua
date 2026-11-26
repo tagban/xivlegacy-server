@@ -55,6 +55,7 @@ CNJ_BRIDGE_TRIGGER			= 1090200;
 FYE							= 1000014;
 O_APP_PESI					= 1000033;
 SOILEINE					= 1000234;
+SOILEINE_ECHO_SPAWN			= "man2g0_10_soileine";	-- her spawn inside the Fane echo
 SILKY_HAIRED_CONJURER		= 1000748;
 ENIGMATIC_CONJURER			= 1000749;
 
@@ -91,7 +92,10 @@ FST_ECHO_TRIGGER			= 1090281;
 -- Where the quest moves the player (zone, private area type, x, y, z, rotation)
 ARC_ECHO			= {206, 0, 232.6, 12.0, -1271.7, 2.6};		-- Quiver's Hold, before the ranging
 ARC_GUILD			= {206, nil, 232.6, 12.0, -1271.7, 2.6};
-CNJ_ECHO			= {206, 10, -320.3, 7.5, -1700.8, -1.48};	-- on the path east of Stillglade Fane
+-- On the Fane's front path between Soileine and the door. The old spot,
+-- (-320.3, 7.5, -1700.8), had no floor at y 7.5 (only a ledge at 27):
+-- players fell under the world there (#453).
+CNJ_ECHO			= {206, 10, -345.0, 6.8, -1700.5, -1.48};
 CNJ_GUILD			= {206, nil, -320.3, 7.5, -1700.8, -1.48};
 
 -- The Spirit of the Wood battle, East Shroud by Camp Nine Ivies (spots
@@ -288,6 +292,14 @@ function onTalk(player, quest, npc)
 		--elseif (classId == ZEZEKUTA) then
 		--	callClientFunction(player, "delegateEvent", player, quest, "processEvent020_3");
 		end
+	elseif ((sequence == SEQ_020 or sequence == SEQ_025 or sequence == SEQ_030)
+			and classId == SOILEINE and npc:GetUniqueId() ~= SOILEINE_ECHO_SPAWN) then
+		-- Outside the echo (after a Return or a logout) she sends the
+		-- player back in; the door trigger and Fye only spawn inside (#453).
+		callClientFunction(player, "delegateEvent", player, quest, "processEvent030");
+		player:EndEvent();
+		warpTo(player, CNJ_ECHO);
+		return;
 	elseif (sequence == SEQ_020) then
 		if (classId == SOILEINE) then
 			callClientFunction(player, "delegateEvent", player, quest, "processEvent030_2");
