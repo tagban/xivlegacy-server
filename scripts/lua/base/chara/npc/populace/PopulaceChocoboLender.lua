@@ -22,6 +22,10 @@ Notes:
 * eventSetChocoboName returns the typed name; Escape and the Cancel button both return "". Anything that isn't a
   non-blank string is treated as a cancel.
 * Special spawn codes must be sent for getting your chocobo or renting for it to work properly.
+* Issuance (#452): a lender issues your own chocobo only when you hold the chocobo issuance of its city's
+  Grand Company (gcIssuances, a key item the company's quartermaster sells for seals). The issuance is
+  used up when the chocobo is named. Without it the menu has no issuance row; renting is open to everyone.
+  The client passes isPresentChocoboIssuance through as given, so the server is the only gate.
 
 --]]
 
@@ -87,17 +91,14 @@ end
 
 function onEventStarted(player, npc, triggerName)	
 	local curLevel = 20; -- TODO: pull from character
-	local hasIssuance = player:GetItemPackage(INVENTORY_KEYITEMS):HasItem(gcIssuances[npc:GetActorClassId()]);
-	local hasChocobo = player.hasChocobo;
-	
-	if (hasChocobo == false) then -- Let GMs auto have the issuance for debugging 
-		hasIssuance = true;
-	end
+	local issuanceItem = gcIssuances[npc:GetActorClassId()];
+	local hasChocobo = player.hasChocobo == true;
 
+	-- The issuance row: no bird yet, this city's company issuance in hand,
+	-- and a sys_chocoview beside the lender (the scenes crash without it).
 	local canIssue = chocoViewNearby(npc);
-	if (not canIssue) then
-		hasIssuance = false;
-	end
+	local hasIssuance = (not hasChocobo) and canIssue and issuanceItem ~= nil
+		and player:GetItemPackage(INVENTORY_KEYITEMS):HasItem(issuanceItem);
 
 	local rentalPrice = ChocoboPrice(retailRentalPrice);
 	local hasFunds = (player:GetCurrentGil() >= rentalPrice);
@@ -106,7 +107,7 @@ function onEventStarted(player, npc, triggerName)
 	
 	local menuChoice = callClientFunction(player, "eventAskMainMenu", player, curLevel, hasFunds, hasIssuance, hasChocobo, hasChocobo, 0);
 
-	if (menuChoice == 1 and not canIssue) then -- No sys_chocoview here: the scenes would crash the client
+	if (menuChoice == 1 and not hasIssuance) then -- Row not offered (no issuance, already own a bird, or no sys_chocoview)
 		callClientFunction(player, "eventTalkStepBreak", player);
 	elseif (menuChoice == 1) then -- Issuance option
 
@@ -121,20 +122,24 @@ function onEventStarted(player, npc, triggerName)
 		else		
 			local appearance = startAppearances[npc:GetActorClassId()];			
 			player:IssueChocobo(appearance, nameResponse:match("^%s*(.-)%s*$"));
-			
-			callClientFunction(player, "eventAfterChocoboName", player);			
 
-			--Add Chocobo License and remove issuance
+			-- Use up the issuance and hand over the whistle together with the
+			-- bird, before the next scene: a disconnect during it must not
+			-- leave a chocobo and an unspent issuance.
+			player:GetItemPackage(INVENTORY_KEYITEMS):RemoveItem(issuanceItem, 1);
 			if (player:GetItemPackage(INVENTORY_KEYITEMS):HasItem(2001007) == false) then
 				player:GetItemPackage(INVENTORY_KEYITEMS):AddItem(2001007);
 			end
-			player:GetItemPackage(INVENTORY_KEYITEMS):RemoveItem(gcIssuances[npc:GetActorClassId()], 1);
+
+			callClientFunction(player, "eventAfterChocoboName", player);
 			
 			--Warp with the special chocobo warp mode.
 			mountChocobo(player);			
 			GetWorldManager():DoZoneChange(player, cityExits[npc:GetActorClassId()][1], nil, 0, SPAWN_CHOCOBO_GET, cityExits[npc:GetActorClassId()][2], cityExits[npc:GetActorClassId()][3], cityExits[npc:GetActorClassId()][4], cityExits[npc:GetActorClassId()][5]);		
 		end
 				
+	elseif((menuChoice == 2 or menuChoice == 3) and not hasChocobo) then -- Owner rows: not offered without a bird
+		callClientFunction(player, "eventTalkStepBreak", player);
 	elseif(menuChoice == 2) then -- Summon Bird
 		mountChocobo(player);
 		GetWorldManager():DoZoneChange(player, cityExits[npc:GetActorClassId()][1], nil, 0, SPAWN_NO_ANIM, cityExits[npc:GetActorClassId()][2], cityExits[npc:GetActorClassId()][3], cityExits[npc:GetActorClassId()][4], cityExits[npc:GetActorClassId()][5]);		

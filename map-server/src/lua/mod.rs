@@ -2871,6 +2871,257 @@ mod tests {
         }
     }
 
+    /// #452: drive the real `PopulaceChocoboLender.lua` as Ul'dah's lender
+    /// (Rururaji by the city's sys_chocoview). Returns the commands of every
+    /// step: the talk start, then one batch per client reply in `replies`.
+    fn talk_to_uldah_lender(
+        has_chocobo: bool,
+        inventory: Vec<(u32, i32)>,
+        replies: &[Vec<common::luaparam::LuaParam>],
+    ) -> Vec<Vec<LuaCommand>> {
+        let root = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../scripts/lua"));
+        let engine = LuaEngine::new(root);
+        let npc_spec = LuaNpcSpec {
+            actor_id: 0x4400_003B,
+            name: "rururaji".to_string(),
+            class_name: "PopulaceChocoboLender".to_string(),
+            class_path: "/Chara/Npc/Populace/PopulaceChocoboLender".to_string(),
+            unique_id: "rururaji".to_string(),
+            zone_id: 175,
+            zone_name: "wil0Town01".to_string(),
+            state: 0,
+            pos: (-36.99, 192.1, 15.9),
+            rotation: -0.56,
+            actor_class_id: 1_000_840,
+            quest_graphic: 0,
+        };
+        let snapshot = userdata::PlayerSnapshot {
+            actor_id: 42,
+            zone_id: 175,
+            current_gil: 5_000,
+            has_chocobo,
+            inventory,
+            ..Default::default()
+        };
+        let started = engine.call_npc_on_event_started(
+            &root.join("base/chara/npc/populace/PopulaceChocoboLender.lua"),
+            snapshot,
+            npc_spec,
+            "talkDefault".to_string(),
+            1,
+            Vec::new(),
+        );
+        assert!(started.error.is_none(), "{:?}", started.error);
+        let mut steps = vec![started.commands];
+        for reply in replies {
+            steps.push(
+                engine
+                    .fire_player_event_and_drain(42, reply)
+                    .expect("the lender waits on the client"),
+            );
+        }
+        steps
+    }
+
+    /// The `isPresentChocoboIssuance` flag the lender hands `eventAskMainMenu`
+    /// (args: player, level, hasFunds, issuance, summon, barding, ware).
+    fn issuance_row_offered(commands: &[LuaCommand]) -> bool {
+        let args = commands
+            .iter()
+            .find_map(|c| match c {
+                LuaCommand::RunEventFunction {
+                    function_name,
+                    args,
+                    ..
+                } if function_name == "eventAskMainMenu" => Some(args),
+                _ => None,
+            })
+            .expect("main menu shown");
+        matches!(args.get(3), Some(LuaCommandArg::Bool(true)))
+    }
+
+    const FLAME_ISSUANCE: u32 = 2_001_006;
+    const STORM_ISSUANCE: u32 = 2_001_004;
+
+    fn issued(steps: &[Vec<LuaCommand>]) -> bool {
+        steps
+            .iter()
+            .flatten()
+            .any(|c| matches!(c, LuaCommand::IssueChocobo { .. }))
+    }
+
+    fn removed_issuance(steps: &[Vec<LuaCommand>]) -> bool {
+        steps.iter().flatten().any(|c| {
+            matches!(
+                c,
+                LuaCommand::RemoveItem { catalog_id, quantity: 1, .. } if *catalog_id == FLAME_ISSUANCE
+            )
+        })
+    }
+
+    #[test]
+    fn chocobo_lender_without_the_issuance_offers_no_chocobo() {
+        use common::luaparam::LuaParam;
+        // No issuance at all, then only another company's issuance: no row,
+        // and a forced choice 1 just ends the talk.
+        for inventory in [vec![], vec![(STORM_ISSUANCE, 1)]] {
+            let steps = talk_to_uldah_lender(
+                false,
+                inventory.clone(),
+                &[vec![], vec![LuaParam::Int32(1)], vec![]],
+            );
+            assert!(
+                !issuance_row_offered(&steps[1]),
+                "issuance row offered with {inventory:?}"
+            );
+            let after_choice = &steps[2];
+            assert!(
+                after_choice.iter().any(|c| matches!(
+                    c,
+                    LuaCommand::RunEventFunction { function_name, .. }
+                        if function_name == "eventTalkStepBreak"
+                )),
+                "choice 1 without the issuance must say goodbye; got {after_choice:?}"
+            );
+            assert!(
+                !after_choice.iter().any(|c| matches!(
+                    c,
+                    LuaCommand::RunEventFunction { function_name, .. }
+                        if function_name == "eventTalkMyChocobo"
+                )),
+                "no issuance scene without the issuance; got {after_choice:?}"
+            );
+            assert!(!issued(&steps));
+        }
+    }
+
+    #[test]
+    fn chocobo_lender_with_the_issuance_issues_and_uses_it_up() {
+        use common::luaparam::LuaParam;
+        let steps = talk_to_uldah_lender(
+            false,
+            vec![(FLAME_ISSUANCE, 1)],
+            &[
+                vec![],                                  // eventTalkWelcome
+                vec![LuaParam::Int32(1)],                // menu: present the issuance
+                vec![],                                  // eventTalkMyChocobo
+                vec![LuaParam::String("Pepito".into())], // eventSetChocoboName
+                vec![],                                  // eventAfterChocoboName
+            ],
+        );
+        assert!(issuance_row_offered(&steps[1]));
+        let named = &steps[4];
+        assert!(
+            named.iter().any(|c| matches!(
+                c,
+                LuaCommand::IssueChocobo { name, .. } if name == "Pepito"
+            )),
+            "{named:?}"
+        );
+        // Used up with the bird, before the after-name scene.
+        let removed = named.iter().position(|c| {
+            matches!(c, LuaCommand::RemoveItem { catalog_id, quantity: 1, .. } if *catalog_id == FLAME_ISSUANCE)
+        });
+        let scene = named.iter().position(|c| {
+            matches!(c, LuaCommand::RunEventFunction { function_name, .. } if function_name == "eventAfterChocoboName")
+        });
+        assert!(
+            removed.is_some() && removed < scene,
+            "issuance removed before eventAfterChocoboName; got {named:?}"
+        );
+        assert!(
+            steps[5]
+                .iter()
+                .any(|c| matches!(c, LuaCommand::DoZoneChange { .. }))
+        );
+    }
+
+    #[test]
+    fn chocobo_lender_keeps_the_issuance_when_naming_is_canceled() {
+        use common::luaparam::LuaParam;
+        let steps = talk_to_uldah_lender(
+            false,
+            vec![(FLAME_ISSUANCE, 1)],
+            &[
+                vec![],
+                vec![LuaParam::Int32(1)],
+                vec![],
+                vec![LuaParam::String(String::new())],
+            ],
+        );
+        assert!(!issued(&steps));
+        assert!(!removed_issuance(&steps));
+    }
+
+    #[test]
+    fn chocobo_lender_owner_gets_no_issuance_and_keeps_summoning() {
+        use common::luaparam::LuaParam;
+        // An owner holding a spare issuance: owner rows, no issuance row,
+        // and a forced choice 1 neither issues nor spends it.
+        let steps = talk_to_uldah_lender(
+            true,
+            vec![(FLAME_ISSUANCE, 1)],
+            &[vec![], vec![LuaParam::Int32(1)], vec![]],
+        );
+        assert!(!issuance_row_offered(&steps[1]));
+        let args = steps[1]
+            .iter()
+            .find_map(|c| match c {
+                LuaCommand::RunEventFunction {
+                    function_name,
+                    args,
+                    ..
+                } if function_name == "eventAskMainMenu" => Some(args.clone()),
+                _ => None,
+            })
+            .unwrap();
+        assert!(
+            matches!(args.get(4), Some(LuaCommandArg::Bool(true))),
+            "summon row: {args:?}"
+        );
+        assert!(!issued(&steps));
+        assert!(!removed_issuance(&steps));
+
+        let summoned = talk_to_uldah_lender(true, vec![], &[vec![], vec![LuaParam::Int32(2)]]);
+        assert!(
+            summoned[2]
+                .iter()
+                .any(|c| matches!(c, LuaCommand::SetMountState { state: 1, .. })),
+            "owner summon mounts; got {:?}",
+            summoned[2]
+        );
+    }
+
+    #[test]
+    fn chocobo_lender_rents_without_the_issuance() {
+        use common::luaparam::LuaParam;
+        let steps = talk_to_uldah_lender(false, vec![], &[vec![], vec![LuaParam::Int32(5)]]);
+        let rented = &steps[2];
+        assert!(
+            rented
+                .iter()
+                .any(|c| matches!(c, LuaCommand::StartChocoboRental { minutes: 10, .. })),
+            "{rented:?}"
+        );
+        assert!(rented.iter().any(|c| matches!(
+            c,
+            LuaCommand::RemoveItem {
+                catalog_id: 1_000_001,
+                ..
+            }
+        )));
+        assert!(!issued(&steps));
+        // A forced summon without a bird does nothing.
+        let summon = talk_to_uldah_lender(false, vec![], &[vec![], vec![LuaParam::Int32(2)]]);
+        assert!(
+            !summon[2]
+                .iter()
+                .any(|c| matches!(c, LuaCommand::SetMountState { .. })),
+            "{:?}",
+            summon[2]
+        );
+    }
+
     /// #430 — Return while knocked out must revive through `Revive()`.
     /// `ChangeState(0)` on a corpse is dropped by the server's corpse
     /// guard, which left the player dead server-side (no regen, lying
