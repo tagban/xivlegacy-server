@@ -29,6 +29,7 @@ import nav  # noqa: E402
 WALK = re.compile(r"\[walk\] (arrived|stuck|lost|stopped)(?::| at) ?(-?[\d.]+)? ?(-?[\d.]+)? ?(-?[\d.]+)?")
 AT = re.compile(r"\[walk\] at (-?[\d.]+) (-?[\d.]+) (-?[\d.]+)(?: facing (-?[\d.]+))?")
 START = re.compile(r"\[walk\] start at \S+ \S+ \S+ facing (-?[\d.]+)")
+TRACE = re.compile(r"\[walk\] trace at \S+ \S+ \S+ facing (-?[\d.]+)")
 MARK = re.compile(r"stand-and-mark player position actor=\d+ x=(\S+) y=(\S+) z=(\S+)")
 # an event that holds the player (a push trigger, talk, a notice scene); event_type 0 is a command
 EVENT = re.compile(r"RunEventFunction .*? event=(\S+) .*?event_type=([1-9])")
@@ -152,12 +153,16 @@ def didnt_turn(rig, off, pts):
     """why a stuck walk is not a wall, or None: the character kept the facing it started with
     although the route turned it (in battle stance it faces its target, so the walker turns the
     camera and runs the wrong way); a spot learned from that would wall off open ground"""
-    m = START.search(rig.since(off))
+    log = rig.since(off)
+    m = START.search(log)
     if not m or len(pts) < 2 or rig.where() is None or rig.facing is None:
         return None
     start = float(m.group(1))
+    # every facing the walker read on the way: a re-found player block can read a stale 0.00 at the
+    # end, so one reading equal to the start is not enough
+    seen = [rig.facing] + [float(f) for f in TRACE.findall(log)]
     want = math.atan2(pts[1][0] - pts[0][0], pts[1][2] - pts[0][2])
-    if abs(wrap(rig.facing - start)) < 0.05 and abs(wrap(want - start)) > 0.5:
+    if all(abs(wrap(f - start)) < 0.05 for f in seen) and abs(wrap(want - start)) > 0.5:
         return (f"the character didn't turn (facing {start:.2f} the whole walk, the route wanted {want:.2f}): "
                 f"in battle stance or locked on a target? Nothing was learned here")
     return None
