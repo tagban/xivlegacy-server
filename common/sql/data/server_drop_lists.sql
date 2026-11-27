@@ -1,9 +1,11 @@
--- server_drop_lists: game data, 6434 rows. Reloaded whole when this file changes.
+-- server_drop_lists: game data, 6435 rows. Reloaded whole when this file changes.
 -- What each monster can drop (dropListId = the monster's actor class id, used when
 -- its group's dropListId is 0). Which monster drops which item is from ZAM's 1.0
 -- monster pages (tools/drops/zam_drops.py). ZAM has no rates: chance, rarity and
 -- hqChance follow the rule in that tool, by item category, not retail data.
 -- chance and hqChance are per 10000; rarity 0 common, 1 uncommon, 2 rare.
+-- Server-made lists (tools/drops/zam_drops.py EXTRA_ROWS) come last: 99000001,
+-- the Atomos camps' voidsent (map-server src/atomos.rs).
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_drop_lists`;
 INSERT INTO `server_drop_lists` (`dropListId`, `itemId`, `quantityMin`, `quantityMax`, `chance`, `rarity`, `hqChance`) VALUES
@@ -6440,4 +6442,5 @@ INSERT INTO `server_drop_lists` (`dropListId`, `itemId`, `quantityMin`, `quantit
 (9111232, 10007012, 1, 1, 1000, 0, 100),
 (9111232, 10007016, 1, 1, 1000, 0, 100),
 (9111232, 10009105, 1, 1, 1000, 0, 100),
-(9111232, 10009505, 1, 1, 1000, 0, 100);
+(9111232, 10009505, 1, 1, 1000, 0, 100),
+(99000001, 3020537, 1, 1, 3000, 0, 0);

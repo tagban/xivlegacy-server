@@ -114,9 +114,7 @@ aetheryteChildLinks = {
 -- own menu (client script q5y5uvsq7vxx9w6, eventAetheryte) shows "Anima: 0"
 -- for the same five whatever the server sends. The server must still send
 -- them a cost above 0: the client leaves a slot with cost 0 out of the
--- list. (The client also shows the Atomos camps of [dev1485], Dragonhead,
--- Emerald Moss, Crimson Bark, Black Brush and Horizon, as free while its
--- special event work 9 is 20, an event value this server never sends.)
+-- list.
 freeTeleportAetherytes = {
 	[1280094] = true, -- Camp Glory
 	[1280095] = true, -- Camp Ever Lakes
@@ -124,6 +122,29 @@ freeTeleportAetherytes = {
 	[1280121] = true, -- Camp Brittlebark
 	[1280122] = true  -- Camp Revenant's Toll
 }
+
+-- The Atomos camps of [dev1485]. The same client menu shows these five as
+-- free only while its special event work 9 is 20, which the server sends
+-- while the Atomos event runs (settings/events.toml, docs/atomos.md).
+ATOMOS_SPECIAL_EVENT_WORK = 20
+atomosTeleportAetherytes = {
+	[1280092] = true, -- Camp Dragonhead
+	[1280064] = true, -- Camp Emerald Moss
+	[1280065] = true, -- Camp Crimson Bark
+	[1280032] = true, -- Camp Black Brush
+	[1280034] = true  -- Camp Horizon
+}
+
+-- Whether a Teleport to aetheryteId costs no anima now: what the client's
+-- menu shows as free, so the charge and the menu agree.
+function IsTeleportFree(aetheryteId)
+	if (freeTeleportAetherytes[aetheryteId]) then
+		return true;
+	end
+	return atomosTeleportAetherytes[aetheryteId] == true
+		and GetSpecialEventWork ~= nil
+		and GetSpecialEventWork() == ATOMOS_SPECIAL_EVENT_WORK;
+end
 
 aetheryteTeleportPositions = {
     --La Noscea

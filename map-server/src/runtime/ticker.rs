@@ -225,6 +225,10 @@ impl GameTicker {
                 if looks > 0 {
                     tracing::info!(players = looks, "seasonal weather and music sent");
                 }
+                self.world.refresh_special_event_work(&self.registry).await;
+                // Atomos opens and closes over its camps by the Eorzean
+                // hour while its event runs (crate::atomos).
+                crate::atomos::tick(&self.world, &self.registry, &self.db).await;
             }
             // Liveness heartbeat — a frozen/starved ticker (the SEQ_005
             // wait(1) continuation silently never firing) is otherwise

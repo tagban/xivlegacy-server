@@ -28,6 +28,13 @@
 //! Some of an event's NPCs show only at night, Eorzean time (All Saints'
 //! Wake's trickster imps: `night_classes`), and a script can make one
 //! vanish for a while (`VanishSeasonalActor`, an imp after its riddle).
+//!
+//! An event can also set the client's special event work 9
+//! (`special_event_work`), the value the 1.23b client's own scripts read
+//! to switch event behavior on: 20 is the Atomos event of 1.23b, under
+//! which the Teleport menu shows the five [dev1485] camps as free (see
+//! `crate::atomos`). With no running event setting it the server sends
+//! [`BASE_SPECIAL_EVENT_WORK`].
 
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{OnceLock, RwLock};
@@ -144,7 +151,15 @@ pub struct Event {
     /// `night_end`, over midnight when the end is the smaller.
     pub night_start: u32,
     pub night_end: u32,
+    /// The client's special event work 9 while the event runs
+    /// (`SetSpecialEventWork`). None leaves it at the base value.
+    pub special_event_work: Option<u16>,
 }
+
+/// Special event work 9 when no running event sets one: what the server
+/// always sent before events could change it (Project Meteor's 18, under
+/// which the 1.23b client allows the Bombdance emote).
+pub const BASE_SPECIAL_EVENT_WORK: u16 = 18;
 
 impl Default for Event {
     fn default() -> Self {
@@ -155,6 +170,7 @@ impl Default for Event {
             night_classes: Vec::new(),
             night_start: 19,
             night_end: 5,
+            special_event_work: None,
         }
     }
 }
@@ -361,6 +377,16 @@ impl State {
         (weather, music)
     }
 
+    /// The first running event (by name) that sets special event work,
+    /// else the base value.
+    fn special_event_work(&self, day: MonthDay) -> u16 {
+        self.events
+            .iter()
+            .filter(|(name, _)| self.active(name, day))
+            .find_map(|(_, e)| e.special_event_work)
+            .unwrap_or(BASE_SPECIAL_EVENT_WORK)
+    }
+
     fn quest_open(&self, quest_id: u32, day: MonthDay) -> bool {
         let mut seasonal = false;
         for (name, e) in &self.events {
@@ -384,6 +410,19 @@ pub fn is_active_on(name: &str, day: MonthDay) -> bool {
     state()
         .read()
         .is_ok_and(|s| s.active(&name.to_ascii_lowercase(), day))
+}
+
+/// The special event work 9 value to send players now
+/// (`SetSpecialEventWork`, at login, zone-in and when an event starts or
+/// stops).
+pub fn special_event_work() -> u16 {
+    special_event_work_on(MonthDay::today())
+}
+
+pub fn special_event_work_on(day: MonthDay) -> u16 {
+    state()
+        .read()
+        .map_or(BASE_SPECIAL_EVENT_WORK, |s| s.special_event_work(day))
 }
 
 /// Whether `quest_id` may be offered today. A quest no window lists is
@@ -633,6 +672,41 @@ mod tests {
     }
 
     #[test]
+    fn special_event_work_follows_the_event_that_sets_it() {
+        let mut s = with(None);
+        let mut atomos = Event {
+            special_event_work: Some(20),
+            windows: vec![Window {
+                name: "camps".into(),
+                start: MonthDay(9, 12),
+                end: MonthDay(11, 11),
+                quests: vec![],
+            }],
+            ..Default::default()
+        };
+        atomos.mode = Mode::Auto;
+        s.events.insert("atomos".into(), atomos);
+        // starlight runs (no work of its own); atomos does not yet
+        assert_eq!(
+            s.special_event_work(MonthDay(12, 20)),
+            BASE_SPECIAL_EVENT_WORK
+        );
+        assert_eq!(s.special_event_work(MonthDay(10, 1)), 20);
+        assert_eq!(s.special_event_work(MonthDay(11, 11)), 20);
+        assert_eq!(
+            s.special_event_work(MonthDay(11, 12)),
+            BASE_SPECIAL_EVENT_WORK
+        );
+        s.overrides.insert("atomos".into(), Mode::On);
+        assert_eq!(s.special_event_work(MonthDay(7, 1)), 20);
+        s.overrides.insert("atomos".into(), Mode::Off);
+        assert_eq!(
+            s.special_event_work(MonthDay(10, 1)),
+            BASE_SPECIAL_EVENT_WORK
+        );
+    }
+
+    #[test]
     fn unknown_events_are_off() {
         let s = with(None);
         assert!(!s.active("hatchingtide", MonthDay(12, 20)));
@@ -741,5 +815,16 @@ mod tests {
         assert!(on("moonfire", MonthDay(6, 1)) && on("moonfire", MonthDay(8, 31)));
         assert!(!on("moonfire", MonthDay(5, 31)) && !on("moonfire", MonthDay(9, 1)));
         assert!(a.is_night(19) && a.is_night(4) && !a.is_night(5) && !a.is_night(18));
+        // Atomos: 1.0's run, from patch 1.23b to the end of service
+        let t = &events["atomos"];
+        assert_eq!(t.special_event_work, Some(20));
+        assert!(on("atomos", MonthDay(9, 12)) && on("atomos", MonthDay(11, 11)));
+        assert!(!on("atomos", MonthDay(9, 11)) && !on("atomos", MonthDay(11, 12)));
+        // only Atomos changes the client's event work
+        for (name, e) in &events {
+            if name != "atomos" {
+                assert_eq!(e.special_event_work, None, "{name}");
+            }
+        }
     }
 }

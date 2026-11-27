@@ -184,11 +184,16 @@ pub fn build_set_player_dream(actor_id: u32, dream_id: u8, inn_id: u8) -> SubPac
 /// body, which Project Meteor never does — omitting the 18 leaves the
 /// client without a baseline special-event state and its player-init
 /// code path waits for this packet before clearing the loading screen.
-pub fn build_set_special_event_work(actor_id: u32) -> SubPacket {
+///
+/// `work` is the value the client's scripts read back as
+/// `worldMaster:_getSpecialEventWork(9)`: 18 lets the Bombdance emote
+/// (156) through, 20 is the 1.23b Atomos event (the Teleport menu's free
+/// [dev1485] camps). `crate::seasonal::special_event_work` picks it.
+pub fn build_set_special_event_work(actor_id: u32, work: u16) -> SubPacket {
     let mut data = body(0x38);
     let mut c = Cursor::new(&mut data[..]);
     c.write_u16::<LittleEndian>(0).unwrap();
-    c.write_u16::<LittleEndian>(18).unwrap();
+    c.write_u16::<LittleEndian>(work).unwrap();
     SubPacket::new(OP_SET_SPECIAL_EVENT_WORK, actor_id, data)
 }
 

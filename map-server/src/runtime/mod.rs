@@ -33,6 +33,7 @@ pub mod aurum_pools;
 pub mod bnpc_spawn;
 pub mod broadcast;
 pub mod class_level;
+pub mod class_spawn;
 pub mod clock;
 pub mod dispatcher;
 pub mod dungeon_chest;

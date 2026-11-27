@@ -1319,6 +1319,8 @@ pub struct WorldManager {
     weather_override: std::sync::atomic::AtomicU16,
     /// Seasonal events running at the last `refresh_seasonal_looks`.
     seasonal_running: std::sync::Mutex<Option<Vec<String>>>,
+    /// Special event work 9 at the last `refresh_special_event_work`.
+    special_event_work: std::sync::Mutex<Option<u16>>,
 
     zones: RwLock<HashMap<u32, Arc<RwLock<Zone>>>>,
 
@@ -1384,6 +1386,7 @@ impl WorldManager {
             world_settings: WorldSettings::default(),
             weather_override: std::sync::atomic::AtomicU16::new(0),
             seasonal_running: std::sync::Mutex::new(None),
+            special_event_work: std::sync::Mutex::new(None),
             zones: RwLock::new(HashMap::new()),
             zone_entrances: RwLock::new(HashMap::new()),
             seamless_boundaries: RwLock::new(HashMap::new()),
@@ -2081,6 +2084,42 @@ impl WorldManager {
             }
             n += 1;
         }
+        n
+    }
+
+    /// When the special event work 9 the running events give
+    /// (`crate::seasonal::special_event_work`) changed since the last call,
+    /// send it to every player in the world, so a player already logged in
+    /// sees the change (the Atomos event's free camps in the Teleport menu)
+    /// without a zone change. Login and zone-in carry the current value.
+    /// Returns the number of players sent it.
+    pub async fn refresh_special_event_work(&self, registry: &ActorRegistry) -> usize {
+        let work = crate::seasonal::special_event_work();
+        {
+            let mut last = self
+                .special_event_work
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            // The first call sends too (players who logged in before it got
+            // the value of their login, which a `!event` may have changed).
+            if *last == Some(work) {
+                return 0;
+            }
+            *last = Some(work);
+        }
+        let mut n = 0;
+        for s in self.all_sessions().await {
+            let (Some(h), Some(client)) =
+                (registry.by_session(s.id).await, self.client(s.id).await)
+            else {
+                continue;
+            };
+            let mut sub = tx::player::build_set_special_event_work(h.actor_id, work);
+            sub.set_target_id(s.id);
+            client.send_bytes(sub.to_bytes()).await;
+            n += 1;
+        }
+        tracing::info!(work, players = n, "special event work sent");
         n
     }
 
@@ -2912,7 +2951,10 @@ impl WorldManager {
                 current_job as u32,
             ));
         }
-        subpackets.push(tx::player::build_set_special_event_work(actor_id));
+        subpackets.push(tx::player::build_set_special_event_work(
+            actor_id,
+            crate::seasonal::special_event_work(),
+        ));
         // Real achievement state at login/zone-in. `chara_id == session_id`
         // in this server's lobby flow, so the session id keys the DB reads.
         // Empty/failed reads degrade to the previous zero-state instead of

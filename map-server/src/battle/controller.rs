@@ -463,6 +463,12 @@ impl Controller {
             if candidate.allegiance == owner.actor.allegiance {
                 continue;
             }
+            // Townsfolk and other event NPCs are no one's quarry: a monster
+            // that spawns among them (an Atomos camp's voidsent, a GM event)
+            // would otherwise cut them down.
+            if candidate.is_static {
+                continue;
+            }
             if !candidate.is_alive {
                 continue;
             }
@@ -983,6 +989,33 @@ mod tests {
         let out = c.tick(1_000, owner_view(true, false, None, None), &arena);
         match out {
             ControllerDecision::Engage { target_actor_id } => assert_eq!(target_actor_id, 10),
+            other => panic!("unexpected: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn battle_npc_never_aggroes_townsfolk() {
+        let mut c = BattleNpcController::new_for(1);
+        c.battle.detection_type = DetectionType::SOUND | DetectionType::IGNORE_LEVEL_DIFFERENCE;
+        c.battle.sound_range = 50.0;
+        let mut townsperson = view(10, 2.0, 0.0, 0, true);
+        townsperson.is_static = true;
+        townsperson.is_battle_npc = false;
+        let owner_actor = view(1, 0.0, 0.0, 2, true);
+        let arena = arena_with(&[owner_actor, townsperson]);
+        let out = c.tick(1_000, owner_view(true, false, None, None), &arena);
+        assert!(
+            !matches!(out, ControllerDecision::Engage { .. }),
+            "townsfolk are left alone: {out:?}"
+        );
+        // a player beside them is fair game
+        let mut c = BattleNpcController::new_for(1);
+        c.battle.detection_type = DetectionType::SOUND | DetectionType::IGNORE_LEVEL_DIFFERENCE;
+        c.battle.sound_range = 50.0;
+        let player = view(11, 4.0, 0.0, 1, true);
+        let arena = arena_with(&[owner_actor, townsperson, player]);
+        match c.tick(1_000, owner_view(true, false, None, None), &arena) {
+            ControllerDecision::Engage { target_actor_id } => assert_eq!(target_actor_id, 11),
             other => panic!("unexpected: {:?}", other),
         }
     }

@@ -36,9 +36,9 @@ The Bombard King does no harm and can't be brought below 1 HP by weapons or
 spells; ten /firedance emotes at it bring it down, as in 1.0.
 
 A monster appears only if its actor class has a class path: the 1.23b
-client crashes on one without, so those are skipped. The game data leaves
-these monsters without one; `common/sql/seed/106_monster_class_paths.sql`
-fills them in for all but Atomos, which stays out until it gets one.
+client crashes on one without, so those are skipped. Atomos uses the
+client's voidsent-object body (`/Chara/Npc/Monster/Animaobj/AnimaobjStandard`,
+see `docs/atomos.md`).
 
 The levels needed are in `settings/default/commands.toml`; change them in
 `settings/commands.toml`. The commands are Rust, compiled into the map server
