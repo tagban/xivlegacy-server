@@ -565,4 +565,33 @@ mod tests {
         .unwrap();
         assert!(!absent.push_circle[0].is_enabled);
     }
+
+    /// The city lifts (Ul'dah's Wellhead, Limsa's Crow's) have no quest to
+    /// enable their push circle, so the class data must stream the
+    /// push-in circle enabled; otherwise walking into a lift does nothing
+    /// and the Ul'dah airship landing has no way down (#466).
+    #[test]
+    fn city_lifts_stream_their_push_in_enabled() {
+        let sql = include_str!("../../../common/sql/data/gamedata_actor_class.sql");
+        let mut lifts = 0;
+        for (at, _) in sql.match_indices("'/Chara/Npc/Object/ElevatorStandard', ") {
+            let id_start = sql[..at].rfind('(').unwrap() + 1;
+            let id = &sql[id_start..at].trim_end_matches(", ");
+            let rest = &sql[at..];
+            let json_start = rest.find("'{").unwrap() + 1;
+            let json_end = rest.find("}'").unwrap() + 1;
+            let list = parse_event_conditions(&rest[json_start..json_end]).unwrap();
+            let push_in = list
+                .push_circle
+                .iter()
+                .find(|c| c.condition_name == "pushCommandIn")
+                .unwrap_or_else(|| panic!("lift {id} has no pushCommandIn"));
+            assert!(
+                push_in.is_enabled,
+                "lift {id} streams its pushCommandIn disabled"
+            );
+            lifts += 1;
+        }
+        assert_eq!(lifts, 7);
+    }
 }
