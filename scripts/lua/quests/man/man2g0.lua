@@ -94,9 +94,9 @@ ARC_ECHO			= {206, 0, 232.6, 12.0, -1271.7, 2.6};		-- Quiver's Hold, before the 
 ARC_GUILD			= {206, nil, 232.6, 12.0, -1271.7, 2.6};
 -- On the Fane's front path between Soileine and the door. The old spot,
 -- (-320.3, 7.5, -1700.8), had no floor at y 7.5 (only a ledge at 27):
--- players fell under the world there (#453).
+-- players fell under the world there, both into and out of the echo (#453).
 CNJ_ECHO			= {206, 10, -345.0, 6.8, -1700.5, -1.48};
-CNJ_GUILD			= {206, nil, -320.3, 7.5, -1700.8, -1.48};
+CNJ_GUILD			= {206, nil, -345.0, 6.8, -1700.5, -1.48};
 
 -- The Spirit of the Wood battle, East Shroud by Camp Nine Ivies (spots
 -- walked on the client's collision floor: tools/terrain). Battle npcs:
