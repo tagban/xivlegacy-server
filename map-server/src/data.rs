@@ -647,3 +647,66 @@ pub struct GuildleveData {
     pub reward_exp: u32,
     pub reward_gil: u32,
 }
+
+#[cfg(test)]
+mod seamless_data_tests {
+    use super::check_pos_in_bounds;
+
+    /// The game-data rows as (zoneId1, zoneId2, zone1 box, zone2 box,
+    /// merge box), each box as x1, y1, x2, y2. The INSERT lists zone2's
+    /// columns as x1, x2, y1, y2, so they are put back in order here.
+    #[allow(clippy::type_complexity)]
+    fn seam_rows() -> Vec<(u32, u32, [f32; 4], [f32; 4], [f32; 4])> {
+        let sql = include_str!("../../common/sql/data/server_seamless_zonechange_bounds.sql");
+        sql.lines()
+            .filter(|l| l.starts_with('('))
+            .map(|l| {
+                let v: Vec<f32> = l
+                    .trim_start_matches('(')
+                    .trim_end_matches([',', ';', ')'])
+                    .split(',')
+                    .map(|n| n.trim().parse().unwrap())
+                    .collect();
+                assert_eq!(v.len(), 16, "row {l}");
+                (
+                    v[2] as u32,
+                    v[3] as u32,
+                    [v[4], v[5], v[6], v[7]],
+                    [v[8], v[10], v[9], v[11]],
+                    [v[12], v[13], v[14], v[15]],
+                )
+            })
+            .collect()
+    }
+
+    /// Which zone the seam table hands a player at (x, z) to, if any.
+    fn seam_zone(x: f32, z: f32) -> Option<u32> {
+        for (z1, z2, b1, b2, _) in seam_rows() {
+            if check_pos_in_bounds(x, z, b1[0], b1[1], b1[2], b1[3]) {
+                return Some(z1);
+            }
+            if check_pos_in_bounds(x, z, b2[0], b2[1], b2[2], b2[3]) {
+                return Some(z2);
+            }
+        }
+        None
+    }
+
+    /// Central Shroud (150) and East Shroud (151) meet at x 1058 (z -1052
+    /// to -935), z -925 (x 1060 to 1185) and x 1185 (z -925 to -865); the
+    /// floors match in height there. Each stretch hands the player across
+    /// (#470).
+    #[test]
+    fn central_and_east_shroud_are_seamed() {
+        for (x, z, zone) in [
+            (1045.0, -1000.0, 150),
+            (1070.0, -1000.0, 151),
+            (1100.0, -910.0, 150),
+            (1100.0, -940.0, 151),
+            (1170.0, -890.0, 150),
+            (1195.0, -890.0, 151),
+        ] {
+            assert_eq!(seam_zone(x, z), Some(zone), "at ({x}, {z})");
+        }
+    }
+}

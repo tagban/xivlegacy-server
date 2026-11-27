@@ -1,4 +1,4 @@
--- server_seamless_zonechange_bounds: game data, 15 rows. Reloaded whole when this file changes.
+-- server_seamless_zonechange_bounds: game data, 18 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_seamless_zonechange_bounds`;
 INSERT INTO `server_seamless_zonechange_bounds` (`id`, `regionId`, `zoneId1`, `zoneId2`, `zone1_boundingbox_x1`, `zone1_boundingbox_y1`, `zone1_boundingbox_x2`, `zone1_boundingbox_y2`, `zone2_boundingbox_x1`, `zone2_boundingbox_x2`, `zone2_boundingbox_y1`, `zone2_boundingbox_y2`, `merge_boundingbox_x1`, `merge_boundingbox_y1`, `merge_boundingbox_x2`, `merge_boundingbox_y2`) VALUES
@@ -16,4 +16,7 @@ INSERT INTO `server_seamless_zonechange_bounds` (`id`, `regionId`, `zoneId1`, `z
 (13, 104, 175, 209, -20.0, 99.0, 5.0, 119.0, -57.0, -31.0, 124.0, 145.0, -41.0, 115.0, -15.0, 127.0),
 (14, 103, 155, 150, 140.0, -1168.0, 181.0, -1138.0, 182.0, 220.0, -1168.0, -1138.0, 181.0, -1168.0, 182.0, -1138.0),
 (15, 104, 170, 175, -64.0, -34.0, -40.0, -22.0, -64.0, -40.0, -14.0, 8.0, -64.0, -22.0, -40.0, -14.0),
-(16, 103, 206, 150, -300.0, -1060.0, -100.0, -1035.0, -300.0, -100.0, -1025.0, -1000.0, -300.0, -1035.0, -100.0, -1025.0);
+(16, 103, 206, 150, -300.0, -1060.0, -100.0, -1035.0, -300.0, -100.0, -1025.0, -1000.0, -300.0, -1035.0, -100.0, -1025.0),
+(17, 103, 150, 151, 1040.0, -1060.0, 1053.0, -935.0, 1063.0, 1080.0, -1060.0, -935.0, 1053.0, -1060.0, 1063.0, -935.0),
+(18, 103, 150, 151, 1065.0, -918.0, 1185.0, -905.0, 1065.0, 1185.0, -945.0, -932.0, 1065.0, -932.0, 1185.0, -918.0),
+(19, 103, 150, 151, 1165.0, -925.0, 1180.0, -860.0, 1188.0, 1205.0, -925.0, -860.0, 1180.0, -925.0, 1188.0, -860.0);
