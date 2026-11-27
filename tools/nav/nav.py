@@ -363,7 +363,15 @@ class World:
         openq = [(0.0, 0.0, s)]
         came = {s: None}
         cost = {s: 0.0}
-        best = (math.hypot(s[0] - gi, s[1] - gj), s)
+        gy = goal[1]
+
+        def off(ci, cj, y):
+            # how far a cell is from the goal, in cells; a goal with a height counts the climb too, so
+            # the closest spot to a counter on an upper floor is not the floor right under it
+            h = math.hypot(ci - gi, cj - gj)
+            return h if gy is None or abs(y - gy) < 1.5 else h + abs(y - gy) / G
+
+        best = (off(*s), s)
         found = None
         nodes = 0
         while openq:
@@ -374,10 +382,10 @@ class World:
             if nodes > max_nodes:
                 break
             ci, cj, y = cur
-            if math.hypot(ci - gi, cj - gj) * G <= near and (goal[1] is None or abs(y - goal[1]) < 1.5):
+            if math.hypot(ci - gi, cj - gj) * G <= near and (gy is None or abs(y - gy) < 1.5):
                 found = cur
                 break
-            h = math.hypot(ci - gi, cj - gj)
+            h = off(ci, cj, y)
             if h < best[0]:
                 best = (h, cur)
             for di, dj, step in N8:
