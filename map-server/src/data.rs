@@ -709,4 +709,20 @@ mod seamless_data_tests {
             assert_eq!(seam_zone(x, z), Some(zone), "at ({x}, {z})");
         }
     }
+
+    /// Central Shroud (150) and South Shroud (154) meet along z 352, from
+    /// x 175 to 480, at matching heights (#477).
+    #[test]
+    fn central_and_south_shroud_are_seamed() {
+        for (x, z, zone) in [
+            (180.0, 340.0, 150),
+            (180.0, 362.0, 154),
+            (400.0, 340.0, 150),
+            (400.0, 362.0, 154),
+            (470.0, 340.0, 150),
+            (470.0, 362.0, 154),
+        ] {
+            assert_eq!(seam_zone(x, z), Some(zone), "at ({x}, {z})");
+        }
+    }
 }
