@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 2065 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 2067 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -2070,4 +2070,6 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (31902, 1000159, 'mp_mogsley', 155, '', 0, 58.5, 4.0, -1193.5, 1.67, 0, 0, 'Mogsley Pompomtrade'),
 (31903, 1000159, 'mp_gobbie', 133, '', 0, -436.0, 39.6, 190.0, -1.37, 0, 0, 'Gobbie Grubtrader'),
 (31904, 1090202, 'man0g1_gate_trig_n150', 150, '', 0, -194.73, 3.5, -1021.33, -1.642, 0, 0, NULL),
-(31905, 5900015, 'uldah_gate_of_nald', 175, '', 0, -52.5, 192.0, -2.3, 0.0, 0, 0, NULL);
+(31905, 5900015, 'uldah_gate_of_nald', 175, '', 0, -52.5, 192.0, -2.3, 0.0, 0, 0, NULL),
+(31906, 1500003, 'faezbroes', 133, '', 0, -447.0, 21.0, 178.0, 1.57, 0, 0, NULL),
+(31907, 1500207, 'wineburg', 133, '', 0, -446.0, 21.0, 175.0, 1.57, 0, 0, NULL);

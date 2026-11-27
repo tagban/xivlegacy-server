@@ -2912,6 +2912,172 @@ mod tests {
         }
     }
 
+    /// #464: talk to an airship counter (`PopulaceFlyingShip.lua`) as the
+    /// class `class_id`. Returns the commands of the talk start, then one
+    /// batch per client reply in `replies`.
+    fn talk_to_airship_counter(
+        class_id: u32,
+        gil: u32,
+        inventory: Vec<(u32, i32)>,
+        replies: &[Vec<common::luaparam::LuaParam>],
+    ) -> Vec<Vec<LuaCommand>> {
+        let root = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../scripts/lua"));
+        let engine = LuaEngine::new(root);
+        let npc_spec = LuaNpcSpec {
+            actor_id: 0x4400_0050,
+            name: "lionnellais".to_string(),
+            class_name: "PopulaceFlyingShip".to_string(),
+            class_path: "/Chara/Npc/Populace/PopulaceFlyingShip".to_string(),
+            unique_id: "lionnellais".to_string(),
+            zone_id: 155,
+            zone_name: "fst0Town01".to_string(),
+            state: 0,
+            pos: (58.5, -7.0, -1202.0),
+            rotation: -1.9,
+            actor_class_id: class_id,
+            quest_graphic: 0,
+        };
+        let snapshot = userdata::PlayerSnapshot {
+            actor_id: 42,
+            zone_id: 155,
+            current_gil: gil,
+            inventory,
+            ..Default::default()
+        };
+        let started = engine.call_npc_on_event_started(
+            &root.join("base/chara/npc/populace/PopulaceFlyingShip.lua"),
+            snapshot,
+            npc_spec,
+            "talkDefault".to_string(),
+            1,
+            Vec::new(),
+        );
+        assert!(started.error.is_none(), "{:?}", started.error);
+        let mut steps = vec![started.commands];
+        for reply in replies {
+            steps.push(
+                engine
+                    .fire_player_event_and_drain(42, reply)
+                    .expect("the counter waits on the client"),
+            );
+        }
+        steps
+    }
+
+    const LIONNELLAIS: u32 = 1_500_055;
+    const AIRSHIP_TICKET: u32 = 2_001_008;
+    const GIL: u32 = 1_000_001;
+
+    fn client_call<'a>(commands: &'a [LuaCommand], name: &str) -> Option<&'a Vec<LuaCommandArg>> {
+        commands.iter().find_map(|c| match c {
+            LuaCommand::RunEventFunction {
+                function_name,
+                args,
+                ..
+            } if function_name == name => Some(args),
+            _ => None,
+        })
+    }
+
+    fn landed_in(steps: &[Vec<LuaCommand>]) -> Option<u32> {
+        steps.iter().flatten().find_map(|c| match c {
+            LuaCommand::DoZoneChange { zone_id, .. } => Some(*zone_id),
+            _ => None,
+        })
+    }
+
+    fn removed(steps: &[Vec<LuaCommand>], item: u32) -> Option<i32> {
+        steps.iter().flatten().find_map(|c| match c {
+            LuaCommand::RemoveItem {
+                catalog_id,
+                quantity,
+                ..
+            } if *catalog_id == item => Some(*quantity),
+            _ => None,
+        })
+    }
+
+    fn ended(commands: &[LuaCommand]) -> bool {
+        commands
+            .iter()
+            .any(|c| matches!(c, LuaCommand::EndEvent { .. }))
+    }
+
+    #[test]
+    fn airship_counter_sells_a_flight_to_another_city() {
+        use common::luaparam::LuaParam;
+        // Gridania's counter, 5000 gil, picks Ul'dah (3).
+        let steps =
+            talk_to_airship_counter(LIONNELLAIS, 5_000, vec![], &[vec![LuaParam::Int32(3)]]);
+        let args = client_call(&steps[0], "eventIn").expect("eventIn shown");
+        assert!(
+            matches!(args.get(1), Some(LuaCommandArg::Bool(false))),
+            "{args:?}"
+        );
+        assert!(
+            matches!(args.get(3), Some(LuaCommandArg::Int(120))),
+            "{args:?}"
+        );
+        assert_eq!(removed(&steps, GIL), Some(120));
+        assert_eq!(removed(&steps, AIRSHIP_TICKET), None);
+        assert!(ended(&steps[1]));
+        assert_eq!(landed_in(&steps), Some(209));
+    }
+
+    #[test]
+    fn airship_counter_without_the_fare_flies_nobody() {
+        use common::luaparam::LuaParam;
+        let steps = talk_to_airship_counter(LIONNELLAIS, 50, vec![], &[vec![LuaParam::Nil]]);
+        let args = client_call(&steps[0], "eventIn").expect("eventIn shown");
+        assert!(matches!(args.get(1), Some(LuaCommandArg::Nil)), "{args:?}");
+        assert!(ended(&steps[1]));
+        assert_eq!(removed(&steps, GIL), None);
+        assert_eq!(landed_in(&steps), None);
+    }
+
+    #[test]
+    fn airship_counter_takes_a_held_ticket_instead_of_gil() {
+        use common::luaparam::LuaParam;
+        let steps = talk_to_airship_counter(
+            LIONNELLAIS,
+            0,
+            vec![(AIRSHIP_TICKET, 1)],
+            &[vec![LuaParam::Int32(1)]],
+        );
+        let args = client_call(&steps[0], "eventIn").expect("eventIn shown");
+        assert!(
+            matches!(args.get(1), Some(LuaCommandArg::Bool(true))),
+            "{args:?}"
+        );
+        assert_eq!(removed(&steps, AIRSHIP_TICKET), Some(1));
+        assert_eq!(removed(&steps, GIL), None);
+        assert_eq!(landed_in(&steps), Some(133));
+    }
+
+    #[test]
+    fn airship_counter_cancel_or_own_city_stays_put() {
+        use common::luaparam::LuaParam;
+        // Nothing picked, then the counter's own city forced (2 = Gridania).
+        for reply in [LuaParam::Nil, LuaParam::Int32(2)] {
+            let steps = talk_to_airship_counter(LIONNELLAIS, 5_000, vec![], &[vec![reply.clone()]]);
+            assert!(ended(&steps[1]), "{reply:?}");
+            assert_eq!(removed(&steps, GIL), None, "{reply:?}");
+            assert_eq!(landed_in(&steps), None, "{reply:?}");
+        }
+    }
+
+    #[test]
+    fn airship_arrivals_counters_point_to_the_departures_counter() {
+        // Wineburg (Limsa), Hida (Gridania), Lunnie (Ul'dah).
+        for class_id in [1_500_207, 1_500_056, 1_500_209] {
+            let steps = talk_to_airship_counter(class_id, 5_000, vec![], &[vec![]]);
+            assert!(client_call(&steps[0], "eventNG").is_some(), "{class_id}");
+            assert!(client_call(&steps[0], "eventIn").is_none(), "{class_id}");
+            assert!(ended(&steps[1]), "{class_id}");
+            assert_eq!(landed_in(&steps), None, "{class_id}");
+        }
+    }
+
     /// #452: drive the real `PopulaceChocoboLender.lua` as Ul'dah's lender
     /// (Rururaji by the city's sys_chocoview). Returns the commands of every
     /// step: the talk start, then one batch per client reply in `replies`.
