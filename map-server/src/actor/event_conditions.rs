@@ -571,7 +571,7 @@ mod tests {
     /// push-in circle enabled; otherwise walking into a lift does nothing
     /// and the Ul'dah airship landing has no way down (#466).
     #[test]
-    fn city_lifts_stream_their_push_in_enabled() {
+    fn city_lifts_stream_their_push_circles_enabled() {
         let sql = include_str!("../../../common/sql/data/gamedata_actor_class.sql");
         let mut lifts = 0;
         for (at, _) in sql.match_indices("'/Chara/Npc/Object/ElevatorStandard', ") {
@@ -589,6 +589,17 @@ mod tests {
             assert!(
                 push_in.is_enabled,
                 "lift {id} streams its pushCommandIn disabled"
+            );
+            // The out circle takes the "!" button away again when the
+            // player walks off the lift (#472).
+            let push_out = list
+                .push_circle
+                .iter()
+                .find(|c| c.condition_name == "pushCommandOut")
+                .unwrap_or_else(|| panic!("lift {id} has no pushCommandOut"));
+            assert!(
+                push_out.is_enabled,
+                "lift {id} streams its pushCommandOut disabled"
             );
             lifts += 1;
         }
