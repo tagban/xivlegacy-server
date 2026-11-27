@@ -55,7 +55,7 @@ GRIDANIA_TRIGGER		= 1090255;
 -- Camp Nine Ivies' trigger (seed 119): the first walk-in plays the sylphs'
 -- plea, the next starts the Moonspore Grove escort (SimpleContentMan20601).
 DUTY_START_TRIGGER		= 1090293;
-NINE_IVIES_OUTSIDE		= {151, 1712.0, 31.0, -838.0, 3.14}; -- on the slope, 10 yalms north of the trigger
+NINE_IVIES_OUTSIDE		= {151, 1712.0, 22.2, -838.0, 3.14}; -- on the slope (floor 22.14), 10 yalms north of the trigger
 
 -- Msg packs for the Npc LS. Only used for SEQ_005 but different ones for different SNPCs.
 NPCLS_MSGS = {
