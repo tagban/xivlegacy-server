@@ -10371,6 +10371,41 @@ impl PacketProcessor {
             return;
         };
 
+        // An emote goes only to the quests that turned this NPC's emote
+        // events on. The NPC's emote conditions fire for anyone (its base
+        // actor class arms them), so the every-quest fan-out ran each
+        // quest's onEmote for any emote at any NPC: man0g1 past SEQ_050
+        // replayed its dance finale and set itself back to SEQ_055 on a
+        // salute at a company officer, and every other onEmote played its
+        // own animation for the wrong emote. With no quest asking for it,
+        // the emote just plays.
+        if hook_name == "onEmote" {
+            let quest_ids = handle
+                .character
+                .read()
+                .await
+                .quest_journal
+                .emote_quests(npc_spec.actor_class_id);
+            if quest_ids.is_empty() {
+                self.play_unwanted_emote(handle, npc_actor_id, event_name)
+                    .await;
+                return;
+            }
+            for quest_id in quest_ids {
+                self.fire_quest_event_hook(
+                    handle,
+                    quest_id,
+                    hook_name,
+                    vec![
+                        crate::lua::QuestHookArg::Npc(npc_spec.clone()),
+                        crate::lua::QuestHookArg::Str(event_name.to_string()),
+                    ],
+                )
+                .await;
+            }
+            return;
+        }
+
         // A giver with a quest on offer: that quest's onTalk (or, for a
         // trigger such as the Ul'dah market entrance, onPush) at SEQ_ACCEPT
         // runs the offer, alone (another quest's generic EndEvent would
@@ -10513,6 +10548,37 @@ impl PacketProcessor {
             )
             .await;
         }
+    }
+
+    /// An emote at an NPC no quest asked for it (see the `onEmote` arm of
+    /// [`Self::fire_quest_hook_for_active_quests`]): the client sent the
+    /// NPC's emote event instead of the emote command, so play the emote
+    /// the condition names, as `EmoteStandardCommand` would have.
+    async fn play_unwanted_emote(&self, handle: &ActorHandle, npc_actor_id: u32, event_name: &str) {
+        let emote_id = match self.registry.get(npc_actor_id).await {
+            Some(npc) => npc
+                .character
+                .read()
+                .await
+                .base
+                .event_conditions
+                .emote_id_for(event_name),
+            None => None,
+        };
+        let Some((anim_id, text_id)) =
+            emote_id.and_then(crate::actor::event_conditions::standard_emote_motion)
+        else {
+            return;
+        };
+        tracing::debug!(
+            player = handle.actor_id,
+            npc = format!("0x{npc_actor_id:08X}"),
+            event = event_name,
+            emote_id = emote_id.unwrap_or(0),
+            "emote at an NPC no quest wants it from: plays as a free emote",
+        );
+        self.apply_do_emote(handle.actor_id, npc_actor_id, anim_id, text_id)
+            .await;
     }
 
     /// Snapshot the NPC's registry entry into a `Send`-friendly spec the

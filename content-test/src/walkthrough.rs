@@ -402,6 +402,35 @@ impl Walkthrough {
         }
     }
 
+    /// Assert the current step moved nothing in the quest: no sequence
+    /// change, no flag or counter write, no client event, no completion.
+    /// (A wrong emote at a quest NPC, say, just plays.)
+    fn expect_no_progress(&self) -> Result<(), String> {
+        let moved = self.step.iter().any(|c| {
+            matches!(
+                c,
+                LuaCommand::QuestStartSequence { .. }
+                    | LuaCommand::QuestSetFlag { .. }
+                    | LuaCommand::QuestClearFlag { .. }
+                    | LuaCommand::QuestClearFlags { .. }
+                    | LuaCommand::QuestClearData { .. }
+                    | LuaCommand::QuestSetCounter { .. }
+                    | LuaCommand::QuestIncCounter { .. }
+                    | LuaCommand::QuestDecCounter { .. }
+                    | LuaCommand::RunEventFunction { .. }
+                    | LuaCommand::CompleteQuest { .. }
+            )
+        });
+        if moved {
+            Err(format!(
+                "expected no quest progress, got [{}]",
+                summarize(&self.step)
+            ))
+        } else {
+            Ok(())
+        }
+    }
+
     fn expect_create_content_area(&self) -> Result<(), String> {
         if self
             .step
@@ -655,6 +684,7 @@ fn resolve_quest(code: &str) -> Option<(u32, u32)> {
         "Blm0j5" => (111_265, 209),
         "Blm0j6" => (111_266, 209),
         "Spl0i3" => (110_801, 152),
+        "Spl102" => (110_860, 150), // Camp Bentbranch's bomb site
         "Spl0i4" => (110_802, 152),
         // Crafting and gathering guild quests (L20/L30/L36).
         "Wdk200" => (110_300, 0),
@@ -918,6 +948,12 @@ impl UserData for Walkthrough {
                 Ok(this)
             },
         );
+        methods.add_function("expectNoProgress", |_, this: AnyUserData| {
+            this.borrow::<Walkthrough>()?
+                .expect_no_progress()
+                .map_err(lua_err)?;
+            Ok(this)
+        });
         methods.add_function("expectCreateContentArea", |_, this: AnyUserData| {
             this.borrow::<Walkthrough>()?
                 .expect_create_content_area()

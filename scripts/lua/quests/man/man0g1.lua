@@ -806,8 +806,10 @@ function onEmote(player, quest, npc, eventName)
 		end
 	end
 	
-	-- Check result and finish
-	if (bit32.band(data:GetFlags(), 0x7E) == 0x7E) then
+	-- Check result and finish. Only the dance lesson ends this way: the
+	-- emote flags stay set after it, so an emote in a later sequence set
+	-- the quest back to SEQ_055 and replayed the finale.
+	if (sequence == SEQ_050 and bit32.band(data:GetFlags(), 0x7E) == 0x7E) then
 		callClientFunction(player, "delegateEvent", player, quest, "processEvent150");
 		player:EndEvent();
 		quest:StartSequence(SEQ_055);
