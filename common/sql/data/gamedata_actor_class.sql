@@ -18065,6 +18065,7 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
   ],
   "pushWithCircleEventConditions": [
     {
+      "isEnabled": "true",
       "radius": "2.0",
       "outwards": "false",
       "silent": "true",
@@ -18094,6 +18095,7 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
   ],
   "pushWithCircleEventConditions": [
     {
+      "isEnabled": "true",
       "radius": "2.0",
       "outwards": "false",
       "silent": "true",
@@ -18123,6 +18125,7 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
   ],
   "pushWithCircleEventConditions": [
     {
+      "isEnabled": "true",
       "radius": "2.0",
       "outwards": "false",
       "silent": "true",
@@ -24061,6 +24064,7 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
   ],
   "pushWithCircleEventConditions": [
     {
+      "isEnabled": "true",
       "radius": "3.0",
       "outwards": "false",
       "silent": "true",
@@ -24090,6 +24094,7 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
   ],
   "pushWithCircleEventConditions": [
     {
+      "isEnabled": "true",
       "radius": "3.0",
       "outwards": "false",
       "silent": "true",
@@ -24119,6 +24124,7 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
   ],
   "pushWithCircleEventConditions": [
     {
+      "isEnabled": "true",
       "radius": "3.0",
       "outwards": "false",
       "silent": "true",
@@ -24189,6 +24195,7 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
   ],
   "pushWithCircleEventConditions": [
     {
+      "isEnabled": "true",
       "radius": "2.0",
       "outwards": "false",
       "silent": "true",
