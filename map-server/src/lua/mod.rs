@@ -2061,6 +2061,50 @@ mod tests {
         let _ = std::fs::remove_dir_all(root);
     }
 
+    /// Man200 SEQ 25: the real script must send Tataru's Path of the
+    /// Twelve linkpearl call (NpcLs 6) when the sequence starts, since no
+    /// tick ever drives its onTimeUpdate (#468), and must not send it again
+    /// once the call is waiting.
+    #[test]
+    fn man200_seq25_sends_tataru_linkpearl_call() {
+        let root = std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../scripts/lua"));
+        let engine = LuaEngine::new(&root);
+        let script_path = root.join("quests/man/man200.lua");
+        let call = |npc_ls_from: u32| {
+            let mut quest = sample_quest_handle(CommandQueue::new());
+            quest.quest_id = 110_013;
+            quest.sequence = 25;
+            quest.npc_ls_from = npc_ls_from;
+            let result = engine.call_quest_hook(
+                &script_path,
+                "onStateChange",
+                sample_snapshot(),
+                quest,
+                vec![QuestHookArg::Int(25)],
+            );
+            assert!(
+                result.error.is_none(),
+                "onStateChange errored: {:?}",
+                result.error
+            );
+            result.commands.iter().any(|c| {
+                matches!(
+                    c,
+                    LuaCommand::QuestSetNpcLsFrom {
+                        from: 6,
+                        quest_id: 110_013,
+                        ..
+                    }
+                )
+            })
+        };
+        assert!(call(0), "SEQ 25 must send the NpcLs 6 call");
+        assert!(
+            !call(6),
+            "SEQ 25 must not re-send a call that is already waiting"
+        );
+    }
+
     #[test]
     fn call_quest_hook_missing_function_is_a_quiet_no_op() {
         let root = tmpdir();
