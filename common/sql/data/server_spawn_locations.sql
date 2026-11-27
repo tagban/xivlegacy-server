@@ -1456,7 +1456,7 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (27663, 1000948, 'man2u0_ossuary_thancred', 209, '', 0, -255.0, 202.0, 203.0, 2.4, 0, 0, NULL),
 (27664, 1090292, 'man2u0_battlefield_trigger', 175, '', 0, -138.0, 205.0, -163.0, 0.0, 0, 0, NULL),
 (27665, 1090086, 'man2l0_gods_grip_push', 128, '', 0, 218.6, 21.0, 1176.6, 0.0, 0, 0, NULL),
-(27666, 1090293, 'man206_nine_ivies_trigger', 151, '', 0, 1712.0, 30.0, -848.0, 0.0, 0, 0, NULL),
+(27666, 1090293, 'man206_nine_ivies_trigger', 151, '', 0, 1712.0, 20.7, -848.0, 0.0, 0, 0, NULL),
 (27667, 1001047, 'man300_hedyn', 161, '', 0, 2.5, 0.0, -30.0, 3.14, 0, 0, NULL),
 (27668, 1001048, 'man300_shanga_meshanga', 161, '', 0, 0.0, 0.0, 2.0, 3.14, 0, 0, NULL),
 (27669, 1001049, 'man300_troxia', 161, '', 0, 2.5, 0.0, 2.0, 3.14, 0, 0, NULL),
