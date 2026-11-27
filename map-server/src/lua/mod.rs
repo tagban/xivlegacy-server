@@ -3122,6 +3122,82 @@ mod tests {
         }
     }
 
+    /// #476: ride the Wellhead lift down from the airship landing
+    /// (`wellhead_lift_lvl3.lua`), picking `floor`. Returns the commands of
+    /// the talk start, the floor pick and the end of the ride scene.
+    fn ride_down_from_the_landing(floor: i32) -> Vec<Vec<LuaCommand>> {
+        use common::luaparam::LuaParam;
+        let root = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../scripts/lua"));
+        let engine = LuaEngine::new(root);
+        let npc_spec = LuaNpcSpec {
+            actor_id: 0x4400_0060,
+            name: "wellhead_lift_lvl3".to_string(),
+            class_name: "ElevatorStandard".to_string(),
+            class_path: "/Chara/Npc/Object/ElevatorStandard".to_string(),
+            unique_id: "wellhead_lift_lvl3".to_string(),
+            zone_id: 209,
+            zone_name: "wil0Town01a".to_string(),
+            state: 0,
+            pos: (-119.84, 269.86, 127.86),
+            rotation: 0.0,
+            actor_class_id: 1_090_462,
+            quest_graphic: 0,
+        };
+        let snapshot = userdata::PlayerSnapshot {
+            actor_id: 42,
+            zone_id: 209,
+            pos: (-120.5, 269.8, 128.4),
+            rotation: 1.5,
+            ..Default::default()
+        };
+        let started = engine.call_npc_on_event_started(
+            &root.join("unique/wil0Town01a/ElevatorStandard/wellhead_lift_lvl3.lua"),
+            snapshot,
+            npc_spec,
+            "pushCommand".to_string(),
+            2,
+            Vec::new(),
+        );
+        assert!(started.error.is_none(), "{:?}", started.error);
+        let picked = engine
+            .fire_player_event_and_drain(42, &[LuaParam::Int32(floor)])
+            .expect("the lift waits for the floor pick");
+        let rode = engine
+            .fire_player_event_and_drain(42, &[])
+            .expect("the lift waits for the ride scene");
+        vec![started.commands, picked, rode]
+    }
+
+    #[test]
+    fn landing_lift_ride_down_always_returns() {
+        for (floor, zone) in [(1, 175), (2, 209)] {
+            let steps = ride_down_from_the_landing(floor);
+            assert!(client_call(&steps[0], "elevatorAskUldah003").is_some());
+            let args = client_call(&steps[1], "elevatorAskUldah003").expect("ride scene");
+            assert!(
+                matches!(args.first(), Some(LuaCommandArg::Int(f)) if *f == i64::from(floor)),
+                "{args:?}"
+            );
+            // The position that ends the ride scene goes out with the
+            // scene, before the zone change, and keeps the player in place.
+            let warp = steps[1].iter().find_map(|c| match c {
+                LuaCommand::WarpToPosition {
+                    actor_id,
+                    x,
+                    y,
+                    z,
+                    rotation,
+                    ..
+                } => Some((*actor_id, *x, *y, *z, *rotation)),
+                _ => None,
+            });
+            assert_eq!(warp, Some((42, -120.5, 269.8, 128.4, 1.5)));
+            assert_eq!(landed_in(&steps[..2]), None);
+            assert_eq!(landed_in(&steps), Some(zone));
+            assert!(ended(&steps[2]));
+        }
+    }
+
     /// #452: drive the real `PopulaceChocoboLender.lua` as Ul'dah's lender
     /// (Rururaji by the city's sys_chocoview). Returns the commands of every
     /// step: the talk start, then one batch per client reply in `replies`.
