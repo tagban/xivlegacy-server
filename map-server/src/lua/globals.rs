@@ -87,6 +87,11 @@ pub fn install_globals(
         // GetEorzeaHour(): the Eorzean hour of day, 0-23.
         let f = lua.create_function(|_, _: ()| Ok(crate::seasonal::eorzea_hour()))?;
         globals.set("GetEorzeaHour", f)?;
+        // GetSpecialEventWork(): the special event work 9 the server sends
+        // the client now (`SetSpecialEventWork`; 20 while the Atomos event
+        // runs), so a script can follow what the client's own menus show.
+        let f = lua.create_function(|_, _: ()| Ok(crate::seasonal::special_event_work()))?;
+        globals.set("GetSpecialEventWork", f)?;
     }
 
     // GetStaticActor(name) / GetStaticActorById(id) — return the actor id

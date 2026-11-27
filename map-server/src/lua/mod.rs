@@ -1905,6 +1905,47 @@ mod tests {
         );
     }
 
+    /// The Teleport charge follows the client's menu: the [dev1486] camps
+    /// are always free, the Atomos camps ([dev1485]) only while the server
+    /// sends special event work 20 (`GetSpecialEventWork`), and any other
+    /// aetheryte never.
+    #[test]
+    fn atomos_camps_teleport_free_only_under_special_event_work_20() {
+        let root = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../scripts/lua"));
+        let engine = LuaEngine::new(root);
+        let (lua, _q) = engine.load_script(&root.join("aetheryte.lua")).unwrap();
+        let free: Function = lua.globals().get("IsTeleportFree").unwrap();
+        let is_free = |work: u16, id: u32| {
+            lua.load(format!(
+                "GetSpecialEventWork = function() return {work} end"
+            ))
+            .exec()
+            .unwrap();
+            free.call::<bool>(id).unwrap()
+        };
+        let atomos = [1_280_092, 1_280_064, 1_280_065, 1_280_032, 1_280_034];
+        let always = [1_280_094, 1_280_095, 1_280_035, 1_280_121, 1_280_122];
+        for work in [0u16, 18, 20] {
+            for id in always {
+                assert!(is_free(work, id), "{id} under work {work}");
+            }
+            for id in atomos {
+                assert_eq!(is_free(work, id), work == 20, "{id} under work {work}");
+            }
+            // a city plaza and an ordinary camp cost anima whatever runs
+            assert!(!is_free(work, 1_280_001));
+            assert!(!is_free(work, 1_280_002));
+        }
+        // the server's own value: no event sets one in a bare test process
+        lua.globals()
+            .set("GetSpecialEventWork", mlua::Value::Nil)
+            .unwrap();
+        assert!(!free.call::<bool>(1_280_092u32).unwrap());
+        // the five camps match the Rust side's
+        let ids: Vec<u32> = crate::atomos::CAMPS.iter().map(|c| c.aetheryte).collect();
+        assert_eq!(ids, atomos);
+    }
+
     #[test]
     fn simple_script_runs_and_returns() {
         let root = tmpdir();

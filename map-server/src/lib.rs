@@ -36,6 +36,7 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 
 mod achievement;
 mod actor;
+mod atomos;
 mod autotranslate;
 mod battle;
 mod bug_report;
@@ -208,6 +209,7 @@ pub async fn run() -> Result<()> {
     }
 
     crate::runtime::anima::configure(&config.anima);
+    crate::atomos::configure(&config.atomos);
     let world = Arc::new(WorldManager::new().with_world_settings(
         crate::world_manager::WorldSettings {
             dalamud_phase: config.world.dalamud_phase,

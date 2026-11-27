@@ -160,6 +160,7 @@ camp = 0
 | `!kill` / `!kill all` | Defeat your target or the nearest monster / every monster within 20 yalms, as if you'd won the fight (EXP, quest and leve kills count) |
 | `!leve <id> [stars]` / `!leve status` / `!leve go` / `!leve poke` / `!leve open` / `!leve camp <id>` / `!leve abandon` | Start a levequest without a card / show the running one's counts and targets / go to its nearest target (or crate, or behind the beast to follow) / poke every disguised beast nearby / open the errand crate you stand by / go to a leve's camp aetheryte / abandon the running leve |
 | `!event [name] [on\|off\|auto]` | Seasonal events (see below): list them, or switch one on or off whatever the date (`auto` goes back to its dates). Kept over restarts |
+| `!atomos` / `!atomos open\|close [camp\|all]` | The Atomos event's camps: show which are open / open or close one now (your zone's camp, else all; camps are `dragonhead`, `emeraldmoss`, `crimsonbark`, `blackbrush`, `horizon`). See `docs/atomos.md` |
 | `!worldend` | (finaldays module, off by default) 1.0's Final Days: Nael van Darnus, his Imperials, Atomos and other level 70-80 monsters around you and in each city (the Bombard King only falls to /firedance). Again to end it |
 
 With no name, `!setclass`, `!setlevel`, `!maxall`, `!setjob`, `!gearset`, `!equip` and `!unequip`
@@ -195,6 +196,16 @@ Raising `max_stored` lets characters at the old cap regenerate again;
 lowering it takes nothing away. A new `regen_minutes` applies to the time
 since each character's last teleport at once.
 
+### Atomos
+
+`[atomos]` in `settings/map.toml` tunes the Atomos event's voidsent:
+`voidsent_level` (60, as in 1.0; held to 40-70), `voidsent_hp` (5000;
+1000-15000), `voidsent_per_wave` (6; 3-9), `waves` (3; 1-6) and
+`open_minutes` (190 Eorzean minutes, a little over three Eorzean hours as
+in 1.0; 60-360). Values outside the safe range are warned about, values
+outside the hard limits are clamped. The event itself runs on its
+`settings/events.toml` dates; `!event atomos on|off|auto` overrides them.
+
 ### Seasonal events
 
 `settings/events.toml` lists the seasonal events and when they run, by the
@@ -206,6 +217,7 @@ server's local date. The shipped calendar repeats every year:
 | Starlight Celebration | `starlight` | Nov 1 - Jan 16 | Winter Is Not Coming (all of it); Gone with the Snow from Dec 26 |
 | Hatching-tide | `hatchingtide` | Apr 1 - Apr 30 | The Dreamer's Gospel and The Dreamer's Dilemma (one of each per adventurer, offered in all three cities); Scrambled Eggs (after a Dilemma; rings, caps and daily gifts for egg sets) |
 | Moonfire Faire | `moonfire` | Jun 1 - Aug 31 | The Heat Is On (2011: fireworks and summer suits), then Bombard Backlash (2012: yukata); dance at Bombards, trade their ash |
+| Atomos | `atomos` | Sep 12 - Nov 11 | None: Atomos opens over five camps at 06:00 and 12:00 Eorzea time and releases voidsent; teleporting to those camps is free (see `docs/atomos.md`) |
 
 An event's NPCs and decorations show while any of its windows is open, and
 each window's quests are offered only while it is open. Each window's dates

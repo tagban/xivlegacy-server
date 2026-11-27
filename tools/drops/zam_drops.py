@@ -33,6 +33,14 @@ RULES = {
 }
 DEFAULT_RULE = (1000, 0, 100)
 
+# Lists the server makes itself, written after ZAM's: (dropListId, itemId,
+# quantityMin, quantityMax, chance, rarity, hqChance). 99000001: the voidsent
+# of the Atomos camps (map-server src/atomos.rs), Over-aspected Crystals
+# (Gamer Escape lists them dropping it; rate is ours, like a shard's).
+EXTRA_ROWS = [
+    (99000001, 3020537, 1, 1, 3000, 0, 0),
+]
+
 
 def known_ids(path, table_re):
     ids = set()
@@ -91,6 +99,7 @@ def main():
             chance, rarity, hq = rule_for(name, cat_cell[0] or "")
             rows.append((int(mob_id), item_id, 1, max(qty, 1), chance, rarity, hq))
 
+    rows.extend(EXTRA_ROWS)
     out = os.path.join(data, "server_drop_lists.sql")
     with open(out, "w", encoding="utf-8", newline="\n") as f:
         f.write(
@@ -100,6 +109,8 @@ def main():
             "-- monster pages (tools/drops/zam_drops.py). ZAM has no rates: chance, rarity and\n"
             "-- hqChance follow the rule in that tool, by item category, not retail data.\n"
             "-- chance and hqChance are per 10000; rarity 0 common, 1 uncommon, 2 rare.\n"
+            "-- Server-made lists (tools/drops/zam_drops.py EXTRA_ROWS) come last: 99000001,\n"
+            "-- the Atomos camps' voidsent (map-server src/atomos.rs).\n"
             "SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';\n"
             "DELETE FROM `server_drop_lists`;\n"
             "INSERT INTO `server_drop_lists` (`dropListId`, `itemId`, `quantityMin`, `quantityMax`, `chance`, `rarity`, `hqChance`) VALUES\n"

@@ -36,6 +36,7 @@ use crate::lua::LuaEngine;
 use crate::runtime::actor_registry::ActorRegistry;
 use crate::world_manager::WorldManager;
 
+mod atomos;
 mod events;
 mod gm_tools;
 mod monster_mode;
@@ -102,6 +103,7 @@ const COMMAND_SYNTAX: &[&str] = &[
     "setweather <weather id>",
     "worldend",
     "event [name] [on|off|auto] | event auto",
+    "atomos [open|close] [camp|all]",
     "starlight",
     "moonfire",
     "halloween",
@@ -375,6 +377,7 @@ impl CommandProcessor {
             "speed" => self.handle_speed(&args).await,
             "worldend" => self.handle_worldend(&args).await,
             "event" => self.handle_event(&args).await,
+            "atomos" => self.handle_atomos(&args).await,
             "starlight" | "moonfire" | "allsaints" | "halloween" | "hatchingtide" | "easter" => {
                 self.handle_event_switch(&cmd).await
             }

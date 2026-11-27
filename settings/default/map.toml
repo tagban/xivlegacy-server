@@ -86,3 +86,21 @@ enabled = true
 max_stored = 200
 # Minutes between new anima (at least 1). 1.x gave 1 anima every 4 hours.
 regen_minutes = 240
+
+[atomos]
+# The Atomos camps of patch 1.23b (Dragonhead, Emerald Moss, Crimson Bark,
+# Black Brush, Horizon), while the `atomos` event of settings/events.toml
+# runs: Atomos opens over each at 06:00 and 12:00 Eorzean time and lets out
+# waves of voidsent (docs/atomos.md).
+# Voidsent level. Gamer Escape lists them at 60; safe 40-70, hard 1-99.
+voidsent_level = 60
+# Voidsent HP (fitted to 1.0's level-60 monsters); safe 1000-15000, hard
+# 1-32767.
+voidsent_hp = 5000
+# Voidsent per wave; safe 3-9, hard 1-12.
+voidsent_per_wave = 6
+# Waves before Atomos withdraws (the camp is cleared); safe 1-6, hard 1-20.
+waves = 3
+# Eorzean minutes Atomos stays open (1.0: a little over three Eorzean
+# hours; 190 = 9 real minutes); safe 60-360, hard 10-360.
+open_minutes = 190

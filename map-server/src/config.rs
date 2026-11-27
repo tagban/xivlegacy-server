@@ -36,6 +36,7 @@ pub struct Config {
     pub economy: crate::gameplay::EconomySection,
     pub drops: crate::gameplay::DropsSection,
     pub anima: AnimaSection,
+    pub atomos: crate::atomos::AtomosSection,
 }
 
 #[derive(Debug, Clone, Deserialize)]

@@ -33,7 +33,6 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use super::{Args, CommandProcessor};
-use crate::database::BattleNpcSpawn;
 
 /// The module these commands come with (modules/finaldays). Off by default:
 /// until an operator enables it the commands don't exist.
@@ -713,117 +712,32 @@ impl CommandProcessor {
     }
 
     /// Builds one monster at `id` from its actor class and puts it in the
-    /// zone, where the in-range streaming shows it to the players around. Mirrors the processor's
-    /// `apply_spawn_battle_npc_by_id`, with the numbers from the roster in
-    /// place of the server_battlenpc_* rows.
+    /// zone (`crate::runtime::class_spawn`), with the numbers from the
+    /// roster.
     async fn spawn_foe(&self, foe: &Foe, zone: u32, id: u32, at: (f32, f32, f32, f32)) -> bool {
-        let (x, y, z, rotation) = at;
-        let class = match self.db.load_actor_class(foe.class_id).await {
-            Ok(Some(c)) => c,
-            _ => {
-                tracing::warn!(class = foe.class_id, "worldend: actor class missing");
-                return false;
-            }
-        };
-        // An empty classPath instantiates with no class name, which the
-        // 1.23b client dies on (same guard as the zone spawner).
-        if class.class_path.is_empty() {
-            tracing::warn!(
-                class = foe.class_id,
-                "worldend: spawn skipped — empty classPath (client-fatal instantiate)",
-            );
-            return false;
-        }
-        let spawn = BattleNpcSpawn {
-            position_x: x,
-            position_y: y,
-            position_z: z,
-            rotation,
-            script_name: foe.tag.to_string(),
-            min_level: foe.level,
-            max_level: foe.level,
+        let monster = crate::runtime::class_spawn::ClassMonster {
+            class_id: foe.class_id,
+            tag: foe.tag,
+            level: foe.level,
             hp: foe.hp,
-            zone_id: zone,
-            actor_class_id: foe.class_id,
-            combat_delay: 3000,
             // the Bombard King and the goobbues do no harm
-            aggro_type: u8::from(foe.role == Role::Hostile),
-            detection: 0x01 | 0x04 | 0x10, // sight, sound, any level
-            ..Default::default()
-        };
-        let mut bnpc = crate::npc::battle_npc::BattleNpc::new(
-            id & 0x7FFFF,
-            &class,
-            foe.tag,
-            zone,
-            x,
-            y,
-            z,
-            rotation,
-            0,
-            0,
-            None,
-        );
-        if bnpc.actor_id() != id {
-            tracing::warn!(id, "worldend: actor id mismatch");
-            return false;
-        }
-        {
-            let chara = &mut bnpc.npc.character.chara;
-            let hp = foe.hp.min(i16::MAX as u32) as i16;
-            chara.hp = hp;
-            chara.max_hp = hp;
-            chara.level = foe.level as i16;
-            if let Ok(Some(app)) = self.db.load_npc_appearance(foe.class_id).await {
-                let (model_id, slots) = app.pack();
-                chara.model_id = model_id;
-                chara.appearance_ids = slots;
-            }
-        }
-        bnpc.apply_spawn_metadata(&spawn, 0, id, None);
-        let mut character = bnpc.npc.character.clone();
-        character.chara.respawn_disabled = true;
-        if foe.role != Role::Hostile {
+            hostile: foe.role == Role::Hostile,
+            any_level: true,
             // weapons and spells leave it at 1 HP (the Bombard King falls to
             // /firedance; the goobbue wall doesn't fall)
-            character
-                .chara
-                .mods
-                .set(crate::actor::Modifier::MinimumHpLock, 1.0);
-        }
-
-        let Some(zone_arc) = self.world.zone(zone).await else {
-            return false;
+            cannot_fall: foe.role != Role::Hostile,
+            drop_list_id: 0,
         };
-        {
-            let mut zw = zone_arc.write().await;
-            let mut ob = crate::zone::outbox::AreaOutbox::new();
-            let pos = common::Vector3::new(x, y, z);
-            zw.core.add_actor(
-                crate::zone::area::StoredActor {
-                    actor_id: id,
-                    kind: crate::zone::area::ActorKind::BattleNpc,
-                    position: pos,
-                    grid: (0, 0),
-                    is_alive: true,
-                },
-                &mut ob,
-            );
-            zw.core.update_actor_position(id, pos, &mut ob);
-        }
-        self.registry
-            .insert(crate::runtime::actor_registry::ActorHandle::new(
-                id,
-                crate::runtime::actor_registry::ActorKindTag::BattleNpc,
-                zone,
-                0,
-                character,
-            ))
-            .await;
-        // Players nearby get it from the regular in-range streaming; sending
-        // the spawn bundle here as well adds the actor twice, which crashes
-        // the client.
-        true
+        crate::runtime::class_spawn::spawn(
+            &self.db,
+            &self.world,
+            &self.registry,
+            &monster,
+            zone,
+            id,
+            at,
+        )
+        .await
     }
 }
 
@@ -911,8 +825,8 @@ mod tests {
                 .await
                 .unwrap(),
         );
-        // Seed class paths the way seed/106 does, all but Atomos's, which
-        // has none: a class without one must be skipped, not sent.
+        // Give every roster class a path but Atomos's, which is cleared: a
+        // class without one must be skipped, not sent.
         {
             use common::db::ConnCallExt;
             db.conn_for_test()
@@ -921,6 +835,10 @@ mod tests {
                         "UPDATE gamedata_actor_class SET classPath = '/Chara/Npc/Monster/Test'
                          WHERE id IN (2210901, 2207001, 2208701, 2108904, 2108901,
                                       2102806, 2202401, 2201607, 2203302)",
+                        [],
+                    )?;
+                    c.execute(
+                        "UPDATE gamedata_actor_class SET classPath = '' WHERE id = 2111001",
                         [],
                     )
                 })

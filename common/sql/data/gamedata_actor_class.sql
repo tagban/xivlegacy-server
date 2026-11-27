@@ -31175,7 +31175,7 @@ INSERT INTO `gamedata_actor_class` (`id`, `classPath`, `displayNameId`, `propert
 (2110601, '', 3110601, 0, NULL),
 (2110701, '/Chara/Npc/Monster/Ogre/OgreR0D1Raid01', 3110701, 0, NULL),
 (2110702, '/Chara/Npc/Monster/Ogre/OgreR0D1Raid01', 3110701, 0, NULL),
-(2111001, '', 3111001, 0, NULL),
+(2111001, '/Chara/Npc/Monster/Animaobj/AnimaobjStandard', 3111001, 0, NULL),
 (2111002, '', 3111002, 0, NULL),
 (2111003, '', 3111003, 0, NULL),
 (2111004, '', 3111004, 0, NULL),

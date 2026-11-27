@@ -81,6 +81,8 @@ halloween = 2
 allsaints = 2
 easter = 2
 hatchingtide = 2
+# the Atomos camps (event `atomos`): show, or open/close one now
+atomos = 2
 
 # senior GMs: changing what characters have, and what reaches everyone
 bringall = 3

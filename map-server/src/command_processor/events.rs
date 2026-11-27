@@ -127,6 +127,9 @@ impl CommandProcessor {
         }
         let removed = self.world.remove_inactive_seasonal_actors().await;
         self.world.refresh_seasonal_looks(&self.registry).await;
+        self.world.refresh_special_event_work(&self.registry).await;
+        // an Atomos camp open when its event stopped closes now
+        crate::atomos::tick(&self.world, &self.registry, &self.db).await;
         tracing::info!(?modes, removed, "seasonal events switched");
     }
 }
