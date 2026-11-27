@@ -745,6 +745,26 @@ impl QuestJournal {
         !self.has(quest_id) && !self.is_completed(quest_id) && self.get_free_slot().is_some()
     }
 
+    /// The quests that turned on the emote events of NPC class
+    /// `actor_class_id` (`quest:SetENpc(classId, flag, talk, push, true)`),
+    /// in slot order. Only these quests hear an emote at that NPC
+    /// (`onEmote`): an NPC's emote conditions also fire for players no
+    /// quest sent there, and an NPC another quest merely lists is not that
+    /// quest's emote step.
+    pub fn emote_quests(&self, actor_class_id: u32) -> Vec<u32> {
+        self.slots
+            .iter()
+            .flatten()
+            .filter(|q| {
+                q.state
+                    .current
+                    .get(&actor_class_id)
+                    .is_some_and(|e| e.is_emote_enabled)
+            })
+            .map(|q| q.quest_id())
+            .collect()
+    }
+
     /// Iterate every completed quest id (expanded from the bitfield).
     pub fn iter_completed(&self) -> impl Iterator<Item = u32> + '_ {
         self.completed
@@ -972,5 +992,28 @@ mod tests {
         j.set_completed(50_000, true);
         assert!(!j.is_completed(50_000));
         assert_eq!(j.completed.count_ones(), 0);
+    }
+
+    /// An emote at an NPC goes only to the quests that turned that NPC's
+    /// emote events on: not to a quest that merely lists the NPC, and not to
+    /// quests that don't list it at all.
+    #[test]
+    fn emote_quests_are_the_ones_that_enabled_the_npc_emote() {
+        const KID: u32 = 1_000_410;
+        let mut j = QuestJournal::new();
+        let mut wants = Quest::new(quest_actor_id(110_006), "man0g1");
+        wants
+            .state
+            .add_enpc(QuestEnpc::new(KID, 2, false, true, true, false));
+        let mut lists = Quest::new(quest_actor_id(110_002), "man0l1");
+        lists
+            .state
+            .add_enpc(QuestEnpc::new(KID, 0, false, true, false, false));
+        let other = Quest::new(quest_actor_id(110_010), "man0u1");
+        j.add(lists);
+        j.add(wants);
+        j.add(other);
+        assert_eq!(j.emote_quests(KID), vec![110_006]);
+        assert!(j.emote_quests(1_000_411).is_empty());
     }
 }

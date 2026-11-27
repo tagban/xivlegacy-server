@@ -50,6 +50,90 @@ impl EventConditionList {
     }
 }
 
+impl EventConditionList {
+    /// The emote id (the 100-range `EmoteStandardCommand` id) the client
+    /// matched to fire emote condition `condition_name` ("emoteDefault2"),
+    /// or `None` if this actor has no such condition.
+    pub fn emote_id_for(&self, condition_name: &str) -> Option<u32> {
+        self.emote
+            .iter()
+            .find(|c| c.condition_name == condition_name)
+            .map(|c| c.emote_id)
+    }
+}
+
+/// `EmoteStandardCommand.lua`'s `emoteTable`: emote id -> (animation id,
+/// motion text id) for `player:DoEmote`. When the player's emote hits an
+/// NPC emote condition the client sends the condition's event instead of
+/// the emote command, so an emote no quest wants is replayed from here.
+/// Kept in step with the script by the `emote_motions_match_the_command_script`
+/// test.
+const STANDARD_EMOTES: &[(u32, u32, u32)] = &[
+    (101, 1, 21001),
+    (102, 2, 21011),
+    (103, 3, 21021),
+    (104, 4, 21031),
+    (105, 5, 21041),
+    (106, 6, 21051),
+    (107, 7, 21061),
+    (108, 8, 21071),
+    (109, 9, 21081),
+    (110, 10, 21091),
+    (111, 11, 21101),
+    (112, 12, 21111),
+    (113, 13, 21121),
+    (114, 14, 21131),
+    (115, 15, 21141),
+    (116, 16, 21151),
+    (117, 17, 21161),
+    (118, 18, 21171),
+    (119, 19, 21181),
+    (120, 20, 21191),
+    (121, 21, 21201),
+    (122, 22, 21211),
+    (123, 23, 21221),
+    (124, 24, 21231),
+    (125, 25, 21241),
+    (126, 26, 21251),
+    (127, 27, 21261),
+    (128, 28, 21271),
+    (129, 29, 21281),
+    (130, 30, 21291),
+    (131, 31, 21301),
+    (132, 32, 21311),
+    (133, 33, 21321),
+    (134, 34, 21331),
+    (135, 35, 21341),
+    (136, 36, 21351),
+    (137, 37, 21361),
+    (138, 38, 21371),
+    (139, 39, 21381),
+    (140, 40, 21391),
+    (141, 41, 21401),
+    (142, 42, 21411),
+    (143, 43, 21421),
+    (144, 44, 21423),
+    (145, 53, 21425),
+    (146, 50, 21427),
+    (147, 51, 21429),
+    (148, 52, 21431),
+    (149, 45, 21433),
+    (151, 47, 21435),
+    (152, 48, 21437),
+    (153, 49, 21439),
+    (154, 46, 10105),
+    (155, 54, 21442),
+    (156, 55, 21445),
+];
+
+/// `(animation id, motion text id)` for standard emote `emote_id`.
+pub fn standard_emote_motion(emote_id: u32) -> Option<(u32, u32)> {
+    STANDARD_EMOTES
+        .iter()
+        .find(|(id, _, _)| *id == emote_id)
+        .map(|(_, anim, text)| (*anim, *text))
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct TalkCondition {
     pub condition_name: String,
@@ -360,6 +444,56 @@ fn coerce_bool<E: serde::de::Error>(v: serde_json::Value) -> Result<bool, E> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The Rust copy of the emote table must match the command script the
+    /// free emotes use, so an emote replayed for a quest NPC looks the same.
+    #[test]
+    fn emote_motions_match_the_command_script() {
+        let script = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../scripts/lua/commands/EmoteStandardCommand.lua"
+        ))
+        .unwrap();
+        let mut seen = 0;
+        for line in script.lines() {
+            let line = line.trim();
+            let Some(rest) = line.strip_prefix('[') else {
+                continue;
+            };
+            let Some((id, rest)) = rest.split_once(']') else {
+                continue;
+            };
+            let num = |key: &str| -> u32 {
+                let at = rest.find(key).unwrap() + key.len();
+                rest[at..]
+                    .trim_start()
+                    .chars()
+                    .take_while(char::is_ascii_digit)
+                    .collect::<String>()
+                    .parse()
+                    .unwrap()
+            };
+            let id: u32 = id.trim().parse().unwrap();
+            assert_eq!(
+                standard_emote_motion(id),
+                Some((num("animId ="), num("descId ="))),
+                "emote {id}"
+            );
+            seen += 1;
+        }
+        assert_eq!(seen, STANDARD_EMOTES.len());
+    }
+
+    #[test]
+    fn emote_id_for_condition_name() {
+        let blob = r#"{"emoteEventConditions":[
+            {"unknown1":4,"unknown2":0,"emoteId":111,"conditionName":"emoteDefault1"},
+            {"unknown1":4,"unknown2":0,"emoteId":156,"conditionName":"emoteDefault2"}]}"#;
+        let list = parse_event_conditions(blob).unwrap();
+        assert_eq!(list.emote_id_for("emoteDefault2"), Some(156));
+        assert_eq!(list.emote_id_for("emoteDefault3"), None);
+        assert_eq!(standard_emote_motion(156), Some((55, 21445)));
+    }
 
     #[test]
     fn parses_monster_notice_only() {

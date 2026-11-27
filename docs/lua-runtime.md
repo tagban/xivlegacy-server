@@ -283,8 +283,10 @@ these first — they are the live edges (and several have tracking issues):
   its own dispatcher into the NPC/zone script. (See issue **#26**.)
 - **`ActivateCommand`** — selecting a combat action does not yet route to a Lua
   hook. (See issue **#28**.)
-- **`onEmote` / `onKillBNpc`** — referenced in scripts/comments but no dispatcher
-  is wired.
+- **`onKillBNpc`** — referenced in scripts/comments but no dispatcher is wired.
+  (`onEmote` is wired: an emote event at an NPC reaches only the quests that
+  turned that NPC's emote events on with `quest:SetENpc(..., emote = true)`;
+  with none, the emote plays as a free emote. See issue **#459**.)
 - **`onNotice`** — implemented (`apply_quest_on_notice`) but currently reached
   only from the post-cinematic director-resume path, not from general event
   traffic.

@@ -931,7 +931,21 @@ async fn release_unclaimed_owner_with_end_event(
     let Some(player_handle) = registry.get(player_actor_id).await else {
         return;
     };
-    if owner_claimed_by_current_quest(&player_handle, owner_class_id).await {
+    // An emote is the quest's only when the quest turned this NPC's emote
+    // events on; any other emote here is released like an unclaimed one
+    // (the quest-hook fan-out plays it as a free emote).
+    let claimed = if event_type == 3 {
+        !player_handle
+            .character
+            .read()
+            .await
+            .quest_journal
+            .emote_quests(owner_class_id)
+            .is_empty()
+    } else {
+        owner_claimed_by_current_quest(&player_handle, owner_class_id).await
+    };
+    if claimed {
         tracing::debug!(
             owner = owner_actor_id,
             class = owner_class_id,

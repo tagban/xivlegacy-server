@@ -19,8 +19,8 @@ four large fireworks, and a lost Lunar suit for one pinch of ash.
 Bombard Backlash: a year on, the Bombards rose from their ashes. The same
 chaperones, now in yukata, send the player to a bomb site by the first
 camp outside the city; the Firedancers (Hildibrand in Limsa Lominsa,
-Radolf in Gridania, Galsha Zasha in Ul'dah) teach the fire dance. Dancing
-at a Bombard bursts it (a Bombard King takes three dances); the site's
+Radolf in Gridania, Galsha Zasha in Ul'dah) teach the fire dance. The fire
+dance (not /dance) at a Bombard bursts it (a Bombard King takes three); the site's
 cadet gives Bombard Ash, which the chaperone trades for yukata, drawers,
 clogs and Bombard Blooms.
 

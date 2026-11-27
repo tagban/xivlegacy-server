@@ -188,12 +188,16 @@ function onEmote(player, quest, npc, eventName)
 	local classId = npc:GetActorClassId();
 	local city, site = moonfireSite2012(player);
 	local data = quest:GetData();
-	if (site ~= nil and (classId == M.BOMBARD_2012 or classId == M.KING_2012)) then
-		if (eventName == M.FIRE_DANCE_EVENT) then
-			player:DoEmote(npc.Id, M.FIRE_DANCE_DO_EMOTE, M.FIRE_DANCE_MOTION);
-		else
-			player:DoEmote(npc.Id, M.DANCE_DO_EMOTE, M.DANCE_MOTION);
-		end
+	-- Only the fire dance the Firedancers teach banishes a Bombard; the
+	-- 2012 Bombards also answer a plain /dance (emoteDefault1), which just
+	-- plays and does nothing for the quest.
+	if (eventName == M.DANCE_EMOTE) then
+		player:DoEmote(npc.Id, M.DANCE_DO_EMOTE, M.DANCE_MOTION);
+	elseif (eventName == M.FIRE_DANCE_EVENT) then
+		player:DoEmote(npc.Id, M.FIRE_DANCE_DO_EMOTE, M.FIRE_DANCE_MOTION);
+	end
+	if (eventName == M.FIRE_DANCE_EVENT and site ~= nil
+		and (classId == M.BOMBARD_2012 or classId == M.KING_2012)) then
 		if (classId == M.BOMBARD_2012) then
 			data:SetFlag(FLAG_PENDING + city);
 		else
