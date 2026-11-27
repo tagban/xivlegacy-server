@@ -107,8 +107,14 @@ function onStateChange(player, quest, sequence)
 		quest:SetENpc(MINFILIA);
 	elseif (sequence == SEQ_025) then
 		quest:SetENpc(TATARU);
-		quest:GetData():SetTimeNow();
-		quest:SetTimeUpdate(true);
+		-- Tataru's call on the Path of the Twelve linkpearl. Retail sent it
+		-- MIN_TATARU_WAIT_TIME seconds later from onTimeUpdate, but this
+		-- server has no per-quest tick (quest:SetTimeUpdate is a stub), so
+		-- the call never came and a player who waited was stuck (#468).
+		-- Send it now; GetNpcLsFrom() == 0 keeps a zone-in from re-sending it.
+		if (data:GetNpcLsFrom() == 0) then
+			quest:NewNpcLsMsg(6);
+		end
 	elseif (sequence == SEQ_027) then
 		-- Tataru introduces your Path companion, then you name them and
 		-- she gives the reward. No companion actor is placed: the client's
