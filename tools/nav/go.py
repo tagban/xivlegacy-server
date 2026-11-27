@@ -132,6 +132,8 @@ def main():
             break
     pos = rig.where() or (float("nan"),) * 3
     d = math.hypot(pos[0] - a.x, pos[2] - a.z)
+    if a.y is not None and abs(pos[1] - a.y) >= 1.5:
+        d = math.hypot(d, pos[1] - a.y)  # on another floor: not there, however close in x and z
     took = time.time() - t0
     if why and why.startswith("event"):
         print(f"{why} at {pos[0]:.1f} {pos[1]:.1f} {pos[2]:.1f}, {d:.1f} from the goal, after {took:.0f} s and {plans} plan(s)")
@@ -199,6 +201,12 @@ def plan_past_learned(world, pos, goal, near, learned, learned_file):
     return pts
 
 
+def there(pos, goal, near):
+    """pos is within `near` of goal (x, y or None, z), on the goal's floor when it has a height"""
+    return (math.hypot(pos[0] - goal[0], pos[2] - goal[2]) <= near
+            and (goal[1] is None or abs(pos[1] - goal[1]) < 1.5))
+
+
 def walk_to(rig, world, goal, near, tries, learned, learned_file, paths, plans):
     """plan and walk to goal (x, y or None, z) within `near`, planning again where a walk sticks;
     (None, plans made) when there, else (why it stopped, plans made)"""
@@ -206,7 +214,7 @@ def walk_to(rig, world, goal, near, tries, learned, learned_file, paths, plans):
         pos = rig.where()
         if pos is None:
             return "the client can't find the player (logged in? a walk.c build?)", attempt - 1
-        if math.hypot(pos[0] - goal[0], pos[2] - goal[2]) <= near:
+        if there(pos, goal, near):
             return None, attempt - 1
         n = plans + attempt
         tp = time.time()
@@ -289,7 +297,7 @@ def walk_to(rig, world, goal, near, tries, learned, learned_file, paths, plans):
             learned_file.write_text(json.dumps(learned))
             print(f"plan {n}: {kind} at {sx:.1f} {sz:.1f}; planning around it", flush=True)
     pos = rig.where()
-    if pos and math.hypot(pos[0] - goal[0], pos[2] - goal[2]) <= near:
+    if pos and there(pos, goal, near):
         return None, tries
     return f"no way through after {tries} plans", tries
 
