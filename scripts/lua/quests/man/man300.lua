@@ -150,7 +150,10 @@ function onTalk(player, quest, npc)
 		-- directions to the Consortium
 		callClientFunction(player, "delegateEvent", player, quest, "processEvent010_2");
 	elseif (sequence == SEQ_015 and classId == HEDYN) then
-		-- the Interlocutors, the primals, and Camp Drybone; it fades in after a warp
+		-- the Interlocutors, the primals, and Camp Drybone; it fades in after a warp.
+		-- Hedyn's "You have our thanks, Walker <surname>." is the client's own
+		-- text: "Walker" is written in the line and the macro adds the surname
+		-- (part 2 of the player's name), so "Wren Walker" reads "Walker Walker" (#493).
 		callClientFunction(player, "delegateEvent", player, quest, "pE20", companionArgs(player));
 		player:EndEvent();
 		quest:StartSequence(SEQ_020);
