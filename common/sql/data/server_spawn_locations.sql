@@ -1,4 +1,4 @@
--- server_spawn_locations: game data, 2067 rows. Reloaded whole when this file changes.
+-- server_spawn_locations: game data, 2069 rows. Reloaded whole when this file changes.
 SET SESSION sql_mode = 'ANSI_QUOTES,PIPES_AS_CONCAT,STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION';
 DELETE FROM `server_spawn_locations`;
 INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`, `privateAreaName`, `privateAreaLevel`, `positionX`, `positionY`, `positionZ`, `rotation`, `actorState`, `animationId`, `customDisplayName`) VALUES
@@ -1920,6 +1920,8 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (29981, 1090821, 'tam_tara_deepcroft_exit1', 158, '', 0, 283.0, -3.01, -258.0, 0.0, 0, 0, NULL),
 (29982, 1090822, 'u_ghamaro_mines_entrance1', 135, '', 0, 97.5, 61.7, -2713, 0.0, 0, 0, NULL),
 (29983, 1090823, 'u_ghamaro_mines_exit1', 137, '', 0, 78.0, 48.6, -2801.0, 0.0, 0, 0, NULL),
+(31908, 1090824, 'mor_dhona_border1', 151, '', 0, 2238.0, 32.0, -1706.0, 0.0, 0, 0, NULL),
+(31909, 1090825, 'east_shroud_border1', 190, '', 0, 285.0, 18.0, 896.0, 0.0, 0, 0, NULL),
 (30255, 1090085, 'etc5u1_coliseum_push', 209, '', 0, -205.0, 195.07, 168.5, 1.821, 0, 0, NULL),
 (30256, 1090086, 'etc5g1_push', 206, '', 0, -33.709, 7.81, -1272.337, -0.81, 0, 0, NULL),
 (30257, 1090087, 'etc5l1_cave_push', 128, '', 0, -220.948, 16.603, -92.863, -2.09, 0, 0, NULL),
