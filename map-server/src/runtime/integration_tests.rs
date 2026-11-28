@@ -13851,9 +13851,11 @@ async fn lua_player_add_guildleve_routes_regional_ids_to_accept() {
         LuaCommandKind::AddGuildleve {
             player_id,
             guildleve_id,
+            spend,
         } => {
             assert_eq!(*player_id, 909);
             assert_eq!(*guildleve_id, 10821);
+            assert!(*spend, "a levemete leve spends an allowance");
         }
         other => panic!("expected AddGuildleve, got {other:?}"),
     }

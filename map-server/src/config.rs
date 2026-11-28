@@ -35,6 +35,7 @@ pub struct Config {
     pub storage: crate::gameplay::StorageSection,
     pub economy: crate::gameplay::EconomySection,
     pub drops: crate::gameplay::DropsSection,
+    pub leves: crate::gameplay::LevesSection,
     pub anima: AnimaSection,
     pub atomos: crate::atomos::AtomosSection,
 }

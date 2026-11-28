@@ -614,6 +614,8 @@ pub struct PlayerSnapshot {
     pub faction_credits: [u16; 3],
     /// Anima held when the snapshot was taken (regained anima included).
     pub anima: u8,
+    /// Leve allowances held when the snapshot was taken (refills included).
+    pub leve_allowances: u16,
     pub gc_rank_limsa: u8,
     pub gc_rank_gridania: u8,
     pub gc_rank_uldah: u8,
@@ -813,6 +815,7 @@ impl From<&crate::actor::Player> for PlayerSnapshot {
             gc_current: p.character.chara.gc_current,
             faction_credits: p.character.chara.faction_credits,
             anima: p.character.chara.anima_now(),
+            leve_allowances: p.character.chara.leve_allowances_now(),
             gc_rank_limsa: p.character.chara.gc_rank_limsa,
             gc_rank_gridania: p.character.chara.gc_rank_gridania,
             gc_rank_uldah: p.character.chara.gc_rank_uldah,
@@ -1558,28 +1561,33 @@ impl UserData for LuaPlayer {
         // progress hooks and can be handed in via
         // `HandInRegionalLeve`. Band 0 (easiest) is used since the
         // GM command carries no difficulty argument.
-        methods.add_method("AddGuildleve", |_, this, gl_id: u32| {
-            if crate::leve::is_regional_leve_quest_id(gl_id) {
+        // `free` (GM grants, gm/addguildleve.lua): no leve allowance spent.
+        methods.add_method(
+            "AddGuildleve",
+            |_, this, (gl_id, free): (u32, Option<bool>)| {
+                if crate::leve::is_regional_leve_quest_id(gl_id) {
+                    push(
+                        &this.queue,
+                        LuaCommand::AcceptRegionalLeve {
+                            player_id: this.snapshot.actor_id,
+                            leve_id: gl_id,
+                            difficulty: 0,
+                        },
+                    );
+                    return Ok(());
+                }
+                // a battle leve (gamedata_guildleves): crate::leve::battle
                 push(
                     &this.queue,
-                    LuaCommand::AcceptRegionalLeve {
+                    LuaCommand::AddGuildleve {
                         player_id: this.snapshot.actor_id,
-                        leve_id: gl_id,
-                        difficulty: 0,
+                        guildleve_id: gl_id,
+                        spend: !free.unwrap_or(false),
                     },
                 );
-                return Ok(());
-            }
-            // a battle leve (gamedata_guildleves): crate::leve::battle
-            push(
-                &this.queue,
-                LuaCommand::AddGuildleve {
-                    player_id: this.snapshot.actor_id,
-                    guildleve_id: gl_id,
-                },
-            );
-            Ok(())
-        });
+                Ok(())
+            },
+        );
         // Battle leves at the camp aetheryte (AetheryteParent.lua):
         // start one, ask which one is running, give it up.
         methods.add_method(
@@ -1626,6 +1634,29 @@ impl UserData for LuaPlayer {
                 Ok(())
             },
         );
+        // Leve allowances (crate::leve::allowance), shared by regional,
+        // faction, local and Grand Company leves. GetLeveAllowances: held
+        // now. GetMaxLeveAllowances: the cap. AddGuildleve spends one
+        // itself; SpendLeveAllowance (a retry, askRetryRegionalleve) is
+        // false with nothing spent at 0, else true and spends one.
+        methods.add_method("GetLeveAllowances", |_, this, _: ()| {
+            Ok(this.snapshot.leve_allowances)
+        });
+        methods.add_method("GetMaxLeveAllowances", |_, _, _: ()| {
+            Ok(crate::leve::allowance::cap())
+        });
+        methods.add_method("SpendLeveAllowance", |_, this, _: ()| {
+            if crate::leve::allowance::spend_from(this.snapshot.leve_allowances).is_none() {
+                return Ok(false);
+            }
+            push(
+                &this.queue,
+                LuaCommand::SpendLeveAllowance {
+                    player_id: this.snapshot.actor_id,
+                },
+            );
+            Ok(true)
+        });
         // Anima, the teleport currency (crate::runtime::anima).
         // GetAnima: held now. GetMaxAnima: 100. GetGateAnimaCost: an
         // aetheryte to one of its own gates or back (1). GetAnimaRegion:

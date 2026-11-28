@@ -76,6 +76,19 @@ drop_rate_percent = 100
 # 0-500, hard 0-10000.
 rare_drop_percent = 100
 
+[leves]
+# Leve allowances: taking a regional (battlecraft or fieldcraft), faction or
+# Grand Company leve spends one, and the levemete refuses new leves at 0.
+# They come back on each character's own clock, logged in or not.
+# The most a character can stockpile. Retail 99; safe 1-99, hard 1-999.
+# Lowering it takes nothing away: a character above it keeps what they hold.
+allowance_cap = 99
+# Allowances back each period. Retail 4; safe 1-20, hard 0-999 (0: none
+# ever come back).
+allowance_refill_amount = 4
+# Real hours per period. Retail 12; safe 1-48, hard 1-720.
+allowance_refill_hours = 12
+
 [anima]
 # Anima, the teleport currency. false: teleports cost nothing and the
 # teleport menu shows full (as before anima was built).

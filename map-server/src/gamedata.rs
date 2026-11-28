@@ -549,6 +549,10 @@ pub struct LoadedPlayer {
     /// (`characters_anima`; no row = full).
     pub anima: u8,
     pub anima_stamp: i64,
+    /// Leve allowances and the time they were last brought up to date
+    /// (`characters_leve_allowances`; no row = the cap).
+    pub leve_allowances: u16,
+    pub leve_allowance_stamp: i64,
     pub npc_linkshells: Vec<NpcLinkshellEntry>,
 
     pub inventory_normal: Vec<InventoryItem>,

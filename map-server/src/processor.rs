@@ -497,6 +497,8 @@ impl PacketProcessor {
         character.chara.faction_credits = loaded.faction_credits;
         character.chara.anima = loaded.anima;
         character.chara.anima_stamp = loaded.anima_stamp;
+        character.chara.leve_allowances = loaded.leve_allowances;
+        character.chara.leve_allowance_stamp = loaded.leve_allowance_stamp;
         // Equipped-title hydration — mirror `currentTitle` so the zone-in
         // bundle can emit `SetPlayerTitle`; the DB column already loaded into
         // `loaded.current_title` but was never applied to the runtime actor.
@@ -2086,10 +2088,12 @@ impl PacketProcessor {
             LC::AddGuildleve {
                 player_id,
                 guildleve_id,
+                spend,
             } => {
                 crate::leve::battle::add(
                     player_id,
                     guildleve_id,
+                    spend,
                     &self.registry,
                     &self.world,
                     &self.db,
@@ -2126,6 +2130,9 @@ impl PacketProcessor {
             }
             LC::SpendAnima { player_id, amount } => {
                 crate::runtime::anima::spend(player_id, amount, &self.registry, &self.db).await;
+            }
+            LC::SpendLeveAllowance { player_id } => {
+                crate::leve::allowance::spend(player_id, &self.registry, &self.db).await;
             }
             LC::StartBattleleve {
                 player_id,
@@ -11994,6 +12001,7 @@ pub(crate) fn build_player_snapshot_for_login(
         gc_current: c.chara.gc_current,
         faction_credits: c.chara.faction_credits,
         anima: c.chara.anima_now(),
+        leve_allowances: c.chara.leve_allowances_now(),
         gc_rank_limsa: c.chara.gc_rank_limsa,
         gc_rank_gridania: c.chara.gc_rank_gridania,
         gc_rank_uldah: c.chara.gc_rank_uldah,

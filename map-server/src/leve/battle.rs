@@ -835,11 +835,14 @@ pub(crate) fn gamedata(lua: Option<&Arc<LuaEngine>>, gl_id: u32) -> Option<Guild
         .and_then(|m| m.get(&gl_id).cloned())
 }
 
-/// Put `gl_id` in a free regional leve slot. False when the player already
-/// holds it or every slot is taken.
+/// Put `gl_id` in a free regional leve slot. With `spend`, taking it costs
+/// one leve allowance (crate::leve::allowance), and at 0 it is refused with
+/// a message; GM grants pass false. False when the player already holds it,
+/// every slot is taken or no allowance is left.
 pub async fn add(
     player_id: u32,
     gl_id: u32,
+    spend: bool,
     registry: &ActorRegistry,
     world: &WorldManager,
     db: &Database,
@@ -847,29 +850,70 @@ pub async fn add(
     let Some(handle) = registry.get(player_id).await else {
         return false;
     };
-    let slot = {
+    let mut out_of_allowances = false;
+    let (slot, allowances) = {
         let mut c = handle.character.write().await;
-        let held = &mut c.chara.guildleves_regional;
-        if held.iter().any(|e| u32::from(e.guildleve_id) == gl_id) {
-            None
-        } else {
-            let slot =
-                (0..SLOTS).find(|s| !held.iter().any(|e| e.slot == *s && e.guildleve_id != 0));
-            if let Some(slot) = slot {
-                held.retain(|e| e.slot != slot);
-                held.push(GuildleveRegionalEntry {
-                    slot,
-                    guildleve_id: gl_id as u16,
-                    abandoned: false,
-                    completed: false,
-                });
+        let already = c
+            .chara
+            .guildleves_regional
+            .iter()
+            .any(|e| u32::from(e.guildleve_id) == gl_id);
+        let slot = (!already)
+            .then(|| {
+                let held = &c.chara.guildleves_regional;
+                (0..SLOTS).find(|s| !held.iter().any(|e| e.slot == *s && e.guildleve_id != 0))
+            })
+            .flatten();
+        // the allowance is only spent once the leve has a slot
+        let allowances = match slot {
+            Some(_) if spend => {
+                let taken =
+                    crate::leve::allowance::take_one(&mut c.chara, crate::leve::allowance::now());
+                out_of_allowances = taken.is_none();
+                taken
             }
-            slot
+            _ => None,
+        };
+        let slot = slot.filter(|_| !out_of_allowances);
+        if let Some(slot) = slot {
+            let held = &mut c.chara.guildleves_regional;
+            held.retain(|e| e.slot != slot);
+            held.push(GuildleveRegionalEntry {
+                slot,
+                guildleve_id: gl_id as u16,
+                abandoned: false,
+                completed: false,
+            });
         }
+        (slot, allowances)
     };
+    if out_of_allowances {
+        say(
+            registry,
+            world,
+            player_id,
+            crate::leve::allowance::NONE_LEFT,
+        )
+        .await;
+        tracing::info!(
+            player = player_id,
+            gl_id,
+            "guildleve refused: no leve allowances"
+        );
+        return false;
+    }
     let Some(slot) = slot else {
         return false;
     };
+    if let Some(left) = allowances {
+        crate::leve::allowance::save(player_id, left, db).await;
+        tracing::info!(
+            player = player_id,
+            gl_id,
+            left = left.0,
+            "leve allowance spent"
+        );
+    }
     if let Err(e) = db.save_guildleve(player_id, gl_id, i32::from(slot)).await {
         tracing::warn!(player = player_id, gl_id, error = %e, "guildleve: save failed");
     }

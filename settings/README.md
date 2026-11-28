@@ -42,7 +42,7 @@ Let's Encrypt certificate the web server fetches and renews itself, plus TCP
 
 ## Gameplay limits
 
-Level cap, EXP rate, bag size, prices, gil and drop rates and the GM level of
+Level cap, EXP rate, bag size, prices, gil and drop rates, leve allowances and the GM level of
 new accounts are yours to choose. Every default is the 1.23b retail value. Each setting has a **safe**
 range and a **hard** range, checked once at start-up:
 
@@ -71,6 +71,9 @@ exp_rate_percent = 200
 | `[economy] gil_drop_percent` | map | 100 | 100 | 0-1000 | 0-10000 | Gil from monsters, leves (and the reward the leve menus show) and treasure chests. Quest rewards and sales to NPCs don't change. Above 10x gil stops mattering. |
 | `[drops] drop_rate_percent` | map | 100 | 100 | 0-500 | 0-10000 | The chance of each monster item drop; a chance never goes past 100%. Above 5x common materials flood bags and the market. Doesn't change gil rows (that's `gil_drop_percent`). |
 | `[drops] rare_drop_percent` | map | 100 | 100 | 0-500 | 0-10000 | On top of `drop_rate_percent` for rare drops, and the chance a dropped item is HQ, so good items get likelier without more common materials. Above 5x rare items stop being rare. |
+| `[leves] allowance_cap` | map | 99 | 99 | 1-99 | 1-999 | The most leve allowances a character can stockpile. Taking a regional (battlecraft or fieldcraft), faction or Grand Company leve spends one, and the levemete and company officer refuse new leves at 0 (GM `!addguildleve` is free). Every character starts at the cap. Above 99 characters stockpile more than 1.0 allowed; the levemete's count is only tried up to three digits. Lowering it takes nothing away. |
+| `[leves] allowance_refill_amount` | map | 4 | 4 | 1-20 | 0-999 | Allowances back each period, on each character's own clock, logged in or not. Above 20 leves stop having a pace; 0 means spent allowances never come back. |
+| `[leves] allowance_refill_hours` | map | 12 | 12 | 1-48 | 1-720 | Real hours per period. 1.0's values (4 every 12 hours, up to 99, since patch 1.19) are from the archived FF14 Online Wiki guildleve page; whether 1.0 refilled at fixed clock times for everyone is not known. |
 | `[accounts] default_gm_level` | web | 0 | 0 | 0 | 0-4 | `users.gmLevel` for accounts signed up from now on (existing accounts never change). Anything above 0 makes every new account a GM, so the server warns at every start: only for private or solo servers. 4 (administrator) is the highest level. |
 
 Monster drops come from `server_drop_lists` (`common/sql/data/server_drop_lists.sql`):

@@ -8,7 +8,8 @@ properties = {
 
 function onTrigger(player, argc, glId)    
     if player then
-		player:AddGuildleve(tonumber(glId));
+		-- a GM grant: no leve allowance spent
+		player:AddGuildleve(tonumber(glId), true);
 	else
         print(sender.."unable to add guildleve, ensure player name is valid.");
     end;
