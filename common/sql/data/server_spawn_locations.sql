@@ -1671,7 +1671,7 @@ INSERT INTO `server_spawn_locations` (`id`, `actorClassId`, `uniqueId`, `zoneId`
 (27884, 1090361, 'man304_burial_pond_west', 190, '', 0, 722.0, 31.0, -381.2, 0.0, 0, 0, NULL),
 (27885, 1090362, 'man304_burial_pond_north', 190, '', 0, 745.0, 33.8, -307.2, 0.0, 0, 0, NULL),
 (27886, 1090363, 'man308_gold_court', 209, '', 0, -141.6, 198.0, 160.0, 0.0, 0, 0, NULL),
-(27887, 1090364, 'man308_paglthan_approach', 174, '', 0, 1141.0, 317.0, 839.0, 0.0, 0, 0, NULL),
+(27887, 1090364, 'man308_paglthan_approach', 174, '', 0, 1141.0, 312.0, 830.0, 0.0, 0, 0, NULL),
 (27888, 1090365, 'man308_paglthan_gates', 174, '', 0, 992.0, 311.8, 967.0, 0.0, 0, 0, NULL),
 (27889, 1090366, 'man308_paglthan_clearing', 174, '', 0, 993.3, 310.0, 976.8, 0.0, 0, 0, NULL),
 (27890, 1001390, 'man308_cloudy_eyed_prisoner', 174, '', 0, 993.3, 312.0, 988.8, 3.14, 0, 0, NULL),

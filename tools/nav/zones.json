@@ -37,10 +37,10 @@
     },
     "sea_s1_fld01": {"offset": [0.0, 0.0, 0.0], "checked": "assumed: field layouts are in server coordinates, like the three checked ones; no walk yet"},
     "wil_w0_fld01": {"offset": [0.0, 0.0, 0.0], "checked": "field layouts are in server coordinates; walked Ul'dah -> Camp Black Brush across it (2026-11-24)"},
-    "wil_w0_fld02": {"offset": [0.0, 0.0, 0.0], "checked": "assumed: field layouts are in server coordinates, like the three checked ones; no walk yet"},
-    "wil_w0_fld03": {"offset": [0.0, 0.0, 0.0], "checked": "assumed: field layouts are in server coordinates, like the three checked ones; no walk yet"},
-    "wil_w0_fld04": {"offset": [0.0, 0.0, 0.0], "checked": "assumed: field layouts are in server coordinates, like the three checked ones; no walk yet"},
-    "wil_w0_fld05": {"offset": [0.0, 0.0, 0.0], "checked": "assumed: field layouts are in server coordinates, like the three checked ones; no walk yet"},
+    "wil_w0_fld02": {"offset": [0.0, 0.0, 0.0], "checked": "29/35 spawns of zone 171 on its floor at (0, 0, 0); walked across the seams to 174 and back (2026-11-28)"},
+    "wil_w0_fld03": {"offset": [0.0, 0.0, 0.0], "checked": "45/50 spawns of zone 172 on its floor at (0, 0, 0); walked across the seam from 170 and back (2026-11-28)"},
+    "wil_w0_fld04": {"offset": [0.0, 0.0, 0.0], "checked": "6/10 spawns of zone 173 on its floor at (0, 0, 0); walked across the seam from 170 and back (2026-11-28)"},
+    "wil_w0_fld05": {"offset": [0.0, 0.0, 0.0], "checked": "15/18 spawns of zone 174 on its floor at (0, 0, 0), the 3 misses aetherytes 1 yalm up; walked from the 171 seam to Man308's approach and back (2026-11-28)"},
     "wil_w0_ind01": {
       "offset": [-96.0, 188.0, 160.0],
       "checked": "94% of walked positions (zones 175/209/170 test logs) on a floor within 1 yalm; walked Gold Court -> Concern and Ul'dah -> Camp Black Brush (2026-11-24)"

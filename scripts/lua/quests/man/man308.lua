@@ -82,7 +82,7 @@ WAKING_SANDS_DOOR		= {-205.25, 0, -160, 1.55};
 WAKING_SANDS_AREA		= 3;	-- Minfilia and the staff
 WAKING_SANDS_HALL		= {-142.75, 1, -160, -1.6};
 ULDAH_MARKET_OUTSIDE	= {175, -216.52, 190, 30.5, 2.32};
-PAGLTHAN_OUTSIDE		= {174, 1141.0, 317.0, 839.0, 2.3};	-- where the sylphs wait, and where Ifrit throws you out
+PAGLTHAN_OUTSIDE		= {174, 1141.0, 312.0, 830.0, 2.3};	-- where the sylphs wait, and where Ifrit throws you out
 PAGLTHAN_CELL			= {174, 993.5, 309.5, 984.8, 0.3};	-- the cell, with the prisoners
 
 -- Rewards

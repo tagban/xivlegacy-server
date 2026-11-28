@@ -741,6 +741,56 @@ mod seamless_data_tests {
             assert_eq!(seam_zone(x, z), Some(zone), "at ({x}, {z})");
         }
     }
+
+    /// Central Thanalan (170) and Western Thanalan (172) meet along
+    /// x -640, from z -585 to -255; the valley road crosses at z -440
+    /// (#500).
+    #[test]
+    fn central_and_western_thanalan_are_seamed() {
+        for (x, z, zone) in [
+            (-625.0, -575.0, 170),
+            (-655.0, -575.0, 172),
+            (-625.0, -440.0, 170),
+            (-655.0, -440.0, 172),
+            (-625.0, -265.0, 170),
+            (-655.0, -265.0, 172),
+        ] {
+            assert_eq!(seam_zone(x, z), Some(zone), "at ({x}, {z})");
+        }
+    }
+
+    /// Central Thanalan (170) and Northern Thanalan (173) meet along
+    /// z -1088, from x -515 to -380 (#500).
+    #[test]
+    fn central_and_northern_thanalan_are_seamed() {
+        for (x, z, zone) in [
+            (-505.0, -1072.0, 170),
+            (-505.0, -1104.0, 173),
+            (-450.0, -1072.0, 170),
+            (-450.0, -1104.0, 173),
+            (-390.0, -1072.0, 170),
+            (-390.0, -1104.0, 173),
+        ] {
+            assert_eq!(seam_zone(x, z), Some(zone), "at ({x}, {z})");
+        }
+    }
+
+    /// Southern Thanalan (174) borders Eastern Thanalan (171), not Central
+    /// Thanalan: they meet along z 512, from x 1400 to 1545, where a ledge
+    /// road (y 288-291) runs down into the canyon (#500).
+    #[test]
+    fn eastern_and_southern_thanalan_are_seamed() {
+        for (x, z, zone) in [
+            (1410.0, 497.0, 171),
+            (1410.0, 527.0, 174),
+            (1435.0, 497.0, 171),
+            (1435.0, 527.0, 174),
+            (1535.0, 497.0, 171),
+            (1535.0, 527.0, 174),
+        ] {
+            assert_eq!(seam_zone(x, z), Some(zone), "at ({x}, {z})");
+        }
+    }
 }
 
 #[cfg(test)]
