@@ -742,3 +742,113 @@ mod seamless_data_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod region_border_data_tests {
+    /// Zone lines between regions: the seam table only joins zones inside
+    /// one region, so where a road runs on into another region a push circle
+    /// at the road's end loads the other zone (#496). Each entry is the
+    /// circle on one side, (unique id, script folder), and its way back.
+    const BORDERS: &[((&str, &str), (&str, &str))] = &[(
+        ("mor_dhona_border1", "fst0Field02"),
+        ("east_shroud_border1", "lak0Field01"),
+    )];
+
+    struct Line {
+        zone: u32,
+        at: (f32, f32, f32),
+        radius: f32,
+        guard: u32,
+        to_zone: u32,
+        to: (f32, f32, f32),
+        rotation: f32,
+    }
+
+    fn line(unique_id: &str, folder: &str) -> Line {
+        let spawns = include_str!("../../common/sql/data/server_spawn_locations.sql");
+        let classes = include_str!("../../common/sql/data/gamedata_actor_class.sql");
+        let row = spawns
+            .lines()
+            .find(|l| l.contains(&format!("'{unique_id}'")))
+            .unwrap_or_else(|| panic!("no spawn row for {unique_id}"));
+        let f: Vec<&str> = row.trim_start_matches('(').split(", ").collect();
+        let num = |s: &str| s.parse::<f32>().unwrap();
+        let class = f[1];
+        let start = classes
+            .find(&format!("\n({class}, "))
+            .unwrap_or_else(|| panic!("no class {class}"));
+        let body = &classes[start..start + 400];
+        let r = body.split("\"radius\": \"").nth(1).expect("a push circle");
+        let radius = num(&r[..r.find('"').unwrap()]);
+
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!(
+            "../scripts/lua/unique/{folder}/PopulaceStandard/{unique_id}.lua"
+        ));
+        let lua = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{path:?}: {e}"));
+        let g = lua.split("GetZoneID() ~= ").nth(1).expect("a zone guard");
+        let guard = g[..g.find(')').unwrap()].trim().parse().unwrap();
+        let c = lua
+            .split("DoZoneChange(player, ")
+            .nth(1)
+            .expect("a DoZoneChange");
+        let a: Vec<&str> = c[..c.find(')').unwrap()]
+            .split(',')
+            .map(str::trim)
+            .collect();
+        assert_eq!(a.len(), 8, "{unique_id}: {a:?}");
+        Line {
+            zone: f[3].parse().unwrap(),
+            at: (num(f[6]), num(f[7]), num(f[8])),
+            radius,
+            guard,
+            to_zone: a[0].parse().unwrap(),
+            to: (num(a[4]), num(a[5]), num(a[6])),
+            rotation: num(a[7]),
+        }
+    }
+
+    /// Both sides exist and lead to each other; each script only fires in
+    /// its own zone (a push sent while still loading can name the old zone).
+    #[test]
+    fn region_borders_lead_both_ways() {
+        for &((a, fa), (b, fb)) in BORDERS {
+            let (there, back) = (line(a, fa), line(b, fb));
+            assert_eq!(there.guard, there.zone, "{a} guards its own zone");
+            assert_eq!(back.guard, back.zone, "{b} guards its own zone");
+            assert_eq!(there.to_zone, back.zone, "{a} leads to {b}'s zone");
+            assert_eq!(back.to_zone, there.zone, "{b} leads to {a}'s zone");
+        }
+    }
+
+    /// The landing spot is well clear of the circle that leads back, and
+    /// the player faces away from it, so they don't bounce straight back.
+    #[test]
+    fn region_border_landings_clear_the_way_back() {
+        for &((a, fa), (b, fb)) in BORDERS {
+            let (there, back) = (line(a, fa), line(b, fb));
+            for (from, to, name) in [(&there, &back, a), (&back, &there, b)] {
+                let (dx, dz) = (to.at.0 - from.to.0, to.at.2 - from.to.2);
+                let gap = (dx * dx + dz * dz).sqrt();
+                assert!(
+                    gap >= to.radius + 5.0,
+                    "{name} lands {gap} from a {} circle",
+                    to.radius
+                );
+                assert!(
+                    (from.to.1 - to.at.1).abs() < 10.0,
+                    "{name} lands at the road's height"
+                );
+                // Facing is atan2(dx, dz); away from the circle is the other way round.
+                let away = (-dx).atan2(-dz);
+                let off = (from.rotation - away + std::f32::consts::PI)
+                    .rem_euclid(2.0 * std::f32::consts::PI)
+                    - std::f32::consts::PI;
+                assert!(
+                    off.abs() < 0.8,
+                    "{name} faces {} vs away {away}",
+                    from.rotation
+                );
+            }
+        }
+    }
+}
