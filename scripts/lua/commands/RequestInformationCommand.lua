@@ -1,9 +1,13 @@
 --[[
 
+RequestInformationCommand Script
+
+The journal's requests: "activegl" (a held regional leve's page) is
+answered by the map server itself (#479). Anything else (the leve
+history, "glHist") has no reply yet, so the event just ends.
 
 --]]
 
-function onEventStarted(player, actor, questId)
-	player:SendDataPacket("requestedData", "activegl", 7, nil, nil, nil, nil, nil, nil, nil);
---	player:SendRequestedInfo("requestedData", "glHist", 10, 0x1D4F2, 1009, 12464, 11727, 12485, 12526);
+function onEventStarted(player, actor, request)
+	player:EndEvent();
 end

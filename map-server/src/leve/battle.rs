@@ -42,6 +42,7 @@ use crate::runtime::actor_registry::ActorRegistry;
 use crate::world_manager::WorldManager;
 
 mod errand;
+pub mod journal;
 pub use errand::{is_crate, on_crate};
 
 const WORLD_MASTER: u32 = 0x5FF8_0001;
