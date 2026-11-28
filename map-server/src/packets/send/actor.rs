@@ -1941,6 +1941,22 @@ mod actor_name_sex_tests {
         assert_eq!(&female.data[4..20], b"Questria Redwind");
     }
 
+    /// Dialogue names the player with a text macro that splits this
+    /// name on its space: part 1 for the first name, part 2 for the
+    /// surname (Hedyn's "Walker <surname>" in Man300 uses part 2). So the
+    /// player's own 0x013D must carry "First Last" whole, with one space
+    /// and a NUL after it (#493).
+    #[test]
+    fn player_name_is_sent_whole_for_the_split_macro() {
+        let p = build_set_actor_name_sexed(1, 0, "Wren Thornfield", true);
+        let field = &p.data[4..4 + 0x19];
+        let end = field.iter().position(|&b| b == 0).unwrap();
+        let name = std::str::from_utf8(&field[..end]).unwrap();
+        assert_eq!(name, "Wren Thornfield");
+        let parts: Vec<&str> = name.split(' ').collect();
+        assert_eq!(parts, ["Wren", "Thornfield"]);
+    }
+
     #[test]
     fn female_tribes() {
         use crate::gamedata::tribe_is_female;
