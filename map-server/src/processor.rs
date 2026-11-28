@@ -2676,7 +2676,7 @@ impl PacketProcessor {
             // was silently dropped on the onNpcLS fan-out, leaving the
             // client masked. (Garlemald-Server #46 live test.)
             // `player:HideActor(id)` from a quest talk (Pgl200's coins).
-            cmd @ LC::HideActor { .. } => {
+            cmd @ (LC::HideActor { .. } | LC::HideActorByUniqueId { .. }) => {
                 crate::runtime::quest_apply::apply_runtime_lua_command(
                     cmd,
                     &self.registry,

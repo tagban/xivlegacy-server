@@ -3122,36 +3122,70 @@ mod tests {
         }
     }
 
-    /// #476: ride the Wellhead lift down from the airship landing
-    /// (`wellhead_lift_lvl3.lua`), picking `floor`. Returns the commands of
-    /// the talk start, the floor pick and the end of the ride scene.
-    fn ride_down_from_the_landing(floor: i32) -> Vec<Vec<LuaCommand>> {
+    /// A Wellhead lift stop: script, unique id, class, zone, zone dir, spot.
+    struct WellheadStop {
+        unique_id: &'static str,
+        class_id: u32,
+        zone_id: u32,
+        zone_name: &'static str,
+        pos: (f32, f32, f32),
+    }
+
+    const WELLHEAD_LVL1: WellheadStop = WellheadStop {
+        unique_id: "wellhead_lift_lvl1",
+        class_id: 1_090_460,
+        zone_id: 175,
+        zone_name: "wil0Town01",
+        pos: (-117.2, 198.0, 117.6),
+    };
+    const WELLHEAD_LVL2: WellheadStop = WellheadStop {
+        unique_id: "wellhead_lift_lvl2",
+        class_id: 1_090_461,
+        zone_id: 209,
+        zone_name: "wil0Town01a",
+        pos: (-117.2, 222.0, 117.6),
+    };
+    const WELLHEAD_LVL3: WellheadStop = WellheadStop {
+        unique_id: "wellhead_lift_lvl3",
+        class_id: 1_090_462,
+        zone_id: 209,
+        zone_name: "wil0Town01a",
+        pos: (-119.84, 269.86, 127.86),
+    };
+
+    /// #476/#481: ride the Wellhead lift from `stop`, picking `floor`.
+    /// Returns the commands of the talk start, the floor pick and the end
+    /// of the ride scene.
+    fn ride_wellhead_lift(stop: &WellheadStop, floor: i32) -> Vec<Vec<LuaCommand>> {
         use common::luaparam::LuaParam;
         let root = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../scripts/lua"));
         let engine = LuaEngine::new(root);
         let npc_spec = LuaNpcSpec {
             actor_id: 0x4400_0060,
-            name: "wellhead_lift_lvl3".to_string(),
+            name: stop.unique_id.to_string(),
             class_name: "ElevatorStandard".to_string(),
             class_path: "/Chara/Npc/Object/ElevatorStandard".to_string(),
-            unique_id: "wellhead_lift_lvl3".to_string(),
-            zone_id: 209,
-            zone_name: "wil0Town01a".to_string(),
+            unique_id: stop.unique_id.to_string(),
+            zone_id: stop.zone_id,
+            zone_name: stop.zone_name.to_string(),
             state: 0,
-            pos: (-119.84, 269.86, 127.86),
+            pos: stop.pos,
             rotation: 0.0,
-            actor_class_id: 1_090_462,
+            actor_class_id: stop.class_id,
             quest_graphic: 0,
         };
         let snapshot = userdata::PlayerSnapshot {
             actor_id: 42,
-            zone_id: 209,
-            pos: (-120.5, 269.8, 128.4),
+            zone_id: stop.zone_id,
+            pos: stop.pos,
             rotation: 1.5,
             ..Default::default()
         };
         let started = engine.call_npc_on_event_started(
-            &root.join("unique/wil0Town01a/ElevatorStandard/wellhead_lift_lvl3.lua"),
+            &root.join(format!(
+                "unique/{}/ElevatorStandard/{}.lua",
+                stop.zone_name, stop.unique_id
+            )),
             snapshot,
             npc_spec,
             "pushCommand".to_string(),
@@ -3168,33 +3202,85 @@ mod tests {
         vec![started.commands, picked, rode]
     }
 
+    /// Where in `cmds` the landing's ship port is hidden (`hidden`) or shown
+    /// again, looked up in `zone`.
+    fn ship_port_toggle(cmds: &[LuaCommand], zone: Option<u32>, hidden: bool) -> Option<usize> {
+        cmds.iter().position(|c| {
+            matches!(c, LuaCommand::HideActorByUniqueId { player_id: 42, unique_id, zone_id, hidden: h }
+                if unique_id == "uldah_mapshipport_1" && *zone_id == zone && *h == hidden)
+        })
+    }
+
     #[test]
-    fn landing_lift_ride_down_always_returns() {
-        for (floor, zone) in [(1, 175), (2, 209)] {
-            let steps = ride_down_from_the_landing(floor);
-            assert!(client_call(&steps[0], "elevatorAskUldah003").is_some());
-            let args = client_call(&steps[1], "elevatorAskUldah003").expect("ride scene");
+    fn landing_lift_rides_keep_the_ship_port_off_screen() {
+        // (stop, floor, ride scene, ship port lookup zone, landed in)
+        let rides = [
+            (&WELLHEAD_LVL3, 1, "elevatorAskUldah003", None, 175),
+            (&WELLHEAD_LVL3, 2, "elevatorAskUldah003", None, 209),
+            (&WELLHEAD_LVL1, 2, "elevatorAskUldah001", Some(209), 209),
+            (&WELLHEAD_LVL2, 2, "elevatorAskUldah002", Some(209), 209),
+        ];
+        for (stop, floor, scene, zone, landed) in rides {
+            let steps = ride_wellhead_lift(stop, floor);
+            let tag = format!("{} floor {floor}", stop.unique_id);
+            assert!(client_call(&steps[0], scene).is_some(), "{tag}");
+            let args = client_call(&steps[1], scene).expect("ride scene");
             assert!(
                 matches!(args.first(), Some(LuaCommandArg::Int(f)) if *f == i64::from(floor)),
-                "{args:?}"
+                "{tag}: {args:?}"
             );
-            // The position that ends the ride scene goes out with the
-            // scene, before the zone change, and keeps the player in place.
-            let warp = steps[1].iter().find_map(|c| match c {
-                LuaCommand::WarpToPosition {
-                    actor_id,
-                    x,
-                    y,
-                    z,
-                    rotation,
-                    ..
-                } => Some((*actor_id, *x, *y, *z, *rotation)),
-                _ => None,
+            // The landing's ship port is taken off the player's screen
+            // before the ride scene starts: while it holds the landing's
+            // lift car, the ride down's ARRIVE shot never finishes (#481).
+            let hide = ship_port_toggle(&steps[1], zone, true);
+            let ride = steps[1].iter().position(|c| {
+                matches!(c, LuaCommand::RunEventFunction { function_name, .. }
+                    if function_name == scene)
             });
-            assert_eq!(warp, Some((42, -120.5, 269.8, 128.4, 1.5)));
-            assert_eq!(landed_in(&steps[..2]), None);
-            assert_eq!(landed_in(&steps), Some(zone));
-            assert!(ended(&steps[2]));
+            assert!(
+                matches!((hide, ride), (Some(h), Some(r)) if h < r),
+                "{tag}: {:?}",
+                steps[1]
+            );
+            // ...and put back before the zone change, which streams it in
+            // fresh.
+            let show = ship_port_toggle(&steps[2], zone, false);
+            let change = steps[2]
+                .iter()
+                .position(|c| matches!(c, LuaCommand::DoZoneChange { .. }));
+            assert!(
+                matches!((show, change), (Some(s), Some(z)) if s < z),
+                "{tag}: {:?}",
+                steps[2]
+            );
+            // No position goes out to cut the scene short.
+            assert!(
+                !steps
+                    .iter()
+                    .flatten()
+                    .any(|c| matches!(c, LuaCommand::WarpToPosition { .. })),
+                "{tag}: {steps:?}"
+            );
+            assert_eq!(landed_in(&steps[..2]), None, "{tag}");
+            assert_eq!(landed_in(&steps), Some(landed), "{tag}");
+            assert!(ended(&steps[2]), "{tag}");
+        }
+    }
+
+    #[test]
+    fn lift_rides_away_from_the_landing_leave_the_ship_port_alone() {
+        for (stop, floor, landed) in [(&WELLHEAD_LVL1, 1, 209), (&WELLHEAD_LVL2, 1, 175)] {
+            let steps = ride_wellhead_lift(stop, floor);
+            let tag = format!("{} floor {floor}", stop.unique_id);
+            assert!(
+                !steps
+                    .iter()
+                    .flatten()
+                    .any(|c| matches!(c, LuaCommand::HideActorByUniqueId { .. })),
+                "{tag}: {steps:?}"
+            );
+            assert_eq!(landed_in(&steps), Some(landed), "{tag}");
+            assert!(ended(&steps[2]), "{tag}");
         }
     }
 

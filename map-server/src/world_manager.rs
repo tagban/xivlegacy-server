@@ -1987,6 +1987,14 @@ impl WorldManager {
         }
     }
 
+    /// Undo `hide_actor_for_session`: the next zone-in bundle or instance
+    /// update sends the actor to the player again.
+    pub async fn show_actor_for_session(&self, session_id: u32, actor_id: u32) {
+        if let Some(s) = self.sessions.write().await.get_mut(&session_id) {
+            s.hidden_actors.remove(&actor_id);
+        }
+    }
+
     /// Take seasonal-event NPCs whose event stopped off every client that
     /// has them (`seasonal::actor_hidden`). Turning an event on needs
     /// nothing here: proximity streaming picks its NPCs up.
