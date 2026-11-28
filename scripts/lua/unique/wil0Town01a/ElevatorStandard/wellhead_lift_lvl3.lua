@@ -1,20 +1,23 @@
 require ("global")
 
 -- The two rides down from the airship landing play the scenes elv0u0a1 and
--- elv0u0a2. Unlike the other lift scenes, they open with the lift car's ARRIVE
--- schedule and wait for it to finish. Whether it finishes depends on the state
--- the car was left in: after a login on the landing, or after coming up by
--- lift, it never does. The screen stays black with "Skip" and the ride never
--- returns (#476).
+-- elv0u0a2. Unlike the other lift scenes, they open with an ARRIVE shot that
+-- runs the landing's lift car (the scene's airport100428 background). The
+-- landing's ship port map object (uldah_mapshipport_1, a MapObjShipPort bound
+-- to layout 431, instance 3525) runs its own background schedule on that car
+-- from the moment it streams in. While it holds the car, the ARRIVE shot never
+-- finishes: the screen stays black with "Skip" and the ride never returns
+-- (#476, #481).
 --
--- The scene ends as soon as the server sends the player a position. So send
--- one where the player already stands, right behind the ride call. The ride
--- then always returns, and the zone change runs as before.
+-- So take the ship port off this player's screen for the ride, and put it
+-- back before the zone change at its end, which streams it in fresh. The rides
+-- up to the landing (wellhead_lift_lvl1.lua, wellhead_lift_lvl2.lua) move the
+-- same car and do the same: a ship port that was on screen through a ride up
+-- leaves the next ride down on black even once it is hidden.
 local function rideDown(player, choice)
-	player:RunEventFunction("elevatorAskUldah003", choice);
-	local x, y, z, rot = player:GetPos();
-	GetWorldManager():DoPlayerMoveInZone(player, x, y, z, rot, 0x11);
-	return coroutine.yield("_WAIT_EVENT", player);
+	player:HideActorByUniqueId("uldah_mapshipport_1");
+	callClientFunction(player, "elevatorAskUldah003", choice);
+	player:ShowActorByUniqueId("uldah_mapshipport_1");
 end
 
 function onEventStarted(player, npc)

@@ -150,6 +150,17 @@ pub enum LuaCommand {
         player_id: u32,
         actor_id: u32,
     },
+    /// `player:HideActorByUniqueId(uniqueId[, zoneId])` — `HideActor` for
+    /// the actor with that unique id in `zoneId` (default: the player's
+    /// zone); a no-op when none is live there. `hidden: false` is
+    /// `player:ShowActorByUniqueId(uniqueId[, zoneId])`, which undoes it:
+    /// the player's next zone-in or instance update streams the actor back.
+    HideActorByUniqueId {
+        player_id: u32,
+        unique_id: String,
+        zone_id: Option<u32>,
+        hidden: bool,
+    },
     /// `player:RestGatherNode(zoneId, uniqueId, seconds)` — a gathering
     /// point the player picked clean leaves the world for everyone and
     /// comes back after `seconds` (DummyCommand.lua).

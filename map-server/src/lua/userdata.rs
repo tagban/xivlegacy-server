@@ -2864,6 +2864,26 @@ impl UserData for LuaPlayer {
             );
             Ok(())
         });
+        for (name, hidden) in [
+            ("HideActorByUniqueId", true),
+            ("ShowActorByUniqueId", false),
+        ] {
+            methods.add_method(
+                name,
+                move |_, this, (unique_id, zone_id): (String, Option<u32>)| {
+                    push(
+                        &this.queue,
+                        LuaCommand::HideActorByUniqueId {
+                            player_id: this.snapshot.actor_id,
+                            unique_id,
+                            zone_id,
+                            hidden,
+                        },
+                    );
+                    Ok(())
+                },
+            );
+        }
         methods.add_method("ChangeMusic", |_, this, music_id: u16| {
             push(
                 &this.queue,

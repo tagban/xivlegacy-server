@@ -971,6 +971,16 @@ pub async fn apply_runtime_lua_command(
             apply_hide_actor(player_id, actor_id, registry, world).await;
             true
         }
+        LC::HideActorByUniqueId {
+            player_id,
+            unique_id,
+            zone_id,
+            hidden,
+        } => {
+            apply_hide_actor_by_unique_id(player_id, &unique_id, zone_id, hidden, registry, world)
+                .await;
+            true
+        }
         LC::RestGatherNode {
             zone_id,
             unique_id,
@@ -1962,6 +1972,52 @@ pub(crate) async fn apply_hide_actor(
         player = player_id,
         actor = format!("0x{actor_id:08X}"),
         "HideActor applied (RemoveActor to one player)",
+    );
+}
+
+/// `player:HideActorByUniqueId(uniqueId[, zoneId])`: `apply_hide_actor` for
+/// the actor with that unique id in `zone_id` (default: the player's zone),
+/// if one is live there. The zone matters next to a seamless neighbor: a
+/// player in 175 already has 209's actors on screen. With `hidden: false`
+/// (`player:ShowActorByUniqueId`) the actor leaves the player's hidden set
+/// instead, so the next zone-in or instance update sends it again.
+pub(crate) async fn apply_hide_actor_by_unique_id(
+    player_id: u32,
+    unique_id: &str,
+    zone_id: Option<u32>,
+    hidden: bool,
+    registry: &ActorRegistry,
+    world: &WorldManager,
+) {
+    let Some(handle) = registry.get(player_id).await else {
+        return;
+    };
+    let zone_id = match zone_id {
+        Some(z) => z,
+        None => handle.character.read().await.base.zone_id,
+    };
+    for h in registry.actors_in_zone(zone_id).await {
+        if h.actor_id != player_id && h.character.read().await.base.unique_id == unique_id {
+            if hidden {
+                apply_hide_actor(player_id, h.actor_id, registry, world).await;
+            } else if handle.session_id != 0 {
+                world
+                    .show_actor_for_session(handle.session_id, h.actor_id)
+                    .await;
+                tracing::debug!(
+                    player = player_id,
+                    actor = format!("0x{:08X}", h.actor_id),
+                    "ShowActorByUniqueId applied (streams back on the next update)",
+                );
+            }
+            return;
+        }
+    }
+    tracing::debug!(
+        player = player_id,
+        unique_id,
+        zone_id,
+        "HideActorByUniqueId: no such actor"
     );
 }
 
