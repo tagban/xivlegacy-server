@@ -351,6 +351,70 @@ mod tests {
         }
     }
 
+    /// #482: every lift (ElevatorStandard) spawn needs a unique id that no
+    /// other spawn in its zone and private area shares, or a lookup by
+    /// unique id picks either actor, and a script of its own under that id.
+    #[test]
+    fn every_lift_spawn_has_its_own_unique_id_and_script() {
+        let r = repo_resolver();
+        let rows = |sql: &'static str| -> Vec<Vec<String>> {
+            sql.lines()
+                .filter(|l| l.starts_with('('))
+                .map(|l| {
+                    l.trim_start_matches('(')
+                        .split(", ")
+                        .map(|f| f.trim_matches('\'').to_string())
+                        .collect()
+                })
+                .collect()
+        };
+        let lift_classes: Vec<String> = rows(include_str!(
+            "../../../common/sql/data/gamedata_actor_class.sql"
+        ))
+        .into_iter()
+        .filter(|c| c.get(1).map(String::as_str) == Some("/Chara/Npc/Object/ElevatorStandard"))
+        .map(|c| c[0].clone())
+        .collect();
+        assert!(lift_classes.len() >= 7, "lift classes not found");
+        let zones = rows(include_str!("../../../common/sql/data/server_zones.sql"));
+        let spawns = rows(include_str!(
+            "../../../common/sql/data/server_spawn_locations.sql"
+        ));
+        let mut lifts = 0;
+        for l in spawns.iter().filter(|s| lift_classes.contains(&s[1])) {
+            lifts += 1;
+            assert!(!l[2].is_empty(), "lift spawn {} has no unique id", l[0]);
+            let twins: Vec<&String> = spawns
+                .iter()
+                .filter(|s| {
+                    s[0] != l[0] && s[2] == l[2] && s[3] == l[3] && s[4] == l[4] && s[5] == l[5]
+                })
+                .map(|s| &s[0])
+                .collect();
+            assert!(
+                twins.is_empty(),
+                "lift spawn {} shares unique id {} with spawn(s) {twins:?}",
+                l[0],
+                l[2]
+            );
+            let zone = zones
+                .iter()
+                .find(|z| z[0] == l[3])
+                .map(|z| z[2].clone())
+                .unwrap_or_else(|| panic!("zone {} not in server_zones.sql", l[3]));
+            let script = r.npc(&zone, "ElevatorStandard", &l[2]);
+            let has_event = std::fs::read_to_string(&script)
+                .map(|t| t.contains("function onEventStarted"))
+                .unwrap_or(false);
+            assert!(
+                has_event,
+                "lift spawn {} ({}) has no script at {script:?}",
+                l[0], l[2]
+            );
+        }
+        assert!(lifts >= 7, "lift spawns not found");
+    }
+
     /// Quest script names are lowercased by the catalog before path
     /// construction, but six scripts are stored capitalized on disk
     /// (DftSea et al.).
