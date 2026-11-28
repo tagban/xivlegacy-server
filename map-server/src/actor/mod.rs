@@ -323,6 +323,12 @@ pub struct CharaState {
     /// through [`CharaState::anima_now`], which adds what has come back.
     pub anima: u8,
     pub anima_stamp: i64,
+    /// Leve allowances (`characters_leve_allowances`,
+    /// crate::leve::allowance): the count when `leve_allowance_stamp`
+    /// (unix seconds) was last brought up to date. Read it through
+    /// [`CharaState::leve_allowances_now`], which adds the refills since.
+    pub leve_allowances: u16,
+    pub leve_allowance_stamp: i64,
     /// Equipped title (`characters.currentTitle`), hydrated at
     /// session-begin so the zone-in bundle emits `SetPlayerTitle`. The
     /// authoritative runtime copy; `PlayerState.current_title` stays as
@@ -450,6 +456,8 @@ impl Default for CharaState {
             faction_credits: [0; 3],
             anima: crate::runtime::anima::RETAIL_MAX,
             anima_stamp: 0,
+            leve_allowances: crate::leve::allowance::RETAIL_CAP,
+            leve_allowance_stamp: 0,
             current_title: 0,
             unlocked_aetherytes: std::collections::HashSet::new(),
             snpc_nickname: String::new(),
@@ -491,6 +499,17 @@ impl CharaState {
     /// `anima_stamp` (crate::runtime::anima::held; full with anima off).
     pub fn anima_now(&self) -> u8 {
         crate::runtime::anima::held(self.anima, self.anima_stamp, crate::runtime::anima::now()).0
+    }
+
+    /// The leve allowances held now: the stored count plus the refills
+    /// since `leve_allowance_stamp` (crate::leve::allowance::held).
+    pub fn leve_allowances_now(&self) -> u16 {
+        crate::leve::allowance::held(
+            self.leve_allowances,
+            self.leve_allowance_stamp,
+            crate::leve::allowance::now(),
+        )
+        .0
     }
 
     pub fn is_dead(&self) -> bool {

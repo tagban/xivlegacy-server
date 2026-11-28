@@ -32,13 +32,31 @@ battlePacks = {
 
 GIL = 0xF4241;
 
+-- Leve allowances (map-server/src/leve/allowance.rs): one is spent for
+-- each leve taken, regional, fieldcraft or faction, shared with the Grand
+-- Company officers. `held` is the count this conversation started with,
+-- less what it has spent; the server spends and refuses for itself too.
+NO_ALLOWANCES = "You have no leve allowances remaining.";
+
+-- Take `leveId` if an allowance is left (the server spends it). False,
+-- with the message, at 0.
+function takeLeve(player, leveId, held)
+	if (held.count <= 0) then
+		player:SendMessage(0x20, "", NO_ALLOWANCES);
+		return false;
+	end
+	player:AddGuildleve(leveId);
+	held.count = held.count - 1;
+	return true;
+end
+
 -- Fieldcraft (gathering) leves: the levemete's city (leve sheet location)
 -- by its zone, and the gathering class each FieldCraft menu entry lists.
 CITY_LOCATION = { [133] = 1, [155] = 2, [175] = 3 };
 FIELD_MENU = { [0x15] = 39, [0x16] = 40, [0x17] = 41 };
 
 -- A city's fieldcraft leves for one gathering class, as one page of cards.
-function fieldLeves(player, skill)
+function fieldLeves(player, skill, held)
 	local location = CITY_LOCATION[player:GetZoneID()] or 1;
 	local offers = GetFieldLeveOffers(location, skill, player:GetHighestLevel() or 1);
 	local cards = {0, 0, 0, 0, 0, 0, 0, 0};
@@ -59,8 +77,7 @@ function fieldLeves(player, skill)
 		local gil = 0;
 		if (gl ~= nil) then gil = gl.rewardGil; end
 		local accepted = callClientFunction(player, "eventTalkDetail", leveId, 0, GIL, gil, 0, 0, 0, false, nil);
-		if (accepted == true) then
-			player:AddGuildleve(leveId);
+		if (accepted == true and takeLeve(player, leveId, held)) then
 			callClientFunction(player, "eventTalkAfterOffer");
 		end
 	end
@@ -85,7 +102,7 @@ function factionCards(faction, level)
 end
 
 -- Show a faction's leves at `level`; a card accepted costs its credits.
-function factionLeves(player, faction, level, credits)
+function factionLeves(player, faction, level, credits, held)
 	local cards = factionCards(faction, level);
 	if (cards[1] == 0) then
 		player:SendMessage(0x20, "", "There are no faction levequests of that rank available here.");
@@ -107,9 +124,13 @@ function factionLeves(player, faction, level, credits)
 	if (accepted == true) then
 		if (credits[faction] < cost) then
 			player:SendMessage(0x20, "", "You lack the faction credits needed to accept this levequest.");
+		elseif (held.count <= 0) then
+			player:SendMessage(0x20, "", NO_ALLOWANCES);
 		else
 			credits[faction] = credits[faction] - cost;
+			-- the server spends the credits and one leve allowance
 			player:AcceptFactionLeve(leveId);
+			held.count = held.count - 1;
 			callClientFunction(player, "eventTalkAfterOffer");
 		end
 	end
@@ -143,11 +164,13 @@ function onEventStarted(player, npc)
 	local credits = { player:GetFactionCredits() };
 	-- the faction menu's level entries unlock by the player's level
 	local level = player:GetHighestLevel() or 1;
+	local held = { count = player:GetLeveAllowances() };
 
 	::MENU_LOOP::
-	-- R10 -1 hides the "Assisting the Adventurers' Guild" entries, R11 0
-	-- the named leve entry.
-	menuChoice, menuLevel = callClientFunction(player, "eventTalkType", level, true, credits[1], credits[2], credits[3], true, 0, nil, 0x29, -1, 0, 0);
+	-- R9 the leve allowances left ("Leve allowances remaining"), R10 -1
+	-- hides the "Assisting the Adventurers' Guild" entries, R11 0 the
+	-- named leve entry.
+	menuChoice, menuLevel = callClientFunction(player, "eventTalkType", level, true, credits[1], credits[2], credits[3], true, 0, nil, held.count, -1, 0, 0);
 	--Battlecraft
 	if (menuChoice == 1) then
 		::PACK_LOOP::
@@ -171,8 +194,7 @@ function onEventStarted(player, npc)
 				-- the 9th argument picks a levemete remark when it isn't nil
 				wasAccepted = callClientFunction(player, "eventTalkDetail", leveId, 0, GIL, gil, 0, 0, 0, false, nil);
 
-				if (wasAccepted == true) then
-					player:AddGuildleve(leveId);
+				if (wasAccepted == true and takeLeve(player, leveId, held)) then
 					callClientFunction(player, "eventTalkAfterOffer");
 				end
 
@@ -183,13 +205,13 @@ function onEventStarted(player, npc)
 		
 	--FieldCraft Miner / Botanist / Fisher
 	elseif (FIELD_MENU[menuChoice] ~= nil) then
-		fieldLeves(player, FIELD_MENU[menuChoice]);
+		fieldLeves(player, FIELD_MENU[menuChoice], held);
 		goto MENU_LOOP;
 	--FieldCraft Quit
 	elseif (menuChoice == 0x18) then
 	--Faction Broken Blade / Shields / Horn and Hand, at a level band
 	elseif (FACTION_MENU[menuChoice] ~= nil) then
-		factionLeves(player, FACTION_MENU[menuChoice], menuLevel or 20, credits);
+		factionLeves(player, FACTION_MENU[menuChoice], menuLevel or 20, credits, held);
 		goto MENU_LOOP;
 	--Faction special missions (0x2C-0x34): not offered yet
 	elseif (menuChoice ~= nil and menuChoice >= 0x2C and menuChoice <= 0x34) then
@@ -228,8 +250,7 @@ function onEventStarted(player, npc)
 			local gil = 0;
 			if (gl ~= nil) then gil = gl.rewardGil; end
 			local accepted = callClientFunction(player, "eventTalkDetail", leveId, 0, GIL, gil, 0, 0, 0, false, nil);
-			if (accepted == true) then
-				player:AddGuildleve(leveId);
+			if (accepted == true and takeLeve(player, leveId, held)) then
 				callClientFunction(player, "eventTalkAfterOffer");
 			end
 		end

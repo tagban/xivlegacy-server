@@ -608,8 +608,13 @@ pub async fn apply_runtime_lua_command(
         LC::AddGuildleve {
             player_id,
             guildleve_id,
+            spend,
         } => {
-            crate::leve::battle::add(player_id, guildleve_id, registry, world, db).await;
+            crate::leve::battle::add(player_id, guildleve_id, spend, registry, world, db).await;
+            true
+        }
+        LC::SpendLeveAllowance { player_id } => {
+            crate::leve::allowance::spend(player_id, registry, db).await;
             true
         }
         LC::AcceptFactionLeve {
@@ -7761,6 +7766,7 @@ pub async fn apply_quest_on_notice(
             gc_current: c.chara.gc_current,
             faction_credits: c.chara.faction_credits,
             anima: c.chara.anima_now(),
+            leve_allowances: c.chara.leve_allowances_now(),
             gc_rank_limsa: c.chara.gc_rank_limsa,
             gc_rank_gridania: c.chara.gc_rank_gridania,
             gc_rank_uldah: c.chara.gc_rank_uldah,
@@ -8344,6 +8350,7 @@ async fn fire_quest_npc_hook_via_command(
             gc_current: c.chara.gc_current,
             faction_credits: c.chara.faction_credits,
             anima: c.chara.anima_now(),
+            leve_allowances: c.chara.leve_allowances_now(),
             gc_rank_limsa: c.chara.gc_rank_limsa,
             gc_rank_gridania: c.chara.gc_rank_gridania,
             gc_rank_uldah: c.chara.gc_rank_uldah,
@@ -8576,6 +8583,7 @@ pub async fn fire_quest_on_talk_via_command(
             gc_current: c.chara.gc_current,
             faction_credits: c.chara.faction_credits,
             anima: c.chara.anima_now(),
+            leve_allowances: c.chara.leve_allowances_now(),
             gc_rank_limsa: c.chara.gc_rank_limsa,
             gc_rank_gridania: c.chara.gc_rank_gridania,
             gc_rank_uldah: c.chara.gc_rank_uldah,
@@ -8784,6 +8792,7 @@ async fn fire_quest_hook(
             gc_current: c.chara.gc_current,
             faction_credits: c.chara.faction_credits,
             anima: c.chara.anima_now(),
+            leve_allowances: c.chara.leve_allowances_now(),
             gc_rank_limsa: c.chara.gc_rank_limsa,
             gc_rank_gridania: c.chara.gc_rank_gridania,
             gc_rank_uldah: c.chara.gc_rank_uldah,

@@ -49,6 +49,7 @@
 //!
 //! [`PassiveGuildleveData`]: crate::crafting::PassiveGuildleveData
 
+pub mod allowance;
 pub mod battle;
 pub mod data;
 pub mod faction;

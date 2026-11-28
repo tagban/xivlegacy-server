@@ -482,11 +482,18 @@ pub enum LuaCommand {
         leve_id: u32,
         difficulty: u8,
     },
-    /// `player:AddGuildleve(id)` for a battle leve: take it into a free
-    /// regional leve slot (`crate::leve::battle::add`).
+    /// `player:AddGuildleve(id[, free])` for a battle leve: take it into a
+    /// free regional leve slot (`crate::leve::battle::add`). `spend`: it
+    /// costs one leve allowance (false for GM grants).
     AddGuildleve {
         player_id: u32,
         guildleve_id: u32,
+        spend: bool,
+    },
+    /// `player:SpendLeveAllowance()`: spend one leve allowance (a retry,
+    /// crate::leve::allowance::spend).
+    SpendLeveAllowance {
+        player_id: u32,
     },
     /// `player:AcceptFactionLeve(id)` at the levemete: spend the faction
     /// leve's credits and take it (`crate::leve::faction::accept`).

@@ -2689,6 +2689,10 @@ impl Database {
             .load_anima(chara_id)
             .await
             .unwrap_or_else(|_| (crate::runtime::anima::max(), crate::runtime::anima::now()));
+        (player.leve_allowances, player.leve_allowance_stamp) = self
+            .load_leve_allowances(chara_id)
+            .await
+            .unwrap_or_else(|_| (crate::leve::allowance::cap(), crate::leve::allowance::now()));
         player.npc_linkshells = self.load_npc_linkshells(chara_id).await.unwrap_or_default();
 
         for (target, ty) in [
@@ -3495,6 +3499,47 @@ impl Database {
             Some((anima, stamp)) => (anima.clamp(0, i64::from(u8::MAX)) as u8, stamp),
             None => (crate::runtime::anima::max(), crate::runtime::anima::now()),
         })
+    }
+
+    /// A character's leve allowances and the unix time they were last
+    /// brought up to date (`characters_leve_allowances`). No row (never
+    /// spent any) is full, at the cap now (crate::leve::allowance::cap),
+    /// with the clock at now.
+    async fn load_leve_allowances(&self, chara_id: u32) -> Result<(u16, i64)> {
+        let row = self
+            .conn
+            .call_db(move |c| {
+                let mut stmt = c.prepare(
+                    r"SELECT allowances, stamp FROM characters_leve_allowances
+                      WHERE characterId = :cid",
+                )?;
+                let mut rows = stmt.query_map(named_params! { ":cid": chara_id }, |r| {
+                    Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?))
+                })?;
+                rows.next().transpose()
+            })
+            .await?;
+        Ok(match row {
+            Some((n, stamp)) => (n.clamp(0, i64::from(u16::MAX)) as u16, stamp),
+            None => (crate::leve::allowance::cap(), crate::leve::allowance::now()),
+        })
+    }
+
+    /// Store a character's leve allowances and the time they were brought
+    /// up to date.
+    pub async fn save_leve_allowances(&self, chara_id: u32, n: u16, stamp: i64) -> Result<()> {
+        self.conn
+            .call_db(move |c| {
+                c.execute(
+                    r"INSERT INTO characters_leve_allowances (characterId, allowances, stamp)
+                      VALUES (:cid, :n, :s)
+                      ON DUPLICATE KEY UPDATE allowances = VALUES(allowances), stamp = VALUES(stamp)",
+                    named_params! { ":cid": chara_id, ":n": n, ":s": stamp },
+                )?;
+                Ok(())
+            })
+            .await?;
+        Ok(())
     }
 
     /// Store a character's anima and the time it was brought up to date.

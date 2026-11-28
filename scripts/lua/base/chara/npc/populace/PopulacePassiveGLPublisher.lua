@@ -28,7 +28,9 @@ function init(npc)
 end
 
 function onEventStarted(player, npc)
-	callClientFunction(player, "talkOfferWelcome", player, 1);
+	-- The leve allowances left (map-server/src/leve/allowance.rs): local
+	-- leves share the pool, though they can't be taken here yet.
+	callClientFunction(player, "talkOfferWelcome", player, player:GetLeveAllowances());
 	player:EndEvent();
 end
 

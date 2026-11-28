@@ -59,10 +59,6 @@ gcOfficer = {
 [1500227] = 3, -- Flame Sergeant Dalvag
 }
 
--- Leve allowances shown in the welcome; the levemete shows the same
--- number (PopulaceGuildlevePublisher.lua). Allowances aren't tracked yet.
-LEVE_ALLOWANCES = 0x29;
-
 -- A member of the officer's company is offered "the mission currently
 -- available": one of the company's leves at this officer's camp. As the
 -- officer says, the duty begins the moment it is accepted: difficulty,
@@ -78,13 +74,18 @@ function onEventStarted(player, npc, triggerName)
 		return;
 	end
 
-	callClientFunction(player, "talkOfferWelcome", LEVE_ALLOWANCES);
+	-- The leve allowances left, the same pool as the levemete's
+	-- (map-server/src/leve/allowance.rs): a company leve spends one.
+	local allowances = player:GetLeveAllowances();
+	callClientFunction(player, "talkOfferWelcome", allowances);
 	if (callClientFunction(player, "askCompanyLeve") == 1) then
 		local leveId = GetCompanyLeveOffer(gc, npc:GetZoneID());
 		if (leveId == nil) then
 			player:SendMessage(0x20, "", "There are no company leves available here right now.");
 		elseif (player:GetGuildleve() ~= nil) then
 			player:SendMessage(0x20, "", "You are already on a levequest.");
+		elseif (allowances <= 0) then
+			player:SendMessage(0x20, "", "You have no leve allowances remaining.");
 		else
 			::DETAIL::
 			local accepted = callClientFunction(player, "askLeveDetail", leveId, 0, 0, 0, 0, 0, 0, false);

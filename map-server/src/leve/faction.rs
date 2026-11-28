@@ -196,10 +196,11 @@ pub async fn accept(
         );
         return false;
     }
-    if crate::leve::battle::add(player_id, gl_id, registry, world, db).await {
+    // a faction leve spends a leve allowance too (crate::leve::allowance)
+    if crate::leve::battle::add(player_id, gl_id, true, registry, world, db).await {
         return true;
     }
-    // no free slot (or already held): give the credits back
+    // no free slot, already held or no allowance left: give the credits back
     add_credits(player_id, faction, cost, registry, db).await;
     false
 }

@@ -247,6 +247,7 @@ impl CommandProcessor {
             cmds.push(LC::AddGuildleve {
                 player_id: me,
                 guildleve_id,
+                spend: false,
             });
         }
         cmds.push(LC::StartBattleleve {

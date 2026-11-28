@@ -7,8 +7,8 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-//! Host-chosen gameplay settings: `[progression]`, `[storage]`, `[economy]`
-//! and `[drops]` in `settings/map.toml`.
+//! Host-chosen gameplay settings: `[progression]`, `[storage]`, `[economy]`,
+//! `[drops]` and `[leves]` in `settings/map.toml`.
 //!
 //! Every default is the 1.23b retail value. Each setting has a
 //! [`Bounded`] spec with its safe and hard range; [`install`] checks the
@@ -92,6 +92,60 @@ impl Default for DropsSection {
         }
     }
 }
+
+/// `[leves]` as written in the settings file: leve allowances
+/// (crate::leve::allowance).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct LevesSection {
+    pub allowance_cap: i64,
+    pub allowance_refill_amount: i64,
+    pub allowance_refill_hours: i64,
+}
+
+impl Default for LevesSection {
+    fn default() -> Self {
+        Self {
+            allowance_cap: LEVE_ALLOWANCE_CAP.retail,
+            allowance_refill_amount: LEVE_ALLOWANCE_REFILL.retail,
+            allowance_refill_hours: LEVE_ALLOWANCE_HOURS.retail,
+        }
+    }
+}
+
+/// The most leve allowances a character can stockpile.
+pub const LEVE_ALLOWANCE_CAP: Bounded<i64> = Bounded {
+    name: "leves.allowance_cap",
+    retail: 99,
+    safe: 1..=99,
+    hard: 1..=999,
+    risky: "above 99 a character stockpiles more leves than 1.0 ever allowed",
+    breaks: "the levemete's count is only tried up to three digits, and \
+             a cap below 1 would refuse every leve",
+};
+
+/// Leve allowances granted each refill period.
+pub const LEVE_ALLOWANCE_REFILL: Bounded<i64> = Bounded {
+    name: "leves.allowance_refill_amount",
+    retail: 4,
+    safe: 1..=20,
+    hard: 0..=999,
+    risky: "above 20 per period leves stop having a pace, and 0 means \
+            spent allowances never come back",
+    breaks: "past the most a character can hold, a bigger refill means nothing",
+};
+
+/// Real hours per leve allowance refill.
+pub const LEVE_ALLOWANCE_HOURS: Bounded<i64> = Bounded {
+    name: "leves.allowance_refill_hours",
+    retail: 12,
+    safe: 1..=48,
+    hard: 1..=720,
+    risky: "outside 1-48 hours allowances come back much faster or slower \
+            than 1.0's twice a day",
+    breaks: "a period under an hour isn't supported, and past 30 days \
+             allowances in effect never come back",
+};
 
 /// The highest level a class reaches by earning EXP.
 pub const LEVEL_CAP: Bounded<i64> = Bounded {
@@ -213,6 +267,12 @@ pub struct Gameplay {
     pub drop_rate_percent: u32,
     /// Percent, 0..=10000.
     pub rare_drop_percent: u32,
+    /// Leve allowances a character can stockpile, 1..=999.
+    pub leve_allowance_cap: u16,
+    /// Leve allowances granted each period, 0..=999.
+    pub leve_allowance_refill_amount: u16,
+    /// Real hours per refill period, 1..=720.
+    pub leve_allowance_refill_hours: u16,
 }
 
 impl Gameplay {
@@ -227,11 +287,15 @@ impl Gameplay {
         gil_drop_percent: 100,
         drop_rate_percent: 100,
         rare_drop_percent: 100,
+        leve_allowance_cap: 99,
+        leve_allowance_refill_amount: 4,
+        leve_allowance_refill_hours: 12,
     };
 
     /// The settings file's values checked against their limits (logged).
     pub fn from_config(cfg: &crate::config::Config) -> Self {
         let (p, s, e, d) = (&cfg.progression, &cfg.storage, &cfg.economy, &cfg.drops);
+        let l = &cfg.leves;
         // `apply` clamps into the hard range, so the casts can't truncate.
         Self {
             level_cap: LEVEL_CAP.apply(p.level_cap) as i16,
@@ -245,6 +309,11 @@ impl Gameplay {
             gil_drop_percent: GIL_DROP.apply(e.gil_drop_percent) as u32,
             drop_rate_percent: DROP_RATE.apply(d.drop_rate_percent) as u32,
             rare_drop_percent: RARE_DROP.apply(d.rare_drop_percent) as u32,
+            leve_allowance_cap: LEVE_ALLOWANCE_CAP.apply(l.allowance_cap) as u16,
+            leve_allowance_refill_amount: LEVE_ALLOWANCE_REFILL.apply(l.allowance_refill_amount)
+                as u16,
+            leve_allowance_refill_hours: LEVE_ALLOWANCE_HOURS.apply(l.allowance_refill_hours)
+                as u16,
         }
     }
 
@@ -320,6 +389,9 @@ pub fn install(g: Gameplay) {
         gil_drop_percent = g.gil_drop_percent,
         drop_rate_percent = g.drop_rate_percent,
         rare_drop_percent = g.rare_drop_percent,
+        leve_allowance_cap = g.leve_allowance_cap,
+        leve_allowance_refill_amount = g.leve_allowance_refill_amount,
+        leve_allowance_refill_hours = g.leve_allowance_refill_hours,
         "gameplay settings",
     );
 }
@@ -382,6 +454,11 @@ mod tests {
                 drop_rate_percent: 99_999,
                 rare_drop_percent: -3,
             },
+            leves: LevesSection {
+                allowance_cap: 0,
+                allowance_refill_amount: 5000,
+                allowance_refill_hours: -12,
+            },
             ..Default::default()
         };
         let g = Gameplay::from_config(&cfg);
@@ -394,6 +471,27 @@ mod tests {
         assert_eq!(g.gil_drop_percent, 10_000);
         assert_eq!(g.drop_rate_percent, 10_000);
         assert_eq!(g.rare_drop_percent, 0);
+        assert_eq!(g.leve_allowance_cap, 1);
+        assert_eq!(g.leve_allowance_refill_amount, 999);
+        assert_eq!(g.leve_allowance_refill_hours, 1);
+    }
+
+    #[test]
+    fn leve_allowance_limits() {
+        // retail and inside the safe range: used as set
+        assert_eq!(LEVE_ALLOWANCE_CAP.apply(99), 99);
+        assert_eq!(LEVE_ALLOWANCE_REFILL.apply(4), 4);
+        assert_eq!(LEVE_ALLOWANCE_HOURS.apply(12), 12);
+        // risky (warned) but used
+        assert_eq!(LEVE_ALLOWANCE_CAP.apply(500), 500);
+        assert_eq!(LEVE_ALLOWANCE_REFILL.apply(0), 0);
+        assert_eq!(LEVE_ALLOWANCE_HOURS.apply(100), 100);
+        // past the hard range: the nearest end
+        assert_eq!(LEVE_ALLOWANCE_CAP.apply(5000), 999);
+        assert_eq!(LEVE_ALLOWANCE_CAP.apply(-1), 1);
+        assert_eq!(LEVE_ALLOWANCE_REFILL.apply(-4), 0);
+        assert_eq!(LEVE_ALLOWANCE_HOURS.apply(0), 1);
+        assert_eq!(LEVE_ALLOWANCE_HOURS.apply(10_000), 720);
     }
 
     #[test]
