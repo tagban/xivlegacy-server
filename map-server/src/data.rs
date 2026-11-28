@@ -725,4 +725,20 @@ mod seamless_data_tests {
             assert_eq!(seam_zone(x, z), Some(zone), "at ({x}, {z})");
         }
     }
+
+    /// Central Thanalan (170) and Eastern Thanalan (171) meet along
+    /// x 767.5, from z -760 to -445, at matching heights (#491).
+    #[test]
+    fn central_and_eastern_thanalan_are_seamed() {
+        for (x, z, zone) in [
+            (750.0, -750.0, 170),
+            (785.0, -750.0, 171),
+            (750.0, -600.0, 170),
+            (785.0, -600.0, 171),
+            (750.0, -460.0, 170),
+            (785.0, -460.0, 171),
+        ] {
+            assert_eq!(seam_zone(x, z), Some(zone), "at ({x}, {z})");
+        }
+    }
 }
