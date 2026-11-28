@@ -9293,6 +9293,22 @@ impl PacketProcessor {
                 .await;
             return;
         }
+        // A held regional leve's journal page and its Abandon button read
+        // the player's leve slots, which the scripts can't (#479).
+        if command_name == "RequestInformationCommand"
+            && self
+                .send_leve_journal_detail(handle, command_actor_id, &event_name, &lua_params)
+                .await
+        {
+            return;
+        }
+        if command_name == "JournalCommand"
+            && self
+                .abandon_leve_from_journal(handle, command_actor_id, &event_name, &lua_params)
+                .await
+        {
+            return;
+        }
         let Some(lua) = self.lua.as_ref() else {
             return;
         };
@@ -10126,6 +10142,133 @@ impl PacketProcessor {
             ],
         )
         .await;
+    }
+
+    /// `RequestInformationCommand` `("activegl", slot)`: the journal page of
+    /// the regional leve in the player's 1-based journal slot. Replies with
+    /// the page values (crate::leve::battle::journal) and ends the event.
+    /// False for any other request (`glHist`), which the script handles.
+    async fn send_leve_journal_detail(
+        &self,
+        handle: &ActorHandle,
+        command_actor_id: u32,
+        event_name: &str,
+        lua_params: &[common::luaparam::LuaParam],
+    ) -> bool {
+        use common::luaparam::LuaParam;
+        let is_active = lua_params
+            .iter()
+            .find_map(|p| match p {
+                LuaParam::String(s) => Some(s == "activegl"),
+                _ => None,
+            })
+            .unwrap_or(false);
+        if !is_active {
+            return false;
+        }
+        let slot = lua_params.iter().find_map(|p| match p {
+            LuaParam::Int32(v) => Some(i64::from(*v)),
+            LuaParam::UInt32(v) => Some(i64::from(*v)),
+            _ => None,
+        });
+        let actor_id = handle.actor_id;
+        let Some(client) = self.world.client(handle.session_id).await else {
+            return true;
+        };
+        let params = match slot {
+            Some(slot) => {
+                crate::leve::battle::journal::detail(
+                    actor_id,
+                    slot,
+                    &self.registry,
+                    self.lua.as_ref(),
+                )
+                .await
+            }
+            None => None,
+        };
+        match params {
+            Some(params) => {
+                let mut pkt = crate::packets::send::player::build_generic_data(actor_id, &params);
+                pkt.set_target_id(actor_id);
+                client.send_bytes(pkt.to_bytes()).await;
+                tracing::debug!(player = actor_id, ?slot, "leve journal page sent");
+            }
+            None => {
+                tracing::warn!(player = actor_id, ?slot, params = ?lua_params, "leve journal page: no leve in that slot");
+            }
+        }
+        let mut end = crate::packets::send::events::build_end_event(
+            actor_id,
+            command_actor_id,
+            event_name,
+            0,
+        );
+        end.set_target_id(actor_id);
+        client.send_bytes(end.to_bytes()).await;
+        true
+    }
+
+    /// `JournalCommand` (id, choice) for a regional leve the player holds:
+    /// Abandon on its journal page. False when `id` isn't a held leve (a
+    /// quest), which the script abandons.
+    async fn abandon_leve_from_journal(
+        &self,
+        handle: &ActorHandle,
+        command_actor_id: u32,
+        event_name: &str,
+        lua_params: &[common::luaparam::LuaParam],
+    ) -> bool {
+        use common::luaparam::LuaParam;
+        let mut nums = lua_params.iter().filter_map(|p| match p {
+            LuaParam::Int32(v) => Some(i64::from(*v)),
+            LuaParam::UInt32(v) => Some(i64::from(*v)),
+            _ => None,
+        });
+        let Some(gl_id) = nums.next().and_then(|v| u32::try_from(v).ok()) else {
+            return false;
+        };
+        let choice = nums.next();
+        let actor_id = handle.actor_id;
+        let held = {
+            let c = handle.character.read().await;
+            c.chara
+                .guildleves_regional
+                .iter()
+                .any(|e| u32::from(e.guildleve_id) == gl_id)
+        };
+        if !held {
+            return false;
+        }
+        if choice == Some(i64::from(crate::leve::battle::journal::ABANDON)) {
+            crate::leve::battle::journal::abandon_held(
+                actor_id,
+                gl_id,
+                &self.registry,
+                &self.world,
+                &self.db,
+                crate::runtime::clock::server_now_ms(),
+            )
+            .await;
+        } else {
+            tracing::info!(
+                player = actor_id,
+                gl_id,
+                ?choice,
+                "leve journal choice not handled"
+            );
+        }
+        if let Some(client) = self.world.client(handle.session_id).await {
+            let mut end = crate::packets::send::events::build_end_event(
+                actor_id,
+                command_actor_id,
+                event_name,
+                0,
+            );
+            end.set_target_id(actor_id);
+            client.send_bytes(end.to_bytes()).await;
+        }
+        true
     }
 
     /// Mirror of pmeteor's `RequestQuestJournalCommand.lua::onEventStarted`
