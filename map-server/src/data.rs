@@ -749,7 +749,10 @@ mod region_border_data_tests {
     /// one region, so where a road runs on into another region a push circle
     /// at the road's end loads the other zone (#496). Each entry is the
     /// circle on one side, (unique id, script folder), and its way back.
-    const BORDERS: &[((&str, &str), (&str, &str))] = &[(
+    /// A circle's unique id and the script folder (its zone's area name).
+    type Side = (&'static str, &'static str);
+
+    const BORDERS: &[(Side, Side)] = &[(
         ("mor_dhona_border1", "fst0Field02"),
         ("east_shroud_border1", "lak0Field01"),
     )];
