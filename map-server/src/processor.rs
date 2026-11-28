@@ -9033,7 +9033,9 @@ impl PacketProcessor {
         // appearance, the rental timer) come out of resumed talk coroutines
         // too, and the shared drain has no arm for them either: a freshly
         // named chocobo was never saved (#417). Apply them here, in order
-        // with the commands around them.
+        // with the commands around them. The same goes for an aetheryte's or
+        // an inn's "Set home point": the menu answer resumes the script, and
+        // the shared drain dropped its `SetHomePoint` (#484).
         let mut batch = Vec::with_capacity(commands.len());
         for cmd in commands {
             if matches!(
@@ -9043,6 +9045,8 @@ impl PacketProcessor {
                     | LC::SetMountState { .. }
                     | LC::SendMountAppearance { .. }
                     | LC::SetChocoboName { .. }
+                    | LC::SetHomePoint { .. }
+                    | LC::SetHomePointInn { .. }
             ) {
                 crate::runtime::quest_apply::apply_event_script_commands(
                     handle,
@@ -9073,6 +9077,13 @@ impl PacketProcessor {
                     }
                     LC::SetChocoboName { player_id, name } => {
                         self.apply_set_chocobo_name(player_id, name).await
+                    }
+                    LC::SetHomePoint {
+                        player_id,
+                        homepoint,
+                    } => self.apply_set_home_point(player_id, homepoint).await,
+                    LC::SetHomePointInn { player_id, inn_id } => {
+                        self.apply_set_home_point_inn(player_id, inn_id).await
                     }
                     _ => unreachable!(),
                 }

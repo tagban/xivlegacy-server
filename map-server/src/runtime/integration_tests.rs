@@ -6786,6 +6786,94 @@ async fn resumed_talk_applies_issue_chocobo_and_rental() {
     assert_eq!(has, 1);
 }
 
+/// #484: an aetheryte's "Set home point" runs after the menu's client
+/// call, so `SetHomePoint` arrives through the resumed-event drain, which
+/// used to drop it (Return kept sending the player to the old home point).
+#[tokio::test]
+async fn resumed_aetheryte_menu_saves_the_home_point() {
+    use crate::actor::Character;
+    use crate::data::Session as MapSession;
+    use crate::lua::LuaCommandKind as LuaCommand;
+    use crate::runtime::actor_registry::{ActorHandle, ActorKindTag};
+    use common::db::ConnCallExt;
+    use std::sync::Arc;
+
+    let world = Arc::new(WorldManager::new());
+    let registry = Arc::new(ActorRegistry::new());
+    let db = Arc::new(
+        crate::database::Database::open(tempdb())
+            .await
+            .expect("db stub"),
+    );
+    db.conn_for_test()
+        .call_db(|c| {
+            c.execute(
+                r"INSERT INTO characters (id, userId, slot, serverId, name, homepoint)
+                  VALUES (57, 0, 0, 0, 'Homebody', 1280061)",
+                [],
+            )?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+    registry
+        .insert(ActorHandle::new(
+            57,
+            ActorKindTag::Player,
+            154,
+            57,
+            Character::new(57),
+        ))
+        .await;
+    world
+        .upsert_session(MapSession {
+            id: 57,
+            current_zone_id: 154,
+            ..MapSession::default()
+        })
+        .await;
+    let processor = crate::processor::PacketProcessor {
+        db: db.clone(),
+        world: world.clone(),
+        registry: registry.clone(),
+        lua: None,
+        cmd: None,
+    };
+    let handle = registry.get(57).await.unwrap();
+    processor
+        .apply_resumed_event_commands(
+            &handle,
+            vec![
+                LuaCommand::SetHomePoint {
+                    player_id: 57,
+                    homepoint: 1280066,
+                },
+                LuaCommand::SetHomePointInn {
+                    player_id: 57,
+                    inn_id: 2,
+                },
+            ],
+        )
+        .await;
+    {
+        let c = handle.character.read().await;
+        assert_eq!(c.chara.homepoint, 1280066);
+        assert_eq!(c.chara.homepoint_inn, 2);
+    }
+    let row: (u32, u8) = db
+        .conn_for_test()
+        .call_db(|c| {
+            c.query_row(
+                "SELECT homepoint, homepointInn FROM characters WHERE id = 57",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+        })
+        .await
+        .unwrap();
+    assert_eq!(row, (1280066, 2));
+}
+
 /// Rental-expiry tick — if `rental_expire_time` is in the past the
 /// ticker dismounts the player (flips mount_state + main_state).
 #[tokio::test]
